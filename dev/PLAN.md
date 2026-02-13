@@ -1,19 +1,19 @@
 # BOMIX 開發計畫
 
-> 版本：1.0.0 | 最後更新：2026-02-13
+> 版本：1.1.0 | 最後更新：2026-02-13
 
 ## 開發策略
 
-採用 **UI 優先、漸進式開發** 策略：
-- 先建立可運作的基礎 UI 框架，讓使用者能看到完整的應用程式外觀
-- 每個 Phase 同步開發 UI + 後端功能，完成後即可進行使用者測試
-- 主行程（Jules）與渲染層（Antigravity）可依協作規範平行開發
+採用 **前後端分離、循序開發** 策略：
+- **Jules (Backend)** 先行開發 API 與資料邏輯
+- **Antigravity (Frontend)** 接續整合 UI
+- 透過明確的 Phase 切分，讓兩位 Agent 的職責更清晰
 
 ---
 
 ## 里程碑規劃
 
-### Phase 1：專案骨架與 UI 框架 ⭐ 目前
+### Phase 1：專案骨架與 UI 框架 ⭐ 已完成
 建立 Electron + React + Vite 專案骨架，包含完整導航與主題切換。
 
 - [x] Electron + React + Vite 專案初始化
@@ -40,70 +40,92 @@
   - [x] `pages/BomPage.jsx` — BOM 檢視（佔位）
   - [x] `pages/ComparePage.jsx` — 版本比較（佔位）
   - [x] `pages/SettingsPage.jsx` — 設定
-- [ ] **主題切換**
+- [ ] **UI 收尾**
   - [ ] Dark/Light 模式切換邏輯
-  - [ ] 系統主題偵測
-- [ ] **對話框**
   - [ ] `components/dialogs/AboutDialog.jsx`
   - [ ] `components/dialogs/ChangelogDialog.jsx`
 
-### Phase 2：主行程資料層
-建立資料庫架構與 Repository Pattern，不含 UI 整合。
+### Phase 2：主行程資料層 (Jules)
+**負責人：Jules**
+建立資料庫架構與 Repository Pattern，不含 IPC 與 UI 整合。
 
 - [ ] `src/main/database/connection.js` — SQLite 連線管理
-- [ ] `src/main/database/schema.js` — 建表 SQL
+- [ ] `src/main/database/schema.js` — 建表 SQL (Schema 定義)
 - [ ] `src/main/database/repositories/series.repo.js`
 - [ ] `src/main/database/repositories/project.repo.js`
 - [ ] `src/main/database/repositories/bom-revision.repo.js`
 - [ ] `src/main/database/repositories/parts.repo.js`
 - [ ] `src/main/database/repositories/second-source.repo.js`
-- [ ] 單元測試（Vitest）
+- [ ] 單元測試 (Repositories)
 
-### Phase 3：系列與專案管理
-IPC + Service + UI 同步開發。
+### Phase 3：系列與專案管理 - 後端 (Jules)
+**負責人：Jules**
+實作核心業務邏輯並開放 API。
 
 - [ ] `src/main/services/series.service.js`
 - [ ] `src/main/services/project.service.js`
 - [ ] `src/main/ipc/series.ipc.js`
 - [ ] `src/main/ipc/project.ipc.js`
 - [ ] 更新 `src/preload/index.js`
-- [ ] 更新 `pages/HomePage.jsx` — 整合系列開啟功能
-- [ ] 更新 `pages/ProjectPage.jsx` — 整合專案 CRUD
-- [ ] `stores/useSeriesStore.js` — Zustand 狀態
+- [ ] 撰寫 API 文件 (`dev/modules/`)
+- [ ] 單元測試 (Services)
+
+### Phase 4：系列與專案管理 - 前端 (Antigravity)
+**負責人：Antigravity**
+整合 Phase 3 開放的 API，完成 UI 功能。
+
+- [ ] `stores/useSeriesStore.js`
 - [ ] `stores/useProjectStore.js`
+- [ ] 更新 `pages/HomePage.jsx` (建立/開啟系列)
+- [ ] 更新 `pages/ProjectPage.jsx` (專案 CRUD、版本列表)
 - [ ] 整合測試
 
-### Phase 4：BOM 管理
-核心功能：BOM 表格檢視、編輯、Second Source 管理。
+### Phase 5：BOM 管理與 Excel 整合 - 後端 (Jules)
+**負責人：Jules**
+BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 
 - [ ] `src/main/services/bom.service.js`
-- [ ] `src/main/ipc/bom.ipc.js`
-- [ ] 更新 `pages/BomPage.jsx` — TanStack Table 表格
-- [ ] `components/tables/BomTable.jsx`
-- [ ] `stores/useBomStore.js`
-- [ ] 整合測試
-
-### Phase 5：Excel 匯入/匯出
-Excel 解析與產生功能。
-
 - [ ] `src/main/services/import.service.js`
 - [ ] `src/main/services/export.service.js`
+- [ ] `src/main/ipc/bom.ipc.js`
 - [ ] `src/main/ipc/excel.ipc.js`
+- [ ] 更新 `src/preload/index.js`
+- [ ] 撰寫 API 文件 (`dev/modules/`)
+- [ ] 單元測試 (含 Excel 範本測試)
+
+### Phase 6：BOM 管理與 Excel 整合 - 前端 (Antigravity)
+**負責人：Antigravity**
+整合 BOM 表格與 Excel 匯入匯出功能。
+
+- [ ] `stores/useBomStore.js`
+- [ ] `components/tables/BomTable.jsx` (TanStack Table 實作)
+- [ ] 更新 `pages/BomPage.jsx`
 - [ ] `components/dialogs/ImportDialog.jsx`
-- [ ] 拖曳開啟 .xls/.xlsx 支援
+- [ ] 拖曳匯入功能實作
 - [ ] 整合測試
 
-### Phase 6：版本比較
-BOM 版本差異比對功能。
+### Phase 7：版本比較 - 後端 (Jules)
+**負責人：Jules**
+實作 BOM 版本差異比對演算法。
 
 - [ ] `src/main/services/compare.service.js`
-- [ ] 更新 `pages/ComparePage.jsx`
+- [ ] `src/main/ipc/compare.ipc.js`
+- [ ] 更新 `src/preload/index.js`
+- [ ] 撰寫 API 文件 (`dev/modules/`)
+- [ ] 單元測試 (演算法驗證)
+
+### Phase 8：版本比較 - 前端 (Antigravity)
+**負責人：Antigravity**
+呈現比對結果。
+
+- [ ] `stores/useCompareStore.js`
+- [ ] 更新 `pages/ComparePage.jsx` (差異視覺化呈現)
 - [ ] 整合測試
 
-### Phase 7：打包發佈
-最終打包與文件完善。
+### Phase 9：打包與發佈
+最終打包、E2E 測試與文件完善。
 
-- [ ] electron-builder 打包測試
+- [ ] electron-builder 完整打包測試
 - [ ] 使用者操作手冊完善
-- [ ] 全面測試與 Bug 修復
+- [ ] Bug Bash 與修復
 - [ ] CI/CD 流程驗證
