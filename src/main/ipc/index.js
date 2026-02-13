@@ -3,9 +3,8 @@
 // 集中管理所有 IPC 通道，方便維護與擴展
 // ========================================
 
-// TODO: Phase 2 將在此引入各模組的 IPC handler
-// import { registerSeriesIpc } from './series.ipc.js'
-// import { registerProjectIpc } from './project.ipc.js'
+import { registerSeriesIpc } from './series.ipc.js'
+import { registerProjectIpc } from './project.ipc.js'
 // import { registerBomIpc } from './bom.ipc.js'
 // import { registerExcelIpc } from './excel.ipc.js'
 
@@ -25,10 +24,10 @@ export function registerAllIpcHandlers(ipcMain) {
     })
 
     // TODO: Phase 2 — 系列管理 IPC
-    // registerSeriesIpc(ipcMain)
+    registerSeriesIpc(ipcMain)
 
     // TODO: Phase 3 — 專案管理 IPC
-    // registerProjectIpc(ipcMain)
+    registerProjectIpc(ipcMain)
 
     // TODO: Phase 4 — BOM 管理 IPC
     // registerBomIpc(ipcMain)

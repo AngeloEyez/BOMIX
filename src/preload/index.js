@@ -18,16 +18,21 @@ const api = {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
 
     // TODO: Phase 2 — 系列管理 API
-    // series: {
-    //   create: (path, description) => ipcRenderer.invoke('series:create', path, description),
-    //   open: (path) => ipcRenderer.invoke('series:open', path),
-    //   close: () => ipcRenderer.invoke('series:close'),
-    //   getInfo: () => ipcRenderer.invoke('series:getInfo'),
-    //   updateDescription: (desc) => ipcRenderer.invoke('series:updateDescription', desc),
-    // },
+    series: {
+        create: (path, description) => ipcRenderer.invoke('series:create', path, description),
+        open: (path) => ipcRenderer.invoke('series:open', path),
+        getMeta: () => ipcRenderer.invoke('series:getMeta'),
+        updateMeta: (desc) => ipcRenderer.invoke('series:updateMeta', desc),
+    },
 
     // TODO: Phase 3 — 專案管理 API
-    // project: { ... },
+    project: {
+        create: (projectCode, description) => ipcRenderer.invoke('project:create', projectCode, description),
+        getAll: () => ipcRenderer.invoke('project:getAll'),
+        getById: (id) => ipcRenderer.invoke('project:getById', id),
+        update: (id, description) => ipcRenderer.invoke('project:update', id, description),
+        delete: (id) => ipcRenderer.invoke('project:delete', id),
+    },
 
     // TODO: Phase 4 — BOM 管理 API
     // bom: { ... },

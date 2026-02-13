@@ -62,13 +62,13 @@
 **負責人：Jules**
 實作核心業務邏輯並開放 API。
 
-- [ ] `src/main/services/series.service.js`
-- [ ] `src/main/services/project.service.js`
-- [ ] `src/main/ipc/series.ipc.js`
-- [ ] `src/main/ipc/project.ipc.js`
-- [ ] 更新 `src/preload/index.js`
-- [ ] 撰寫 API 文件 (`dev/modules/`)
-- [ ] 單元測試 (Services)
+- [x] `src/main/services/series.service.js`
+- [x] `src/main/services/project.service.js`
+- [x] `src/main/ipc/series.ipc.js`
+- [x] `src/main/ipc/project.ipc.js`
+- [x] 更新 `src/preload/index.js`
+- [x] 撰寫 API 文件 (`dev/modules/`)
+- [x] 單元測試 (Services)
 
 ### Phase 4：系列與專案管理 - 前端 (Antigravity)
 **負責人：Antigravity**
