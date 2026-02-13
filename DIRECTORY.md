@@ -15,9 +15,7 @@
 | `dev/` | 開發者文件（規格書、架構、計畫、資料庫、協作規範） |
 | `docs/` | 最終使用者說明文件（操作手冊、FAQ） |
 | `references/` | 參考資料（BOM 範本檔案） |
-| `resources/` | Electron 打包資源（圖標等） |
-| `src/` | 主程式原始碼（Electron 三層架構） |
-| `tests/` | 測試腳本與測試資料 |
+| `dist/` | 產出目錄（含中間編譯產物 `.intermediate/` 及發佈安裝包） |
 
 ---
 
@@ -60,6 +58,12 @@ GitHub Actions 自動化流程定義，用於 CI/CD 持續整合與自動測試�
 
 ### `resources/` — Electron 打包資源
 - `icon.ico` — 應用程式圖標
+
+### `dist/` — 產出目錄
+存放所有編譯產物與打包結果：
+- `.intermediate/` — **中間編譯產物**（由 `electron-vite` 產生，含 `main`、`preload`、`renderer`）
+- `BOMIX Setup x.x.x.exe` — 安裝程式
+- `BOMIX x.x.x.exe` — 便攜版
 
 ### `src/` — 原始碼（Electron 三層架構）
 

@@ -11,8 +11,9 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
     // --- 主行程配置 ---
     main: {
-        plugins: [externalizeDepsPlugin()],
+        plugins: [externalizeDepsPlugin({ exclude: ['@electron-toolkit/utils'] })],
         build: {
+            outDir: 'dist/.intermediate/main',
             rollupOptions: {
                 // better-sqlite3 需要作為外部依賴，避免被打包
                 external: ['better-sqlite3']
@@ -22,7 +23,10 @@ export default defineConfig({
 
     // --- Preload 腳本配置 ---
     preload: {
-        plugins: [externalizeDepsPlugin()]
+        plugins: [externalizeDepsPlugin()],
+        build: {
+            outDir: 'dist/.intermediate/preload'
+        }
     },
 
     // --- 渲染層配置（React + Tailwind） ---
@@ -35,6 +39,9 @@ export default defineConfig({
         plugins: [
             react(),
             tailwindcss()
-        ]
+        ],
+        build: {
+            outDir: 'dist/.intermediate/renderer'
+        }
     }
 })

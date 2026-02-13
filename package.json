@@ -2,7 +2,7 @@
   "name": "bomix",
   "version": "0.2.0",
   "description": "BOM 變化管理與追蹤工具 - 電子 BOM 版本管理系統",
-  "main": "./out/main/index.js",
+  "main": "./dist/.intermediate/main/index.js",
   "author": "BOMIX Team",
   "license": "MIT",
   "scripts": {
@@ -52,7 +52,7 @@
       "output": "dist"
     },
     "files": [
-      "out/**/*",
+      "dist/.intermediate/**/*",
       "!node_modules/**/*"
     ],
     "extraResources": [
