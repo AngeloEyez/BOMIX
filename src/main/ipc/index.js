@@ -3,11 +3,8 @@
 // 集中管理所有 IPC 通道，方便維護與擴展
 // ========================================
 
-// TODO: Phase 2 將在此引入各模組的 IPC handler
+import { registerAppIpc } from './app.ipc.js'
 // import { registerSeriesIpc } from './series.ipc.js'
-// import { registerProjectIpc } from './project.ipc.js'
-// import { registerBomIpc } from './bom.ipc.js'
-// import { registerExcelIpc } from './excel.ipc.js'
 
 /**
  * 註冊所有 IPC 通道處理器。
@@ -18,11 +15,8 @@
  * @param {Electron.IpcMain} ipcMain - Electron IPC 主行程實例
  */
 export function registerAllIpcHandlers(ipcMain) {
-    // --- 應用程式基本資訊 ---
-    ipcMain.handle('app:getVersion', () => {
-        const { app } = require('electron')
-        return app.getVersion()
-    })
+    // --- 應用程式基本資訊、設定與 Changelog ---
+    registerAppIpc(ipcMain)
 
     // TODO: Phase 2 — 系列管理 IPC
     // registerSeriesIpc(ipcMain)

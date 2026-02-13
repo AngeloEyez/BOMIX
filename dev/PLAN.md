@@ -40,10 +40,10 @@
   - [x] `pages/BomPage.jsx` — BOM 檢視（佔位）
   - [x] `pages/ComparePage.jsx` — 版本比較（佔位）
   - [x] `pages/SettingsPage.jsx` — 設定
-- [ ] **UI 收尾**
-  - [ ] Dark/Light 模式切換邏輯
-  - [ ] `components/dialogs/AboutDialog.jsx`
-  - [ ] `components/dialogs/ChangelogDialog.jsx`
+- [x] **UI 收尾**
+  - [x] Dark/Light 模式切換邏輯
+  - [x] `components/dialogs/AboutDialog.jsx`
+  - [x] `components/dialogs/ChangelogDialog.jsx`
 
 ### Phase 2：主行程資料層 (Jules)
 **負責人：Jules**

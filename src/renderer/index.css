@@ -4,6 +4,10 @@
  * ======================================== */
 
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* 強制使用 class 策略的暗黑模式 */
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* --- 自訂 CSS 變數（主題色系） --- */
 @theme {
