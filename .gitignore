@@ -1,0 +1,35 @@
+# ========================================
+# BOMIX 專案 .gitignore
+# Electron + React + Vite + Node.js
+# ========================================
+
+# --- 依賴套件 ---
+node_modules/
+
+# --- 建置產出 ---
+out/
+dist/
+
+# --- 開發快取 ---
+.vite/
+
+# --- 系統與 IDE ---
+.DS_Store
+Thumbs.db
+*.sw?
+*.log
+npm-debug.log*
+
+# --- 環境變數 ---
+.env
+.env.local
+.env.*.local
+
+# --- 測試覆蓋率 ---
+coverage/
+
+# --- Antigravity IDE ---
+.gemini/antigravity/
+
+# --- Agent 臨時工作區 ---
+agent-workspace/

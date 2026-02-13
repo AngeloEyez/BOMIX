@@ -1,0 +1,69 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "BOMIX: Dev",
+            "type": "npm",
+            "script": "dev",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "啟動開發模式（Electron + Vite HMR）"
+        },
+        {
+            "label": "BOMIX: Build",
+            "type": "npm",
+            "script": "build",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "detail": "編譯主行程、Preload、渲染層"
+        },
+        {
+            "label": "BOMIX: Build Win",
+            "type": "npm",
+            "script": "build:win",
+            "group": "build",
+            "problemMatcher": [],
+            "detail": "編譯 + 打包為 Windows 執行檔"
+        },
+        {
+            "label": "BOMIX: Test",
+            "type": "npm",
+            "script": "test",
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "detail": "執行 Vitest 單元測試"
+        },
+        {
+            "label": "BOMIX: Lint",
+            "type": "npm",
+            "script": "lint",
+            "group": "test",
+            "problemMatcher": [
+                "$eslint-stylish"
+            ],
+            "detail": "執行 ESLint 程式碼檢查"
+        },
+        {
+            "label": "BOMIX: Lint Fix",
+            "type": "npm",
+            "script": "lint:fix",
+            "problemMatcher": [
+                "$eslint-stylish"
+            ],
+            "detail": "自動修復 ESLint 問題"
+        },
+        {
+            "label": "BOMIX: Format",
+            "type": "npm",
+            "script": "format",
+            "problemMatcher": [],
+            "detail": "使用 Prettier 格式化程式碼"
+        }
+    ]
+}

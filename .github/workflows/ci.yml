@@ -1,0 +1,77 @@
+# ========================================
+# BOMIX GitHub Actions CI/CD 設定
+# ========================================
+# 策略：
+#   - push（一般 commit）：僅執行 lint 檢查（快速回饋）
+#   - pull_request（合併前）：完整檢查（lint + 測試）
+#   - 路徑過濾：僅 src/ 內的 .js/.jsx 檔案變更時才觸發
+# ========================================
+
+name: BOMIX CI
+
+# --- 觸發條件 ---
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "src/**/*.js"
+      - "src/**/*.jsx"
+      - "package.json"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**/*.js"
+      - "src/**/*.jsx"
+      - "package.json"
+
+jobs:
+  # ========================================
+  # Lint 檢查（push 與 PR 都會執行）
+  # ========================================
+  lint:
+    name: 程式碼風格檢查
+    runs-on: windows-latest
+
+    steps:
+      - name: 簽出程式碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: 安裝依賴
+        run: npm ci
+
+      - name: 執行 Lint 檢查
+        run: npm run lint
+
+  # ========================================
+  # 完整測試（僅在 PR 合併前執行）
+  # ========================================
+  test:
+    name: 完整測試
+    runs-on: windows-latest
+    if: github.event_name == 'pull_request'
+    needs: lint
+    strategy:
+      matrix:
+        node-version: ["20", "22"]
+
+    steps:
+      - name: 簽出程式碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: 安裝依賴
+        run: npm ci
+
+      - name: 執行測試
+        run: npm run test
