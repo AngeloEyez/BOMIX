@@ -56,8 +56,10 @@
       "output": "dist"
     },
     "files": [
-      "dist/.intermediate/**/*",
-      "!node_modules/**/*"
+      "dist/.intermediate/**/*"
+    ],
+    "asarUnpack": [
+      "**/*.node"
     ],
     "extraResources": [
       {
