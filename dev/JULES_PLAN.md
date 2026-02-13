@@ -27,7 +27,14 @@
 #### Prompt
 ```markdown
 @Jules
-請開始執行 **Phase 2: 主行程資料層**。
+請按順序閱讀以下文件，以確保對專案目標與規範有完整的理解： 
+ 
+dev/PLAN.md — 確認開發計畫
+dev/SPEC.md — 了解功能需求與 UI 設計規格 
+dev/ARCHITECTURE.md — 了解系統架構與頁面佈局設計 
+dev/COLLABORATION.md — AI Agent合作注意事項
+.gemini/GEMINI.md — 理解開發任務流程與程式碼規範（單一規範來源） 
+閱讀完成後請開始執行 **Phase 2: 主行程資料層**。
 
 **任務目標**：
 建立 BOMIX 的資料庫底層架構，確保資料能正確寫入與讀取 SQLite。
@@ -55,7 +62,14 @@
 #### Prompt
 ```markdown
 @Jules
-請開始執行 **Phase 3: 系列與專案管理 - 後端**。
+請按順序閱讀以下文件，以確保對專案目標與規範有完整的理解： 
+ 
+dev/PLAN.md — 確認開發計畫
+dev/SPEC.md — 了解功能需求與 UI 設計規格 
+dev/ARCHITECTURE.md — 了解系統架構與頁面佈局設計 
+dev/COLLABORATION.md — AI Agent合作注意事項
+.gemini/GEMINI.md — 理解開發任務流程與程式碼規範（單一規範來源） 
+閱讀完成後請開始執行 **Phase 3: 系列與專案管理 - 後端**。
 
 **任務目標**：
 實作「系列 (Series)」與「專案 (Project)」的核心業務邏輯與 API。
@@ -87,7 +101,14 @@
 #### Prompt
 ```markdown
 @Jules
-請開始執行 **Phase 5: BOM 管理與 Excel 整合 - 後端**。
+請按順序閱讀以下文件，以確保對專案目標與規範有完整的理解： 
+ 
+dev/PLAN.md — 確認開發計畫
+dev/SPEC.md — 了解功能需求與 UI 設計規格 
+dev/ARCHITECTURE.md — 了解系統架構與頁面佈局設計 
+dev/COLLABORATION.md — AI Agent合作注意事項
+.gemini/GEMINI.md — 理解開發任務流程與程式碼規範（單一規範來源） 
+閱讀完成後請開始執行 **Phase 5: BOM 管理與 Excel 整合 - 後端**。
 
 **任務目標**：
 實作 BOM 的讀取、編輯、Second Source 管理，以及 Excel 的匯入匯出邏輯。
@@ -121,7 +142,14 @@
 #### Prompt
 ```markdown
 @Jules
-請開始執行 **Phase 7: 版本比較 - 後端**。
+請按順序閱讀以下文件，以確保對專案目標與規範有完整的理解： 
+ 
+dev/PLAN.md — 確認開發計畫
+dev/SPEC.md — 了解功能需求與 UI 設計規格 
+dev/ARCHITECTURE.md — 了解系統架構與頁面佈局設計 
+dev/COLLABORATION.md — AI Agent合作注意事項
+.gemini/GEMINI.md — 理解開發任務流程與程式碼規範（單一規範來源） 
+閱讀完成後請開始執行 **Phase 7: 版本比較 - 後端**。
 
 **任務目標**：
 實作 BOM 版本差異比對演算法。
