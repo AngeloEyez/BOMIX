@@ -44,8 +44,9 @@ dev/COLLABORATION.md — AI Agent合作注意事項
 2. 實作 `src/main/database/connection.js` (better-sqlite3 連線)。
 3. 實作 `src/main/database/schema.js` (定義 CREATE TABLE SQL)。
 4. 實作所有 Repositories (`src/main/database/repositories/*.js`)，包含基本的 CRUD 方法。
-5. 為每個 Repository 撰寫單元測試 (`tests/unit/repositories/*.test.js`) 並確保通過。
-6. 更新 `dev/PLAN.md` 的 Phase 2 完成狀態。
+5. 使用 `npm run build` 來確認可以正確編譯。
+6. 為每個 Repository 撰寫單元測試 (`tests/unit/repositories/*.test.js`) 並確保通過。
+7. 更新 `dev/PLAN.md` 的 Phase 2 完成狀態。
 
 **注意事項**：
 - 使用 Repository Pattern，不要在 Service 層寫 SQL。
@@ -84,8 +85,9 @@ dev/COLLABORATION.md — AI Agent合作注意事項
    - `src/main/ipc/project.ipc.js`
 4. 更新 `src/preload/index.js` 暴露 API (`window.api.series.*`, `window.api.project.*`)。
 5. **關鍵**：建立/更新 API 文件 `dev/modules/series.md` 與 `dev/modules/project.md`。
-6. 撰寫單元測試。
-7. 更新 `dev/PLAN.md` 的 Phase 3 完成狀態。
+6. 使用 `npm run build` 來確認可以正確編譯。
+7. 撰寫單元測試。
+8. 更新 `dev/PLAN.md` 的 Phase 3 完成狀態。
 
 **API 規範**：
 - IPC 通道命名：`series:create`, `series:open`, `project:create` 等。
@@ -124,9 +126,10 @@ dev/COLLABORATION.md — AI Agent合作注意事項
    - 實作 `src/main/services/export.service.js` (產生 .xlsx)。
    - 實作 `src/main/ipc/excel.ipc.js`。
    - 更新 Preload 與 `dev/modules/excel.md`。
-3. **測試**：
+3. 使用 `npm run build` 來確認可以正確編譯。
+4. **測試**：
    - 使用 `references/bom_templates/` 下的範本檔進行匯入測試。
-4. 更新 `dev/PLAN.md` 的 Phase 5 完成狀態。
+5. 更新 `dev/PLAN.md` 的 Phase 5 完成狀態。
 
 **注意事項**：
 - 解析 Excel 時需特別注意 `Main Source` 與 `2nd Source` 的判斷邏輯。
@@ -161,8 +164,9 @@ dev/COLLABORATION.md — AI Agent合作注意事項
    - 輸出：Added, Removed, Modified, Unchanged 列表。
 3. 實作 `src/main/ipc/compare.ipc.js`。
 4. 更新 Preload 與 `dev/modules/compare.md`。
-5. 撰寫單元測試，驗證比對邏輯準確性。
-6. 更新 `dev/PLAN.md` 的 Phase 7 完成狀態。
+5. 使用 `npm run build` 來確認可以正確編譯。
+6. 撰寫單元測試，驗證比對邏輯準確性。
+7. 更新 `dev/PLAN.md` 的 Phase 7 完成狀態。
 
 **注意事項**：
 - 比對鍵值 (Key) 通常結合 `HHPN` + `Location`。
