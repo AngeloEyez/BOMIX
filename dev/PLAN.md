@@ -49,14 +49,14 @@
 **負責人：Jules**
 建立資料庫架構與 Repository Pattern，不含 IPC 與 UI 整合。
 
-- [ ] `src/main/database/connection.js` — SQLite 連線管理
-- [ ] `src/main/database/schema.js` — 建表 SQL (Schema 定義)
-- [ ] `src/main/database/repositories/series.repo.js`
-- [ ] `src/main/database/repositories/project.repo.js`
-- [ ] `src/main/database/repositories/bom-revision.repo.js`
-- [ ] `src/main/database/repositories/parts.repo.js`
-- [ ] `src/main/database/repositories/second-source.repo.js`
-- [ ] 單元測試 (Repositories)
+- [x] `src/main/database/connection.js` — SQLite 連線管理
+- [x] `src/main/database/schema.js` — 建表 SQL (Schema 定義)
+- [x] `src/main/database/repositories/series.repo.js`
+- [x] `src/main/database/repositories/project.repo.js`
+- [x] `src/main/database/repositories/bom-revision.repo.js`
+- [x] `src/main/database/repositories/parts.repo.js`
+- [x] `src/main/database/repositories/second-source.repo.js`
+- [x] 單元測試 (Repositories)
 
 ### Phase 3：系列與專案管理 - 後端 (Jules)
 **負責人：Jules**
