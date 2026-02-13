@@ -27,6 +27,10 @@ const PAGES = [
  *
  * @returns {JSX.Element} 應用程式根元件
  */
+import ErrorBoundary from './components/ErrorBoundary'
+
+// ...
+
 function App() {
     // 預設顯示首頁
     const [currentPage, setCurrentPage] = useState('home')
@@ -35,13 +39,17 @@ function App() {
     const ActivePage = PAGES.find(p => p.id === currentPage)?.component || HomePage
 
     return (
-        <AppLayout
-            pages={PAGES}
-            currentPage={currentPage}
-            onNavigate={setCurrentPage}
-        >
-            <ActivePage />
-        </AppLayout>
+        <ErrorBoundary>
+            <AppLayout
+                pages={PAGES}
+                currentPage={currentPage}
+                onNavigate={setCurrentPage}
+            >
+                <ErrorBoundary>
+                    <ActivePage />
+                </ErrorBoundary>
+            </AppLayout>
+        </ErrorBoundary>
     )
 }
 

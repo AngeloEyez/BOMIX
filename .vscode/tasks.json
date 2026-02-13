@@ -5,7 +5,10 @@
             "label": "BOMIX: Dev",
             "type": "npm",
             "script": "dev",
-            "group": "build",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
             "problemMatcher": [],
             "detail": "啟動開發模式（Electron + Vite HMR）"
         },

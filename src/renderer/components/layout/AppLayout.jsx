@@ -6,6 +6,9 @@
 
 import Sidebar from './Sidebar'
 import StatusBar from './StatusBar'
+import { Sun, Moon, Menu } from 'lucide-react'
+import useSettingsStore from '../../stores/useSettingsStore'
+import { useEffect } from 'react'
 
 /**
  * 應用程式主佈局元件。
@@ -20,13 +23,24 @@ import StatusBar from './StatusBar'
  * @returns {JSX.Element} 主佈局
  */
 function AppLayout({ pages, currentPage, onNavigate, children }) {
+    const { theme, toggleTheme, initSettings, isLoading } = useSettingsStore()
+
+    // 初始化設定
+    useEffect(() => {
+        initSettings()
+    }, [initSettings])
+
+    if (isLoading) {
+        return <div className="flex items-center justify-center h-screen">Loading...</div>
+    }
+
     return (
-        <div className="flex flex-col h-screen overflow-hidden">
+        <div className="flex flex-col h-screen overflow-hidden bg-white dark:bg-surface-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
             {/* --- 頂部標題列 --- */}
             <header className="flex items-center justify-between h-12 px-4
         bg-white/80 dark:bg-surface-900/80 backdrop-blur-sm
-        border-b border-slate-200 dark:border-slate-700
-        shrink-0">
+        border-b border-slate-200 dark:border-slate-800
+        shrink-0 z-10">
                 <div className="flex items-center gap-2">
                     <h1 className="text-sm font-semibold text-primary-600 dark:text-primary-400">
                         BOMIX
@@ -34,7 +48,16 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
                     {/* TODO: 開啟系列後顯示系列名稱 */}
                 </div>
                 <div className="flex items-center gap-2">
-                    {/* TODO: 主題切換按鈕 */}
+                    <button
+                        onClick={toggleTheme}
+                        className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-surface-800 text-slate-600 dark:text-slate-400 transition-colors"
+                        title={theme === 'light' ? '切換至深色模式' : '切換至淺色模式'}
+                    >
+                        {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+                    </button>
+                    <button className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-surface-800 text-slate-600 dark:text-slate-400">
+                        <Menu size={18} />
+                    </button>
                 </div>
             </header>
 
@@ -45,8 +68,8 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
                     currentPage={currentPage}
                     onNavigate={onNavigate}
                 />
-                <main className="flex-1 overflow-auto p-6 bg-surface-50 dark:bg-surface-950">
-                    {children}
+                <main className="flex-1 overflow-auto p-6 relative">
+                   {children}
                 </main>
             </div>
 

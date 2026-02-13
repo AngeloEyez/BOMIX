@@ -16,6 +16,16 @@ import { electronAPI } from '@electron-toolkit/preload'
 const api = {
     // --- 應用程式資訊 ---
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
+    getVersions: () => process.versions,
+    
+    app: {
+        getChangelog: () => ipcRenderer.invoke('app:getChangelog'),
+    },
+
+    settings: {
+        get: () => ipcRenderer.invoke('settings:get'),
+        save: (settings) => ipcRenderer.invoke('settings:save', settings),
+    },
 
     // TODO: Phase 2 — 系列管理 API
     series: {
