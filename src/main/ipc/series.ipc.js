@@ -4,9 +4,7 @@
  * @module ipc/series
  */
 
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const seriesService = require('../services/series.service.js');
+import seriesService from '../services/series.service.js';
 
 /**
  * 註冊系列管理相關的 IPC 通道

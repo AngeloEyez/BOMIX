@@ -4,9 +4,7 @@
  * @module ipc/project
  */
 
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const projectService = require('../services/project.service.js');
+import projectService from '../services/project.service.js';
 
 /**
  * 註冊專案管理相關的 IPC 通道

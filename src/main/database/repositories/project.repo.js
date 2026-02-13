@@ -4,7 +4,7 @@
  * @module database/repositories/project
  */
 
-const dbManager = require('../connection');
+import dbManager from '../connection.js';
 
 /**
  * 建立新專案
@@ -81,7 +81,7 @@ function deleteProject(id) {
   return result.changes > 0;
 }
 
-module.exports = {
+export default {
   create,
   findAll,
   findById,

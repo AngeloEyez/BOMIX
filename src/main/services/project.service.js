@@ -4,7 +4,7 @@
  * @module services/project
  */
 
-const projectRepo = require('../database/repositories/project.repo');
+import projectRepo from '../database/repositories/project.repo.js';
 
 /**
  * 建立新專案
@@ -105,7 +105,7 @@ function deleteProject(id) {
     }
 }
 
-module.exports = {
+export default {
     createProject,
     getAllProjects,
     getProjectById,

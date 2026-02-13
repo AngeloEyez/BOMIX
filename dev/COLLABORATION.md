@@ -104,7 +104,7 @@ src/
 - Commit 訊息使用繁體中文：`[模組名] 動詞 + 描述`
 
 ### 主行程（Jules）
-- 使用 CommonJS `require` 或 ES Module `import`（electron-vite 會處理）
+- 使用 ES Module `import`, 不要使用  CommonJS `require`
 - 同步 API 優先（better-sqlite3 為同步 API）
 - 錯誤統一回傳 `{ success: false, error: '...' }` 格式
 

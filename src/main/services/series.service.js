@@ -4,9 +4,9 @@
  * @module services/series
  */
 
-const fs = require('fs');
-const dbManager = require('../database/connection');
-const seriesRepo = require('../database/repositories/series.repo');
+import fs from 'fs';
+import dbManager from '../database/connection.js';
+import seriesRepo from '../database/repositories/series.repo.js';
 
 /**
  * 建立新的系列資料庫檔案
@@ -105,7 +105,7 @@ function updateSeriesMeta(description) {
     }
 }
 
-module.exports = {
+export default {
     createSeries,
     openSeries,
     getSeriesMeta,

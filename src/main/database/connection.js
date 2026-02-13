@@ -4,8 +4,8 @@
  * @module database/connection
  */
 
-const Database = require('better-sqlite3');
-const { createSchema } = require('./schema');
+import Database from 'better-sqlite3';
+import { createSchema } from './schema.js';
 
 /**
  * 資料庫連線管理器 (Singleton)
@@ -102,4 +102,4 @@ class DatabaseManager {
   }
 }
 
-module.exports = DatabaseManager.getInstance();
+export default DatabaseManager.getInstance();

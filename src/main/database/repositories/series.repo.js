@@ -4,7 +4,7 @@
  * @module database/repositories/series
  */
 
-const dbManager = require('../connection');
+import dbManager from '../connection.js';
 
 /**
  * 取得系列元資料
@@ -46,7 +46,7 @@ function initMeta() {
   stmt.run('Default Series');
 }
 
-module.exports = {
+export default {
   getMeta,
   updateMeta,
   initMeta

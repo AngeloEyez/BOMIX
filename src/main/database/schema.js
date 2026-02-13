@@ -133,6 +133,6 @@ function createSchema(db) {
     transaction();
 }
 
-module.exports = {
+export {
     createSchema
 };
