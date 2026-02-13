@@ -117,6 +117,7 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 
 #### 匯出
 - 僅支援寫入 `.xlsx` 格式
+- 匯出邏輯詳見 [4.3.2 Excel BOM 匯出規則](#432-excel-bom-匯出規則)
 
 ### 4.4 版本比較
 - 比較同一專案不同版本的 BOM
@@ -187,6 +188,76 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 - 工作表名稱對應 `bom_status`（NI→X, PROTO→P, MP→M）
 - `type` 留空
 - **覆蓋規則**：這三個頁面的零件 `location` 可能與 SMD/PTH/BOTTOM 中的零件重複，若有重複（同一 location），以**最新取得的 `bom_status` 覆蓋**，`type` 不覆蓋; 若無重複，則新增一筆零件紀錄。
+
+#### NPI / MP 模式判斷邏輯 (Mode Determination)
+
+在匯入過程中，需根據零件分佈自動判斷 `bom_revisions.mode`：
+
+1.  **NPI 模式**：若 `PROTO` 頁面中有任何零件 **同時出現在** `SMD`、`PTH` 或 `BOTTOM` 任一頁面中。
+    - 意即：原型階段零件被包含在主製程中。
+2.  **MP 模式**：若 `MP` 頁面中有任何零件 **同時出現在** `SMD`、`PTH` 或 `BOTTOM` 任一頁面中。
+    - 意即：量產專用零件被包含在主製程中。
+3.  **預設 (NPI)**：若上述兩者皆不成立（例如 PROTO 與 MP 頁面皆空，或皆無交集）。
+
+---
+
+### 4.3.2 Excel BOM 匯出規則
+
+#### 支援格式
+- 匯出格式為 `.xlsx`。
+- 格式參考：`references/bom_templates/TANGLED_EZBOM_SI_0.3_BOM_20240627_0900WithProtoPart(compared).xls`
+
+#### 輸出 Sheet 清單
+1.  **Changelist** (佔位，待 Phase 7 實作)
+2.  **Changelist by Sheet** (佔位，待 Phase 7 實作)
+3.  **ALL**: 完整 BOM (依 Mode 過濾)
+4.  **SMD**: 僅 SMD 製程 (依 Mode 過濾)
+5.  **PTH**: 僅 PTH 製程 (依 Mode 過濾)
+6.  **BOTTOM**: 僅 BOTTOM 製程 (依 Mode 過濾)
+7.  **NI**: 不上件清單 (依 Mode 過濾)
+8.  **PROTO**: 原型階段上件清單
+9.  **MP**: 量產階段上件清單
+10. **CCL**: 關鍵零件清單 (Critical Component List)
+
+#### 頁面內容過濾邏輯
+
+| Sheet | 顯示條件 (Filter Logic) |
+|-------|-------------------------|
+| **ALL** | 若 Mode=NPI，顯示 `bom_status` 為 `I` 或 `P` 的零件<br>若 Mode=MP，顯示 `bom_status` 為 `I` 或 `M` 的零件 |
+| **SMD** | Type=`SMD` **且** (若 Mode=NPI 顯示 `I`+`P`; 若 Mode=MP 顯示 `I`+`M`) |
+| **PTH** | Type=`PTH` **且** (若 Mode=NPI 顯示 `I`+`P`; 若 Mode=MP 顯示 `I`+`M`) |
+| **BOTTOM** | Type=`BOTTOM` **且** (若 Mode=NPI 顯示 `I`+`P`; 若 Mode=MP 顯示 `I`+`M`) |
+| **NI** | 若 Mode=NPI，顯示 `bom_status` 為 `X` 或 `M` 的零件<br>若 Mode=MP，顯示 `bom_status` 為 `X` 或 `P` 的零件 |
+| **PROTO** | 顯示 `bom_status` 為 `P` 的零件 |
+| **MP** | 顯示 `bom_status` 為 `M` 的零件 |
+| **CCL** | 顯示 `ccl` 為 `Y` 的零件 |
+
+#### 表頭格式 (Header)
+
+所有 Sheet (除了 Changelist 類) 皆採用統一表頭格式：
+
+- **A1:M2**: 跨欄置中，垂直置中
+    - 第一行: "FUJIN PRECISION INDUSTRY(SHENZHEN) CO.,LTD"
+    - 第二行: "BILL OF MATERIAL"
+- **B3**: "Product Code: " + `project_code`
+- **B4**: "Description: " + `description`
+- **D3**: "Schematic Version: " + `schematic_version`
+- **F3**: "PCB Version: " + `pcb_version`
+- **F4**: "PCA PN: " + `pca_pn`
+- **H3**: "BOM Version: " + `bom_version` (如 0.3)
+- **H4**: "Date: " + `bom_date`
+- **J3**: "Phase: " + `bom_phase`
+
+#### 資料表格 (Data Table)
+
+- **Row 5**: 欄位名稱
+    - Item, HH PN, STD PN, GRP PN, Description, Supplier, Supplier PN, Qty, Location, CCL, Lead Time, Remark, Comp Approval
+- **Row 6+**: 零件資料 (Main Source + 2nd Sources)
+
+#### 樣式要求
+- **BOM Group**: 不同 Group (Main Items) 之間使用**條紋底色**交替切換 (Zebra Striping by Group)，以區分不同零件群組。
+- **邊框**: BOM 資料區域需有細框線 (Thin Border)。
+- **格線**: 其餘無內容區域隱藏 Excel 格線。
 
 ---
 

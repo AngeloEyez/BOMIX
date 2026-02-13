@@ -84,14 +84,14 @@
 **負責人：Jules**
 BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 
-- [ ] `src/main/services/bom.service.js`
+- [ ] `src/main/services/bom.service.js` (含 Mode 判斷邏輯)
 - [ ] `src/main/services/import.service.js`
-- [ ] `src/main/services/export.service.js`
+- [ ] `src/main/services/export.service.js` (實作完整 Excel 匯出規格)
 - [ ] `src/main/ipc/bom.ipc.js`
 - [ ] `src/main/ipc/excel.ipc.js`
 - [ ] 更新 `src/preload/index.js`
 - [ ] 撰寫 API 文件 (`dev/modules/`)
-- [ ] 單元測試 (含 Excel 範本測試)
+- [ ] 單元測試 (含 Excel 範本與匯出格式驗證)
 
 ### Phase 6：BOM 管理與 Excel 整合 - 前端 (Antigravity)
 **負責人：Antigravity**

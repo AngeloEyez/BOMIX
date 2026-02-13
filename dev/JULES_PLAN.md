@@ -113,22 +113,24 @@ dev/COLLABORATION.md — AI Agent合作注意事項
 閱讀完成後請開始執行 **Phase 5: BOM 管理與 Excel 整合 - 後端**。
 
 **任務目標**：
-實作 BOM 的讀取、編輯、Second Source 管理，以及 Excel 的匯入匯出邏輯。
+實作 BOM 的讀取、編輯、Second Source 管理，NPI/MP Mode 判斷，以及符合規格的 Excel 匯入匯出功能。
 
 **執行步驟**：
 1. **BOM 核心**：
    - 實作 `src/main/services/bom.service.js` (BOM 聚合視圖邏輯、CRUD)。
+   - **新增**：實作 NPI/MP Mode 自動判斷邏輯 (參考 `SPEC.md` 4.3.1)。
    - 實作 `src/main/ipc/bom.ipc.js`。
    - 更新 Preload 與 `dev/modules/bom.md`。
 2. **Excel 整合**：
-   - 閱讀 `dev/SPEC.md` (4.3 節) 關於 Excel 解析規則。
+   - 閱讀 `dev/SPEC.md` (4.3 節) 關於 Excel 解析與匯出規則。
    - 實作 `src/main/services/import.service.js` (解析 .xls/.xlsx)。
-   - 實作 `src/main/services/export.service.js` (產生 .xlsx)。
+   - 實作 `src/main/services/export.service.js` (產生 .xlsx，需符合 4.3.2 完整格式要求)。
    - 實作 `src/main/ipc/excel.ipc.js`。
    - 更新 Preload 與 `dev/modules/excel.md`。
 3. 使用 `npm run build` 來確認可以正確編譯。
 4. **測試**：
-   - 使用 `references/bom_templates/` 下的範本檔進行匯入測試。
+   - 使用 `references/bom_templates/` 下的範本檔進行匯入測試，驗證 Mode 判斷正確性。
+   - 驗證匯出的 Excel 格式是否符合規格 (Sheet、Header、Style)。
 5. 更新 `dev/PLAN.md` 的 Phase 5 完成狀態。
 
 **注意事項**：
