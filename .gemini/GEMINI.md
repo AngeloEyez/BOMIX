@@ -138,7 +138,13 @@ IPC Handlers → Services → Repositories → SQLite
 
 ---
 
+---
+
 ### 3. 文件與提交規範
+
+#### 3.0 程式碼修改規範 (Agent 專用)
+- **禁止使用縮寫取代**：在使用 `replace_file_content` 修改程式碼時，**絕對禁止**使用 `// ... unchanged` 或 `// ... (rest of code)` 等註解來代表未修改的程式碼。這會導致原始程式碼被註解覆蓋而遺失。
+- **完整保留**：必須完整保留該區塊的所有原始程式碼，或是使用 `multi_replace_file_content` 針對特定行數進行精準修改。
 
 #### 3.1 說明文件
 - 除了專業術語外，盡量使用**繁體中文**

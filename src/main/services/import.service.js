@@ -9,6 +9,7 @@ import path from 'path';
 import bomRevisionRepo from '../database/repositories/bom-revision.repo.js';
 import partsRepo from '../database/repositories/parts.repo.js';
 import secondSourceRepo from '../database/repositories/second-source.repo.js';
+import projectRepo from '../database/repositories/project.repo.js';
 
 /**
  * 解析 Excel 檔案並匯入 BOM
@@ -52,8 +53,25 @@ function importBom(filePath, projectId, phaseName, version, suffix) {
 
     if (!headerFound) {
         console.warn('[Import] Warning: Could not find valid header in SMD/PTH/BOTTOM sheets. Using default/empty values.');
-        // Fallback: Try first sheet? Or just leave empty.
-        // User's file starts with 'Changelist', likely irrelevant.
+    } else {
+        // 驗證 Project Code (若有讀取到)
+        if (headerInfo.project_code && projectId) {
+            const project = projectRepo.findById(projectId);
+            if (project) {
+                const dbCode = project.project_code.replace(/[\s\-_]/g, '').toLowerCase();
+                const headerCode = headerInfo.project_code.replace(/[\s\-_]/g, '').toLowerCase();
+                
+                if (dbCode !== headerCode) {
+                    console.warn(`[Import] Project Code Mismatch: DB=${project.project_code}, Header=${headerInfo.project_code}`);
+                    return { 
+                        success: false, 
+                        error: 'PROJECT_CODE_MISMATCH', 
+                        parsedProjectCode: headerInfo.project_code,
+                        targetProjectCode: project.project_code
+                    };
+                }
+            }
+        }
     }
 
     // 3. 讀取各 Sheet 的零件

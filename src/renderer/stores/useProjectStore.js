@@ -49,7 +49,7 @@ const useProjectStore = create((set, get) => ({
             if (result.success) {
                 // 重新載入列表以確保順序一致
                 await get().loadProjects()
-                return { success: true }
+                return { success: true, data: result.data }
             } else {
                 set({ error: result.error })
                 return { success: false, error: result.error }

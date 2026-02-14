@@ -1,14 +1,16 @@
 import { useEffect, useState, useCallback } from 'react'
 import { 
     FolderPlus, FolderOpen, Clock, X, Database, ChevronRight, ChevronDown, 
-    Pencil, Check, FileText, Settings, Trash2, MoreVertical 
+    Pencil, Check, FileText, Settings, Trash2, MoreVertical, FileDown 
 } from 'lucide-react'
 import useSeriesStore from '../stores/useSeriesStore'
 import useProjectStore from '../stores/useProjectStore'
 import useBomStore from '../stores/useBomStore'
 import Dialog from '../components/dialogs/Dialog'
 import ProjectDialog from '../components/dialogs/ProjectDialog' // Assuming this exists or I'll need to check location
+
 import BomMetaDialog from '../components/dialogs/BomMetaDialog'
+import ImportDialog from '../components/dialogs/ImportDialog'
 import ConfirmDialog from '../components/dialogs/ConfirmDialog'
 
 // ========================================
@@ -48,6 +50,9 @@ function Dashboard({ onNavigate }) {
 
     // BOM Meta Dialog (Edit)
     const [bomDialog, setBomDialog] = useState({ isOpen: false, data: null })
+
+    // Import Dialog
+    const [importDialog, setImportDialog] = useState({ isOpen: false, projectId: null, projectCode: '' })
 
     // Delete Confirm
     const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, type: '', data: null })
@@ -152,7 +157,9 @@ function Dashboard({ onNavigate }) {
             type: 'project', 
             data: project,
             title: '刪除專案',
-            message: `確定要刪除專案「${project.project_code}」？此操作將刪除該專案下所有 BOM 資料且無法復原。`
+            message: `確定要刪除專案「${project.project_code}」？此操作將刪除該專案下所有 BOM 資料且無法復原。`,
+            danger: true,
+            confirmText: "刪除"
         })
     }
 
@@ -212,7 +219,9 @@ function Dashboard({ onNavigate }) {
             type: 'bom', 
             data: bom,
             title: '刪除 BOM 版本',
-            message: `確定要刪除 BOM 版本「${bom.phase_name} ${bom.version}」？`
+            message: `確定要刪除 BOM 版本「${bom.phase_name} ${bom.version}」？`,
+            danger: true,
+            confirmText: "刪除"
         })
     }
 
@@ -227,6 +236,115 @@ function Dashboard({ onNavigate }) {
             if (res.success) {
                 setProjectBoms(prev => ({ ...prev, [data.project_id]: res.data }))
             }
+        }
+        setDeleteConfirm({ ...deleteConfirm, isOpen: false })
+    }
+
+    // --- Handlers: Import ---
+
+    const handleImportOpen = (project) => {
+        setImportDialog({ isOpen: true, projectId: project.id, projectCode: project.project_code })
+    }
+
+    const handleImportSubmit = async (filePath, projectId, phaseName, version) => {
+        // Step 1: Attempt Import
+        const ipcResult = await window.api.excel.import(filePath, projectId, phaseName, version)
+        
+        if (!ipcResult.success) {
+            return { success: false, error: ipcResult.error }
+        }
+
+        const result = ipcResult.data;
+
+        if (result.success) {
+            // Success
+            // Refresh BOM list
+            const res = await window.api.bom.getRevisions(projectId)
+            if (res.success) {
+                setProjectBoms(prev => ({ ...prev, [projectId]: res.data }))
+                // Expand project if not expanded
+                setExpandedProjects(prev => ({ ...prev, [projectId]: true }))
+            }
+            return { success: true }
+        } else if (result.error === 'PROJECT_CODE_MISMATCH') {
+            // Step 2: Mismatch Warning
+            setImportDialog(prev => ({ ...prev, isOpen: false })) // Close import dialog temporarily? Or keep open?
+            // User requirement: "Dialog options: Cancel or Create New Project"
+            // We should use ConfirmDialog for this.
+            
+            setDeleteConfirm({
+                isOpen: true,
+                type: 'import_mismatch',
+                data: { filePath, phaseName, version, parsedCode: result.parsedProjectCode },
+                title: '專案代碼不符',
+                message: `BOM 表頭專案代碼「${result.parsedProjectCode}」與目前專案「${importDialog.projectCode}」不符。\n是否依據 BOM 建立「${result.parsedProjectCode}」專案，並將 BOM 匯入到新專案？`,
+                confirmText: '創建並匯入',
+                variant: 'success'
+            })
+            // Return validation error to ImportDialog to stop spinner?
+            // ImportDialog handles result.success.
+            return { success: false, error: '專案代碼不符，請確認彈窗選項' } 
+        } else {
+            // Other errors
+            return { success: false, error: result.error }
+        }
+    }
+    
+    // Handle Mismatch Confirm (Create New Project)
+    // We need to modify handleConfirmDelete/Confirm logic to handle this new type.
+    const handleConfirmAction = async () => {
+        const { type, data } = deleteConfirm
+        
+        if (type === 'import_mismatch') {
+            // Create New Project with parsedCode
+            // Check if exists first? createProject handles unique constraint error?
+            try {
+                // Determine description? Use parsedCode or empty.
+                const projectRes = await createProject(data.parsedCode, `Imported from ${data.parsedCode}`)
+                
+                if (projectRes.success && projectRes.data) {
+                     const newProjectId = projectRes.data.id
+                     // loadProjects is called inside createProject
+                     
+                     // Retry Import
+                     const importIpcRes = await window.api.excel.import(data.filePath, newProjectId, data.phaseName, data.version)
+                     
+                     if (importIpcRes.success && importIpcRes.data.success) {
+                         // Refresh BOMs for new project
+                         // We still need to help UI expand/update.
+                         // createProject calls loadProjects, so projects list is updated.
+                         // But we need to update projectBoms for the new project.
+                         const res = await window.api.bom.getRevisions(newProjectId)
+                         if (res.success) {
+                             setProjectBoms(prev => ({ ...prev, [newProjectId]: res.data }))
+                             setExpandedProjects(prev => ({ ...prev, [newProjectId]: true }))
+                         }
+                     } else {
+                         // Import failed after create
+                         const errMsg = importIpcRes.success ? importIpcRes.data.error : importIpcRes.error;
+                         alert(`新專案建立成功，但匯入失敗: ${errMsg}`)
+                     }
+                } else {
+                     alert(`建立新專案失敗: ${projectRes.error}`)
+                }
+            } catch (e) {
+                console.error(e)
+            }
+            setDeleteConfirm({ ...deleteConfirm, isOpen: false })
+            return
+        }
+
+        // Original Delete Logic
+        if (type === 'project') {
+             // ...
+             await deleteProject(data.id)
+        } else if (type === 'bom') {
+             await deleteBom(data.id)
+             // Refresh BOM list
+             const res = await window.api.bom.getRevisions(data.project_id)
+             if (res.success) {
+                 setProjectBoms(prev => ({ ...prev, [data.project_id]: res.data }))
+             }
         }
         setDeleteConfirm({ ...deleteConfirm, isOpen: false })
     }
@@ -376,6 +494,15 @@ function Dashboard({ onNavigate }) {
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+
+                                            <button 
+                                                onClick={() => handleImportOpen(project)}
+                                                className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors"
+                                                title="匯入 BOM"
+                                            >
+                                                <FileDown size={15} />
+                                            </button>
+                                
                                             <button 
                                                 onClick={() => handleEditProject(project)}
                                                 className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded transition-colors"
@@ -383,6 +510,8 @@ function Dashboard({ onNavigate }) {
                                             >
                                                 <Pencil size={15} />
                                             </button>
+                                            <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+
                                             <button 
                                                 onClick={() => handleDeleteProject(project)}
                                                 className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
@@ -485,14 +614,23 @@ function Dashboard({ onNavigate }) {
                 onSave={handleBomSave}
             />
 
+            <ImportDialog
+                isOpen={importDialog.isOpen}
+                onClose={() => setImportDialog({ ...importDialog, isOpen: false })}
+                projectId={importDialog.projectId}
+                projectCode={importDialog.projectCode}
+                onImport={handleImportSubmit}
+            />
+
             <ConfirmDialog 
                 isOpen={deleteConfirm.isOpen}
                 onClose={() => setDeleteConfirm({ ...deleteConfirm, isOpen: false })}
-                onConfirm={handleConfirmDelete}
+                onConfirm={handleConfirmAction}
                 title={deleteConfirm.title}
                 message={deleteConfirm.message}
-                confirmText="刪除"
-                danger
+                confirmText={deleteConfirm.confirmText || "確認"}
+                danger={deleteConfirm.danger} // Keeping for backward compatibility if mixed usage
+                variant={deleteConfirm.variant || (deleteConfirm.danger ? 'danger' : 'primary')}
             />
         </div>
     )

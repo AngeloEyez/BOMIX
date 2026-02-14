@@ -29,17 +29,51 @@ function ConfirmDialog({
     confirmText = '確認',
     cancelText = '取消',
     danger = false,
+    variant = 'primary', // primary, danger, success
 }) {
+    // 兼容舊版 danger prop
+    const finalVariant = danger ? 'danger' : variant;
+
+    const getButtonColor = () => {
+        switch (finalVariant) {
+            case 'danger': return 'bg-red-600 hover:bg-red-700';
+            case 'success': return 'bg-green-600 hover:bg-green-700';
+            default: return 'bg-primary-600 hover:bg-primary-700';
+        }
+    };
+
+    const getIcon = () => {
+        if (finalVariant === 'danger') {
+            return (
+                <div className="shrink-0 p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg">
+                    <AlertTriangle size={20} />
+                </div>
+            )
+        }
+        if (finalVariant === 'success') {
+             // Maybe a check icon or info? User didn't specify icon, but green button suggests positive action.
+             // Using AlertTriangle for now as it is still a "Confirm" dialog?
+             // Or maybe Info icon?
+             // Using generic AlertTriangle but customized color?
+             // User's screenshot was mentioned but I don't see it.
+             // Usually success dialog doesn't need warning icon.
+             // I'll use AlertTriangle but in Green? Or just nothing?
+             // Keep consistent structure.
+             return (
+                <div className="shrink-0 p-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg">
+                     <AlertTriangle size={20} />
+                </div>
+             )
+        }
+        return null;
+    }
+
     return (
         <Dialog isOpen={isOpen} onClose={onClose} title={title} className="max-w-sm">
             <div className="flex flex-col gap-4">
                 {/* 圖標與訊息 */}
                 <div className="flex items-start gap-3">
-                    {danger && (
-                        <div className="shrink-0 p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg">
-                            <AlertTriangle size={20} />
-                        </div>
-                    )}
+                    {getIcon()}
                     <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                         {message}
                     </p>
@@ -60,11 +94,7 @@ function ConfirmDialog({
                             onConfirm()
                             onClose()
                         }}
-                        className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors ${
-                            danger
-                                ? 'bg-red-600 hover:bg-red-700'
-                                : 'bg-primary-600 hover:bg-primary-700'
-                        }`}
+                        className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors ${getButtonColor()}`}
                     >
                         {confirmText}
                     </button>

@@ -17,10 +17,11 @@ import Dialog from './Dialog'
  * @param {boolean} props.isOpen - 是否開啟
  * @param {Function} props.onClose - 關閉回呼
  * @param {number} props.projectId - 目標專案 ID
+ * @param {string} props.projectCode - 目標專案代碼 (用於顯示與驗證)
  * @param {Function} props.onImport - 匯入回呼 (filePath, projectId, phaseName, version) => Promise
  * @returns {JSX.Element}
  */
-function ImportDialog({ isOpen, onClose, projectId, onImport, initialFile }) {
+function ImportDialog({ isOpen, onClose, projectId, projectCode, onImport, initialFile }) {
     const [filePath, setFilePath] = useState('')
     const [fileName, setFileName] = useState('')
     const [phaseName, setPhaseName] = useState('')
@@ -145,7 +146,17 @@ function ImportDialog({ isOpen, onClose, projectId, onImport, initialFile }) {
     }
 
     return (
-        <Dialog isOpen={isOpen} onClose={handleClose} title="匯入 BOM Excel" className="max-w-md">
+        <Dialog 
+            isOpen={isOpen} 
+            onClose={handleClose} 
+            title={
+                <span>
+                    匯入 BOM Excel
+                    {projectCode && <span className="ml-2 text-primary-600 dark:text-primary-400 font-bold bg-primary-50 dark:bg-primary-900/40 px-2 py-0.5 rounded text-base">{projectCode}</span>}
+                </span>
+            } 
+            className="max-w-md"
+        >
             <div className="space-y-4">
                 {/* 檔案選擇 / 拖曳區域 */}
                 <div
