@@ -124,8 +124,11 @@ erDiagram
 | schematic_version | TEXT | | Schematic 版本 |
 | pcb_version | TEXT | | PCB 版本 |
 | pca_pn | TEXT | | PCA 料號 |
-| date | TEXT | | BOM 日期 |
+| bom_date | TEXT | | BOM 日期 (原 date) |
 | note | TEXT | | 版本備註 |
+| mode | TEXT | DEFAULT 'NPI' | NPI/MP 模式 |
+| filename | TEXT | | 原始 Excel 檔名 |
+| suffix | TEXT | | 版本後綴 (如 A, B, Test) |
 | created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | 建立時間 |
 
 **唯一約束**：`UNIQUE(project_id, phase_name, version)`

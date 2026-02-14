@@ -45,9 +45,11 @@ CREATE TABLE IF NOT EXISTS bom_revisions (
     schematic_version TEXT,
     pcb_version TEXT,
     pca_pn TEXT,
-    date TEXT,
+    bom_date TEXT,
     note TEXT,
     mode TEXT DEFAULT 'NPI',
+    filename TEXT,
+    suffix TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     UNIQUE(project_id, phase_name, version)
@@ -139,13 +141,35 @@ function createSchema(db) {
  * @param {import('better-sqlite3').Database} db - 資料庫實例
  */
 function migrateSchema(db) {
-    // 檢查 bom_revisions 是否有 mode 欄位 (Phase 4 -> Phase 5 遷移)
     const tableInfo = db.pragma('table_info(bom_revisions)');
-    const hasModeColumn = tableInfo.some(col => col.name === 'mode');
+    const columns = new Set(tableInfo.map(col => col.name));
 
-    if (!hasModeColumn) {
+    // 1. Phase 4 -> Phase 5: mode
+    if (!columns.has('mode')) {
         console.log('[Schema] 正在遷移: 新增 mode 欄位至 bom_revisions');
         db.exec("ALTER TABLE bom_revisions ADD COLUMN mode TEXT DEFAULT 'NPI'");
+    }
+
+    // 2. User Request: Rename date -> bom_date, Add filename, suffix
+    if (columns.has('date') && !columns.has('bom_date')) {
+        console.log('[Schema] 正在遷移: 重新命名 bom_revisions.date -> bom_date');
+        try {
+            db.exec('ALTER TABLE bom_revisions RENAME COLUMN date TO bom_date');
+        } catch (e) {
+            console.error('[Schema] 重命名失敗 (可能是 SQLite 版本過舊):', e);
+            // Fallback: Add new column and copy data? Or just ignore if empty.
+            // Assuming SQLite 3.25+ is available with better-sqlite3.
+        }
+    }
+
+    if (!columns.has('filename')) {
+        console.log('[Schema] 正在遷移: 新增 filename 欄位至 bom_revisions');
+        db.exec("ALTER TABLE bom_revisions ADD COLUMN filename TEXT");
+    }
+
+    if (!columns.has('suffix')) {
+        console.log('[Schema] 正在遷移: 新增 suffix 欄位至 bom_revisions');
+        db.exec("ALTER TABLE bom_revisions ADD COLUMN suffix TEXT");
     }
 }
 

@@ -25,6 +25,7 @@ function ImportDialog({ isOpen, onClose, projectId, onImport, initialFile }) {
     const [fileName, setFileName] = useState('')
     const [phaseName, setPhaseName] = useState('')
     const [version, setVersion] = useState('')
+    const [suffix, setSuffix] = useState('')
     const [error, setError] = useState('')
     const [isImporting, setIsImporting] = useState(false)
     const [isDragOver, setIsDragOver] = useState(false)
@@ -45,6 +46,7 @@ function ImportDialog({ isOpen, onClose, projectId, onImport, initialFile }) {
         setFileName('')
         setPhaseName('')
         setVersion('')
+        setSuffix('')
         setError('')
         setIsImporting(false)
         setIsDragOver(false)
@@ -205,21 +207,39 @@ function ImportDialog({ isOpen, onClose, projectId, onImport, initialFile }) {
 
                 {/* 版本號 */}
                 <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                        版本號 <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                        type="text"
-                        value={version}
-                        onChange={(e) => setVersion(e.target.value)}
-                        placeholder="例：0.1, 1.0"
-                        className="w-full px-3 py-2 text-sm
-                            bg-white dark:bg-surface-900
-                            border border-slate-300 dark:border-slate-600
-                            rounded-lg text-slate-800 dark:text-slate-200
-                            focus:outline-none focus:ring-2 focus:ring-primary-500
-                            placeholder:text-slate-400"
-                    />
+                    <div className="space-y-1">
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                            版本 (Version) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={version}
+                            onChange={(e) => setVersion(e.target.value)}
+                            placeholder="e.g. 0.1, 1.0"
+                            className="w-full px-3 py-2 text-sm
+                                bg-white dark:bg-surface-800
+                                border border-slate-300 dark:border-slate-600
+                                rounded-lg text-slate-800 dark:text-slate-200
+                                focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                    </div>
+
+                    <div className="space-y-1 mt-4"> {/* Added mt-4 for spacing between Version and Suffix */}
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                            後綴 (Suffix) <span className="text-xs text-slate-400 font-normal">(選填)</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={suffix}
+                            onChange={(e) => setSuffix(e.target.value)}
+                            placeholder="e.g. A, B, Test"
+                            className="w-full px-3 py-2 text-sm
+                                bg-white dark:bg-surface-800
+                                border border-slate-300 dark:border-slate-600
+                                rounded-lg text-slate-800 dark:text-slate-200
+                                focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                    </div>
                 </div>
 
                 {/* 錯誤訊息 */}

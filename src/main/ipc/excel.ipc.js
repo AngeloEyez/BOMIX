@@ -28,8 +28,8 @@ export function registerExcelIpc(ipcMain) {
     };
 
     // 匯入 Excel
-    ipcMain.handle('excel:import', withErrorHandling((filePath, projectId, phaseName, version) => {
-        return importService.importBom(filePath, projectId, phaseName, version);
+    ipcMain.handle('excel:import', withErrorHandling((filePath, projectId, phaseName, version, suffix) => {
+        return importService.importBom(filePath, projectId, phaseName, version, suffix);
     }));
 
     // 匯出 Excel

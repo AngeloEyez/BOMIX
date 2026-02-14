@@ -207,7 +207,7 @@ function BomPage() {
                         </option>
                         {revisions.map((rev) => (
                             <option key={rev.id} value={rev.id}>
-                                {rev.phase_name} {rev.version} {rev.mode ? `(${rev.mode})` : ''}
+                                {rev.phase_name} {rev.version}{rev.suffix ? `-${rev.suffix}` : ''} {rev.mode ? `(${rev.mode})` : ''}
                             </option>
                         ))}
                     </select>
@@ -265,14 +265,17 @@ function BomPage() {
                     <div className="ml-auto flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
                         <Info size={13} />
                         <span>Mode: <strong className="text-slate-600 dark:text-slate-300">{selectedRevision.mode || 'NPI'}</strong></span>
+                        {selectedRevision.suffix && (
+                            <span>- {selectedRevision.suffix}</span>
+                        )}
                         {selectedRevision.schematic_version && (
                             <span>| Sch: {selectedRevision.schematic_version}</span>
                         )}
                         {selectedRevision.pcb_version && (
                             <span>| PCB: {selectedRevision.pcb_version}</span>
                         )}
-                        {selectedRevision.date && (
-                            <span>| {selectedRevision.date}</span>
+                        {selectedRevision.bom_date && (
+                            <span>| {selectedRevision.bom_date}</span>
                         )}
                     </div>
                 )}

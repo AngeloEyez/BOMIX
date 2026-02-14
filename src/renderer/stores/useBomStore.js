@@ -159,12 +159,12 @@ const useBomStore = create((set, get) => ({
      * @param {string} version - 版本號
      * @returns {Promise<{success: boolean, data?: Object, error?: string}>}
      */
-    importExcel: async (filePath, projectId, phaseName, version) => {
+    importExcel: async (filePath, projectId, phaseName, version, suffix) => {
         const { setDbBusy } = useAppStore.getState()
         set({ isLoading: true, error: null })
         setDbBusy(true)
         try {
-            const result = await window.api.excel.import(filePath, projectId, phaseName, version)
+            const result = await window.api.excel.import(filePath, projectId, phaseName, version, suffix)
             if (result.success) {
                 // 重新載入 Revision 列表
                 await get().reloadRevisions()
@@ -196,9 +196,12 @@ const useBomStore = create((set, get) => ({
         const { setDbBusy } = useAppStore.getState()
         try {
             // 開啟儲存對話框
+            const currentRevision = get().selectedRevision
+            const defaultName = currentRevision?.filename || 'BOM_Export.xlsx'
+            
             const dialogResult = await window.api.dialog.showSave({
                 title: '匯出 BOM Excel',
-                defaultPath: 'BOM_Export.xlsx',
+                defaultPath: defaultName,
             })
             if (dialogResult.canceled || !dialogResult.data) {
                 return { success: false, error: '使用者取消' }

@@ -16,16 +16,18 @@ import secondSourceRepo from '../database/repositories/second-source.repo.js';
  * @param {string} filePath - Excel 檔案路徑
  * @param {number} projectId - 專案 ID
  * @param {string} phaseName - Phase 名稱
- * @param {string} version - 版本號
+ * @param {string} suffix - 版本後綴 (Optional)
  * @returns {Object} 匯入結果 { success: true, bomRevisionId }
  */
-function importBom(filePath, projectId, phaseName, version) {
+function importBom(filePath, projectId, phaseName, version, suffix) {
     // 1. 讀取 Excel 檔案
     const workbook = xlsx.readFile(filePath);
+    const filename = path.basename(filePath);
 
     // 2. 解析表頭 (Header) - 假設從第一個 Sheet (通常是 SMD 或 Cover) 讀取，或依序尋找
     // SPEC 4.3.1 說 "從 Excel 固定儲存格讀取"。但沒說哪個 Sheet。
     // 範本似乎每個 Sheet 都有 Header。我們先讀第一個 Sheet。
+
     const firstSheetName = workbook.SheetNames[0];
     const firstSheet = workbook.Sheets[firstSheetName];
     const headerInfo = parseHeader(firstSheet);
@@ -83,8 +85,10 @@ function importBom(filePath, projectId, phaseName, version) {
         schematic_version: headerInfo.schematic_version,
         pcb_version: headerInfo.pcb_version,
         pca_pn: headerInfo.pca_pn,
-        date: headerInfo.date,
-        mode: mode
+        bom_date: headerInfo.date,
+        mode: mode,
+        filename: filename,
+        suffix: suffix
     };
 
     const bomRevision = bomRevisionRepo.create(revisionData);

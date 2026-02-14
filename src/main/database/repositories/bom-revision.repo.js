@@ -31,17 +31,20 @@ function create(data) {
     schematic_version,
     pcb_version,
     pca_pn,
-    date,
+    bom_date,
     note,
-    mode
+    mode,
+    filename,
+    suffix
   } = data;
 
   const stmt = db.prepare(`
     INSERT INTO bom_revisions (
       project_id, phase_name, version, description,
-      schematic_version, pcb_version, pca_pn, date, note, mode
+      schematic_version, pcb_version, pca_pn, bom_date, note, mode,
+      filename, suffix
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING *
   `);
 
@@ -53,9 +56,11 @@ function create(data) {
     schematic_version || null,
     pcb_version || null,
     pca_pn || null,
-    date || null,
+    bom_date || null,
     note || null,
-    mode || 'NPI'
+    mode || 'NPI',
+    filename || null,
+    suffix || null
   );
 }
 
