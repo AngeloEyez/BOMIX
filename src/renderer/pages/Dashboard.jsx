@@ -297,7 +297,7 @@ function Dashboard({ onNavigate }) {
                     variant: 'success'
                 })
             }
-            return { success: false, error: '專案代碼不符，請確認彈窗選項' } 
+            return { success: false, error: '專案代碼不符，請確認' } 
         } else {
             // Other errors
             return { success: false, error: result.error }

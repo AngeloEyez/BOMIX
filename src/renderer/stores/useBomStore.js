@@ -202,6 +202,7 @@ const useBomStore = create((set, get) => ({
             const dialogResult = await window.api.dialog.showSave({
                 title: '匯出 BOM Excel',
                 defaultPath: defaultName,
+                filters: [{ name: 'Excel Files', extensions: ['xlsx'] }]
             })
             if (dialogResult.canceled || !dialogResult.data) {
                 return { success: false, error: '使用者取消' }
