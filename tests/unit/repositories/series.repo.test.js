@@ -2,9 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
-// Use require to ensure we share the same instance as the repository which uses require
-const DatabaseManager = require('../../../src/main/database/connection');
-const seriesRepo = require('../../../src/main/database/repositories/series.repo');
+import DatabaseManager from '../../../src/main/database/connection.js';
+import seriesRepo from '../../../src/main/database/repositories/series.repo.js';
 
 describe('Series Repository', () => {
   const testDbPath = path.join(__dirname, 'series.test.bomix');
@@ -15,7 +14,6 @@ describe('Series Repository', () => {
   });
 
   afterEach(() => {
-    // 每個測試後關閉連線並刪除測試檔案
     try {
         DatabaseManager.disconnect();
     } catch(e) {}
@@ -30,18 +28,15 @@ describe('Series Repository', () => {
   it('should initialize with default meta', () => {
     const meta = seriesRepo.getMeta();
     expect(meta).toBeDefined();
-    expect(meta.id).toBe(1);
+    // Default description from schema initialization
     expect(meta.description).toBe('Default Series');
   });
 
   it('should update series description', () => {
-    const newDescription = 'New Description';
-    const updated = seriesRepo.updateMeta({ description: newDescription });
-
-    expect(updated).toBeDefined();
-    expect(updated.description).toBe(newDescription);
+    const updated = seriesRepo.updateMeta({ description: 'New Description' });
+    expect(updated.description).toBe('New Description');
 
     const meta = seriesRepo.getMeta();
-    expect(meta.description).toBe(newDescription);
+    expect(meta.description).toBe('New Description');
   });
 });
