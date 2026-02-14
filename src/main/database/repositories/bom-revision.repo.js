@@ -4,7 +4,7 @@
  * @module database/repositories/bom-revision
  */
 
-const dbManager = require('../connection');
+import dbManager from '../connection.js';
 
 /**
  * 建立新 BOM 版本
@@ -18,6 +18,7 @@ const dbManager = require('../connection');
  * @param {string} [data.pca_pn] - PCA 料號
  * @param {string} [data.date] - 日期
  * @param {string} [data.note] - 備註
+ * @param {string} [data.mode] - NPI/MP 模式 (預設 'NPI')
  * @returns {Object} 建立的 BOM 版本物件
  */
 function create(data) {
@@ -31,15 +32,16 @@ function create(data) {
     pcb_version,
     pca_pn,
     date,
-    note
+    note,
+    mode
   } = data;
 
   const stmt = db.prepare(`
     INSERT INTO bom_revisions (
       project_id, phase_name, version, description,
-      schematic_version, pcb_version, pca_pn, date, note
+      schematic_version, pcb_version, pca_pn, date, note, mode
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING *
   `);
 
@@ -52,7 +54,8 @@ function create(data) {
     pcb_version || null,
     pca_pn || null,
     date || null,
-    note || null
+    note || null,
+    mode || 'NPI'
   );
 }
 
@@ -94,7 +97,7 @@ function deleteRevision(id) {
   return result.changes > 0;
 }
 
-module.exports = {
+export default {
   create,
   findByProject,
   findById,

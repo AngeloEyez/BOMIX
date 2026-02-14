@@ -4,7 +4,7 @@
  * @module database/repositories/parts
  */
 
-const dbManager = require('../connection');
+import dbManager from '../connection.js';
 
 /**
  * 建立單一零件
@@ -139,10 +139,80 @@ function getAggregatedBom(bomRevisionId) {
   return stmt.all(bomRevisionId);
 }
 
-module.exports = {
+/**
+ * 根據 ID 更新零件
+ * @param {number} id - 零件 ID
+ * @param {Object} data - 更新資料
+ * @returns {Object|undefined} 更新後的零件物件
+ */
+function update(id, data) {
+  const db = dbManager.getDb();
+  const updates = [];
+  const params = [];
+
+  const allowedFields = ['item', 'hhpn', 'supplier', 'supplier_pn', 'description', 'location', 'type', 'bom_status', 'ccl', 'remark'];
+
+  for (const field of allowedFields) {
+    if (data[field] !== undefined) {
+      updates.push(`${field} = ?`);
+      params.push(data[field]);
+    }
+  }
+
+  if (updates.length === 0) return db.prepare('SELECT * FROM parts WHERE id = ?').get(id);
+
+  params.push(id);
+  const sql = `UPDATE parts SET ${updates.join(', ')} WHERE id = ? RETURNING *`;
+  return db.prepare(sql).get(...params);
+}
+
+/**
+ * 根據 ID 刪除零件
+ * @param {number} id - 零件 ID
+ * @returns {boolean} 是否刪除成功
+ */
+function deletePart(id) {
+  const db = dbManager.getDb();
+  const stmt = db.prepare('DELETE FROM parts WHERE id = ?');
+  const result = stmt.run(id);
+  return result.changes > 0;
+}
+
+/**
+ * 根據群組條件查找零件
+ * @param {number} bomRevisionId
+ * @param {string} supplier
+ * @param {string} supplier_pn
+ * @param {string} type
+ * @returns {Array<Object>}
+ */
+function findByGroup(bomRevisionId, supplier, supplier_pn, type) {
+  const db = dbManager.getDb();
+  let sql = `
+    SELECT * FROM parts
+    WHERE bom_revision_id = ?
+      AND supplier = ?
+      AND supplier_pn = ?
+  `;
+  const params = [bomRevisionId, supplier, supplier_pn];
+
+  if (type !== undefined && type !== null) {
+      sql += ` AND type = ?`;
+      params.push(type);
+  } else {
+      sql += ` AND type IS NULL`;
+  }
+
+  return db.prepare(sql).all(...params);
+}
+
+export default {
   create,
   createMany,
   findByBomRevision,
   deleteByBomRevision,
-  getAggregatedBom
+  getAggregatedBom,
+  update,
+  delete: deletePart,
+  findByGroup
 };

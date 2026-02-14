@@ -46,10 +46,21 @@ const api = {
     },
 
     // TODO: Phase 4 — BOM 管理 API
-    // bom: { ... },
+    bom: {
+        getView: (bomRevisionId) => ipcRenderer.invoke('bom:getView', bomRevisionId),
+        updateMainItem: (bomRevisionId, originalKey, updates) => ipcRenderer.invoke('bom:updateMainItem', bomRevisionId, originalKey, updates),
+        deleteMainItem: (bomRevisionId, key) => ipcRenderer.invoke('bom:deleteMainItem', bomRevisionId, key),
+        addSecondSource: (data) => ipcRenderer.invoke('bom:addSecondSource', data),
+        updateSecondSource: (id, data) => ipcRenderer.invoke('bom:updateSecondSource', id, data),
+        deleteSecondSource: (id) => ipcRenderer.invoke('bom:deleteSecondSource', id),
+        delete: (bomRevisionId) => ipcRenderer.invoke('bom:delete', bomRevisionId),
+    },
 
     // TODO: Phase 5 — Excel 匯入匯出 API
-    // excel: { ... },
+    excel: {
+        import: (filePath, projectId, phaseName, version) => ipcRenderer.invoke('excel:import', filePath, projectId, phaseName, version),
+        export: (bomRevisionId, outputFilePath) => ipcRenderer.invoke('excel:export', bomRevisionId, outputFilePath),
+    },
 
     // --- 檔案對話框 ---
     dialog: {

@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS bom_revisions (
     pca_pn TEXT,
     date TEXT,
     note TEXT,
+    mode TEXT DEFAULT 'NPI',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     UNIQUE(project_id, phase_name, version)
