@@ -70,17 +70,18 @@
 - [x] 撰寫 API 文件 (`dev/modules/`)
 - [x] 單元測試 (Services)
 
-### Phase 4：系列與專案管理 - 前端 (Antigravity)
+### Phase 4：系列與專案管理 - 前端 (Antigravity) ⭐ 已完成
 **負責人：Antigravity**
 整合 Phase 3 開放的 API，完成 UI 功能。
 
 - [x] `stores/useSeriesStore.js`
 - [x] `stores/useProjectStore.js`
-- [x] 更新 `pages/HomePage.jsx` (建立/開啟系列)
-- [x] 更新 `pages/ProjectPage.jsx` (專案 CRUD、版本列表)
-- [ ] 整合測試
-  
-### Phase 5：BOM 管理與 Excel 整合 - 後端 (Jules)
+- [x] 更新 `pages/HomePage.jsx` (建立/開啟系列) -> 整合至 Dashboard
+- [x] 更新 `pages/ProjectPage.jsx` (專案 CRUD、版本列表) -> 整合至 Dashboard
+- [x] 整合測試
+- [x] **儀表板 (Dashboard) 整合**：合併首頁與專案管理，實作樹狀視圖
+
+### Phase 5：BOM 管理與 Excel 整合 - 後端 (Jules) ⭐ 已完成
 **負責人：Jules**
 BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 
@@ -93,16 +94,16 @@ BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 - [x] 撰寫 API 文件 (`dev/modules/`)
 - [x] 單元測試 (含 Excel 範本與匯出格式驗證)
 
-### Phase 6：BOM 管理與 Excel 整合 - 前端 (Antigravity)
+### Phase 6：BOM 管理與 Excel 整合 - 前端 (Antigravity) ⭐ 已完成
 **負責人：Antigravity**
 整合 BOM 表格與 Excel 匯入匯出功能。
 
-- [ ] `stores/useBomStore.js`
-- [ ] `components/tables/BomTable.jsx` (TanStack Table 實作)
-- [ ] 更新 `pages/BomPage.jsx`
-- [ ] `components/dialogs/ImportDialog.jsx`
-- [ ] 拖曳匯入功能實作
-- [ ] 整合測試
+- [x] `stores/useBomStore.js`
+- [x] `components/tables/BomTable.jsx` (TanStack Table 實作)
+- [x] 更新 `pages/BomPage.jsx`
+- [x] `components/dialogs/ImportDialog.jsx`
+- [x] 拖曳匯入功能實作
+- [x] 整合測試
 
 ### Phase 7：版本比較 - 後端 (Jules)
 **負責人：Jules**

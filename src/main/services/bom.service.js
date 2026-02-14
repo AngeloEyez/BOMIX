@@ -193,6 +193,20 @@ function deleteBom(bomRevisionId) {
     return bomRevisionRepo.delete(bomRevisionId);
 }
 
+/**
+ * 更新 BOM 版本資料
+ * @param {number} id
+ * @param {Object} updates
+ * @returns {Object} 更新後的 BOM 版本物件
+ */
+function updateBomRevision(id, updates) {
+    const updated = bomRevisionRepo.update(id, updates);
+    if (!updated) {
+        throw new Error(`找不到 ID 為 ${id} 的 BOM 版本`);
+    }
+    return updated;
+}
+
 export default {
     getBomView,
     updateMainItem,
@@ -200,5 +214,7 @@ export default {
     addSecondSource,
     updateSecondSource,
     deleteSecondSource,
-    deleteBom
+    deleteSecondSource,
+    deleteBom,
+    updateBomRevision
 };

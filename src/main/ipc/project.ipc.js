@@ -41,8 +41,8 @@ export function registerProjectIpc(ipcMain) {
         return projectService.getProjectById(id);
     }));
 
-    ipcMain.handle('project:update', withErrorHandling((id, description) => {
-        return projectService.updateProject(id, description);
+    ipcMain.handle('project:update', withErrorHandling((id, data) => {
+        return projectService.updateProject(id, data);
     }));
 
     ipcMain.handle('project:delete', withErrorHandling((id) => {

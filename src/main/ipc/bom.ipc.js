@@ -64,4 +64,9 @@ export function registerBomIpc(ipcMain) {
     ipcMain.handle('bom:delete', withErrorHandling((bomRevisionId) => {
         return bomService.deleteBom(bomRevisionId);
     }));
+
+    // 更新 BOM Revision (Metadata)
+    ipcMain.handle('bom:updateRevision', withErrorHandling((id, updates) => {
+        return bomService.updateBomRevision(id, updates);
+    }));
 }

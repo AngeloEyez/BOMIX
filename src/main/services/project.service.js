@@ -63,25 +63,30 @@ function getProjectById(id) {
 }
 
 /**
- * 更新專案描述
+ * 更新專案
  *
  * @param {number} id - 專案 ID
- * @param {string} description - 新的描述
+ * @param {Object} data - 更新資料
+ * @param {string} [data.project_code] - 新的專案代碼
+ * @param {string} [data.description] - 新的描述
  * @returns {Object} 更新後的專案資訊
  * @throws {Error} 若更新失敗
  */
-function updateProject(id, description) {
-    if (description === undefined || description === null) {
-        throw new Error('必須提供描述內容');
+function updateProject(id, data) {
+    if (!data || Object.keys(data).length === 0) {
+        throw new Error('未提供更新資料');
     }
 
     try {
-        const updatedProject = projectRepo.update(id, { description });
+        const updatedProject = projectRepo.update(id, data);
         if (!updatedProject) {
             throw new Error(`找不到 ID 為 ${id} 的專案`);
         }
         return updatedProject;
     } catch (error) {
+        if (error.message.includes('UNIQUE constraint failed')) {
+            throw new Error(`專案代碼 '${data.project_code}' 已存在`);
+        }
         throw new Error(`更新專案失敗: ${error.message}`);
     }
 }

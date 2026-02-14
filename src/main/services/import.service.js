@@ -24,13 +24,37 @@ function importBom(filePath, projectId, phaseName, version, suffix) {
     const workbook = xlsx.readFile(filePath);
     const filename = path.basename(filePath);
 
-    // 2. 解析表頭 (Header) - 假設從第一個 Sheet (通常是 SMD 或 Cover) 讀取，或依序尋找
-    // SPEC 4.3.1 說 "從 Excel 固定儲存格讀取"。但沒說哪個 Sheet。
-    // 範本似乎每個 Sheet 都有 Header。我們先讀第一個 Sheet。
+    // 2. 解析表頭 (Header)
+    // 優先順序: SMD -> PTH -> BOTTOM
+    // 若 SMD 讀不到 (可能是空的或不存在)，則嘗試 PTH，依此類推。
+    const potentialHeaderSheets = ['SMD', 'PTH', 'BOTTOM'];
+    let headerInfo = {
+        project_code: '', description: '', schematic_version: '', 
+        pcb_version: '', pca_pn: '', date: ''
+    };
+    let headerFound = false;
 
-    const firstSheetName = workbook.SheetNames[0];
-    const firstSheet = workbook.Sheets[firstSheetName];
-    const headerInfo = parseHeader(firstSheet);
+    for (const sheetName of potentialHeaderSheets) {
+        const sheet = workbook.Sheets[sheetName];
+        if (sheet) {
+            console.log(`[Debug] Trying to read header from sheet: ${sheetName}`);
+            const info = parseHeader(sheet);
+            
+            // 檢查是否讀取成功：至少 Project Code 或 Date 或 Description 有值
+            if (info.project_code || info.date || info.description || info.pca_pn) {
+                console.log(`[Debug] Header found in ${sheetName}:`, info);
+                headerInfo = info;
+                headerFound = true;
+                break;
+            }
+        }
+    }
+
+    if (!headerFound) {
+        console.warn('[Import] Warning: Could not find valid header in SMD/PTH/BOTTOM sheets. Using default/empty values.');
+        // Fallback: Try first sheet? Or just leave empty.
+        // User's file starts with 'Changelist', likely irrelevant.
+    }
 
     // 3. 讀取各 Sheet 的零件
     // 階段一：製程頁面
@@ -132,14 +156,34 @@ function parseHeader(sheet) {
     };
 
     const extract = (text, prefix) => {
-        if (text.startsWith(prefix)) {
-            return text.substring(prefix.length).trim();
+        console.log('extract:', text, "prefix:", prefix);
+        if (!text) return '';
+        
+        // 1. 嘗試直接比對開頭 (忽略換行與多餘空白)
+        // 將 text 與 prefix 都標準化為單一空格分隔
+        const normalizedText = text.replace(/[\r\n\s]+/g, ' ').trim();
+        const normalizedPrefix = prefix.replace(/[\r\n\s]+/g, ' ').trim();
+
+        if (normalizedText.startsWith(normalizedPrefix)) {
+            // 但我們需要從原始 text 中切出 value
+            // 由於原始 text 有換行，這裡改用 split(':') 比較安全
+            const parts = text.split(':');
+            if (parts.length > 1) {
+                return parts.slice(1).join(':').trim();
+            }
         }
-        // 有些可能會有空格差異，嘗試 split
+
+        // 2. 嘗試用冒號分隔，並檢查 Label 部分是否匹配
         const parts = text.split(':');
         if (parts.length > 1) {
-            return parts.slice(1).join(':').trim();
+            const label = parts[0].replace(/[\r\n\s]+/g, ' ').trim();
+            const prefixLabel = normalizedPrefix.replace(/:$/, '').trim(); // 移除 prefix 尾端冒號
+            
+            if (label.toLowerCase() === prefixLabel.toLowerCase()) {
+                return parts.slice(1).join(':').trim();
+            }
         }
+
         return '';
     };
 

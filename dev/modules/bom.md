@@ -118,3 +118,18 @@
 - **參數**
   - `bomRevisionId` (number)
 - **回傳** `{ success: true, data: { success: true } }`
+
+## `window.api.bom.updateRevision(id, updates)`
+更新 BOM 版本屬性 (Metadata)。
+
+- **參數**
+  - `id` (number) — BOM 版本 ID
+  - `updates` (Object) — 更新內容
+    - `description` (string, optional)
+    - `note` (string, optional)
+    - `bom_date` (string, optional)
+    - `mode` (string, optional) — 'NPI' or 'MP'
+    - `suffix` (string, optional)
+- **回傳** `{ success: true, data: { id, ...updatedFields } }`
+- **錯誤** `{ success: false, error: '錯誤訊息' }`
+

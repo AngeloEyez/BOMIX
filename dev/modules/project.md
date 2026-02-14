@@ -28,14 +28,16 @@
 - **回傳** `{ success: true, data: { id, project_code, description, ... } }`
 - **錯誤** `{ success: false, error: '專案不存在' }`
 
-## `window.api.project.update(id, description)`
-更新專案描述。
+## `window.api.project.update(id, data)`
+更新專案資訊 (代碼或描述)。
 
 - **參數**
   - `id` (number) — 專案 ID
-  - `description` (string) — 新的描述
+  - `data` (Object) — 更新內容
+    - `project_code` (string, optional) — 新的專案代碼 (需唯一)
+    - `description` (string, optional) — 新的專案描述
 - **回傳** `{ success: true, data: { id, project_code, description, ... } }`
-- **錯誤** `{ success: false, error: '錯誤訊息' }`
+- **錯誤** `{ success: false, error: '專案代碼已存在' }`
 
 ## `window.api.project.delete(id)`
 刪除專案 (包含其下所有 BOM 版本)。

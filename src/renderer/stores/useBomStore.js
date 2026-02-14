@@ -226,6 +226,41 @@ const useBomStore = create((set, get) => ({
         }
     },
 
+    /**
+     * 更新 BOM 版本資料 (Metadata)
+     * 
+     * @param {number} id - BOM Revision ID
+     * @param {Object} updates - 更新內容
+     * @returns {Promise<{success: boolean, error?: string}>}
+     */
+    updateRevision: async (id, updates) => {
+        const { setDbBusy } = useAppStore.getState()
+        setDbBusy(true)
+        try {
+            const result = await window.api.bom.updateRevision(id, updates)
+            if (result.success) {
+                // 更新列表
+                set(state => ({
+                    revisions: state.revisions.map(r => 
+                        r.id === id ? result.data : r
+                    ),
+                    selectedRevision: state.selectedRevision?.id === id
+                        ? result.data
+                        : state.selectedRevision
+                }))
+                return { success: true }
+            } else {
+                set({ error: result.error })
+                return { success: false, error: result.error }
+            }
+        } catch (error) {
+            set({ error: error.message })
+            return { success: false, error: error.message }
+        } finally {
+            setDbBusy(false)
+        }
+    },
+
     /** 清空所有狀態（關閉系列時呼叫） */
     reset: () => {
         set({

@@ -102,9 +102,48 @@ function deleteRevision(id) {
   return result.changes > 0;
 }
 
+/**
+ * 更新 BOM 版本資料 (Metadata)
+ * @param {number} id - BOM 版本 ID
+ * @param {Object} updates - 更新內容
+ * @returns {Object} 更新後的 BOM 版本物件
+ */
+function update(id, updates) {
+  const db = dbManager.getDb();
+  
+  // 動態構建 SQL
+  const fields = [];
+  const values = [];
+  
+  // 允許更新的欄位
+  const allowedFields = ['description', 'schematic_version', 'pcb_version', 'pca_pn', 'bom_date', 'note', 'mode', 'filename', 'suffix'];
+  
+  for (const [key, value] of Object.entries(updates)) {
+    if (allowedFields.includes(key)) {
+        fields.push(`${key} = ?`);
+        values.push(value);
+    }
+  }
+
+  if (fields.length === 0) return findById(id);
+
+  values.push(id); // for WHERE id = ?
+  
+  const sql = `
+    UPDATE bom_revisions 
+    SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+    RETURNING *
+  `;
+  
+  const stmt = db.prepare(sql);
+  return stmt.get(...values);
+}
+
 export default {
   create,
   findByProject,
   findById,
-  delete: deleteRevision
+  delete: deleteRevision,
+  update
 };

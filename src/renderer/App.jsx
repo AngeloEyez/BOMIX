@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import AppLayout from './components/layout/AppLayout'
-import HomePage from './pages/HomePage'
-import ProjectPage from './pages/ProjectPage'
+import Dashboard from './pages/Dashboard'
 import BomPage from './pages/BomPage'
 import ComparePage from './pages/ComparePage'
 import SettingsPage from './pages/SettingsPage'
@@ -13,8 +12,7 @@ import SettingsPage from './pages/SettingsPage'
 
 /** 所有頁面的定義，用於導航與動態渲染 */
 const PAGES = [
-    { id: 'home', label: '首頁', icon: '🏠', component: HomePage },
-    { id: 'project', label: '專案', icon: '📁', component: ProjectPage },
+    { id: 'dashboard', label: '儀表板', icon: '🏠', component: Dashboard },
     { id: 'bom', label: 'BOM', icon: '📊', component: BomPage },
     { id: 'compare', label: '比較', icon: '🔄', component: ComparePage },
     { id: 'settings', label: '設定', icon: '⚙️', component: SettingsPage },
@@ -32,11 +30,11 @@ import ErrorBoundary from './components/ErrorBoundary'
 // ...
 
 function App() {
-    // 預設顯示首頁
-    const [currentPage, setCurrentPage] = useState('home')
+    // 預設顯示儀表板
+    const [currentPage, setCurrentPage] = useState('dashboard')
 
     // 取得目前頁面的元件
-    const ActivePage = PAGES.find(p => p.id === currentPage)?.component || HomePage
+    const ActivePage = PAGES.find(p => p.id === currentPage)?.component || Dashboard
 
     return (
         <ErrorBoundary>
@@ -46,7 +44,7 @@ function App() {
                 onNavigate={setCurrentPage}
             >
                 <ErrorBoundary>
-                    <ActivePage />
+                    <ActivePage onNavigate={setCurrentPage} />
                 </ErrorBoundary>
             </AppLayout>
         </ErrorBoundary>

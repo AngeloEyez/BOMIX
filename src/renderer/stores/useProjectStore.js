@@ -67,10 +67,10 @@ const useProjectStore = create((set, get) => ({
      * @param {string} description - 新的描述
      * @returns {Promise<{success: boolean, error?: string}>}
      */
-    updateProject: async (id, description) => {
+    updateProject: async (id, data) => {
         set({ error: null })
         try {
-            const result = await window.api.project.update(id, description)
+            const result = await window.api.project.update(id, data)
             if (result.success) {
                 // 更新列表中對應的項目
                 set(state => ({

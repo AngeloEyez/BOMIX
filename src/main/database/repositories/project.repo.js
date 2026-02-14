@@ -56,17 +56,25 @@ function findById(id) {
  */
 function update(id, data) {
   const db = dbManager.getDb();
-  const { description } = data;
+  const fields = [];
+  const values = [];
 
-  const stmt = db.prepare(`
-    UPDATE projects
-    SET description = COALESCE(?, description),
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-    RETURNING *
-  `);
+  if (data.project_code !== undefined) {
+    fields.push("project_code = ?");
+    values.push(data.project_code);
+  }
+  if (data.description !== undefined) {
+    fields.push("description = ?");
+    values.push(data.description);
+  }
 
-  return stmt.get(description, id);
+  if (fields.length === 0) return findById(id);
+
+  const sql = `UPDATE projects SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING *`;
+  values.push(id);
+
+  const stmt = db.prepare(sql);
+  return stmt.get(...values);
 }
 
 /**
