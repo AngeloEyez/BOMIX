@@ -14,14 +14,22 @@ import { useEffect, useRef } from 'react'
  * @param {string} props.title - 標題
  * @param {React.ReactNode} props.children - 內容
  * @param {string} props.className - 自訂樣式
+ * @param {boolean} [props.modal=true] - 是否為強制對話框 (true: 點背景不關閉, false: 點背景關閉)
  */
-function Dialog({ isOpen, onClose, title, children, className = '' }) {
+function Dialog({ isOpen, onClose, title, children, className = '', modal = true }) {
     const dialogRef = useRef(null)
 
     // 點擊 Backdrop 關閉
     const handleBackdropClick = (e) => {
         if (e.target === e.currentTarget) {
-            onClose()
+            if (!modal) {
+                onClose()
+            } else {
+                // Optional: Shake animation or visual cue?
+                // For now, just do nothing.
+                // Maybe focus the dialog?
+                dialogRef.current?.focus()
+            }
         }
     }
 

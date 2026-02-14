@@ -30,7 +30,7 @@ function ChangelogDialog({ isOpen, onClose }) {
     }, [isOpen])
 
     return (
-        <Dialog isOpen={isOpen} onClose={onClose} title="更新記錄" className="max-w-2xl">
+        <Dialog isOpen={isOpen} onClose={onClose} title="更新記錄" className="max-w-2xl" modal={false}>
             <div className="min-h-[300px]">
                 {loading ? (
                     <div className="flex items-center justify-center h-full py-20 text-slate-400">

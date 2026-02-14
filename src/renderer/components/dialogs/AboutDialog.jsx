@@ -25,7 +25,7 @@ function AboutDialog({ isOpen, onClose }) {
     }, [isOpen])
 
     return (
-        <Dialog isOpen={isOpen} onClose={onClose} title="關於 BOMIX">
+        <Dialog isOpen={isOpen} onClose={onClose} title="關於 BOMIX" modal={false}>
             <div className="flex flex-col items-center space-y-4 text-center">
                 <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900 rounded-2xl flex items-center justify-center text-primary-600 dark:text-primary-400">
                     <Package size={32} />
