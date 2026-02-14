@@ -19,6 +19,101 @@ describe('BOM Service', () => {
     vi.clearAllMocks();
   });
 
+  describe('executeView', () => {
+    it('should filter SMD parts in NPI mode (Status I, P)', () => {
+      const bomRevisionId = 1;
+      const mockRevision = { id: 1, mode: 'NPI' };
+      const viewDef = { filter: { types: ['SMD'], statusLogic: 'ACTIVE' } };
+
+      const parts = [
+        { supplier: 'S1', supplier_pn: 'P1', type: 'SMD', bom_status: 'I', location: 'L1' },
+        { supplier: 'S2', supplier_pn: 'P2', type: 'SMD', bom_status: 'P', location: 'L2' },
+        { supplier: 'S3', supplier_pn: 'P3', type: 'SMD', bom_status: 'X', location: 'L3' }, // Should be filtered
+        { supplier: 'S4', supplier_pn: 'P4', type: 'PTH', bom_status: 'I', location: 'L4' }  // Should be filtered
+      ];
+
+      bomRevisionRepo.findById.mockReturnValue(mockRevision);
+      partsRepo.findByBomRevision.mockReturnValue(parts);
+      secondSourceRepo.findByBomRevision.mockReturnValue([]);
+
+      const result = bomService.executeView(bomRevisionId, viewDef);
+
+      expect(result).toHaveLength(2);
+      expect(result.map(r => r.supplier_pn).sort()).toEqual(['P1', 'P2']);
+    });
+
+    it('should filter SMD parts in MP mode (Status I, M)', () => {
+      const bomRevisionId = 1;
+      const mockRevision = { id: 1, mode: 'MP' };
+      const viewDef = { filter: { types: ['SMD'], statusLogic: 'ACTIVE' } };
+
+      const parts = [
+        { supplier: 'S1', supplier_pn: 'P1', type: 'SMD', bom_status: 'I', location: 'L1' },
+        { supplier: 'S2', supplier_pn: 'P2', type: 'SMD', bom_status: 'M', location: 'L2' },
+        { supplier: 'S3', supplier_pn: 'P3', type: 'SMD', bom_status: 'P', location: 'L3' }, // Should be filtered (Proto part in MP)
+        { supplier: 'S4', supplier_pn: 'P4', type: 'PTH', bom_status: 'I', location: 'L4' }  // Should be filtered
+      ];
+
+      bomRevisionRepo.findById.mockReturnValue(mockRevision);
+      partsRepo.findByBomRevision.mockReturnValue(parts);
+      secondSourceRepo.findByBomRevision.mockReturnValue([]);
+
+      const result = bomService.executeView(bomRevisionId, viewDef);
+
+      expect(result).toHaveLength(2);
+      expect(result.map(r => r.supplier_pn).sort()).toEqual(['P1', 'P2']);
+    });
+
+    it('should aggregate parts and attach second sources', () => {
+      const bomRevisionId = 1;
+      const mockRevision = { id: 1, mode: 'NPI' };
+      const viewDef = { filter: { statusLogic: 'ACTIVE' } };
+
+      const parts = [
+        { supplier: 'S1', supplier_pn: 'P1', type: 'SMD', bom_status: 'I', location: 'L1', item: 10 },
+        { supplier: 'S1', supplier_pn: 'P1', type: 'SMD', bom_status: 'I', location: 'L2', item: 10 },
+      ];
+
+      const secondSources = [
+        { main_supplier: 'S1', main_supplier_pn: 'P1', supplier: 'SS1' }
+      ];
+
+      bomRevisionRepo.findById.mockReturnValue(mockRevision);
+      partsRepo.findByBomRevision.mockReturnValue(parts);
+      secondSourceRepo.findByBomRevision.mockReturnValue(secondSources);
+
+      const result = bomService.executeView(bomRevisionId, viewDef);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].quantity).toBe(2);
+      expect(result[0].locations).toBe('L1,L2'); // Assuming simple sort logic
+      expect(result[0].second_sources).toHaveLength(1);
+      expect(result[0].second_sources[0].supplier).toBe('SS1');
+    });
+
+    it('should correctly filter for NI view (Inactive)', () => {
+      const bomRevisionId = 1;
+      const mockRevision = { id: 1, mode: 'NPI' };
+      const viewDef = { filter: { statusLogic: 'INACTIVE' } }; // NPI Inactive: X, M
+
+      const parts = [
+        { supplier: 'S1', supplier_pn: 'P1', type: 'SMD', bom_status: 'X', location: 'L1' }, // Keep
+        { supplier: 'S2', supplier_pn: 'P2', type: 'SMD', bom_status: 'M', location: 'L2' }, // Keep
+        { supplier: 'S3', supplier_pn: 'P3', type: 'SMD', bom_status: 'I', location: 'L3' }, // Filter
+        { supplier: 'S4', supplier_pn: 'P4', type: 'SMD', bom_status: 'P', location: 'L4' }, // Filter
+      ];
+
+      bomRevisionRepo.findById.mockReturnValue(mockRevision);
+      partsRepo.findByBomRevision.mockReturnValue(parts);
+      secondSourceRepo.findByBomRevision.mockReturnValue([]);
+
+      const result = bomService.executeView(bomRevisionId, viewDef);
+
+      expect(result).toHaveLength(2);
+      expect(result.map(r => r.bom_status).sort()).toEqual(['M', 'X']);
+    });
+  });
+
   describe('getBomView', () => {
     it('should return aggregated BOM view with second sources', () => {
       const bomRevisionId = 1;
