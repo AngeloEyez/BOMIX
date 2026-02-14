@@ -4,7 +4,7 @@
 // 參考 Windows 11 Fluent Design 風格
 // ========================================
 
-import Sidebar from './Sidebar'
+// import Sidebar from './Sidebar' // Removed
 import StatusBar from './StatusBar'
 import { Sun, Moon, Menu } from 'lucide-react'
 import useSettingsStore from '../../stores/useSettingsStore'
@@ -35,6 +35,11 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
         initSettings()
     }, [initSettings])
 
+    // 更新視窗標題
+    useEffect(() => {
+        document.title = seriesName ? `BOMIX - ${seriesName}` : 'BOMIX'
+    }, [seriesName])
+
     if (isLoading) {
         return <div className="flex items-center justify-center h-screen">Loading...</div>
     }
@@ -45,20 +50,28 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
             <header className="flex items-center justify-between h-12 px-4
         bg-white/80 dark:bg-surface-900/80 backdrop-blur-sm
         border-b border-slate-200 dark:border-slate-800
-        shrink-0 z-10">
-                <div className="flex items-center gap-2">
-                    <h1 className="text-sm font-semibold text-primary-600 dark:text-primary-400">
-                        BOMIX
-                    </h1>
-                    {/* 開啟系列後顯示系列名稱 */}
-                    {isOpen && seriesName && (
-                        <>
-                            <span className="text-slate-300 dark:text-slate-600">—</span>
-                            <span className="text-sm text-slate-600 dark:text-slate-400 font-medium truncate max-w-[300px]">
-                                {seriesName}
-                            </span>
-                        </>
-                    )}
+        shrink-0 z-10 app-drag-region"> {/* Added app-drag-region if supported for dragging */}
+                <div className="flex items-center gap-1">
+                    {/* 功能導航 (原側邊欄) */}
+                    {pages.map((page) => {
+                        const isActive = page.id === currentPage
+                        return (
+                            <button
+                                key={page.id}
+                                onClick={() => onNavigate(page.id)}
+                                className={`
+                                    p-2 rounded-lg transition-all duration-200
+                                    ${isActive
+                                        ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400'
+                                        : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200'
+                                    }
+                                `}
+                                title={page.label}
+                            >
+                                {page.icon}
+                            </button>
+                        )
+                    })}
                 </div>
                 <div className="flex items-center gap-2">
                     <button
@@ -74,17 +87,10 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
                 </div>
             </header>
 
-            {/* --- 主體區域（側邊欄 + 內容） --- */}
-            <div className="flex flex-1 overflow-hidden">
-                <Sidebar
-                    pages={pages}
-                    currentPage={currentPage}
-                    onNavigate={onNavigate}
-                />
-                <main className="flex-1 overflow-hidden relative flex flex-col">
-                   {children}
-                </main>
-            </div>
+            {/* --- 主體區域 --- */}
+            <main className="flex-1 overflow-hidden relative flex flex-col">
+               {children}
+            </main>
 
             {/* --- 底部狀態列 --- */}
             <StatusBar />
