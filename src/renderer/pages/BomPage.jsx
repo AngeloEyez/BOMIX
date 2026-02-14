@@ -36,6 +36,7 @@ function BomPage() {
 
     // 匯入對話框
     const [isImportOpen, setIsImportOpen] = useState(false)
+    const [importFile, setImportFile] = useState(null)
     // 刪除確認對話框
     const [deleteTarget, setDeleteTarget] = useState(null)
     // 頁面層級拖曳狀態
@@ -125,8 +126,11 @@ function BomPage() {
             const file = files[0]
             const ext = file.name.split('.').pop()?.toLowerCase()
             if (ext === 'xls' || ext === 'xlsx') {
-                // 開啟匯入對話框，並預填檔案（透過 store 暫存或直接操作）
-                // 由於 ImportDialog 內部管理檔案狀態，此處直接開啟對話框
+                // 使用 webUtils 取得檔案真實路徑 (解決 Context Isolation 問題)
+                const path = window.api.utils.getPathForFile(file)
+
+                // 開啟匯入對話框，並預填檔案
+                setImportFile({ name: file.name, path })
                 setIsImportOpen(true)
             }
         }
@@ -322,9 +326,13 @@ function BomPage() {
              ======================================== */}
             <ImportDialog
                 isOpen={isImportOpen}
-                onClose={() => setIsImportOpen(false)}
+                onClose={() => {
+                    setIsImportOpen(false)
+                    setImportFile(null)
+                }}
                 projectId={selectedProjectId}
                 onImport={importExcel}
+                initialFile={importFile}
             />
 
             {/* 刪除確認對話框 */}

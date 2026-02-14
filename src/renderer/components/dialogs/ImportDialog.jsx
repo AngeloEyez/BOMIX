@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Upload, FileSpreadsheet, X } from 'lucide-react'
 import Dialog from './Dialog'
 
@@ -20,7 +20,7 @@ import Dialog from './Dialog'
  * @param {Function} props.onImport - 匯入回呼 (filePath, projectId, phaseName, version) => Promise
  * @returns {JSX.Element}
  */
-function ImportDialog({ isOpen, onClose, projectId, onImport }) {
+function ImportDialog({ isOpen, onClose, projectId, onImport, initialFile }) {
     const [filePath, setFilePath] = useState('')
     const [fileName, setFileName] = useState('')
     const [phaseName, setPhaseName] = useState('')
@@ -28,6 +28,16 @@ function ImportDialog({ isOpen, onClose, projectId, onImport }) {
     const [error, setError] = useState('')
     const [isImporting, setIsImporting] = useState(false)
     const [isDragOver, setIsDragOver] = useState(false)
+
+    // 處理初始檔案 (來自頁面拖曳)
+    useEffect(() => {
+        if (isOpen && initialFile) {
+            if (initialFile.path) {
+                setFilePath(initialFile.path)
+                setFileName(initialFile.name)
+            }
+        }
+    }, [isOpen, initialFile])
 
     // 重置表單
     const resetForm = useCallback(() => {
@@ -83,7 +93,8 @@ function ImportDialog({ isOpen, onClose, projectId, onImport }) {
             const file = files[0]
             const ext = file.name.split('.').pop()?.toLowerCase()
             if (ext === 'xls' || ext === 'xlsx') {
-                setFilePath(file.path)
+                const path = window.api.utils.getPathForFile(file)
+                setFilePath(path)
                 setFileName(file.name)
                 setError('')
             } else {

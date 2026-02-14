@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 // ========================================
@@ -67,6 +67,11 @@ const api = {
     dialog: {
         showOpen: (options) => ipcRenderer.invoke('dialog:showOpen', options),
         showSave: (options) => ipcRenderer.invoke('dialog:showSave', options),
+    },
+
+    // --- 工具 ---
+    utils: {
+        getPathForFile: (file) => webUtils.getPathForFile(file),
     },
 }
 
