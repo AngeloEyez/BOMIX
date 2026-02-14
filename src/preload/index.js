@@ -33,6 +33,7 @@ const api = {
         open: (path) => ipcRenderer.invoke('series:open', path),
         getMeta: () => ipcRenderer.invoke('series:getMeta'),
         updateMeta: (desc) => ipcRenderer.invoke('series:updateMeta', desc),
+        rename: (newName) => ipcRenderer.invoke('series:rename', newName),
     },
 
     // TODO: Phase 3 — 專案管理 API
@@ -49,6 +50,12 @@ const api = {
 
     // TODO: Phase 5 — Excel 匯入匯出 API
     // excel: { ... },
+
+    // --- 檔案對話框 ---
+    dialog: {
+        showOpen: (options) => ipcRenderer.invoke('dialog:showOpen', options),
+        showSave: (options) => ipcRenderer.invoke('dialog:showSave', options),
+    },
 }
 
 // 在 contextBridge 可用時，安全暴露 API

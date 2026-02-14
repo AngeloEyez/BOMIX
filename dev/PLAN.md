@@ -74,10 +74,10 @@
 **負責人：Antigravity**
 整合 Phase 3 開放的 API，完成 UI 功能。
 
-- [ ] `stores/useSeriesStore.js`
-- [ ] `stores/useProjectStore.js`
-- [ ] 更新 `pages/HomePage.jsx` (建立/開啟系列)
-- [ ] 更新 `pages/ProjectPage.jsx` (專案 CRUD、版本列表)
+- [x] `stores/useSeriesStore.js`
+- [x] `stores/useProjectStore.js`
+- [x] 更新 `pages/HomePage.jsx` (建立/開啟系列)
+- [x] 更新 `pages/ProjectPage.jsx` (專案 CRUD、版本列表)
 - [ ] 整合測試
 
 ### Phase 5：BOM 管理與 Excel 整合 - 後端 (Jules)

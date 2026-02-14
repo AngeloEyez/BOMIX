@@ -45,4 +45,8 @@ export function registerSeriesIpc(ipcMain) {
     ipcMain.handle('series:updateMeta', withErrorHandling((description) => {
         return seriesService.updateSeriesMeta(description);
     }));
+
+    ipcMain.handle('series:rename', withErrorHandling((newName) => {
+        return seriesService.renameSeries(newName);
+    }));
 }

@@ -5,6 +5,7 @@
  */
 
 import fs from 'fs';
+import path from 'path';
 import dbManager from '../database/connection.js';
 import seriesRepo from '../database/repositories/series.repo.js';
 
@@ -71,7 +72,7 @@ function openSeries(filePath) {
 /**
  * 取得目前開啟系列的元資料
  *
- * @returns {Object} 系列資訊
+ * @returns {Object} 系列資訊 (含 bomCount)
  * @throws {Error} 若尚未開啟系列
  */
 function getSeriesMeta() {
@@ -80,6 +81,8 @@ function getSeriesMeta() {
         if (!meta) {
             throw new Error('尚未開啟系列或系列資料損毀');
         }
+        // 附加 BOM 統計資訊
+        meta.bomCount = seriesRepo.getBomCount();
         return meta;
     } catch (error) {
         throw new Error(`取得系列資訊失敗: ${error.message}`);
@@ -99,9 +102,69 @@ function updateSeriesMeta(description) {
     }
 
     try {
-        return seriesRepo.updateMeta({ description });
+        const updated = seriesRepo.updateMeta({ description });
+        updated.bomCount = seriesRepo.getBomCount(); // 保持資料結構一致
+        return updated;
     } catch (error) {
         throw new Error(`更新系列資訊失敗: ${error.message}`);
+    }
+}
+
+/**
+ * 重新命名系列 (即重新命名 .bomix 檔案)
+ *
+ * @param {string} newName - 新的檔案名稱 (不含路徑與副檔名)
+ * @returns {Object} { success: true, newPath: string }
+ * @throws {Error} 若命名失敗
+ */
+function renameSeries(newName) {
+    if (!newName) {
+        throw new Error('必須提供新的系列名稱');
+    }
+
+    // 驗證檔名 (Windows 規則)
+    // 排除 \ / : * ? " < > |
+    if (/[\\/:*?"<>|]/.test(newName)) {
+        throw new Error('系列名稱包含無效字元');
+    }
+
+    try {
+        const currentPath = dbManager.currentPath;
+        if (!currentPath) {
+            throw new Error('尚未開啟任何系列');
+        }
+
+        const dir = path.dirname(currentPath);
+        const ext = path.extname(currentPath);
+        const newPath = path.join(dir, `${newName}${ext}`);
+
+        if (currentPath === newPath) {
+            return { success: true, newPath }; // 名稱相同，不做事
+        }
+
+        if (fs.existsSync(newPath)) {
+            throw new Error(`檔案已存在: ${newName}${ext}`);
+        }
+
+        // 1. 關閉資料庫連線 Release lock
+        dbManager.disconnect();
+
+        // 2. 重新命名檔案
+        fs.renameSync(currentPath, newPath);
+
+        // 3.重新連線
+        dbManager.connect(newPath);
+
+        return { success: true, newPath };
+    } catch (error) {
+        // 嘗試恢復連線 (如果斷開了但重命名失敗)
+        try {
+            if (dbManager.currentPath && !dbManager.db) {
+               dbManager.connect(dbManager.currentPath);
+            }
+        } catch (e) { /* ignore */ }
+        
+        throw new Error(`重新命名失敗: ${error.message}`);
     }
 }
 
@@ -109,5 +172,6 @@ export default {
     createSeries,
     openSeries,
     getSeriesMeta,
-    updateSeriesMeta
+    updateSeriesMeta,
+    renameSeries
 };

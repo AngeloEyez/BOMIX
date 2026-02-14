@@ -33,3 +33,30 @@
     - `settings` (Object) — 需要合併或儲存的設定對象
 - **回傳**: `{ success: true }`
 - **錯誤**: `{ success: false, error: string }`
+
+---
+
+## `window.api.dialog.showOpen(options)`
+顯示檔案開啟對話框。
+
+- **參數**: 
+    - `options` (Object, 選填)
+        - `title` (string) — 對話框標題
+        - `filters` (Array) — 檔案篩選器，預設 `[{ name: 'BOMIX 系列檔', extensions: ['bomix'] }]`
+- **回傳**: `{ success: true, data: string }` (選取的檔案路徑)
+- **取消**: `{ success: true, canceled: true }`
+- **錯誤**: `{ success: false, error: string }`
+
+---
+
+## `window.api.dialog.showSave(options)`
+顯示檔案儲存對話框。
+
+- **參數**: 
+    - `options` (Object, 選填)
+        - `title` (string) — 對話框標題
+        - `defaultPath` (string) — 預設檔案名稱
+        - `filters` (Array) — 檔案篩選器，預設 `[{ name: 'BOMIX 系列檔', extensions: ['bomix'] }]`
+- **回傳**: `{ success: true, data: string }` (儲存的檔案路徑)
+- **取消**: `{ success: true, canceled: true }`
+- **錯誤**: `{ success: false, error: string }`

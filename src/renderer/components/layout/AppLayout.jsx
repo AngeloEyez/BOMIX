@@ -8,6 +8,7 @@ import Sidebar from './Sidebar'
 import StatusBar from './StatusBar'
 import { Sun, Moon, Menu } from 'lucide-react'
 import useSettingsStore from '../../stores/useSettingsStore'
+import useSeriesStore from '../../stores/useSeriesStore'
 import { useEffect } from 'react'
 
 /**
@@ -24,6 +25,10 @@ import { useEffect } from 'react'
  */
 function AppLayout({ pages, currentPage, onNavigate, children }) {
     const { theme, toggleTheme, initSettings, isLoading } = useSettingsStore()
+    const { isOpen, currentPath } = useSeriesStore()
+
+    // 從路徑取得檔案名稱
+    const seriesName = currentPath ? currentPath.split(/[\\/]/).pop()?.replace('.bomix', '') : null
 
     // 初始化設定
     useEffect(() => {
@@ -45,7 +50,15 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
                     <h1 className="text-sm font-semibold text-primary-600 dark:text-primary-400">
                         BOMIX
                     </h1>
-                    {/* TODO: 開啟系列後顯示系列名稱 */}
+                    {/* 開啟系列後顯示系列名稱 */}
+                    {isOpen && seriesName && (
+                        <>
+                            <span className="text-slate-300 dark:text-slate-600">—</span>
+                            <span className="text-sm text-slate-600 dark:text-slate-400 font-medium truncate max-w-[300px]">
+                                {seriesName}
+                            </span>
+                        </>
+                    )}
                 </div>
                 <div className="flex items-center gap-2">
                     <button

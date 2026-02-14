@@ -46,8 +46,20 @@ function initMeta() {
   stmt.run('Default Series');
 }
 
+/**
+ * 取得 BOM 版本總數
+ * @returns {number} BOM 版本數量
+ */
+function getBomCount() {
+  const db = dbManager.getDb();
+  const stmt = db.prepare('SELECT COUNT(*) as count FROM bom_revisions');
+  const result = stmt.get();
+  return result ? result.count : 0;
+}
+
 export default {
   getMeta,
   updateMeta,
-  initMeta
+  initMeta,
+  getBomCount
 };
