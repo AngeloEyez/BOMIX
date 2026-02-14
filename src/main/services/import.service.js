@@ -96,7 +96,16 @@ function importBom(filePath, projectId, phaseName, version) {
         bom_revision_id: bomRevisionId
     }));
 
-    const secondSourcesToInsert = secondSources.map(ss => ({
+    // Deduplicate Second Sources based on (main_supplier, main_supplier_pn, supplier, supplier_pn)
+    const uniqueSecondSourcesMap = new Map();
+    secondSources.forEach(ss => {
+        const key = `${ss.main_supplier}|${ss.main_supplier_pn}|${ss.supplier}|${ss.supplier_pn}`;
+        if (!uniqueSecondSourcesMap.has(key)) {
+            uniqueSecondSourcesMap.set(key, ss);
+        }
+    });
+
+    const secondSourcesToInsert = Array.from(uniqueSecondSourcesMap.values()).map(ss => ({
         ...ss,
         bom_revision_id: bomRevisionId
     }));
@@ -235,16 +244,17 @@ function parseSheet(sheet, type, defaultStatus, partsMap, secondSources) {
 
         } else if (currentMainSource) {
             // === Second Source ===
-            // 歸屬於上一個 Main Source
-            // Second Source 不包含 Location, Type, Status (跟隨 Main)
-            secondSources.push({
-                main_supplier: currentMainSource.supplier,
-                main_supplier_pn: currentMainSource.supplier_pn,
-                hhpn,
-                supplier,
-                supplier_pn,
-                description
-            });
+            // 驗證資料完整性：HHPN, Supplier, Supplier PN, Description 必須都有值
+            if (hhpn && supplier && supplier_pn && description) {
+                secondSources.push({
+                    main_supplier: currentMainSource.supplier,
+                    main_supplier_pn: currentMainSource.supplier_pn,
+                    hhpn,
+                    supplier,
+                    supplier_pn,
+                    description
+                });
+            }
         }
     }
 
