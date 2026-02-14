@@ -58,7 +58,7 @@ function AboutDialog({ isOpen, onClose }) {
                 </div>
 
                 <div className="pt-2 text-xs text-slate-400">
-                    <p>© 2026 BOMIX Team. MIT License.</p>
+                    <p>© 2026 BOMIX Team. All rights reserved.</p>
                 </div>
 
                 <a 

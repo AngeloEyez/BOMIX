@@ -79,7 +79,7 @@
 - [x] 更新 `pages/HomePage.jsx` (建立/開啟系列)
 - [x] 更新 `pages/ProjectPage.jsx` (專案 CRUD、版本列表)
 - [ ] 整合測試
-
+  
 ### Phase 5：BOM 管理與 Excel 整合 - 後端 (Jules)
 **負責人：Jules**
 BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
