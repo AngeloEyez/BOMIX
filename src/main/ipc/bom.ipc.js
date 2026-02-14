@@ -5,6 +5,7 @@
  */
 
 import bomService from '../services/bom.service.js';
+import bomRevisionRepo from '../database/repositories/bom-revision.repo.js';
 
 /**
  * 註冊 BOM 管理相關的 IPC 通道
@@ -26,7 +27,10 @@ export function registerBomIpc(ipcMain) {
         };
     };
 
-    // 取得 BOM 視圖
+    // 取得專案下的所有 BOM 版本
+    ipcMain.handle('bom:getRevisions', withErrorHandling((projectId) => {
+        return bomRevisionRepo.findByProject(projectId);
+    }));
     ipcMain.handle('bom:getView', withErrorHandling((bomRevisionId) => {
         return bomService.getBomView(bomRevisionId);
     }));

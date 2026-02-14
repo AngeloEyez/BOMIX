@@ -134,6 +134,22 @@ function createSchema(db) {
     transaction();
 }
 
+/**
+ * 遷移資料庫 Schema (處理舊版本資料庫升級)
+ * @param {import('better-sqlite3').Database} db - 資料庫實例
+ */
+function migrateSchema(db) {
+    // 檢查 bom_revisions 是否有 mode 欄位 (Phase 4 -> Phase 5 遷移)
+    const tableInfo = db.pragma('table_info(bom_revisions)');
+    const hasModeColumn = tableInfo.some(col => col.name === 'mode');
+
+    if (!hasModeColumn) {
+        console.log('[Schema] 正在遷移: 新增 mode 欄位至 bom_revisions');
+        db.exec("ALTER TABLE bom_revisions ADD COLUMN mode TEXT DEFAULT 'NPI'");
+    }
+}
+
 export {
-    createSchema
+    createSchema,
+    migrateSchema
 };

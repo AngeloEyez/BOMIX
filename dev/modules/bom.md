@@ -1,5 +1,35 @@
 # BOM API
 
+## `window.api.bom.getRevisions(projectId)`
+取得專案下的所有 BOM 版本 (Revision) 列表。
+
+- **參數**
+  - `projectId` (number) — 專案 ID
+- **回傳**
+  ```javascript
+  {
+    success: true,
+    data: [
+      {
+        id: 1,
+        project_id: 1,
+        phase_name: "SI",
+        version: "0.3",
+        description: "MBD,Tangled,...",
+        schematic_version: "1.0",
+        pcb_version: "2.1",
+        pca_pn: "ABC-123",
+        date: "2026-01-15",
+        note: null,
+        mode: "NPI",
+        created_at: "2026-01-15T10:00:00"
+      },
+      // ...
+    ]
+  }
+  ```
+- **錯誤** `{ success: false, error: '錯誤訊息' }`
+
 ## `window.api.bom.getView(bomRevisionId)`
 取得 BOM 聚合視圖 (Main Items + Second Sources)。
 

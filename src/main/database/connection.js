@@ -5,7 +5,7 @@
  */
 
 import Database from 'better-sqlite3';
-import { createSchema } from './schema.js';
+import { createSchema, migrateSchema } from './schema.js';
 
 /**
  * 資料庫連線管理器 (Singleton)
@@ -61,6 +61,8 @@ class DatabaseManager {
 
       // 初始化 Schema
       createSchema(this.db);
+      // 執行 Schema 遷移 (處理舊資料庫升級)
+      migrateSchema(this.db);
 
       this.currentPath = filePath;
       console.log(`[Database] 已連線至: ${filePath}`);

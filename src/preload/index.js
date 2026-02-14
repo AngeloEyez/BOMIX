@@ -47,6 +47,7 @@ const api = {
 
     // TODO: Phase 4 — BOM 管理 API
     bom: {
+        getRevisions: (projectId) => ipcRenderer.invoke('bom:getRevisions', projectId),
         getView: (bomRevisionId) => ipcRenderer.invoke('bom:getView', bomRevisionId),
         updateMainItem: (bomRevisionId, originalKey, updates) => ipcRenderer.invoke('bom:updateMainItem', bomRevisionId, originalKey, updates),
         deleteMainItem: (bomRevisionId, key) => ipcRenderer.invoke('bom:deleteMainItem', bomRevisionId, key),
