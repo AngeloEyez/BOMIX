@@ -174,7 +174,6 @@ function parseHeader(sheet) {
     };
 
     const extract = (text, prefix) => {
-        console.log('extract:', text, "prefix:", prefix);
         if (!text) return '';
         
         // 1. 嘗試直接比對開頭 (忽略換行與多餘空白)

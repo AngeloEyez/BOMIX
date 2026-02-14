@@ -268,21 +268,35 @@ function Dashboard({ onNavigate }) {
             return { success: true }
         } else if (result.error === 'PROJECT_CODE_MISMATCH') {
             // Step 2: Mismatch Warning
-            setImportDialog(prev => ({ ...prev, isOpen: false })) // Close import dialog temporarily? Or keep open?
-            // User requirement: "Dialog options: Cancel or Create New Project"
-            // We should use ConfirmDialog for this.
+            setImportDialog(prev => ({ ...prev, isOpen: false }))
             
-            setDeleteConfirm({
-                isOpen: true,
-                type: 'import_mismatch',
-                data: { filePath, phaseName, version, parsedCode: result.parsedProjectCode },
-                title: '專案代碼不符',
-                message: `BOM 表頭專案代碼「${result.parsedProjectCode}」與目前專案「${importDialog.projectCode}」不符。\n是否依據 BOM 建立「${result.parsedProjectCode}」專案，並將 BOM 匯入到新專案？`,
-                confirmText: '創建並匯入',
-                variant: 'success'
-            })
-            // Return validation error to ImportDialog to stop spinner?
-            // ImportDialog handles result.success.
+            // Check if project already exists
+            const parsedCode = result.parsedProjectCode
+            const existingProject = projects.find(p => p.project_code.toLowerCase() === parsedCode.toLowerCase())
+
+            if (existingProject) {
+                 // Case A: Project Exists -> Suggest Import to Existing
+                 setDeleteConfirm({
+                    isOpen: true,
+                    type: 'import_mismatch_existing',
+                    data: { filePath, phaseName, version, targetProjectId: existingProject.id, targetProjectCode: existingProject.project_code },
+                    title: '專案代碼不符（專案已存在）',
+                    message: `BOM 表頭專案代碼「${parsedCode}」與目前專案「${importDialog.projectCode}」不符。\n\n系統偵測到專案「${existingProject.project_code}」已經存在。\n是否將 BOM 直接匯入至「${existingProject.project_code}」？`,
+                    confirmText: `匯入至 ${existingProject.project_code}`,
+                    variant: 'info'
+                })
+            } else {
+                // Case B: Project New -> Suggest Create New
+                setDeleteConfirm({
+                    isOpen: true,
+                    type: 'import_mismatch',
+                    data: { filePath, phaseName, version, parsedCode },
+                    title: '專案代碼不符',
+                    message: `BOM 表頭專案代碼「${parsedCode}」與目前專案「${importDialog.projectCode}」不符。\n是否依據 BOM 建立「${parsedCode}」專案，並將 BOM 匯入到新專案？`,
+                    confirmText: '創建並匯入',
+                    variant: 'success'
+                })
+            }
             return { success: false, error: '專案代碼不符，請確認彈窗選項' } 
         } else {
             // Other errors
@@ -295,6 +309,30 @@ function Dashboard({ onNavigate }) {
     const handleConfirmAction = async () => {
         const { type, data } = deleteConfirm
         
+        if (type === 'import_mismatch_existing') {
+            try {
+                 // Direct Import to Existing Project
+                 const importIpcRes = await window.api.excel.import(data.filePath, data.targetProjectId, data.phaseName, data.version)
+                 
+                 if (importIpcRes.success && importIpcRes.data.success) {
+                     // Refresh BOMs for target project
+                     const res = await window.api.bom.getRevisions(data.targetProjectId)
+                     if (res.success) {
+                         setProjectBoms(prev => ({ ...prev, [data.targetProjectId]: res.data }))
+                         setExpandedProjects(prev => ({ ...prev, [data.targetProjectId]: true }))
+                     }
+                 } else {
+                     const errMsg = importIpcRes.success ? importIpcRes.data.error : importIpcRes.error;
+                     alert(`匯入至現有專案失敗: ${errMsg}`)
+                 }
+            } catch (e) {
+                console.error(e)
+                alert(`匯入發生錯誤: ${e.message}`)
+            }
+            setDeleteConfirm({ ...deleteConfirm, isOpen: false })
+            return
+        }
+
         if (type === 'import_mismatch') {
             // Create New Project with parsedCode
             // Check if exists first? createProject handles unique constraint error?
