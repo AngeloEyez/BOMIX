@@ -24,6 +24,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.13.18",
     "better-sqlite3": "^12.6.2",
+    "exceljs": "^4.4.0",
     "lucide-react": "^0.564.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -66,6 +67,11 @@
       {
         "from": "CHANGELOG.md",
         "to": "CHANGELOG.md"
+      },
+      {
+        "from": "resources/templates",
+        "to": "templates",
+        "filter": ["**/*"]
       }
     ],
     "win": {
