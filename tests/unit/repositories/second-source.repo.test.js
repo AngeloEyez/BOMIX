@@ -2,13 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
-const DatabaseManager = require('../../../src/main/database/connection');
-const projectRepo = require('../../../src/main/database/repositories/project.repo');
-const bomRevisionRepo = require('../../../src/main/database/repositories/bom-revision.repo');
-const secondSourceRepo = require('../../../src/main/database/repositories/second-source.repo');
+import DatabaseManager from '../../../src/main/database/connection.js';
+import projectRepo from '../../../src/main/database/repositories/project.repo.js';
+import bomRevisionRepo from '../../../src/main/database/repositories/bom-revision.repo.js';
+import secondSourceRepo from '../../../src/main/database/repositories/second-source.repo.js';
 
 describe('Second Source Repository', () => {
-  const testDbPath = path.join(__dirname, 'second-source.test.bomix');
+  const testDbPath = path.join(__dirname, 'second_source.test.bomix');
   let bomRevisionId;
 
   beforeEach(() => {
@@ -37,53 +37,58 @@ describe('Second Source Repository', () => {
   it('should create a second source', () => {
     const ss = secondSourceRepo.create({
       bom_revision_id: bomRevisionId,
-      main_supplier: 'Murata',
-      main_supplier_pn: 'GRM188',
-      supplier: 'Yageo',
-      supplier_pn: 'RC0603'
+      main_supplier: 'MainSupp',
+      main_supplier_pn: 'MainPN',
+      supplier: 'SecondSupp',
+      supplier_pn: 'SecondPN',
+      hhpn: '123-456',
+      description: 'Resistor'
     });
 
     expect(ss).toBeDefined();
-    expect(ss.main_supplier).toBe('Murata');
-    expect(ss.supplier).toBe('Yageo');
+    expect(ss.supplier).toBe('SecondSupp');
+    expect(ss.main_supplier).toBe('MainSupp');
   });
 
   it('should create many second sources', () => {
-    const data = [
+    const ssData = [
       {
         bom_revision_id: bomRevisionId,
-        main_supplier: 'Murata',
-        main_supplier_pn: 'GRM188',
-        supplier: 'Yageo',
-        supplier_pn: 'RC0603'
+        main_supplier: 'Main1',
+        main_supplier_pn: 'PN1',
+        supplier: 'Sub1',
+        supplier_pn: 'SubPN1',
+        description: 'D1'
       },
       {
         bom_revision_id: bomRevisionId,
-        main_supplier: 'Murata',
-        main_supplier_pn: 'GRM188',
-        supplier: 'Samsung',
-        supplier_pn: 'CL10'
+        main_supplier: 'Main1',
+        main_supplier_pn: 'PN1',
+        supplier: 'Sub2',
+        supplier_pn: 'SubPN2',
+        description: 'D2'
       }
     ];
 
-    secondSourceRepo.createMany(data);
+    secondSourceRepo.createMany(ssData);
 
-    const items = secondSourceRepo.findByBomRevision(bomRevisionId);
-    expect(items.length).toBe(2);
+    const results = secondSourceRepo.findByBomRevision(bomRevisionId);
+    expect(results.length).toBe(2);
   });
 
   it('should delete second sources by revision', () => {
     secondSourceRepo.create({
       bom_revision_id: bomRevisionId,
       main_supplier: 'A',
-      main_supplier_pn: 'A1',
-      supplier: 'B',
-      supplier_pn: 'B1'
+      main_supplier_pn: 'B',
+      supplier: 'C',
+      supplier_pn: 'D',
+      description: 'E'
     });
 
     secondSourceRepo.deleteByBomRevision(bomRevisionId);
 
-    const items = secondSourceRepo.findByBomRevision(bomRevisionId);
-    expect(items.length).toBe(0);
+    const results = secondSourceRepo.findByBomRevision(bomRevisionId);
+    expect(results.length).toBe(0);
   });
 });

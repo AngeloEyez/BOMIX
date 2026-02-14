@@ -17,7 +17,7 @@ import seriesRepo from '../database/repositories/series.repo.js';
  * @returns {Object} 建立的系列資訊
  * @throws {Error} 若建立失敗
  */
-function createSeries(filePath, description) {
+export function createSeries(filePath, description) {
     if (!filePath) {
         throw new Error('必須提供檔案路徑');
     }
@@ -44,7 +44,7 @@ function createSeries(filePath, description) {
  * @returns {Object} 系列資訊
  * @throws {Error} 若開啟失敗或檔案無效
  */
-function openSeries(filePath) {
+export function openSeries(filePath) {
     if (!filePath) {
         throw new Error('必須提供檔案路徑');
     }
@@ -75,7 +75,7 @@ function openSeries(filePath) {
  * @returns {Object} 系列資訊 (含 bomCount)
  * @throws {Error} 若尚未開啟系列
  */
-function getSeriesMeta() {
+export function getSeriesMeta() {
     try {
         const meta = seriesRepo.getMeta();
         if (!meta) {
@@ -96,7 +96,7 @@ function getSeriesMeta() {
  * @returns {Object} 更新後的系列資訊
  * @throws {Error} 若更新失敗
  */
-function updateSeriesMeta(description) {
+export function updateSeriesMeta(description) {
     if (description === undefined || description === null) {
         throw new Error('必須提供描述內容');
     }
@@ -117,7 +117,7 @@ function updateSeriesMeta(description) {
  * @returns {Object} { success: true, newPath: string }
  * @throws {Error} 若命名失敗
  */
-function renameSeries(newName) {
+export function renameSeries(newName) {
     if (!newName) {
         throw new Error('必須提供新的系列名稱');
     }

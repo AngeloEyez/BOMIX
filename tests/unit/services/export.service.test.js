@@ -2,8 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import exportService from '../../../src/main/services/export.service.js';
 import bomService from '../../../src/main/services/bom.service.js';
 import bomRevisionRepo from '../../../src/main/database/repositories/bom-revision.repo.js';
-import xlsx from 'xlsx';
 
+// Mock Electron to avoid 'app.isPackaged' error
+vi.mock('electron', () => ({
+    app: {
+        isPackaged: false,
+        getPath: vi.fn().mockReturnValue('/tmp')
+    }
+}));
+
+// Mock services and repositories
 vi.mock('../../../src/main/services/bom.service.js');
 vi.mock('../../../src/main/database/repositories/bom-revision.repo.js');
 vi.mock('../../../src/main/database/connection.js', () => ({
@@ -11,25 +19,20 @@ vi.mock('../../../src/main/database/connection.js', () => ({
         getDb: vi.fn()
     }
 }));
-vi.mock('xlsx', () => {
-    return {
-        default: {
-            utils: {
-                book_new: vi.fn(() => ({ SheetNames: [], Sheets: {} })),
-                book_append_sheet: vi.fn(),
-                aoa_to_sheet: vi.fn(() => ({}))
-            },
-            writeFile: vi.fn()
-        }
-    };
-});
+
+// Mock template engine
+vi.mock('../../../src/main/services/excel-export/template-engine.js', () => ({
+    exportFromTemplate: vi.fn()
+}));
+
+import { exportFromTemplate } from '../../../src/main/services/excel-export/template-engine.js';
 
 describe('Export Service', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    it('should export BOM to Excel', () => {
+    it('should export BOM to Excel using template engine', async () => {
         const bomRevisionId = 1;
         const outputFilePath = 'output.xlsx';
 
@@ -39,7 +42,8 @@ describe('Export Service', () => {
             phase_name: 'EVT',
             version: '0.1',
             description: 'Test BOM',
-            mode: 'NPI'
+            mode: 'NPI',
+            project_code: 'TEST-PROJ'
         };
 
         const mockBomView = [
@@ -50,13 +54,25 @@ describe('Export Service', () => {
         bomRevisionRepo.findById.mockReturnValue(mockRevision);
         bomService.getBomView.mockReturnValue(mockBomView);
 
-        exportService.exportBom(bomRevisionId, outputFilePath);
+        await exportService.exportBom(bomRevisionId, outputFilePath);
 
         expect(bomRevisionRepo.findById).toHaveBeenCalledWith(bomRevisionId);
         expect(bomService.getBomView).toHaveBeenCalledWith(bomRevisionId);
-        expect(xlsx.utils.book_new).toHaveBeenCalled();
-        // Check if append_sheet was called 8 times (8 sheets)
-        expect(xlsx.utils.book_append_sheet).toHaveBeenCalledTimes(8);
-        expect(xlsx.writeFile).toHaveBeenCalledWith(expect.any(Object), outputFilePath);
+
+        expect(exportFromTemplate).toHaveBeenCalledTimes(1);
+        expect(exportFromTemplate).toHaveBeenCalledWith(
+            'ebom_template.xlsx',
+            expect.objectContaining({
+                meta: expect.objectContaining({
+                    PROJECT_CODE: 'TEST-PROJ',
+                    PHASE: 'EVT'
+                }),
+                items: expect.arrayContaining([
+                    expect.objectContaining({ M_HHPN: 'PN1' }),
+                    expect.objectContaining({ M_HHPN: 'PN2' })
+                ])
+            }),
+            outputFilePath
+        );
     });
 });

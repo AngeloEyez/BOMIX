@@ -20,7 +20,7 @@ import projectRepo from '../database/repositories/project.repo.js';
  * @param {string} suffix - 版本後綴 (Optional)
  * @returns {Object} 匯入結果 { success: true, bomRevisionId }
  */
-function importBom(filePath, projectId, phaseName, version, suffix) {
+export function importBom(filePath, projectId, phaseName, version, suffix) {
     // 1. 讀取 Excel 檔案
     const workbook = xlsx.readFile(filePath);
     const filename = path.basename(filePath);
@@ -38,12 +38,12 @@ function importBom(filePath, projectId, phaseName, version, suffix) {
     for (const sheetName of potentialHeaderSheets) {
         const sheet = workbook.Sheets[sheetName];
         if (sheet) {
-            console.log(`[Debug] Trying to read header from sheet: ${sheetName}`);
+            //console.log(`[Debug] Trying to read header from sheet: ${sheetName}`);
             const info = parseHeader(sheet);
             
             // 檢查是否讀取成功：至少 Project Code 或 Date 或 Description 有值
             if (info.project_code || info.date || info.description || info.pca_pn) {
-                console.log(`[Debug] Header found in ${sheetName}:`, info);
+                //console.log(`[Debug] Header found in ${sheetName}:`, info);
                 headerInfo = info;
                 headerFound = true;
                 break;
@@ -167,7 +167,7 @@ function importBom(filePath, projectId, phaseName, version, suffix) {
  * @param {Object} sheet - Sheet Object
  * @returns {Object} Header Info
  */
-function parseHeader(sheet) {
+export function parseHeader(sheet) {
     const getValue = (cell) => {
         const val = sheet[cell]?.v;
         return val ? String(val).trim() : '';
@@ -223,7 +223,7 @@ function parseHeader(sheet) {
  * @param {Array} secondSources - 用於儲存 Second Sources 的陣列
  * @returns {Array<string>} 此 Sheet 中包含的所有 locations
  */
-function parseSheet(sheet, type, defaultStatus, partsMap, secondSources) {
+export function parseSheet(sheet, type, defaultStatus, partsMap, secondSources) {
     const range = xlsx.utils.decode_range(sheet['!ref']);
     const sheetLocations = [];
 
@@ -333,7 +333,7 @@ function parseSheet(sheet, type, defaultStatus, partsMap, secondSources) {
  * @param {Set} locationsInMp
  * @returns {string} 'NPI' or 'MP'
  */
-function determineMode(locationsInMainProcess, locationsInProto, locationsInMp) {
+export function determineMode(locationsInMainProcess, locationsInProto, locationsInMp) {
     let mode = 'NPI'; // Default
 
     // 檢查 MP 條件

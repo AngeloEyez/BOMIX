@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
-const DatabaseManager = require('../../../src/main/database/connection');
-const projectRepo = require('../../../src/main/database/repositories/project.repo');
-const bomRevisionRepo = require('../../../src/main/database/repositories/bom-revision.repo');
-const partsRepo = require('../../../src/main/database/repositories/parts.repo');
+import DatabaseManager from '../../../src/main/database/connection.js';
+import projectRepo from '../../../src/main/database/repositories/project.repo.js';
+import bomRevisionRepo from '../../../src/main/database/repositories/bom-revision.repo.js';
+import partsRepo from '../../../src/main/database/repositories/parts.repo.js';
 
 describe('Parts Repository', () => {
   const testDbPath = path.join(__dirname, 'parts.test.bomix');
