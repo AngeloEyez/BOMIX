@@ -285,20 +285,13 @@ function BomPage() {
                 </div>
             )}
 
-            {/* 載入中 */}
-            {isLoading && (
-                <div className="text-center py-8 text-sm text-slate-400 animate-pulse">
-                    載入中...
-                </div>
-            )}
-
             {/* ========================================
                 BOM 表格 — 主要內容區
              ======================================== */}
             <div className="flex-1 min-h-0 overflow-hidden">
-                {!isLoading && selectedRevisionId ? (
-                    <BomTable data={bomView} />
-                ) : !isLoading && !selectedRevisionId ? (
+                {selectedRevisionId ? (
+                    <BomTable data={bomView} isLoading={isLoading} />
+                ) : (
                     <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400 dark:text-slate-500">
                         <FileSpreadsheet size={40} className="text-slate-300 dark:text-slate-600" />
                         <p className="text-sm">
@@ -307,7 +300,7 @@ function BomPage() {
                                 : '請先選擇專案。'}
                         </p>
                     </div>
-                ) : null}
+                )}
             </div>
 
             {/* 拖曳覆蓋層 */}

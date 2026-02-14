@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react'
 import useSeriesStore from '../../stores/useSeriesStore'
+import useAppStore from '../../stores/useAppStore'
 
 /**
  * 底部狀態列元件。
@@ -16,6 +17,7 @@ import useSeriesStore from '../../stores/useSeriesStore'
 function StatusBar() {
     const [version, setVersion] = useState('')
     const { isOpen, currentPath } = useSeriesStore()
+    const { isDbBusy } = useAppStore()
 
     // 啟動時取得應用程式版本號
     useEffect(() => {
@@ -35,12 +37,14 @@ function StatusBar() {
             <div className="flex items-center gap-3">
                 {/* 連線狀態指示 */}
                 <span className="flex items-center gap-1">
-                    <span className={`w-2 h-2 rounded-full ${
+                    <span className={`w-2 h-2 rounded-full transition-all duration-300 ${
                         isOpen
-                            ? 'bg-emerald-500'
-                            : 'bg-slate-300 dark:bg-slate-600'
+                            ? isDbBusy
+                                ? 'bg-emerald-400 animate-ping'  // 忙碌時閃爍
+                                : 'bg-emerald-500'               // 連線時恆亮
+                            : 'bg-slate-300 dark:bg-slate-600'   // 未連線
                     }`} />
-                    {isOpen ? '已連線' : '未連線'}
+                    {isOpen ? (isDbBusy ? '存取中...' : '已連線') : '未連線'}
                 </span>
                 {/* 資料庫路徑 */}
                 {isOpen && currentPath && (

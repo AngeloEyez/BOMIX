@@ -27,7 +27,10 @@
             "label": "BOMIX: Build Win",
             "type": "npm",
             "script": "build:win",
-            "group": "build",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
             "problemMatcher": [],
             "detail": "編譯 + 打包為 Windows 執行檔"
         },

@@ -131,7 +131,8 @@ function ProjectPage() {
     // 已開啟系列 — 專案列表
     // ========================================
     return (
-        <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+        <div className="h-full overflow-auto p-6 scroll-smooth">
+            <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
             {/* 頁面標頭 */}
             <div className="flex items-center justify-between">
                 <div>
@@ -348,7 +349,8 @@ function ProjectPage() {
                 confirmText="刪除"
                 danger
             />
-        </div>
+         </div>
+       </div>
     )
 }
 

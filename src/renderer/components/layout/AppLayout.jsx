@@ -81,7 +81,7 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
                     currentPage={currentPage}
                     onNavigate={onNavigate}
                 />
-                <main className="flex-1 overflow-auto p-6 relative">
+                <main className="flex-1 overflow-hidden relative flex flex-col">
                    {children}
                 </main>
             </div>

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import useAppStore from './useAppStore'
 
 // ========================================
 // BOM 狀態管理 (Zustand)
@@ -30,6 +31,7 @@ const useBomStore = create((set, get) => ({
      * @param {number} projectId - 專案 ID
      */
     selectProject: async (projectId) => {
+        const { setDbBusy } = useAppStore.getState()
         set({
             selectedProjectId: projectId,
             selectedRevisionId: null,
@@ -38,6 +40,7 @@ const useBomStore = create((set, get) => ({
             isLoading: true,
             error: null,
         })
+        setDbBusy(true)
         try {
             const result = await window.api.bom.getRevisions(projectId)
             if (result.success) {
@@ -47,6 +50,8 @@ const useBomStore = create((set, get) => ({
             }
         } catch (error) {
             set({ error: error.message, isLoading: false })
+        } finally {
+            setDbBusy(false)
         }
     },
 
@@ -56,6 +61,7 @@ const useBomStore = create((set, get) => ({
      * @param {number} revisionId - BOM Revision ID
      */
     selectRevision: async (revisionId) => {
+        const { setDbBusy } = useAppStore.getState()
         const revision = get().revisions.find(r => r.id === revisionId) || null
         set({
             selectedRevisionId: revisionId,
@@ -63,6 +69,7 @@ const useBomStore = create((set, get) => ({
             isLoading: true,
             error: null,
         })
+        setDbBusy(true)
         try {
             const result = await window.api.bom.getView(revisionId)
             if (result.success) {
@@ -72,6 +79,8 @@ const useBomStore = create((set, get) => ({
             }
         } catch (error) {
             set({ error: error.message, isLoading: false })
+        } finally {
+            setDbBusy(false)
         }
     },
 
@@ -88,8 +97,10 @@ const useBomStore = create((set, get) => ({
      * 重新載入 Revision 列表 (不變更選取狀態)。
      */
     reloadRevisions: async () => {
+        const { setDbBusy } = useAppStore.getState()
         const projectId = get().selectedProjectId
         if (!projectId) return
+        setDbBusy(true)
         try {
             const result = await window.api.bom.getRevisions(projectId)
             if (result.success) {
@@ -97,6 +108,8 @@ const useBomStore = create((set, get) => ({
             }
         } catch (error) {
             console.error('重新載入 Revision 失敗:', error)
+        } finally {
+            setDbBusy(false)
         }
     },
 
@@ -107,7 +120,9 @@ const useBomStore = create((set, get) => ({
      * @returns {Promise<{success: boolean, error?: string}>}
      */
     deleteBom: async (revisionId) => {
+        const { setDbBusy } = useAppStore.getState()
         set({ error: null })
+        setDbBusy(true)
         try {
             const result = await window.api.bom.delete(revisionId)
             if (result.success) {
@@ -130,6 +145,8 @@ const useBomStore = create((set, get) => ({
         } catch (error) {
             set({ error: error.message })
             return { success: false, error: error.message }
+        } finally {
+            setDbBusy(false)
         }
     },
 
@@ -143,7 +160,9 @@ const useBomStore = create((set, get) => ({
      * @returns {Promise<{success: boolean, data?: Object, error?: string}>}
      */
     importExcel: async (filePath, projectId, phaseName, version) => {
+        const { setDbBusy } = useAppStore.getState()
         set({ isLoading: true, error: null })
+        setDbBusy(true)
         try {
             const result = await window.api.excel.import(filePath, projectId, phaseName, version)
             if (result.success) {
@@ -162,6 +181,8 @@ const useBomStore = create((set, get) => ({
         } catch (error) {
             set({ error: error.message, isLoading: false })
             return { success: false, error: error.message }
+        } finally {
+            setDbBusy(false)
         }
     },
 
@@ -172,6 +193,7 @@ const useBomStore = create((set, get) => ({
      * @returns {Promise<{success: boolean, error?: string}>}
      */
     exportExcel: async (revisionId) => {
+        const { setDbBusy } = useAppStore.getState()
         try {
             // 開啟儲存對話框
             const dialogResult = await window.api.dialog.showSave({
@@ -183,6 +205,7 @@ const useBomStore = create((set, get) => ({
             }
 
             set({ isLoading: true, error: null })
+            setDbBusy(true)
             const result = await window.api.excel.export(revisionId, dialogResult.data)
             set({ isLoading: false })
 
@@ -195,6 +218,8 @@ const useBomStore = create((set, get) => ({
         } catch (error) {
             set({ error: error.message, isLoading: false })
             return { success: false, error: error.message }
+        } finally {
+            setDbBusy(false)
         }
     },
 

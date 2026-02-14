@@ -288,7 +288,7 @@ function HomePage() {
     // 未開啟系列 — 歡迎畫面 (維持不變)
     // ========================================
     return (
-        <div className="flex flex-col items-center justify-center h-full gap-8 animate-fade-in">
+        <div className="flex flex-col items-center justify-center h-full gap-8 p-6 overflow-auto animate-fade-in">
             {/* ... 原本的歡迎畫面內容 ... */}
             <div className="text-center">
                 <h1 className="text-4xl font-bold text-primary-600 dark:text-primary-400 mb-2">
