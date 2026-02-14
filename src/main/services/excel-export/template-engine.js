@@ -74,19 +74,43 @@ export async function exportFromTemplate(templateName, data, outputPath) {
     const mainStyle = extractRowStyle(mainTemplateRow);
     const ssStyle = ssTemplateRow ? extractRowStyle(ssTemplateRow) : null;
 
-    // 刪除樣板列 (它們已經被讀取並儲存樣式與Mapping了)
-    // 注意：刪除列會改變後續列的索引，建議最後再刪除，或者直接覆蓋
-    // 這裡我們採用「從 startRowIndex 開始覆蓋/插入」的策略
-    // 如果樣板列在資料起始位置，直接覆蓋。
-    // 為了簡單起見，我們將 currentRowIndex 指向 mainTemplateRow 的位置，並開始填寫。
-    // 如果有 ssTemplateRow 且在 mainTemplateRow 之後，也需要處理。
-    // 最佳策略：清空 mainTemplateRow 和 ssTemplateRow 的內容，然後從 mainTemplateRow 的位置開始寫。
+    // 刪除樣板列的策略調整：
+    // 我們已經提取了樣式，現在需要移除樣板列以免它殘留在最後（被推擠下去）。
     
-    // 清空樣板列內容
-    mainTemplateRow.values = [];
-    if (ssTemplateRow) ssTemplateRow.values = [];
+    // 1. 如果有替代料樣板列，先將其刪除
+    // 注意：刪除後，下方的 Footer 會往上替補
+    if (ssTemplateRow) {
+        // ssTemplateRow.number 是 1-based index
+        // 使用 spliceRows 刪除 1 列
+        sheet.spliceRows(ssTemplateRow.number, 1);
+    }
     
-    // 迭代資料
+    // 2. 計算總共需要多少列來放資料
+    // 一個 Group 包含: 1 Main Item + N Second Sources
+    let totalDataRowsNeeded = 0;
+    data.items.forEach(group => {
+        totalDataRowsNeeded++; // Main Item
+        if (group.second_sources && group.second_sources.length > 0) {
+            totalDataRowsNeeded += group.second_sources.length;
+        }
+    });
+
+    // 3. 插入不足的空間
+    // 我們會重用 startRowIndex 這一列 (原 Main Template Row)
+    // 所以還需要插入 (totalDataRowsNeeded - 1) 列
+    const rowsToInsert = totalDataRowsNeeded - 1;
+    
+    if (rowsToInsert > 0) {
+        // 在 startRowIndex 下方插入空白列
+        sheet.spliceRows(startRowIndex + 1, 0, ...new Array(rowsToInsert).fill(null));
+    }
+    
+    // 4. 清空第一列 (startRowIndex) 的內容，準備寫入
+    // 其實不需要顯式清空，因為我們會在 fillRow 覆蓋它
+    // 但為了保險（例如有些 cell 沒被 mapping 到），可以先清空 values
+    // sheet.getRow(startRowIndex).values = []; // 暫不執行，保留 row height 等設定
+    
+    // 迭代資料填寫
     for (let i = 0; i < data.items.length; i++) {
         const group = data.items[i];
         
@@ -100,6 +124,8 @@ export async function exportFromTemplate(templateName, data, outputPath) {
 
         // 4.1 填寫主料
         const row = sheet.getRow(currentRowIndex);
+        // 清除可能殘留的樣板標籤 (因為是重用樣板列)
+        // row.values = []; // 導致樣式遺失? 不會，因為我們會在 fillRow 重新設定
         fillRow(row, group, mainMapping, mainStyle, fillStyle);
         currentRowIndex++;
 
@@ -107,13 +133,40 @@ export async function exportFromTemplate(templateName, data, outputPath) {
         if (group.second_sources && group.second_sources.length > 0 && ssStyle) {
             for (const ss of group.second_sources) {
                 const ssRow = sheet.getRow(currentRowIndex);
-                fillRow(ssRow, ss, ssMapping, ssStyle, fillStyle); // 同 Group 同色
+                fillRow(ssRow, ss, ssMapping, ssStyle, fillStyle);
                 currentRowIndex++;
             }
         }
     }
 
-    // 5. 存檔
+    // 5. 處理 Footer Tags (如 {{TOTAL_QTY}})
+    // 資料寫完後，currentRowIndex 指向 Footer 的開始
+    const dataEndRow = currentRowIndex - 1;
+    
+    sheet.eachRow((row, rowNumber) => {
+        if (rowNumber < currentRowIndex) return; // 只處理 Footer 區域
+
+        row.eachCell((cell) => {
+            if (typeof cell.value === 'string' && cell.value.includes('{{TOTAL_QTY}}')) {
+                // 產生 SUM 公式: SUM(H6:H10)
+                // 假設 Qty 在 H 欄 (col 8) ? 
+                // 我們需要知道 Qty 在哪一欄。
+                // 方法 A: 硬編碼 (不建議)
+                // 方法 B: 搜尋 mainMapping['M_QTY'] 得到 colNumber (建議)
+                
+                const qtyColIndex = mainMapping['M_QTY'];
+                if (qtyColIndex) {
+                    const colLetter = row.getCell(qtyColIndex).address.replace(/[0-9]/g, ''); // 取得欄位代號 (e.g. H)
+                    const formula = `SUM(${colLetter}${startRowIndex}:${colLetter}${dataEndRow})`;
+                    cell.value = { formula: formula };
+                } else {
+                    cell.value = 'ERR: No Qty Col';
+                }
+            }
+        });
+    });
+
+    // 6. 存檔
     await workbook.xlsx.writeFile(outputPath);
 }
 
