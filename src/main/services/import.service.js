@@ -38,12 +38,12 @@ function importBom(filePath, projectId, phaseName, version, suffix) {
     for (const sheetName of potentialHeaderSheets) {
         const sheet = workbook.Sheets[sheetName];
         if (sheet) {
-            console.log(`[Debug] Trying to read header from sheet: ${sheetName}`);
+            //console.log(`[Debug] Trying to read header from sheet: ${sheetName}`);
             const info = parseHeader(sheet);
             
             // 檢查是否讀取成功：至少 Project Code 或 Date 或 Description 有值
             if (info.project_code || info.date || info.description || info.pca_pn) {
-                console.log(`[Debug] Header found in ${sheetName}:`, info);
+                //console.log(`[Debug] Header found in ${sheetName}:`, info);
                 headerInfo = info;
                 headerFound = true;
                 break;
