@@ -15,7 +15,7 @@ import { exportFromTemplate } from './excel-export/template-engine.js';
  * @param {string} outputFilePath - 輸出檔案路徑
  * @returns {Object} { success: true }
  */
-async function exportBom(bomRevisionId, outputFilePath) {
+export async function exportBom(bomRevisionId, outputFilePath) {
     // 1. 取得 BOM Data
     const bomView = bomService.getBomView(bomRevisionId);
     const revision = bomRevisionRepo.findById(bomRevisionId);

@@ -14,7 +14,7 @@ import projectRepo from '../database/repositories/project.repo.js';
  * @returns {Object} 建立的專案資訊
  * @throws {Error} 若專案代碼已存在或參數無效
  */
-function createProject(projectCode, description) {
+export function createProject(projectCode, description) {
     if (!projectCode) {
         throw new Error('必須提供專案代碼 (Project Code)');
     }
@@ -35,7 +35,7 @@ function createProject(projectCode, description) {
  * @returns {Array<Object>} 專案列表
  * @throws {Error} 若查詢失敗
  */
-function getAllProjects() {
+export function getAllProjects() {
     try {
         return projectRepo.findAll();
     } catch (error) {
@@ -50,7 +50,7 @@ function getAllProjects() {
  * @returns {Object} 專案資訊
  * @throws {Error} 若專案不存在
  */
-function getProjectById(id) {
+export function getProjectById(id) {
     try {
         const project = projectRepo.findById(id);
         if (!project) {
@@ -72,7 +72,7 @@ function getProjectById(id) {
  * @returns {Object} 更新後的專案資訊
  * @throws {Error} 若更新失敗
  */
-function updateProject(id, data) {
+export function updateProject(id, data) {
     if (!data || Object.keys(data).length === 0) {
         throw new Error('未提供更新資料');
     }
@@ -98,7 +98,7 @@ function updateProject(id, data) {
  * @returns {Object} 刪除結果 { success: true }
  * @throws {Error} 若刪除失敗
  */
-function deleteProject(id) {
+export function deleteProject(id) {
     try {
         const success = projectRepo.delete(id);
         if (!success) {

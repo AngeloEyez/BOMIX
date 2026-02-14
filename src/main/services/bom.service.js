@@ -17,7 +17,7 @@ import dbManager from '../database/connection.js';
  * @returns {Array<Object>} BOM 列表
  * @throws {Error} 若 BOM 版本不存在
  */
-function getBomView(bomRevisionId) {
+export function getBomView(bomRevisionId) {
     const revision = bomRevisionRepo.findById(bomRevisionId);
     if (!revision) {
         throw new Error(`找不到 ID 為 ${bomRevisionId} 的 BOM 版本`);
@@ -61,7 +61,7 @@ function getBomView(bomRevisionId) {
  * @param {Object} updates - 更新內容
  * @returns {Object} 更新結果 { success: true }
  */
-function updateMainItem(bomRevisionId, originalKey, updates) {
+export function updateMainItem(bomRevisionId, originalKey, updates) {
     const { supplier, supplier_pn, type } = originalKey;
 
     // 找出群組內所有零件
@@ -91,7 +91,7 @@ function updateMainItem(bomRevisionId, originalKey, updates) {
  * @param {string} [key.type]
  * @returns {Object} 刪除結果 { success: true }
  */
-function deleteMainItem(bomRevisionId, key) {
+export function deleteMainItem(bomRevisionId, key) {
     const { supplier, supplier_pn, type } = key;
 
     // 找出群組內所有零件
@@ -152,7 +152,7 @@ function deleteMainItem(bomRevisionId, key) {
  * @param {Object} data
  * @returns {Object} 建立的 Second Source
  */
-function addSecondSource(data) {
+export function addSecondSource(data) {
     return secondSourceRepo.create(data);
 }
 
@@ -163,7 +163,7 @@ function addSecondSource(data) {
  * @param {Object} data
  * @returns {Object} 更新後的 Second Source
  */
-function updateSecondSource(id, data) {
+export function updateSecondSource(id, data) {
     const updated = secondSourceRepo.update(id, data);
     if (!updated) {
         throw new Error(`找不到 ID 為 ${id} 的 Second Source`);
@@ -177,7 +177,7 @@ function updateSecondSource(id, data) {
  * @param {number} id
  * @returns {Object} { success: true }
  */
-function deleteSecondSource(id) {
+export function deleteSecondSource(id) {
     const success = secondSourceRepo.delete(id);
     if (!success) {
         throw new Error(`找不到 ID 為 ${id} 的 Second Source`);
@@ -189,7 +189,7 @@ function deleteSecondSource(id) {
  * 刪除整個 BOM
  * @param {number} bomRevisionId
  */
-function deleteBom(bomRevisionId) {
+export function deleteBom(bomRevisionId) {
     return bomRevisionRepo.delete(bomRevisionId);
 }
 
@@ -199,7 +199,7 @@ function deleteBom(bomRevisionId) {
  * @param {Object} updates
  * @returns {Object} 更新後的 BOM 版本物件
  */
-function updateBomRevision(id, updates) {
+export function updateBomRevision(id, updates) {
     const updated = bomRevisionRepo.update(id, updates);
     if (!updated) {
         throw new Error(`找不到 ID 為 ${id} 的 BOM 版本`);
@@ -214,7 +214,6 @@ export default {
     addSecondSource,
     updateSecondSource,
     deleteSecondSource,
-    deleteSecondSource,
-    deleteBom,
+    deleteBom, // Fixed duplicate key in original file
     updateBomRevision
 };

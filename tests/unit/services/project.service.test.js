@@ -69,7 +69,7 @@ describe('Project Service', () => {
 
     it('should update project', () => {
         const created = createProject('P1', 'Old Desc');
-        const updated = updateProject(created.id, 'New Desc');
+        const updated = updateProject(created.id, { description: 'New Desc' });
         expect(updated.description).toBe('New Desc');
 
         const retrieved = getProjectById(created.id);

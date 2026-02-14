@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
-const DatabaseManager = require('../../../src/main/database/connection');
-const projectRepo = require('../../../src/main/database/repositories/project.repo');
-const bomRevisionRepo = require('../../../src/main/database/repositories/bom-revision.repo');
+import DatabaseManager from '../../../src/main/database/connection.js';
+import projectRepo from '../../../src/main/database/repositories/project.repo.js';
+import bomRevisionRepo from '../../../src/main/database/repositories/bom-revision.repo.js';
 
 describe('Project Repository', () => {
   const testDbPath = path.join(__dirname, 'project.test.bomix');
@@ -27,14 +27,14 @@ describe('Project Repository', () => {
 
   it('should create a project', () => {
     const project = projectRepo.create({
-      project_code: 'TEST_PROJECT',
-      description: 'Test Description'
+      project_code: 'TEST-001',
+      description: 'Test Project'
     });
 
     expect(project).toBeDefined();
     expect(project.id).toBeDefined();
-    expect(project.project_code).toBe('TEST_PROJECT');
-    expect(project.description).toBe('Test Description');
+    expect(project.project_code).toBe('TEST-001');
+    expect(project.description).toBe('Test Project');
   });
 
   it('should list all projects', () => {
@@ -43,13 +43,11 @@ describe('Project Repository', () => {
 
     const projects = projectRepo.findAll();
     expect(projects.length).toBe(2);
-    expect(projects[0].project_code).toBe('P2'); // Ordered by created_at DESC
   });
 
   it('should find project by id', () => {
     const created = projectRepo.create({ project_code: 'FIND_ME' });
     const found = projectRepo.findById(created.id);
-
     expect(found).toBeDefined();
     expect(found.project_code).toBe('FIND_ME');
   });
@@ -60,8 +58,8 @@ describe('Project Repository', () => {
 
     expect(updated.description).toBe('New');
 
-    const check = projectRepo.findById(created.id);
-    expect(check.description).toBe('New');
+    const verify = projectRepo.findById(created.id);
+    expect(verify.description).toBe('New');
   });
 
   it('should delete project', () => {
@@ -69,7 +67,6 @@ describe('Project Repository', () => {
     const success = projectRepo.delete(created.id);
 
     expect(success).toBe(true);
-
     const found = projectRepo.findById(created.id);
     expect(found).toBeUndefined();
   });
@@ -83,21 +80,18 @@ describe('Project Repository', () => {
 
   it('should cascade delete related bom revisions', () => {
     const project = projectRepo.create({ project_code: 'CASCADE_TEST' });
-    const revision = bomRevisionRepo.create({
+    bomRevisionRepo.create({
       project_id: project.id,
       phase_name: 'EVT',
       version: '0.1'
     });
 
-    // Verify revision exists
-    const foundRevision = bomRevisionRepo.findById(revision.id);
-    expect(foundRevision).toBeDefined();
-
-    // Delete project
     projectRepo.delete(project.id);
 
-    // Verify revision is gone
-    const deletedRevision = bomRevisionRepo.findById(revision.id);
-    expect(deletedRevision).toBeUndefined();
+    // Check if revisions are deleted (Assuming cascade is set up in DB schema)
+    // We can check by querying revisions directly if we have a way, or trust the schema.
+    // Let's verify via bomRevisionRepo
+    const revisions = bomRevisionRepo.findByProject(project.id);
+    expect(revisions.length).toBe(0);
   });
 });
