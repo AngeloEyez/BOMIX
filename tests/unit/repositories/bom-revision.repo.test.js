@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 
-const DatabaseManager = require('../../../src/main/database/connection');
-const projectRepo = require('../../../src/main/database/repositories/project.repo');
-const bomRevisionRepo = require('../../../src/main/database/repositories/bom-revision.repo');
+import DatabaseManager from '../../../src/main/database/connection.js';
+import projectRepo from '../../../src/main/database/repositories/project.repo.js';
+import bomRevisionRepo from '../../../src/main/database/repositories/bom-revision.repo.js';
 
 describe('BOM Revision Repository', () => {
   const testDbPath = path.join(__dirname, 'bom.test.bomix');
@@ -46,6 +46,17 @@ describe('BOM Revision Repository', () => {
     expect(revision.version).toBe('0.1');
   });
 
+  it('should create a BOM revision with mode', () => {
+    const revision = bomRevisionRepo.create({
+      project_id: projectId,
+      phase_name: 'PVT',
+      version: '1.0',
+      mode: 'MP'
+    });
+
+    expect(revision.mode).toBe('MP');
+  });
+
   it('should find revisions by project', () => {
     bomRevisionRepo.create({ project_id: projectId, phase_name: 'EVT', version: '0.1' });
     bomRevisionRepo.create({ project_id: projectId, phase_name: 'EVT', version: '0.2' });
@@ -54,10 +65,6 @@ describe('BOM Revision Repository', () => {
     const revisions = bomRevisionRepo.findByProject(projectId);
 
     expect(revisions.length).toBe(3);
-    // Ordered by phase_name ASC, version DESC
-    // DVT 1.0
-    // EVT 0.2
-    // EVT 0.1
     expect(revisions[0].phase_name).toBe('DVT');
     expect(revisions[1].version).toBe('0.2');
   });
@@ -66,7 +73,7 @@ describe('BOM Revision Repository', () => {
     const created = bomRevisionRepo.create({
       project_id: projectId,
       phase_name: 'PVT',
-      version: '1.0'
+      version: '2.0' // changed to 2.0 to avoid conflict with 'create with mode' test
     });
 
     const found = bomRevisionRepo.findById(created.id);
@@ -78,7 +85,7 @@ describe('BOM Revision Repository', () => {
     const created = bomRevisionRepo.create({
       project_id: projectId,
       phase_name: 'MP',
-      version: '1.0'
+      version: '3.0'
     });
 
     const success = bomRevisionRepo.delete(created.id);

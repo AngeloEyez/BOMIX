@@ -5,8 +5,8 @@
 
 import { registerSeriesIpc } from './series.ipc.js'
 import { registerProjectIpc } from './project.ipc.js'
-// import { registerBomIpc } from './bom.ipc.js'
-// import { registerExcelIpc } from './excel.ipc.js'
+import { registerBomIpc } from './bom.ipc.js'
+import { registerExcelIpc } from './excel.ipc.js'
 import { registerAppIpc } from './app.ipc.js'
 // import { registerSeriesIpc } from './series.ipc.js'
 
@@ -29,8 +29,8 @@ export function registerAllIpcHandlers(ipcMain) {
     registerProjectIpc(ipcMain)
 
     // TODO: Phase 4 — BOM 管理 IPC
-    // registerBomIpc(ipcMain)
+    registerBomIpc(ipcMain)
 
     // TODO: Phase 5 — Excel 匯入匯出 IPC
-    // registerExcelIpc(ipcMain)
+    registerExcelIpc(ipcMain)
 }
