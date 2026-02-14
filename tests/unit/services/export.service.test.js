@@ -3,7 +3,7 @@ import exportService from '../../../src/main/services/export.service.js';
 import bomService from '../../../src/main/services/bom.service.js';
 import bomRevisionRepo from '../../../src/main/database/repositories/bom-revision.repo.js';
 
-// Mock Electron to avoid 'app.isPackaged' error
+// Mock Electron
 vi.mock('electron', () => ({
     app: {
         isPackaged: false,
@@ -22,17 +22,26 @@ vi.mock('../../../src/main/database/connection.js', () => ({
 
 // Mock template engine
 vi.mock('../../../src/main/services/excel-export/template-engine.js', () => ({
+    loadTemplate: vi.fn(),
+    createWorkbook: vi.fn(),
+    appendSheetFromTemplate: vi.fn(),
+    saveWorkbook: vi.fn(),
     exportFromTemplate: vi.fn()
 }));
 
-import { exportFromTemplate } from '../../../src/main/services/excel-export/template-engine.js';
+import {
+    loadTemplate,
+    createWorkbook,
+    appendSheetFromTemplate,
+    saveWorkbook
+} from '../../../src/main/services/excel-export/template-engine.js';
 
 describe('Export Service', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    it('should export BOM to Excel using template engine', async () => {
+    it('should export multi-sheet BOM', async () => {
         const bomRevisionId = 1;
         const outputFilePath = 'output.xlsx';
 
@@ -46,33 +55,46 @@ describe('Export Service', () => {
             project_code: 'TEST-PROJ'
         };
 
-        const mockBomView = [
-            { item: 1, hhpn: 'PN1', type: 'SMD', bom_status: 'I', second_sources: [] },
-            { item: 2, hhpn: 'PN2', type: 'PTH', bom_status: 'X', second_sources: [] }
-        ];
+        const mockTemplateWb = {
+            getWorksheet: vi.fn().mockReturnValue({ name: 'Sheet1' }),
+            worksheets: [{ name: 'Sheet1' }]
+        };
+        const mockTargetWb = {};
 
+        // Mock return values
         bomRevisionRepo.findById.mockReturnValue(mockRevision);
-        bomService.getBomView.mockReturnValue(mockBomView);
+        loadTemplate.mockResolvedValue(mockTemplateWb);
+        createWorkbook.mockReturnValue(mockTargetWb);
+
+        // Mock executeView results
+        bomService.executeView.mockReturnValue([
+            { item: 1, hhpn: 'PN1', type: 'SMD', bom_status: 'I', second_sources: [] }
+        ]);
 
         await exportService.exportBom(bomRevisionId, outputFilePath);
 
+        // Verify calls
         expect(bomRevisionRepo.findById).toHaveBeenCalledWith(bomRevisionId);
-        expect(bomService.getBomView).toHaveBeenCalledWith(bomRevisionId);
+        expect(loadTemplate).toHaveBeenCalledWith('ebom.xlsx');
+        expect(createWorkbook).toHaveBeenCalled();
 
-        expect(exportFromTemplate).toHaveBeenCalledTimes(1);
-        expect(exportFromTemplate).toHaveBeenCalledWith(
-            'ebom_template.xlsx',
+        // Should call appendSheetFromTemplate 8 times (for 8 sheets in export definition)
+        expect(appendSheetFromTemplate).toHaveBeenCalledTimes(8);
+
+        // Verify first call (ALL sheet)
+        // Since we mocked getWorksheet to return a sheet, the logic uses the requested source name 'ALL'
+        expect(appendSheetFromTemplate).toHaveBeenNthCalledWith(
+            1,
+            mockTargetWb,
+            mockTemplateWb,
+            'ALL', // source
+            'ALL', // target
             expect.objectContaining({
-                meta: expect.objectContaining({
-                    PROJECT_CODE: 'TEST-PROJ',
-                    PHASE: 'EVT'
-                }),
-                items: expect.arrayContaining([
-                    expect.objectContaining({ M_HHPN: 'PN1' }),
-                    expect.objectContaining({ M_HHPN: 'PN2' })
-                ])
-            }),
-            outputFilePath
+                meta: expect.objectContaining({ PROJECT_CODE: 'TEST-PROJ' }),
+                items: expect.any(Array)
+            })
         );
+
+        expect(saveWorkbook).toHaveBeenCalledWith(mockTargetWb, outputFilePath);
     });
 });
