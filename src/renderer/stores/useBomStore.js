@@ -203,7 +203,10 @@ const useBomStore = create((set, get) => ({
         try {
             // 開啟儲存對話框
             const currentRevision = get().selectedRevision
-            const defaultName = currentRevision?.filename || 'BOM_Export.xlsx'
+
+            // 取得原始檔名並將其副檔名強制改為 .xlsx
+            const baseName = currentRevision?.filename?.replace(/\.[^/.]+$/, "") || 'BOM_Export'
+            const defaultName = `${baseName}.xlsx`
             
             const dialogResult = await window.api.dialog.showSave({
                 title: '匯出 BOM Excel',
