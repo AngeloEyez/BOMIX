@@ -95,86 +95,46 @@ export async function exportFromTemplate(templateName, data, outputPath) {
 // ---------------- Helper Functions ----------------
 
 function copySheetContent(source, target) {
-    // 複製屬性
-    if (source.properties) {
-        target.properties = JSON.parse(JSON.stringify(source.properties));
-        // Reset tabColor or other distinct properties if needed? Keep for now.
-    }
+    // 使用 Model Deep Copy 方式複製 Sheet
+    // 這種方式可以完整保留所有屬性（包含 Merges, Images, DataValidations 等）
+    // 且避免了手動設定 target.columns 導致 ExcelJS 誤判寫入 Header Row (Row 1) 的問題
 
-    // 複製頁面設定
-    if (source.pageSetup) {
-        target.pageSetup = JSON.parse(JSON.stringify(source.pageSetup));
-    }
+    const targetName = target.name;
+    const targetId = target.id;
 
-    // 複製視圖 (Frozen panes etc)
-    if (source.views) {
-        target.views = JSON.parse(JSON.stringify(source.views));
-    }
+    // console.log(`[CopySheet] Copying from ${source.name} to ${targetName}`);
 
-    // 複製欄寬與樣式
-    // Note: iterating columns directly might miss some if not defined?
-    // ExcelJS `columnCount` is reliable.
-    if (source.columns) {
-         // Extract column definitions manually to avoid object reference issues
-         const cols = [];
-         source.columns.forEach((col, index) => {
-             cols.push({
-                 header: col.header,
-                 key: col.key,
-                 width: col.width,
-                 style: col.style ? JSON.parse(JSON.stringify(col.style)) : undefined,
-                 hidden: col.hidden,
-                 outlineLevel: col.outlineLevel
-             });
-         });
-         target.columns = cols;
-    }
+    // 1. Deep Copy Model
+    const modelCopy = JSON.parse(JSON.stringify(source.model));
 
-    // 複製列資料與樣式
-    source.eachRow({ includeEmpty: true }, (row, rowNumber) => {
-        const targetRow = target.getRow(rowNumber);
+    // 2. 修正 Model 中的 Name 與 ID
+    // 必須在 assign 給 target.model 之前修正，否則可能會因為 name 重複而報錯 (ExcelJS 驗證)
+    modelCopy.name = targetName;
+    modelCopy.id = targetId;
 
-        // Copy Values
-        // Use JSON parse/stringify to break references for rich text or objects
-        if (row.values) {
-             targetRow.values = JSON.parse(JSON.stringify(row.values));
-        }
+    // 3. 設定給 Target Sheet
+    target.model = modelCopy;
 
-        // Copy Row Properties
-        targetRow.height = row.height;
-        targetRow.hidden = row.hidden;
-        targetRow.outlineLevel = row.outlineLevel;
-
-        // Copy Cell Styles
-        row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-             const targetCell = targetRow.getCell(colNumber);
-             if (cell.style) {
-                 targetCell.style = JSON.parse(JSON.stringify(cell.style));
-             }
-             if (cell.value && typeof cell.value === 'object' && cell.value.formula) {
-                 targetCell.value = {
-                     formula: cell.value.formula,
-                     result: cell.value.result
-                 };
-             } else if (cell.value !== undefined) {
-                 targetCell.value = JSON.parse(JSON.stringify(cell.value));
-             }
+    // 4. [Fix] 手動重新套用 Merges
+    // 有時 model assignment 會遺失 merge 狀態或 style，明確再做一次 mergeCells 可確保格式正確
+    // source.model.merges 是字串陣列 ['A1:M1', ...]
+    const merges = source.model.merges;
+    if (merges && Array.isArray(merges)) {
+        merges.forEach(range => {
+            try {
+                // mergeCells 會保留左上角儲存格的樣式
+                target.mergeCells(range);
+            } catch (error) {
+                console.error(`[CopySheet] Failed to merge cells ${range}:`, error);
+            }
         });
+    }
 
-        targetRow.commit();
-    });
-
-    // 複製合併儲存格
-    const merges = source.model.merges || []; // Direct access to model merges often safer
-    merges.forEach(merge => {
-        target.mergeCells(merge);
-    });
-
-    // 複製圖片 (ExcelJS 支援度有限，這裡嘗試複製 Image Embeddings)
-    // If template has images, we might need:
-    // const images = source.getImages();
-    // images.forEach(img => { ... })
-    // Skipping images for now as per plan.
+    // 5. 確保 Name 沒被覆蓋 (以防萬一)
+    if (target.name !== targetName) {
+        // console.warn(`[CopySheet] Target name mismatch after copy. Expected: ${targetName}, Got: ${target.name}. Restoring...`);
+        target.name = targetName;
+    }
 }
 
 function fillSheet(sheet, data) {
