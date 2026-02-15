@@ -80,9 +80,17 @@
 {
   id: "uuid-string",
   type: "EXPORT_BOM",    // 任務類型
+  title: "匯出 BOM Excel", // 任務標題 (可讀性較高)
   status: "RUNNING",     // PENDING | RUNNING | COMPLETED | FAILED | CANCELLED
   progress: 45,          // 0-100
   message: "Processing sheet: SMD...",
+  logs: [                // 詳細日誌紀錄
+      { 
+        timestamp: "2023-10-27T10:00:00.000Z", 
+        message: "Processing sheet: SMD...", 
+        level: "info" // 'info' | 'warn' | 'error'
+      }
+  ],
   result: null,          // 完成時的結果 (例如 { filePath: ... })
   error: null,           // 失敗時的錯誤訊息
   metadata: { ... },     // 建立任務時的額外資訊

@@ -24,17 +24,19 @@ class ProgressService extends EventEmitter {
     /**
      * 建立新的進度任務
      * @param {string} type - 任務類型 (e.g., 'EXPORT_BOM')
-     * @param {Object} metadata - 額外資訊 (e.g., { fileName: 'test.xlsx' })
+     * @param {Object} options - 選項 { title, metadata }
      * @returns {string} taskId
      */
-    createTask(type, metadata = {}) {
+    createTask(type, { title, metadata = {} } = {}) {
         const taskId = randomUUID();
         const task = {
             id: taskId,
             type,
-            status: TASK_STATUS.PENDING,
+            title: title || type,
+            status: TASK_STATUS.PENDING, // PENDING | RUNNING | COMPLETED | FAILED | CANCELLED
             progress: 0,
             message: 'Initializing...',
+            logs: [], // Array<{ timestamp, message, level }>
             result: null,
             error: null,
             metadata,
@@ -44,6 +46,7 @@ class ProgressService extends EventEmitter {
 
         this.tasks.set(taskId, task);
         this.emit('task:created', task);
+        this.emit('task:update', task); // Ensure initial state is sent
         return taskId;
     }
 
@@ -76,6 +79,33 @@ class ProgressService extends EventEmitter {
     }
 
     /**
+     * 新增日誌
+     * @param {string} taskId
+     * @param {string} message
+     * @param {string} level - 'info' | 'warn' | 'error'
+     */
+    log(taskId, message, level = 'info') {
+        const task = this.tasks.get(taskId);
+        if (!task) return;
+
+        const logEntry = {
+            timestamp: new Date().toISOString(),
+            message,
+            level
+        };
+
+        task.logs.push(logEntry);
+        task.updatedAt = new Date().toISOString();
+        
+        // Also update last message if it's info
+        if (level === 'info') {
+            task.message = message;
+        }
+
+        this.emit('task:update', task);
+    }
+
+    /**
      * 完成任務
      * @param {string} taskId
      * @param {Object} result - 任務結果
@@ -89,9 +119,10 @@ class ProgressService extends EventEmitter {
         task.message = 'Completed';
         task.result = result;
         task.updatedAt = new Date().toISOString();
+        
+        this.log(taskId, 'Task completed successfully.', 'info');
 
         this.emit('task:complete', task);
-        // Also emit generic update so listeners can just listen to 'task:update' if they want
         this.emit('task:update', task);
     }
 
@@ -104,9 +135,13 @@ class ProgressService extends EventEmitter {
         const task = this.tasks.get(taskId);
         if (!task) return;
 
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
         task.status = TASK_STATUS.FAILED;
-        task.error = error instanceof Error ? error.message : String(error);
+        task.error = errorMessage;
         task.updatedAt = new Date().toISOString();
+
+        this.log(taskId, `Task failed: ${errorMessage}`, 'error');
 
         this.emit('task:error', task);
         this.emit('task:update', task);
@@ -127,6 +162,8 @@ class ProgressService extends EventEmitter {
         task.status = TASK_STATUS.CANCELLED;
         task.message = 'Cancelled by user';
         task.updatedAt = new Date().toISOString();
+
+        this.log(taskId, 'Task cancelled by user.', 'warn');
 
         this.emit('task:cancel', task);
         this.emit('task:update', task);

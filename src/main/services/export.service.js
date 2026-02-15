@@ -30,7 +30,10 @@ import {
  * @returns {Object} { taskId }
  */
 export function exportBom(bomRevisionId, outputFilePath) {
-    const taskId = progressService.createTask('EXPORT_BOM', { bomRevisionId, outputFilePath });
+    const taskId = progressService.createTask('EXPORT_BOM', { 
+        title: '匯出 BOM Excel',
+        metadata: { bomRevisionId, outputFilePath } 
+    });
 
     // Start background process
     runExportTask(taskId, bomRevisionId, outputFilePath).catch(error => {
@@ -46,13 +49,15 @@ export function exportBom(bomRevisionId, outputFilePath) {
  */
 async function runExportTask(taskId, bomRevisionId, outputFilePath) {
     try {
-        progressService.updateProgress(taskId, 5, 'Initializing export...');
+        progressService.log(taskId, 'Initializing export process...', 'info');
+        progressService.updateProgress(taskId, 5, 'Initializing...');
 
         // 1. 取得 BOM Revision
         const revision = bomRevisionRepo.findById(bomRevisionId);
         if (!revision) {
             throw new Error(`找不到 ID 為 ${bomRevisionId} 的 BOM 版本`);
         }
+        progressService.log(taskId, `Target Revision: ${revision.project_code} - ${revision.phase_name} ${revision.version}`, 'info');
 
         // 2. 取得 Export Definition
         const exportDef = getExportDefinition(EXPORT_IDS.EBOM);
@@ -81,6 +86,8 @@ async function runExportTask(taskId, bomRevisionId, outputFilePath) {
         for (const sheetDef of exportDef.sheets) {
             const sheetProgress = Math.round(10 + (processedSheets / totalSheets) * 80);
             progressService.updateProgress(taskId, sheetProgress, `Processing sheet: ${sheetDef.targetSheetName}`);
+            // Log less frequently to avoid spam, or log every sheet start
+            // progressService.log(taskId, `Starting sheet: ${sheetDef.targetSheetName}`, 'info');
 
             // 5.0 載入 Template Workbook (如果尚未載入)
             const templateFile = sheetDef.templateFile;
@@ -93,10 +100,6 @@ async function runExportTask(taskId, bomRevisionId, outputFilePath) {
             const viewDef = getViewDefinition(sheetDef.viewId);
 
             // 5.1 執行 View 取得資料
-            // 若 executeView 耗時，這裡會阻塞 Event Loop。
-            // 但目前它是 In-Memory + SQLite (sync)，所以確實會阻塞。
-            // 在 Node 中要解決這個，需要 Worker Threads。
-            // 鑑於目前的資料量 (通常 BOM 不會太大)，暫時接受同步執行。
             const bomView = bomService.executeView(bomRevisionId, viewDef);
 
             // 5.2 轉換資料結構 (Mapping to Tags)
@@ -133,7 +136,7 @@ async function runExportTask(taskId, bomRevisionId, outputFilePath) {
                  if (templateWorkbook.worksheets.length > 0) {
                      actualSourceSheetName = templateWorkbook.worksheets[0].name;
                  } else {
-                     console.warn(`Template sheet ${sheetDef.sourceSheetName} not found in ${templateFile} and no fallback available.`);
+                     progressService.log(taskId, `Template sheet ${sheetDef.sourceSheetName} not found via fallback. Skipping.`, 'warn');
                      processedSheets++;
                      continue;
                  }
@@ -146,11 +149,14 @@ async function runExportTask(taskId, bomRevisionId, outputFilePath) {
                 sheetDef.targetSheetName,
                 { meta, items }
             );
+            
+            progressService.log(taskId, `Sheet "${sheetDef.targetSheetName}" generated with ${items.length} items.`, 'info');
 
             processedSheets++;
         }
 
         progressService.updateProgress(taskId, 90, 'Saving file...');
+        progressService.log(taskId, 'Saving workbook to temporary file...', 'info');
 
         // 6. 存檔 (Temp -> Move)
         const tempDir = app.getPath('temp');
@@ -163,6 +169,7 @@ async function runExportTask(taskId, bomRevisionId, outputFilePath) {
 
         // 如果有指定輸出路徑，則移動檔案
         if (outputFilePath) {
+            progressService.log(taskId, `Moving file to: ${outputFilePath}`, 'info');
             // 使用 copyFile + unlink 以避免跨磁碟區移動檔案時發生 EXDEV 錯誤
             await fs.copyFile(tempFilePath, outputFilePath);
             await fs.unlink(tempFilePath);

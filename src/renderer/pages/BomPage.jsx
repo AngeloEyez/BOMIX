@@ -6,6 +6,7 @@ import {
 import useSeriesStore from '../stores/useSeriesStore'
 import useProjectStore from '../stores/useProjectStore'
 import useBomStore from '../stores/useBomStore'
+import useProgressStore from '../stores/useProgressStore'
 import BomTable from '../components/tables/BomTable'
 import ImportDialog from '../components/dialogs/ImportDialog'
 import ConfirmDialog from '../components/dialogs/ConfirmDialog'
@@ -33,6 +34,11 @@ function BomPage() {
         deleteBom, importExcel, exportExcel,
         clearError, reset,
     } = useBomStore()
+
+    // Check if any export task is running
+    const isExporting = useProgressStore(state => 
+        Array.from(state.sessions.values()).some(s => s.type === 'EXPORT_BOM' && s.status === 'RUNNING')
+    )
 
     // 匯入對話框
     const [isImportOpen, setIsImportOpen] = useState(false)
@@ -90,9 +96,9 @@ function BomPage() {
     /**
      * 處理匯出 Excel
      */
-    const handleExport = async () => {
+    const handleExport = () => {
         if (selectedRevisionId) {
-            await exportExcel(selectedRevisionId)
+            exportExcel(selectedRevisionId) // Async fire-and-forget, handled by progress system
         }
     }
 
@@ -234,16 +240,16 @@ function BomPage() {
                 {/* 匯出按鈕 */}
                 <button
                     onClick={handleExport}
-                    disabled={!selectedRevisionId}
+                    disabled={!selectedRevisionId || isExporting}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
                         text-slate-600 dark:text-slate-300
                         bg-slate-100 dark:bg-surface-700 hover:bg-slate-200 dark:hover:bg-surface-600
                         rounded-lg transition-colors
                         disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="匯出 Excel BOM"
+                    title={isExporting ? "匯出中..." : "匯出 Excel BOM"}
                 >
-                    <Download size={14} />
-                    匯出
+                    <Download size={14} className={isExporting ? "animate-bounce" : ""} />
+                    {isExporting ? "匯出中..." : "匯出"}
                 </button>
 
                 {/* 刪除版本按鈕 */}
