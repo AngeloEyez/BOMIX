@@ -1,6 +1,6 @@
 # BOM 視圖 (Views) 與 匯出 (Exports) 定義指南
 
-> 版本：1.2.0 | 最後更新：2026-02-15
+> 版本：1.3.0 | 最後更新：2026-02-15
 
 本文檔說明 BOMIX 專案中 Excel 匯出模組的運作原理，以及如何定義 BOM 視圖與 Excel 匯出邏輯。相關程式碼位於 `src/main/services/bom-factory.service.js` 與 `src/main/services/excel-export/template-engine.js`。
 
@@ -32,15 +32,18 @@ View (視圖) 定義了如何從原始 BOM 資料中篩選與聚合零件。所�
 每個 View 包含 `id` 與 `filter` 設定：
 
 ```javascript
-{
-    id: 'view_id',
-    filter: {
-        types: ['SMD', 'PTH'], // (選填) 製程類型白名單
-        bom_statuses: ['P', 'M'], // (選填) 狀態白名單 (搭配 SPECIFIC 邏輯)
-        statusLogic: 'ACTIVE' | 'INACTIVE' | 'SPECIFIC' | 'IGNORE', // 狀態篩選邏輯
-        ccl: 'Y' // (選填) 是否只顯示 Critical Parts
-    }
-}
+// 定義於 bom-factory.service.js
+const VIEWS = {
+    ALL: {
+        id: 'all_view',
+        filter: { statusLogic: 'ACTIVE' }
+    },
+    SMD: {
+        id: 'smd_view',
+        filter: { types: ['SMD'], statusLogic: 'ACTIVE' }
+    },
+    // ...
+};
 ```
 
 #### statusLogic 說明
@@ -117,8 +120,18 @@ Export Definition 定義了 Excel 匯出的結構，包含使用的樣板檔案�
 ## 5. 維護操作指引
 
 ### 如何新增 View
-1. 在 `src/main/services/bom-factory.service.js` 的 `VIEW_IDS` 常數中新增 ID。
-2. 在 `VIEWS` 物件中新增定義。
+1. 開啟 `src/main/services/bom-factory.service.js`。
+2. 在 `VIEWS` 物件中新增一個新的屬性定義 View 的內容。
+   ```javascript
+   const VIEWS = {
+       // ... existing views
+       MY_NEW_VIEW: {
+           id: 'my_new_view',
+           filter: { ... }
+       }
+   };
+   ```
+   `VIEW_IDS` 會自動包含新的 View Key (例如 `VIEW_IDS.MY_NEW_VIEW`)。
 
 ### 如何新增或修改 Export Sheet
 1. 修改 `src/main/services/bom-factory.service.js` 中的 `EXPORTS` 定義。

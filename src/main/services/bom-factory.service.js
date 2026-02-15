@@ -4,51 +4,46 @@
  * @module services/bom-factory
  */
 
-export const VIEW_IDS = {
-    ALL: 'all_view',
-    SMD: 'smd_view',
-    PTH: 'pth_view',
-    BOTTOM: 'bottom_view',
-    NI: 'ni_view',
-    PROTO: 'proto_view',
-    MP: 'mp_view',
-    CCL: 'ccl_view'
-};
-
 const VIEWS = {
-    [VIEW_IDS.ALL]: {
-        id: VIEW_IDS.ALL,
+    ALL: {
+        id: 'all_view',
         filter: { statusLogic: 'ACTIVE' }
     },
-    [VIEW_IDS.SMD]: {
-        id: VIEW_IDS.SMD,
+    SMD: {
+        id: 'smd_view',
         filter: { types: ['SMD'], statusLogic: 'ACTIVE' }
     },
-    [VIEW_IDS.PTH]: {
-        id: VIEW_IDS.PTH,
+    PTH: {
+        id: 'pth_view',
         filter: { types: ['PTH'], statusLogic: 'ACTIVE' }
     },
-    [VIEW_IDS.BOTTOM]: {
-        id: VIEW_IDS.BOTTOM,
+    BOTTOM: {
+        id: 'bottom_view',
         filter: { types: ['BOTTOM'], statusLogic: 'ACTIVE' }
     },
-    [VIEW_IDS.NI]: {
-        id: VIEW_IDS.NI,
+    NI: {
+        id: 'ni_view',
         filter: { statusLogic: 'INACTIVE' }
     },
-    [VIEW_IDS.PROTO]: {
-        id: VIEW_IDS.PROTO,
+    PROTO: {
+        id: 'proto_view',
         filter: { bom_statuses: ['P'], statusLogic: 'SPECIFIC' }
     },
-    [VIEW_IDS.MP]: {
-        id: VIEW_IDS.MP,
+    MP: {
+        id: 'mp_view',
         filter: { bom_statuses: ['M'], statusLogic: 'SPECIFIC' }
     },
-    [VIEW_IDS.CCL]: {
-        id: VIEW_IDS.CCL,
+    CCL: {
+        id: 'ccl_view',
         filter: { ccl: 'Y', statusLogic: 'IGNORE' }
     }
 };
+
+// 為了相容性與易用性，產生 VIEW_IDS 物件
+export const VIEW_IDS = Object.keys(VIEWS).reduce((acc, key) => {
+    acc[key] = VIEWS[key].id;
+    return acc;
+}, {});
 
 export const EXPORT_IDS = {
     EBOM: 'ebom'
@@ -76,7 +71,8 @@ const EXPORTS = {
  * @returns {Object} View 定義物件
  */
 export function getViewDefinition(viewId) {
-    const view = VIEWS[viewId];
+    // 透過 value 查找 (效能雖非最佳，但 View 數量極少，維護性較高)
+    const view = Object.values(VIEWS).find(v => v.id === viewId);
     if (!view) {
         throw new Error(`Unknown View ID: ${viewId}`);
     }
