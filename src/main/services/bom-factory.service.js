@@ -45,6 +45,12 @@ export const VIEW_IDS = Object.keys(VIEWS).reduce((acc, key) => {
     return acc;
 }, {});
 
+// 建立 ID 查找表以優化效能 (O(1) lookup)
+const ID_TO_VIEW_MAP = Object.values(VIEWS).reduce((acc, view) => {
+    acc[view.id] = view;
+    return acc;
+}, {});
+
 export const EXPORT_IDS = {
     EBOM: 'ebom'
 };
@@ -71,8 +77,7 @@ const EXPORTS = {
  * @returns {Object} View 定義物件
  */
 export function getViewDefinition(viewId) {
-    // 透過 value 查找 (效能雖非最佳，但 View 數量極少，維護性較高)
-    const view = Object.values(VIEWS).find(v => v.id === viewId);
+    const view = ID_TO_VIEW_MAP[viewId];
     if (!view) {
         throw new Error(`Unknown View ID: ${viewId}`);
     }
