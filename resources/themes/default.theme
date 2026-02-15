@@ -32,36 +32,36 @@
     
     /* 淺色模式 (Light Mode) */
     "light": {
-      "--bom-header-bg": "#f1f5f9",        /* Slate-100 */
-      "--bom-header-text": "#64748b",      /* Slate-500 */
+      "--bom-header-bg": "#f1f5f9",        /* Slate-100: Clean header background */
+      "--bom-header-text": "#475569",      /* Slate-600: Darker text for readability */
       
       "--bom-row-main-odd": "#ffffff",     /* White */
-      "--bom-row-main-even": "#f1f5f9",    /* Slate-100 (Increased contrast) */
+      "--bom-row-main-even": "#f8fafc",    /* Slate-50: Subtle zebra stripe */
       
-      "--bom-row-second-odd": "#f8fafc",   /* Slate-50 */
-      "--bom-row-second-even": "#f1f5f9",  /* Slate-100 */
+      "--bom-row-second-odd": "#fcfcfc",   /* Very light gray for 2nd odd */
+      "--bom-row-second-even": "#f1f5f9",  /* Slate-100: Distinct 2nd even */
       
-      "--bom-row-hover": "#eff6ff",        /* Primary-50 */
+      "--bom-row-hover": "#eff6ff",        /* Primary-50: Clear hover state */
       
       "--bom-text-main": "#334155",        /* Slate-700 */
-      "--bom-text-second": "#64748b"       /* Slate-500 */
+      "--bom-text-second": "#64748b"       /* Slate-500: Lighter for 2nd source */
     },
 
     /* 深色模式 (Dark Mode) */
     "dark": {
-      "--bom-header-bg": "#334155",        /* Surface-700 */
+      "--bom-header-bg": "#1e293b",        /* Surface-800: Distinct header */
       "--bom-header-text": "#94a3b8",      /* Slate-400 */
       
-      "--bom-row-main-odd": "#1e293b",     /* Surface-800 */
-      "--bom-row-main-even": "#334155",    /* Surface-700 (Zebra) */
+      "--bom-row-main-odd": "#0f172a",     /* Surface-900: Darker base */
+      "--bom-row-main-even": "#1e293b",    /* Surface-800: Lighter stripe */
       
-      "--bom-row-second-odd": "#1e293b",   /* Surface-800 */
-      "--bom-row-second-even": "#334155",  /* Surface-700 */
+      "--bom-row-second-odd": "#0f172a",   /* Same as main odd */
+      "--bom-row-second-even": "#1e293b",  /* Same as main even */
       
-      "--bom-row-hover": "#1d4ed8",        /* Primary-700 */
+      "--bom-row-hover": "#172554",        /* Primary-950/Mixed: Subtle hover */
       
-      "--bom-text-main": "#cbd5e1",        /* Slate-300 */
-      "--bom-text-second": "#64748b"       /* Slate-500 */
+      "--bom-text-main": "#e2e8f0",        /* Slate-200 */
+      "--bom-text-second": "#94a3b8"       /* Slate-400 */
     }
   }
 }

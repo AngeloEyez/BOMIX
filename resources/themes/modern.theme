@@ -32,19 +32,19 @@
     
     /* 淺色模式 (Light Mode) */
     "light": {
-      "--bom-header-bg": "#f4f4f5",        /* Zinc-100 */
-      "--bom-header-text": "#71717a",      /* Zinc-500 */
+      "--bom-header-bg": "#fafafa",        /* Zinc-50: Very light header */
+      "--bom-header-text": "#52525b",      /* Zinc-600: Readable but soft */
       
       "--bom-row-main-odd": "#ffffff",     /* White */
-      "--bom-row-main-even": "#f4f4f5",    /* Zinc-100 (Better contrast) */
+      "--bom-row-main-even": "#f4f4f5",    /* Zinc-100: Texture stripe */
       
-      "--bom-row-second-odd": "#fafafa",   /* Zinc-50 */
-      "--bom-row-second-even": "#f3f4f6",  /* Zinc-100 */
+      "--bom-row-second-odd": "#fafafa",   /* Zinc-50: Slight diff for 2nd source */
+      "--bom-row-second-even": "#f4f4f5",  /* Zinc-100 */
       
-      "--bom-row-hover": "#f3f4f6",        /* Surface-100 */
+      "--bom-row-hover": "#f5f3ff",        /* Violet-50: Tinted hover */
       
-      "--bom-text-main": "#3f3f46",        /* Zinc-700 */
-      "--bom-text-second": "#71717a"       /* Zinc-500 */
+      "--bom-text-main": "#27272a",        /* Zinc-800: Strong text */
+      "--bom-text-second": "#71717a"       /* Zinc-500: Muted 2nd source */
     },
 
     /* 深色模式 (Dark Mode) */
@@ -52,15 +52,15 @@
       "--bom-header-bg": "#27272a",        /* Surface-800 */
       "--bom-header-text": "#a1a1aa",      /* Zinc-400 */
       
-      "--bom-row-main-odd": "#18181b",     /* Surface-900 */
-      "--bom-row-main-even": "#27272a",    /* Surface-800 (Zebra) */
+      "--bom-row-main-odd": "#18181b",     /* Surface-900 (Zinc-900) */
+      "--bom-row-main-even": "#27272a",    /* Surface-800 (Zinc-800) Zebra */
       
-      "--bom-row-second-odd": "#18181b",   /* Surface-900 */
-      "--bom-row-second-even": "#27272a",  /* Surface-800 */
+      "--bom-row-second-odd": "#18181b",   /* Zinc-900 */
+      "--bom-row-second-even": "#27272a",  /* Zinc-800 */
       
-      "--bom-row-hover": "#6d28d9",        /* Primary-700 */
+      "--bom-row-hover": "#2e1065",        /* Violet-950: Rich hover */
       
-      "--bom-text-main": "#e4e4e7",        /* Zinc-200 */
+      "--bom-text-main": "#f4f4f5",        /* Zinc-100 */
       "--bom-text-second": "#71717a"       /* Zinc-500 */
     }
   }
