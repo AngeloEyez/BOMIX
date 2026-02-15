@@ -4,12 +4,15 @@
 // 參考 Windows 11 Fluent Design 風格
 // ========================================
 
-// import Sidebar from './Sidebar' // Removed
-import StatusBar from './StatusBar'
 import { Sun, Moon, Menu } from 'lucide-react'
 import useSettingsStore from '../../stores/useSettingsStore'
 import useSeriesStore from '../../stores/useSeriesStore'
+import useProgressStore from '../../stores/useProgressStore' // [New]
 import { useEffect } from 'react'
+
+// Components
+import AppStatusLine from './AppStatusLine' // [New]
+import ProgressDialog from '../dialogs/ProgressDialog' // [New]
 
 /**
  * 應用程式主佈局元件。
@@ -26,6 +29,7 @@ import { useEffect } from 'react'
 function AppLayout({ pages, currentPage, onNavigate, children }) {
     const { theme, toggleTheme, initSettings, isLoading } = useSettingsStore()
     const { isOpen, currentPath } = useSeriesStore()
+    const initProgressListeners = useProgressStore(state => state.initListeners) // [New]
 
     // 從路徑取得檔案名稱
     const seriesName = currentPath ? currentPath.split(/[\\/]/).pop()?.replace('.bomix', '') : null
@@ -34,6 +38,11 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
     useEffect(() => {
         initSettings()
     }, [initSettings])
+
+    // 初始化進度監聽 [New]
+    useEffect(() => {
+        initProgressListeners()
+    }, [initProgressListeners])
 
     // 更新視窗標題
     useEffect(() => {
@@ -93,7 +102,10 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
             </main>
 
             {/* --- 底部狀態列 --- */}
-            <StatusBar />
+            <AppStatusLine />
+
+            {/* --- 全域對話框 --- */}
+            <ProgressDialog />
         </div>
     )
 }

@@ -33,6 +33,7 @@ export function registerExcelIpc(ipcMain) {
     }));
 
     // 匯出 Excel
+    // Returns: { taskId } for progress tracking
     ipcMain.handle('excel:export', withErrorHandling((bomRevisionId, outputFilePath) => {
         return exportService.exportBom(bomRevisionId, outputFilePath);
     }));

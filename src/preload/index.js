@@ -63,6 +63,17 @@ const api = {
         export: (bomRevisionId, outputFilePath) => ipcRenderer.invoke('excel:export', bomRevisionId, outputFilePath),
     },
 
+    // 進度追蹤 API
+    progress: {
+        get: (taskId) => ipcRenderer.invoke('progress:get', taskId),
+        cancel: (taskId) => ipcRenderer.invoke('progress:cancel', taskId),
+        onUpdate: (callback) => {
+            const subscription = (_event, data) => callback(data);
+            ipcRenderer.on('progress:update', subscription);
+            return () => ipcRenderer.removeListener('progress:update', subscription);
+        },
+    },
+
     // --- 檔案對話框 ---
     dialog: {
         showOpen: (options) => ipcRenderer.invoke('dialog:showOpen', options),

@@ -1,7 +1,9 @@
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import exportService from '../../../src/main/services/export.service.js';
 import bomService from '../../../src/main/services/bom.service.js';
 import bomRevisionRepo from '../../../src/main/database/repositories/bom-revision.repo.js';
+import progressService, { TASK_STATUS } from '../../../src/main/services/progress.service.js';
 
 // Mock Electron
 vi.mock('electron', () => ({
@@ -9,6 +11,16 @@ vi.mock('electron', () => ({
         isPackaged: false,
         getPath: vi.fn().mockReturnValue('/tmp')
     }
+}));
+
+// Mock fs/promises
+vi.mock('fs/promises', () => ({
+    default: {
+        copyFile: vi.fn().mockResolvedValue(undefined),
+        unlink: vi.fn().mockResolvedValue(undefined)
+    },
+    copyFile: vi.fn().mockResolvedValue(undefined),
+    unlink: vi.fn().mockResolvedValue(undefined)
 }));
 
 // Mock services and repositories
@@ -35,6 +47,7 @@ import {
     appendSheetFromTemplate,
     saveWorkbook
 } from '../../../src/main/services/excel-export/template-engine.js';
+import fs from 'fs/promises';
 
 describe('Export Service', () => {
     beforeEach(() => {
@@ -71,34 +84,40 @@ describe('Export Service', () => {
             { item: 1, hhpn: 'PN1', type: 'SMD', bom_status: 'I', second_sources: [] }
         ]);
 
-        await exportService.exportBom(bomRevisionId, outputFilePath);
+        // Start export
+        const { taskId } = exportService.exportBom(bomRevisionId, outputFilePath);
+        expect(taskId).toBeDefined();
+
+        // Wait for task completion
+        await new Promise((resolve, reject) => {
+            const check = () => {
+                const task = progressService.getTask(taskId);
+                if (task.status === TASK_STATUS.COMPLETED) resolve();
+                else if (task.status === TASK_STATUS.FAILED) reject(task.error);
+                else setTimeout(check, 10);
+            };
+            check();
+        });
 
         // Verify calls
         expect(bomRevisionRepo.findById).toHaveBeenCalledWith(bomRevisionId);
-        // loadTemplate should be called for each unique template file
-        // In default config, all 8 sheets use 'ebom.xlsx', so it should be called (at least) once.
-        // Due to caching implementation, it might be called just once if sequential.
         expect(loadTemplate).toHaveBeenCalledWith('ebom.xlsx');
-
         expect(createWorkbook).toHaveBeenCalled();
-
-        // Should call appendSheetFromTemplate 8 times (for 8 sheets in export definition)
         expect(appendSheetFromTemplate).toHaveBeenCalledTimes(8);
 
-        // Verify first call (ALL sheet)
-        // Since we mocked getWorksheet to return a sheet, the logic uses the requested source name 'ALL'
-        expect(appendSheetFromTemplate).toHaveBeenNthCalledWith(
-            1,
+        // Verify saveWorkbook called with temp path
+        expect(saveWorkbook).toHaveBeenCalledWith(
             mockTargetWb,
-            mockTemplateWb,
-            'ALL', // source
-            'ALL', // target
-            expect.objectContaining({
-                meta: expect.objectContaining({ PROJECT_CODE: 'TEST-PROJ' }),
-                items: expect.any(Array)
-            })
+            expect.stringMatching(/\/tmp\/bom_export_.*\.xlsx/)
         );
 
-        expect(saveWorkbook).toHaveBeenCalledWith(mockTargetWb, outputFilePath);
+        // Verify copyFile and unlink called (instead of rename)
+        expect(fs.copyFile).toHaveBeenCalledWith(
+            expect.stringMatching(/\/tmp\/bom_export_.*\.xlsx/),
+            outputFilePath
+        );
+        expect(fs.unlink).toHaveBeenCalledWith(
+            expect.stringMatching(/\/tmp\/bom_export_.*\.xlsx/)
+        );
     });
 });

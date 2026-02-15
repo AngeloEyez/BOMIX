@@ -192,12 +192,21 @@ const useBomStore = create((set, get) => ({
      * @param {number} revisionId - BOM Revision ID
      * @returns {Promise<{success: boolean, error?: string}>}
      */
+    /**
+     * 匯出 BOM 為 Excel (Async Task)。
+     *
+     * @param {number} revisionId - BOM Revision ID
+     * @returns {Promise<{success: boolean, error?: string}>}
+     */
     exportExcel: async (revisionId) => {
-        const { setDbBusy } = useAppStore.getState()
+        // const { setDbBusy } = useAppStore.getState() // Export is now async/non-blocking on DB (mostly)
         try {
             // 開啟儲存對話框
             const currentRevision = get().selectedRevision
-            const defaultName = currentRevision?.filename || 'BOM_Export.xlsx'
+
+            // 取得原始檔名並將其副檔名強制改為 .xlsx
+            const baseName = currentRevision?.filename?.replace(/\.[^/.]+$/, "") || 'BOM_Export'
+            const defaultName = `${baseName}.xlsx`
             
             const dialogResult = await window.api.dialog.showSave({
                 title: '匯出 BOM Excel',
@@ -208,12 +217,18 @@ const useBomStore = create((set, get) => ({
                 return { success: false, error: '使用者取消' }
             }
 
-            set({ isLoading: true, error: null })
-            setDbBusy(true)
+            // set({ isLoading: true, error: null }) // 不再鎖定 UI
+            // setDbBusy(true)
+            
+            // 呼叫 API，立即取得 Task ID
             const result = await window.api.excel.export(revisionId, dialogResult.data)
-            set({ isLoading: false })
+            
+            // set({ isLoading: false }) 
+            // setDbBusy(false)
 
             if (result.success) {
+                console.log('[BomStore] Export started, Task ID:', result.data.taskId)
+                // 進度回饋由 useProgressStore 自動處理
                 return { success: true }
             } else {
                 set({ error: result.error })
@@ -223,7 +238,7 @@ const useBomStore = create((set, get) => ({
             set({ error: error.message, isLoading: false })
             return { success: false, error: error.message }
         } finally {
-            setDbBusy(false)
+            // setDbBusy(false)
         }
     },
 
