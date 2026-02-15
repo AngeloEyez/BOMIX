@@ -23,7 +23,8 @@ const VIEWS = {
     },
     NI: {
         id: 'ni_view',
-        filter: { statusLogic: 'INACTIVE' }
+        filter: { bom_statuses: ['X'], statusLogic: 'SPECIFIC' }
+        //filter: { statusLogic: 'INACTIVE' }
     },
     PROTO: {
         id: 'proto_view',

@@ -157,9 +157,53 @@ function fillSheet(sheet, data) {
     const mainStyle = extractRowStyle(mainTemplateRow);
     const ssStyle = ssTemplateRow ? extractRowStyle(ssTemplateRow) : null;
 
-    // 5. 準備插入空間
+    // 5. 準備插入空間 & Merge Handling
+    
+    // [Fix] Strategy: Unmerge All -> Delete (if SS) -> Splice -> Remerge
+    // We capture merges upfront to avoid ExcelJS state issues.
+    let currentMerges = sheet.model.merges ? [...sheet.model.merges] : [];
+    
+    // 1. Unmerge everything immediately
+    currentMerges.forEach(range => {
+        try { sheet.unMergeCells(range); } catch (e) { /* ignore */ }
+    });
+
+    // Helper to parse range
+    const parseRange = (range) => {
+        const match = range.match(/^([A-Z]+)([0-9]+):([A-Z]+)([0-9]+)$/);
+        if (!match) return null;
+        return {
+            startCol: match[1],
+            startRow: parseInt(match[2], 10),
+            endCol: match[3],
+            endRow: parseInt(match[4], 10)
+        };
+    };
+
+    // Helper to build range
+    const buildRange = (r) => `${r.startCol}${r.startRow}:${r.endCol}${r.endRow}`;
+
     if (ssTemplateRow) {
-        sheet.spliceRows(ssTemplateRow.number, 1);
+        // Delete SS Row
+        const deleteRow = ssTemplateRow.number; // 1-based
+        sheet.spliceRows(deleteRow, 1);
+        
+        // Adjust merges: Rows > deleteRow shift UP by 1 (-1)
+        currentMerges = currentMerges.map(range => {
+            const r = parseRange(range);
+            if (!r) return range;
+            
+            // If merge is entirely below delete, shift up
+            if (r.startRow > deleteRow) {
+                r.startRow--;
+                r.endRow--;
+            } else if (r.endRow >= deleteRow) {
+                // If merge spans the deleted row... usually shouldn't happen for template row
+                // but if it does, shrink it?
+                r.endRow--;
+            }
+            return buildRange(r);
+        });
     }
 
     let totalDataRowsNeeded = 0;
@@ -171,8 +215,37 @@ function fillSheet(sheet, data) {
     });
 
     const rowsToInsert = totalDataRowsNeeded - 1;
+    // console.log(`[Debug] Insert: ${rowsToInsert}`);
+
     if (rowsToInsert > 0) {
-        sheet.spliceRows(startRowIndex + 1, 0, ...new Array(rowsToInsert).fill(null));
+        // 2. Perform Splice
+        const insertPos = startRowIndex + 1;
+        sheet.spliceRows(insertPos, 0, ...new Array(rowsToInsert).fill(null));
+
+        // 3. Adjust merges: Rows >= insertPos shift DOWN by rowsToInsert (+)
+        currentMerges = currentMerges.map(range => {
+            const r = parseRange(range);
+            if (!r) return range;
+            
+            if (r.startRow >= insertPos) {
+                r.startRow += rowsToInsert;
+                r.endRow += rowsToInsert;
+            } else if (r.endRow >= insertPos) {
+                r.endRow += rowsToInsert;
+            }
+            return buildRange(r);
+        });
+    }
+
+    // 4. Re-apply Merges
+    if (currentMerges.length > 0) {
+        currentMerges.forEach(range => {
+            try {
+                sheet.mergeCells(range);
+            } catch (error) {
+                 // console.error(`[TemplateEngine] Failed to re-merge ${range}:`, error);
+            }
+        });
     }
 
     // 6. 填寫資料
@@ -209,8 +282,13 @@ function fillSheet(sheet, data) {
     sheet.eachRow((row, rowNumber) => {
         if (rowNumber < currentRowIndex) return;
 
-        row.eachCell((cell) => {
+        row.eachCell({ includeEmpty: true }, (cell) => {
             if (typeof cell.value === 'string' && cell.value.includes('{{TOTAL_QTY}}')) {
+                // If it is merged, we should only write to the master
+                if (cell.isMerged && cell.address !== cell.master.address) {
+                    return; 
+                }
+
                 const qtyColIndex = mainMapping['M_QTY'];
                 if (qtyColIndex) {
                     const colLetter = row.getCell(qtyColIndex).address.replace(/[0-9]/g, '');
