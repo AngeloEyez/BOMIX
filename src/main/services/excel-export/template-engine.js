@@ -178,7 +178,7 @@ function fillSheet(sheet, data) {
     // 6. 填寫資料
     let currentRowIndex = startRowIndex;
     const COLOR_WHITE = 'FFFFFFFF';
-    const COLOR_GRAY = 'D0D5DE';
+    const COLOR_GRAY = 'E2E5EA';
 
     for (let i = 0; i < data.items.length; i++) {
         const group = data.items[i];
