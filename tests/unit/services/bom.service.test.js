@@ -163,7 +163,7 @@ describe('BOM Service', () => {
 
       bomService.updateMainItem(bomRevisionId, key, updates);
 
-      expect(partsRepo.findByGroup).toHaveBeenCalledWith(bomRevisionId, 'S1', 'PN1', 'SMD');
+      expect(partsRepo.findByGroup).toHaveBeenCalledWith(bomRevisionId, 'S1', 'PN1');
       expect(partsRepo.update).toHaveBeenCalledTimes(2);
       expect(partsRepo.update).toHaveBeenCalledWith(101, updates);
       expect(partsRepo.update).toHaveBeenCalledWith(102, updates);

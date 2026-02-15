@@ -76,8 +76,8 @@ export function executeView(bomRevisionId, viewDefinition) {
 
     for (const part of filteredParts) {
         // Key logic must match `partsRepo.getAggregatedBom`
-        // Key: supplier|supplier_pn|type
-        const key = `${part.supplier}|${part.supplier_pn}|${part.type}`;
+        // Key: supplier|supplier_pn
+        const key = `${part.supplier}|${part.supplier_pn}`;
 
         if (!groupedMap.has(key)) {
             groupedMap.set(key, {
@@ -85,10 +85,10 @@ export function executeView(bomRevisionId, viewDefinition) {
                 bom_revision_id: part.bom_revision_id,
                 supplier: part.supplier,
                 supplier_pn: part.supplier_pn,
-                type: part.type,
+                type: part.type, // Pick first encountered type or maybe make it null? For now, first is fine as representative.
                 hhpn: part.hhpn,
                 description: part.description,
-                bom_status: part.bom_status, // Note: Group might have mixed status if logic allows, but usually they should be consistent or we pick first.
+                bom_status: part.bom_status, 
                 ccl: part.ccl,
                 remark: part.remark,
                 item: part.item, // Min item usually
@@ -206,10 +206,11 @@ export function getBomView(bomRevisionId) {
  * @returns {Object} 更新結果 { success: true }
  */
 export function updateMainItem(bomRevisionId, originalKey, updates) {
-    const { supplier, supplier_pn, type } = originalKey;
+    const { supplier, supplier_pn } = originalKey;
 
     // 找出群組內所有零件
-    const parts = partsRepo.findByGroup(bomRevisionId, supplier, supplier_pn, type);
+    // Note: type param is ignored by findByGroup now, but we can pass null/undefined safely.
+    const parts = partsRepo.findByGroup(bomRevisionId, supplier, supplier_pn);
     if (parts.length === 0) {
         throw new Error('找不到指定的零件群組');
     }
@@ -236,10 +237,10 @@ export function updateMainItem(bomRevisionId, originalKey, updates) {
  * @returns {Object} 刪除結果 { success: true }
  */
 export function deleteMainItem(bomRevisionId, key) {
-    const { supplier, supplier_pn, type } = key;
+    const { supplier, supplier_pn } = key;
 
     // 找出群組內所有零件
-    const parts = partsRepo.findByGroup(bomRevisionId, supplier, supplier_pn, type);
+    const parts = partsRepo.findByGroup(bomRevisionId, supplier, supplier_pn);
 
     const db = dbManager.getDb();
     const transaction = db.transaction(() => {

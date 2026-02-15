@@ -41,7 +41,8 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 | **M** | MP Only，僅量產上件，驗證階段不上件 |
 
 ### 2.2 BOM Main Item（檢視用）
-- 相同 **Supplier + Supplier PN + Type** 的零件合併為一個 BOM Main Item
+- 相同 **Supplier + Supplier PN** 的零件合併為一個 BOM Main Item
+- **Type** 不再作為合併條件（即相同供應商與料號的零件，即使製程不同，也視為同一 Main Item）
 - 位置編號以逗號分隔合併,中間無空格（例：`C1,C2,C3,C5`）
 - 數量由位置編號的數量自動計算
 - **此為 UI 呈現的聚合視圖**，資料庫中以原子化儲存（一個 location = 一筆紀錄）

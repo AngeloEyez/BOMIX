@@ -36,7 +36,7 @@ const VIEWS = {
     },
     CCL: {
         id: 'ccl_view',
-        filter: { ccl: 'Y', statusLogic: 'IGNORE' }
+        filter: { ccl: 'Y', statusLogic: 'ACTIVE' }
     }
 };
 
