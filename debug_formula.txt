@@ -1,0 +1,4 @@
+[Debug] Row 9 Formula Found:
+H: val={"formula":"SUM(H6:H8)"}, type=6, master=H9, isMerged=true
+I: val={"formula":"SUM(H6:H8)"}, type=1, master=H9, isMerged=true
+Sheet Merges: A1:M1, A2:M2, H9:I9

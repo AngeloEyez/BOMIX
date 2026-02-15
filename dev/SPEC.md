@@ -41,7 +41,8 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 | **M** | MP Only，僅量產上件，驗證階段不上件 |
 
 ### 2.2 BOM Main Item（檢視用）
-- 相同 **Supplier + Supplier PN + Type** 的零件合併為一個 BOM Main Item
+- 相同 **Supplier + Supplier PN** 的零件合併為一個 BOM Main Item
+- **Type** 不再作為合併條件（即相同供應商與料號的零件，即使製程不同，也視為同一 Main Item）
 - 位置編號以逗號分隔合併,中間無空格（例：`C1,C2,C3,C5`）
 - 數量由位置編號的數量自動計算
 - **此為 UI 呈現的聚合視圖**，資料庫中以原子化儲存（一個 location = 一筆紀錄）
@@ -187,7 +188,30 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 
 - 工作表名稱對應 `bom_status`（NI→X, PROTO→P, MP→M）
 - `type` 留空
-- **覆蓋規則**：這三個頁面的零件 `location` 可能與 SMD/PTH/BOTTOM 中的零件重複，若有重複（同一 location），以**最新取得的 `bom_status` 覆蓋**，`type` 不覆蓋; 若無重複，則新增一筆零件紀錄。
+
+**覆蓋與新增規則：**
+
+系統需先依據零件分佈判斷 Mode (NPI / MP)，再依據下列規則處理狀態頁面的零件：
+
+1.  **NI 頁面**：
+    -   若零件已存在於 Phase 1 (SMD/PTH/BOTTOM)，**新增**一筆 `bom_status=X` 的紀錄（不覆蓋原紀錄）。
+    -   若零件不存在，則新增一筆 `bom_status=X` 的紀錄。
+
+2.  **PROTO 頁面**：
+    -   若 Mode = **NPI**：
+        -   若零件已存在於 Phase 1，**覆蓋**原紀錄的 `bom_status` 為 `P`。
+        -   若零件不存在，則新增一筆 `bom_status=P` 的紀錄。
+    -   若 Mode = **MP**：
+        -   若零件已存在於 Phase 1，**新增**一筆 `bom_status=P` 的紀錄（保留原紀錄，例如 `I`）。
+        -   若零件不存在，則新增一筆 `bom_status=P` 的紀錄。
+
+3.  **MP 頁面**：
+    -   若 Mode = **MP**：
+        -   若零件已存在於 Phase 1，**覆蓋**原紀錄的 `bom_status` 為 `M`。
+        -   若零件不存在，則新增一筆 `bom_status=M` 的紀錄。
+    -   若 Mode = **NPI**：
+        -   若零件已存在於 Phase 1，**新增**一筆 `bom_status=M` 的紀錄（保留原紀錄，例如 `I`）。
+        -   若零件不存在，則新增一筆 `bom_status=M` 的紀錄。
 
 #### NPI / MP 模式判斷邏輯 (Mode Determination)
 

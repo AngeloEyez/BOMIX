@@ -121,7 +121,7 @@ function getAggregatedBom(bomRevisionId) {
       bom_revision_id,
       supplier,
       supplier_pn,
-      type,
+      MIN(type) as type, -- We pick one type arbitrarily or maybe distinct types logic needed? User said "don't include type in grouping". So Type becomes a non-identifying field.
       hhpn,
       description,
       bom_status,
@@ -132,7 +132,7 @@ function getAggregatedBom(bomRevisionId) {
       MIN(item) as item
     FROM parts
     WHERE bom_revision_id = ?
-    GROUP BY supplier, supplier_pn, type
+    GROUP BY supplier, supplier_pn
     ORDER BY item ASC
   `);
 
@@ -196,13 +196,8 @@ function findByGroup(bomRevisionId, supplier, supplier_pn, type) {
   `;
   const params = [bomRevisionId, supplier, supplier_pn];
 
-  if (type !== undefined && type !== null) {
-      sql += ` AND type = ?`;
-      params.push(type);
-  } else {
-      sql += ` AND type IS NULL`;
-  }
-
+  // Revised logic: Ignore type parameter for Main Item grouping as per new requirement.
+  // We only filter by supplier and supplier_pn.
   return db.prepare(sql).all(...params);
 }
 

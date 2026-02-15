@@ -10,6 +10,150 @@ import bomRevisionRepo from '../database/repositories/bom-revision.repo.js';
 import dbManager from '../database/connection.js';
 
 /**
+ * 取得 BOM 原始資料 (包含 Parts 與 Second Sources)
+ * @param {number} bomRevisionId
+ * @returns {Object} { parts: Array, secondSources: Array }
+ */
+export function getBomData(bomRevisionId) {
+    const parts = partsRepo.findByBomRevision(bomRevisionId);
+    const secondSources = secondSourceRepo.findByBomRevision(bomRevisionId);
+    return { parts, secondSources };
+}
+
+/**
+ * 執行 BOM View (In-Memory Aggregation)
+ *
+ * @param {number} bomRevisionId
+ * @param {Object} viewDefinition - 從 bom-factory 取得的 View 定義
+ * @returns {Array<Object>} 聚合後的 BOM 列表
+ */
+export function executeView(bomRevisionId, viewDefinition) {
+    // 1. 取得 BOM Revision (確認 Mode)
+    const revision = bomRevisionRepo.findById(bomRevisionId);
+    if (!revision) {
+        throw new Error(`找不到 ID 為 ${bomRevisionId} 的 BOM 版本`);
+    }
+    const mode = revision.mode || 'NPI'; // Default to NPI
+
+    // 2. 取得原始資料
+    const { parts, secondSources } = getBomData(bomRevisionId);
+
+    // 3. 準備 Filter 邏輯
+    const filter = viewDefinition.filter;
+
+    // 定義狀態集合
+    let allowedStatuses = [];
+    if (filter.statusLogic === 'ACTIVE') {
+        allowedStatuses = mode === 'MP' ? ['I', 'M'] : ['I', 'P'];
+    } else if (filter.statusLogic === 'INACTIVE') {
+        allowedStatuses = mode === 'MP' ? ['X', 'P'] : ['X', 'M'];
+    } else if (filter.statusLogic === 'SPECIFIC') {
+        allowedStatuses = filter.bom_statuses || [];
+    }
+
+    // 4. 過濾零件
+    const filteredParts = parts.filter(part => {
+        // Type Filter
+        if (filter.types && filter.types.length > 0) {
+            if (!filter.types.includes(part.type)) return false;
+        }
+
+        // Status Filter
+        if (filter.statusLogic !== 'IGNORE') {
+            if (!allowedStatuses.includes(part.bom_status)) return false;
+        }
+
+        // CCL Filter
+        if (filter.ccl && part.ccl !== filter.ccl) {
+            return false;
+        }
+
+        return true;
+    });
+
+    // 5. 分組與聚合 (Group by supplier + supplier_pn + type)
+    const groupedMap = new Map();
+
+    for (const part of filteredParts) {
+        // Key logic must match `partsRepo.getAggregatedBom`
+        // Key: supplier|supplier_pn
+        const key = `${part.supplier}|${part.supplier_pn}`;
+
+        if (!groupedMap.has(key)) {
+            groupedMap.set(key, {
+                // Main Item Representative Fields
+                bom_revision_id: part.bom_revision_id,
+                supplier: part.supplier,
+                supplier_pn: part.supplier_pn,
+                type: part.type, // Pick first encountered type or maybe make it null? For now, first is fine as representative.
+                hhpn: part.hhpn,
+                description: part.description,
+                bom_status: part.bom_status, 
+                ccl: part.ccl,
+                remark: part.remark,
+                item: part.item, // Min item usually
+
+                // Aggregation Fields
+                locations: [],
+                quantity: 0
+            });
+        }
+
+        const group = groupedMap.get(key);
+        group.locations.push(part.location);
+        group.quantity += 1;
+
+        // Update Min Item
+        if (part.item && (!group.item || part.item < group.item)) {
+            group.item = part.item;
+        }
+    }
+
+    // Convert Map to Array and Finalize Aggregation
+    const mainItems = Array.from(groupedMap.values()).map(group => {
+        // Sort Locations
+        // Simple sort for now. Ideally should be alphanumeric sort (R1, R2, R10...)
+        group.locations.sort((a, b) => {
+             // Try to parse number from string if possible for better sort
+             return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+        });
+
+        return {
+            ...group,
+            locations: group.locations.join(',')
+        };
+    });
+
+    // Sort Main Items by Item Number (to match Repo behavior)
+    mainItems.sort((a, b) => {
+        if (a.item === null) return 1;
+        if (b.item === null) return -1;
+        return a.item - b.item;
+    });
+
+    // 6. 關聯 Second Sources
+    // Optimization: Build Index for Second Sources
+    // SS Key: main_supplier|main_supplier_pn
+    const ssMap = new Map();
+    for (const ss of secondSources) {
+        const key = `${ss.main_supplier}|${ss.main_supplier_pn}`;
+        if (!ssMap.has(key)) {
+            ssMap.set(key, []);
+        }
+        ssMap.get(key).push(ss);
+    }
+
+    // Attach
+    return mainItems.map(item => {
+        const key = `${item.supplier}|${item.supplier_pn}`;
+        return {
+            ...item,
+            second_sources: ssMap.get(key) || []
+        };
+    });
+}
+
+/**
  * 取得 BOM 聚合視圖
  * 包含 Main Items (聚合後的零件) 與其關聯的 Second Sources
  *
@@ -62,10 +206,11 @@ export function getBomView(bomRevisionId) {
  * @returns {Object} 更新結果 { success: true }
  */
 export function updateMainItem(bomRevisionId, originalKey, updates) {
-    const { supplier, supplier_pn, type } = originalKey;
+    const { supplier, supplier_pn } = originalKey;
 
     // 找出群組內所有零件
-    const parts = partsRepo.findByGroup(bomRevisionId, supplier, supplier_pn, type);
+    // Note: type param is ignored by findByGroup now, but we can pass null/undefined safely.
+    const parts = partsRepo.findByGroup(bomRevisionId, supplier, supplier_pn);
     if (parts.length === 0) {
         throw new Error('找不到指定的零件群組');
     }
@@ -92,20 +237,10 @@ export function updateMainItem(bomRevisionId, originalKey, updates) {
  * @returns {Object} 刪除結果 { success: true }
  */
 export function deleteMainItem(bomRevisionId, key) {
-    const { supplier, supplier_pn, type } = key;
+    const { supplier, supplier_pn } = key;
 
     // 找出群組內所有零件
-    const parts = partsRepo.findByGroup(bomRevisionId, supplier, supplier_pn, type);
-
-    // 找出關聯的 Second Sources (僅依據 supplier 和 supplier_pn)
-    // 注意: Second Source 不依賴 type，但通常 Main Item 的唯一性包含 type
-    // 若不同 type 有相同的 supplier/supplier_pn，second source 會被共享嗎?
-    // 根據 SPEC 2.3: "透過 (bom_revision_id, main_supplier, main_supplier_pn) 邏輯鍵關聯"
-    // 所以 Second Source 是跟隨 (Supplier + PN) 的，不分 Type。
-    // 如果刪除某個 Type 的 Main Item，是否要刪除 Second Source?
-    // 如果還有其他 Type 的 Main Item 使用相同的 Supplier + PN，則不應刪除 Second Source?
-    // 但通常同一料號只有一個 Type。
-    // 這裡保守起見，若該 BOM 版本下沒有其他 Main Item 使用此 Supplier+PN，則刪除 Second Source。
+    const parts = partsRepo.findByGroup(bomRevisionId, supplier, supplier_pn);
 
     const db = dbManager.getDb();
     const transaction = db.transaction(() => {
@@ -115,25 +250,7 @@ export function deleteMainItem(bomRevisionId, key) {
         }
 
         // 檢查是否還有其他零件使用此 Supplier + PN
-        const remainingParts = partsRepo.findByGroup(bomRevisionId, supplier, supplier_pn, null); // type=null mean ignore type check if implemented that way?
-        // Wait, partsRepo.findByGroup implementation:
-        // if type is null/undefined in arg, it explicitly checks `AND type IS NULL`.
-        // So I need a way to check "Any type".
-        // `findByGroup` logic:
-        // if (type !== undefined && type !== null) ... else AND type IS NULL
-        // So strictly speaking I cannot use findByGroup to find "any type".
-        // I'll assume for now strict deletion: logic in SPEC says SS is bound to main_supplier/pn.
-        // If I delete the Main Item (group), and if that was the last group using this PN, I should delete SS.
-        // But for simplicity in Phase 5, let's just delete the parts.
-        // Second Sources might become orphaned if no Main Item points to them, but they are stored separately.
-        // Wait, UI presents SS under Main Item. If Main Item is gone, SS is invisible.
-        // So maybe I should delete them too?
-        // Let's explicitly delete SS associated with this Main Supplier/PN.
-
-        // Use direct SQL or Repo method?
-        // Second Source Repo doesn't have "deleteByMainItem".
-        // I'll iterate and delete for now, or assume orphan cleanup is separate.
-        // Let's iterate.
+        // 若該 BOM 版本下沒有其他 Main Item 使用此 Supplier+PN，則刪除 Second Source。
         const allSS = secondSourceRepo.findByBomRevision(bomRevisionId);
         const relatedSS = allSS.filter(ss => ss.main_supplier === supplier && ss.main_supplier_pn === supplier_pn);
 
@@ -208,12 +325,14 @@ export function updateBomRevision(id, updates) {
 }
 
 export default {
+    getBomData,
+    executeView,
     getBomView,
     updateMainItem,
     deleteMainItem,
     addSecondSource,
     updateSecondSource,
     deleteSecondSource,
-    deleteBom, // Fixed duplicate key in original file
+    deleteBom,
     updateBomRevision
 };

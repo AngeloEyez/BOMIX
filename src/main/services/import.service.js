@@ -78,6 +78,7 @@ export function importBom(filePath, projectId, phaseName, version, suffix) {
     // 階段一：製程頁面
     const processSheets = ['SMD', 'PTH', 'BOTTOM'];
     const partsMap = new Map(); // Key: location, Value: Part Object
+    const additionalParts = []; // 用於存放 "新增" 的重複 location 零件 (如 NI, 或不同 Mode 的 Proto/MP 零件)
     const secondSources = [];   // List of Second Source Objects
 
     processSheets.forEach(type => {
@@ -87,37 +88,132 @@ export function importBom(filePath, projectId, phaseName, version, suffix) {
         }
     });
 
-    // 階段二：狀態頁面
+    // 階段二：狀態頁面讀取 (不直接更新 partsMap)
+    // 分別讀取 NI, PROTO, MP Sheet 的內容
+    const niParts = [];
+    const protoParts = [];
+    const mpParts = [];
+
     const statusSheets = [
-        { name: 'NI', status: 'X' },
-        { name: 'PROTO', status: 'P' },
-        { name: 'MP', status: 'M' }
+        { name: 'NI', collection: niParts, status: 'X' },
+        { name: 'PROTO', collection: protoParts, status: 'P' },
+        { name: 'MP', collection: mpParts, status: 'M' }
     ];
 
-    // 用於 Mode 判斷的集合
-    const locationsInMainProcess = new Set(partsMap.keys());
-    const locationsInProto = new Set();
-    const locationsInMp = new Set();
-
-    statusSheets.forEach(({ name, status }) => {
+    statusSheets.forEach(({ name, collection, status }) => {
         const sheet = workbook.Sheets[name];
         if (sheet) {
             // 這裡傳入 null 作為 type，因為這些頁面不定義 type
-            // 並傳入 partsMap 進行覆蓋或新增
-            const sheetLocations = parseSheet(sheet, null, status, partsMap, secondSources);
+            // 傳入一個新的 Map 來收集該 Sheet 的零件，避免影響主 partsMap
+            const sheetPartsMap = new Map();
+            const sheetSecondSources = []; // 暫存，稍後合併
+            parseSheet(sheet, null, status, sheetPartsMap, sheetSecondSources);
+            
+            // 將解析出的零件存入對應的 collection
+            sheetPartsMap.forEach(part => {
+                collection.push(part);
+            });
 
-            if (name === 'PROTO') {
-                sheetLocations.forEach(loc => locationsInProto.add(loc));
-            } else if (name === 'MP') {
-                sheetLocations.forEach(loc => locationsInMp.add(loc));
-            }
+            // 合併 Second Sources
+            secondSources.push(...sheetSecondSources);
         }
     });
 
+    // 建立用於 Mode 判斷的 Set (僅包含 location)
+    const locationsInProto = new Set(protoParts.map(p => p.location));
+    const locationsInMp = new Set(mpParts.map(p => p.location));
+
     // 4. 判斷 Mode
+    // 判斷邏輯:
+    // NPI Mode: PROTO 頁面中有任何零件出現在主製程中
+    // MP Mode: MP 頁面中有任何零件出現在主製程中
+    // 預設: NPI
+    const locationsInMainProcess = new Set(partsMap.keys());
     const mode = determineMode(locationsInMainProcess, locationsInProto, locationsInMp);
 
-    // 5. 儲存至資料庫
+    // 5. 根據 Mode 與 Sheet 來源更新 partsMap
+    // 邏輯:
+    // - NI Sheet:
+    //   - 若零件已存在 partsMap (Phase 1): 新增該零件 with bom_status='X'
+    //   - 若零件不存在: 新增該零件 with bom_status='X' (parseSheet 預設行為) -> 這裡我們手動處理
+    
+    // 處理 NI Parts
+    niParts.forEach(part => {
+        // NI Sheet 的零件，Spec 定義:
+        // "若有重複（同一 location），以最新取得的 bom_status 覆蓋... 若無重複，則新增一筆零件紀錄。"
+        // 但使用者需求變更: "如果 phase 1 partsMap 中有找到該零件, 則... 新增這顆零件 with bom_status=X"
+        // 也就是說，對於 NI sheet，無論是否存在於 Phase 1，我們都要保留這個 'X' 狀態的零件。
+        // 如果 Phase 1 已經有這個 location (例如 Status I)，我們不能覆蓋它，而是要新增一個 Status X 的紀錄?
+        // 根據 User Request: "如果 phase 1 partsMap 中有找到該零件, 則分sheet處理: if (sheetName = 'NI') { 新增這顆零件with bom_status=X }"
+        // 這意味著同一個 location 可能會有多筆紀錄 (一個 I, 一個 X)?
+        // 讓我們確認 Schema: parts table primary key 是 id. unique constrain 是什麼?
+        // Schema: INDEX idx_parts_location ON parts(bom_revision_id, location) -> 不是 Unique Index.
+        // 所以同一個 location 可以有多筆紀錄。
+        
+        // 實作:
+        // 在 partsMap 中，key 是 location。如果我們直接用 map.set 相同 location，會覆蓋。
+        // 所以我們需要一個機制來處理 "新增"。
+        // 由於最後是轉成 Array 插入 DB，我們可以將這些 "新增" 的零件直接放入 partsToInsert 陣列，而不一定要放入 partsMap。
+        // 但要注意，partsMap 目前是用來去重的 (針對 Phase 1)。
+        
+        // 策略:
+        // partsMap 保留 Phase 1 的零件 (狀態通常是 I)。
+        // Phase 2 的零件，根據邏輯決定是 "修改 partsMap 中的零件" 還是 "作為新零件加入"。
+
+        const loc = part.location;
+        if (partsMap.has(loc)) {
+            // Phase 1 中有此零件
+            // NI Sheet: 新增這顆零件 with bom_status=X
+            // 為了避免 key 衝突，我們不放入 partsMap，而是稍後直接合併到輸出陣列
+            // 但為了方便，我們可以給它一個臨時的 unique key 或者直接收集到 `additionalParts`
+            additionalParts.push(part); 
+        } else {
+            // Phase 1 中沒有此零件 -> 新增 (原邏輯)
+            partsMap.set(loc, part);
+        }
+    });
+
+    // 處理 PROTO Parts
+    protoParts.forEach(part => {
+        const loc = part.location;
+        if (partsMap.has(loc)) {
+            // Phase 1 中有此零件
+            if (mode === 'NPI') {
+                // Mode NPI: PROTO sheet內的零件覆蓋bom_Status到partsMap
+                const existingPart = partsMap.get(loc);
+                existingPart.bom_status = 'P';
+                // 其他屬性是否要覆蓋? 根據原邏輯: "以最新取得的 bom_status 覆蓋，type 不覆蓋"
+                // 這裡我們只更新 status
+            } else {
+                // Mode MP (或其他): PROTO sheet內零件新增 with bom_status=P
+                additionalParts.push(part);
+            }
+        } else {
+            // Phase 1 中沒有 -> 新增
+            partsMap.set(loc, part);
+        }
+    });
+
+    // 處理 MP Parts
+    mpParts.forEach(part => {
+        const loc = part.location;
+        if (partsMap.has(loc)) {
+            // Phase 1 中有此零件
+            if (mode === 'MP') {
+                // Mode MP: MP sheet內的零件覆蓋bom_status到 partsMap
+                const existingPart = partsMap.get(loc);
+                existingPart.bom_status = 'M';
+            } else {
+                // Mode NPI (或其他): MP sheet內新增這顆零件 with bom_status=M
+                additionalParts.push(part);
+            }
+        } else {
+            // Phase 1 中沒有 -> 新增
+            partsMap.set(loc, part);
+        }
+    });
+
+    // 6. 儲存至資料庫
     // 建立 BOM Revision
     const revisionData = {
         project_id: projectId,
@@ -137,7 +233,13 @@ export function importBom(filePath, projectId, phaseName, version, suffix) {
     const bomRevisionId = bomRevision.id;
 
     // 準備批量插入資料
-    const partsToInsert = Array.from(partsMap.values()).map(p => ({
+    // 合併 partsMap 與 additionalParts
+    const allParts = [
+        ...Array.from(partsMap.values()),
+        ...additionalParts
+    ];
+
+    const partsToInsert = allParts.map(p => ({
         ...p,
         bom_revision_id: bomRevisionId
     }));
@@ -155,9 +257,14 @@ export function importBom(filePath, projectId, phaseName, version, suffix) {
         ...ss,
         bom_revision_id: bomRevisionId
     }));
-
-    partsRepo.createMany(partsToInsert);
-    secondSourceRepo.createMany(secondSourcesToInsert);
+    
+    if (partsToInsert.length > 0) {
+        partsRepo.createMany(partsToInsert);
+    }
+    
+    if (secondSourcesToInsert.length > 0) {
+        secondSourceRepo.createMany(secondSourcesToInsert);
+    }
 
     return { success: true, bomRevisionId };
 }
@@ -276,8 +383,7 @@ export function parseSheet(sheet, type, defaultStatus, partsMap, secondSources) 
                     if (type === null) {
                         // Phase 2 Sheet: Override Status only
                         existingPart.bom_status = defaultStatus;
-                        // update other fields if needed? SPEC doesn't say explicitly, but usually Overlay sheets only define status.
-                        // However, spec says "type 不覆蓋".
+                        
                     } else {
                         // Phase 1 Sheet logic (should not happen usually for same location)
                         // If it happens, fully overwrite?
