@@ -57,16 +57,15 @@ export const EXPORT_IDS = {
 const EXPORTS = {
     [EXPORT_IDS.EBOM]: {
         id: EXPORT_IDS.EBOM,
-        templateFile: 'ebom.xlsx',
         sheets: [
-            { targetSheetName: 'ALL', sourceSheetName: 'ALL', viewId: VIEW_IDS.ALL },
-            { targetSheetName: 'SMD', sourceSheetName: 'SMD', viewId: VIEW_IDS.SMD },
-            { targetSheetName: 'PTH', sourceSheetName: 'PTH', viewId: VIEW_IDS.PTH },
-            { targetSheetName: 'BOTTOM', sourceSheetName: 'BOTTOM', viewId: VIEW_IDS.BOTTOM },
-            { targetSheetName: 'NI', sourceSheetName: 'NI', viewId: VIEW_IDS.NI },
-            { targetSheetName: 'PROTO', sourceSheetName: 'PROTO', viewId: VIEW_IDS.PROTO },
-            { targetSheetName: 'MP', sourceSheetName: 'MP', viewId: VIEW_IDS.MP },
-            { targetSheetName: 'CCL', sourceSheetName: 'CCL', viewId: VIEW_IDS.CCL },
+            { targetSheetName: 'ALL', templateFile: 'ebom.xlsx', sourceSheetName: 'ALL', viewId: VIEW_IDS.ALL },
+            { targetSheetName: 'SMD', templateFile: 'ebom.xlsx', sourceSheetName: 'SMD', viewId: VIEW_IDS.SMD },
+            { targetSheetName: 'PTH', templateFile: 'ebom.xlsx', sourceSheetName: 'PTH', viewId: VIEW_IDS.PTH },
+            { targetSheetName: 'BOTTOM', templateFile: 'ebom.xlsx', sourceSheetName: 'BOTTOM', viewId: VIEW_IDS.BOTTOM },
+            { targetSheetName: 'NI', templateFile: 'ebom.xlsx', sourceSheetName: 'NI', viewId: VIEW_IDS.NI },
+            { targetSheetName: 'PROTO', templateFile: 'ebom.xlsx', sourceSheetName: 'PROTO', viewId: VIEW_IDS.PROTO },
+            { targetSheetName: 'MP', templateFile: 'ebom.xlsx', sourceSheetName: 'MP', viewId: VIEW_IDS.MP },
+            { targetSheetName: 'CCL', templateFile: 'ebom.xlsx', sourceSheetName: 'CCL', viewId: VIEW_IDS.CCL },
         ]
     }
 };

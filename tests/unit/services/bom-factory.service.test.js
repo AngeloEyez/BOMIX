@@ -49,10 +49,11 @@ describe('BOM Factory Service', () => {
         it('should return correct definition for EBOM export', () => {
             const def = getExportDefinition(EXPORT_IDS.EBOM);
             expect(def.id).toBe(EXPORT_IDS.EBOM);
-            expect(def.templateFile).toBe('ebom.xlsx');
             expect(def.sheets).toHaveLength(8);
             expect(def.sheets[0].targetSheetName).toBe('ALL');
+            expect(def.sheets[0].templateFile).toBe('ebom.xlsx'); // Now per sheet
             expect(def.sheets[1].targetSheetName).toBe('SMD');
+            expect(def.sheets[1].templateFile).toBe('ebom.xlsx');
         });
 
         it('should throw error for unknown export ID', () => {

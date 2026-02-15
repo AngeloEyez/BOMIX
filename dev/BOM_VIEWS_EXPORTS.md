@@ -1,6 +1,6 @@
 # BOM 視圖 (Views) 與 匯出 (Exports) 定義指南
 
-> 版本：1.0.0 | 最後更新：2026-02-15
+> 版本：1.1.0 | 最後更新：2026-02-15
 
 本文檔說明如何在 BOMIX 中定義 BOM 視圖與 Excel 匯出邏輯。相關程式碼位於 `src/main/services/bom-factory.service.js`。
 
@@ -63,16 +63,24 @@ Export Definition 定義了 Excel 匯出的結構，包含使用的樣板檔案�
 
 ### 2.2 Export 結構
 
+每個 Sheet 可以獨立定義使用的 Template File。
+
 ```javascript
 {
     id: 'export_id',
-    templateFile: 'template.xlsx', // 位於 resources/templates/ 下的檔名
     sheets: [
         {
-            targetSheetName: 'SMD Report', // 輸出 Excel 的 Sheet 名稱
-            sourceSheetName: 'SMD',        // 樣板中的 Sheet 名稱
-            viewId: 'smd_view'             // 使用的 View ID (資料來源)
+            targetSheetName: 'SMD Report',  // 輸出 Excel 的 Sheet 名稱
+            templateFile: 'ebom.xlsx',      // 樣板檔名 (resources/templates/ 下)
+            sourceSheetName: 'SMD',         // 樣板中的 Sheet 名稱
+            viewId: VIEW_IDS.SMD            // 使用的 View ID (資料來源)
         },
+        {
+            targetSheetName: 'Other Report',
+            templateFile: 'other.xlsx',     // 可使用不同的樣板檔
+            sourceSheetName: 'Sheet1',
+            viewId: VIEW_IDS.ALL
+        }
         // ...
     ]
 }
@@ -82,7 +90,7 @@ Export Definition 定義了 Excel 匯出的結構，包含使用的樣板檔案�
 1. 若需新增 Export ID，請在 `EXPORT_IDS` 中定義。
 2. 若需修改現有的 EBOM 匯出：
    - 修改 `EXPORTS[EXPORT_IDS.EBOM].sheets` 陣列。
-   - 可以調整順序、新增 Sheet 或修改 View 對應。
+   - 可以調整順序、新增 Sheet、修改 View 對應或指定不同的 `templateFile`。
 3. **Template 注意事項**：
    - `templateFile` 必須存在於 `resources/templates/` (開發環境) 或打包後的資源目錄中。
    - `sourceSheetName` 必須存在於該樣板 Excel 中。
@@ -100,6 +108,8 @@ const exportDef = getExportDefinition(EXPORT_IDS.EBOM);
 
 // 迭代 Sheet 產生報表
 for (const sheetDef of exportDef.sheets) {
+    // 依據 sheetDef.templateFile 載入對應樣板
+    // ...
     // ... 呼叫 bomService.executeView(bomId, getViewDefinition(sheetDef.viewId))
     // ... 呼叫 templateEngine.appendSheetFromTemplate(...)
 }

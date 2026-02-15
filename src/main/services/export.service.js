@@ -48,12 +48,22 @@ export async function exportBom(bomRevisionId, outputFilePath) {
         DESCRIPTION: revision.description || ''
     };
 
-    // 4. 初始化 Workbook
-    const templateWorkbook = await loadTemplate(exportDef.templateFile);
+    // 4. 初始化 Target Workbook
     const targetWorkbook = createWorkbook();
+
+    // 緩存已載入的 Template Workbooks
+    const loadedTemplates = new Map();
 
     // 5. 處理每個 Sheet
     for (const sheetDef of exportDef.sheets) {
+        // 5.0 載入 Template Workbook (如果尚未載入)
+        const templateFile = sheetDef.templateFile;
+        if (!loadedTemplates.has(templateFile)) {
+            const wb = await loadTemplate(templateFile);
+            loadedTemplates.set(templateFile, wb);
+        }
+        const templateWorkbook = loadedTemplates.get(templateFile);
+
         const viewDef = getViewDefinition(sheetDef.viewId);
 
         // 5.1 執行 View 取得資料
@@ -87,23 +97,14 @@ export async function exportBom(bomRevisionId, outputFilePath) {
         });
 
         // 5.3 寫入 Sheet
-        // 這裡需要注意：sourceSheetName 在 templateWorkbook 中必須存在
-        // 若 template 只有一個 Sheet (如 'Sheet1')，但 sheetDef 指定了 'SMD'
-        // 我們需要確認 template 結構。
-        // 根據假設：若 template 是單 Sheet 結構，則 sheetDef.sourceSheetName 應該都指向該 Sheet。
-        // 但目前 EXPORTS 定義中，sourceSheetName 分別為 'ALL', 'SMD' 等。
-        // 如果實際 Template 只有一個 Sheet，這裡會報錯。
-        // 為了相容現有 ebom_template.xlsx (通常只有一個 Sheet)，
-        // 我們可以做個 fallback: 若找不到指定的 sourceSheetName，且 Template 只有一個 Sheet，則使用第一個 Sheet。
-
+        // Fallback logic for template sheet name
         let actualSourceSheetName = sheetDef.sourceSheetName;
         const sourceSheet = templateWorkbook.getWorksheet(actualSourceSheetName);
         if (!sourceSheet) {
-             // Fallback logic
              if (templateWorkbook.worksheets.length > 0) {
                  actualSourceSheetName = templateWorkbook.worksheets[0].name;
              } else {
-                 console.warn(`Template sheet ${sheetDef.sourceSheetName} not found and no fallback available.`);
+                 console.warn(`Template sheet ${sheetDef.sourceSheetName} not found in ${templateFile} and no fallback available.`);
                  continue;
              }
         }

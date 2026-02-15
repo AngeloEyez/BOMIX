@@ -75,7 +75,11 @@ describe('Export Service', () => {
 
         // Verify calls
         expect(bomRevisionRepo.findById).toHaveBeenCalledWith(bomRevisionId);
+        // loadTemplate should be called for each unique template file
+        // In default config, all 8 sheets use 'ebom.xlsx', so it should be called (at least) once.
+        // Due to caching implementation, it might be called just once if sequential.
         expect(loadTemplate).toHaveBeenCalledWith('ebom.xlsx');
+
         expect(createWorkbook).toHaveBeenCalled();
 
         // Should call appendSheetFromTemplate 8 times (for 8 sheets in export definition)
