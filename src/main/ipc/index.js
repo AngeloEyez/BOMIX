@@ -8,6 +8,7 @@ import { registerProjectIpc } from './project.ipc.js'
 import { registerBomIpc } from './bom.ipc.js'
 import { registerExcelIpc } from './excel.ipc.js'
 import { registerAppIpc } from './app.ipc.js'
+import { registerProgressIpc } from './progress.ipc.js'
 // import { registerSeriesIpc } from './series.ipc.js'
 
 /**
@@ -33,4 +34,7 @@ export function registerAllIpcHandlers(ipcMain) {
 
     // TODO: Phase 5 — Excel 匯入匯出 IPC
     registerExcelIpc(ipcMain)
+
+    // 進度追蹤 IPC
+    registerProgressIpc(ipcMain)
 }
