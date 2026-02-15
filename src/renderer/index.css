@@ -31,6 +31,20 @@
   --color-surface-800: #1e293b;
   --color-surface-900: #0f172a;
   --color-surface-950: #020617;
+
+  /* --- Semantic: BOM Table --- */
+  --color-bom-header-bg: var(--bom-header-bg);
+  --color-bom-header-text: var(--bom-header-text);
+  
+  --color-bom-row-main-odd: var(--bom-row-main-odd);
+  --color-bom-row-main-even: var(--bom-row-main-even);
+  --color-bom-row-second-odd: var(--bom-row-second-odd);
+  --color-bom-row-second-even: var(--bom-row-second-even);
+  
+  --color-bom-row-hover: var(--bom-row-hover);
+  
+  --color-bom-text-main: var(--bom-text-main);
+  --color-bom-text-second: var(--bom-text-second);
 }
 
 /* --- 全域基礎樣式 --- */

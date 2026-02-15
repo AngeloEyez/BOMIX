@@ -1,0 +1,67 @@
+{
+  "name": "Modern Violet",
+  "author": "System",
+  "colors": {
+    /* ========================================
+     * 基礎色盤 (Base Palette)
+     * 定義 Light/Dark 模式共用的色階
+     * ======================================== */
+    "--color-primary-50": "#f5f3ff",
+    "--color-primary-100": "#ede9fe",
+    "--color-primary-200": "#ddd6fe",
+    "--color-primary-300": "#c4b5fd",
+    "--color-primary-400": "#a78bfa",
+    "--color-primary-500": "#8b5cf6",
+    "--color-primary-600": "#7c3aed",
+    "--color-primary-700": "#6d28d9",
+    "--color-primary-800": "#5b21b6",
+    "--color-primary-900": "#4c1d95",
+
+    "--color-surface-50": "#fafafa",
+    "--color-surface-100": "#f4f4f5",
+    "--color-surface-200": "#e4e4e7",
+    "--color-surface-700": "#3f3f46",
+    "--color-surface-800": "#27272a",
+    "--color-surface-900": "#18181b",
+    "--color-surface-950": "#09090b",
+
+    /* ========================================
+     * 模式專屬設定 (Mode Specific)
+     * 針對 Light/Dark 模式分別定義語義化變數
+     * ======================================== */
+    
+    /* 淺色模式 (Light Mode) */
+    "light": {
+      "--bom-header-bg": "#f4f4f5",        /* Zinc-100 */
+      "--bom-header-text": "#71717a",      /* Zinc-500 */
+      
+      "--bom-row-main-odd": "#ffffff",     /* White */
+      "--bom-row-main-even": "#f4f4f5",    /* Zinc-100 (Better contrast) */
+      
+      "--bom-row-second-odd": "#fafafa",   /* Zinc-50 */
+      "--bom-row-second-even": "#f3f4f6",  /* Zinc-100 */
+      
+      "--bom-row-hover": "#f3f4f6",        /* Surface-100 */
+      
+      "--bom-text-main": "#3f3f46",        /* Zinc-700 */
+      "--bom-text-second": "#71717a"       /* Zinc-500 */
+    },
+
+    /* 深色模式 (Dark Mode) */
+    "dark": {
+      "--bom-header-bg": "#27272a",        /* Surface-800 */
+      "--bom-header-text": "#a1a1aa",      /* Zinc-400 */
+      
+      "--bom-row-main-odd": "#18181b",     /* Surface-900 */
+      "--bom-row-main-even": "#27272a",    /* Surface-800 (Zebra) */
+      
+      "--bom-row-second-odd": "#18181b",   /* Surface-900 */
+      "--bom-row-second-even": "#27272a",  /* Surface-800 */
+      
+      "--bom-row-hover": "#6d28d9",        /* Primary-700 */
+      
+      "--bom-text-main": "#e4e4e7",        /* Zinc-200 */
+      "--bom-text-second": "#71717a"       /* Zinc-500 */
+    }
+  }
+}

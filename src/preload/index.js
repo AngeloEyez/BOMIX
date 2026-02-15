@@ -84,6 +84,12 @@ const api = {
     utils: {
         getPathForFile: (file) => webUtils.getPathForFile(file),
     },
+
+    // --- 主題系統 ---
+    theme: {
+        getList: () => ipcRenderer.invoke('theme:get-list'),
+        getAttributes: (themeId) => ipcRenderer.invoke('theme:get-attributes', themeId),
+    },
 }
 
 // 在 contextBridge 可用時，安全暴露 API

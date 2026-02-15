@@ -209,15 +209,15 @@ function BomTable({ data, isLoading }) {
         <div ref={tableContainerRef} className="h-full overflow-auto border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-surface-800 relative">
             <table className="w-full text-xs border-collapse relative">
                 {/* 表頭 (Sticky) */}
-                <thead className="bg-slate-100 dark:bg-surface-700 sticky top-0 z-10 shadow-sm">
+                <thead className="bg-bom-header-bg sticky top-0 z-10 shadow-sm">
                     {table.getHeaderGroups().map((headerGroup) => (
                         <tr key={headerGroup.id}>
                             {headerGroup.headers.map((header) => (
                                 <th
                                     key={header.id}
-                                    className="text-left text-[11px] font-semibold text-slate-500 dark:text-slate-400
+                                    className="text-left text-[11px] font-semibold text-bom-header-text
                                         uppercase tracking-wider py-1.5 px-2 border-b border-slate-200 dark:border-slate-600
-                                        whitespace-nowrap select-none bg-slate-100 dark:bg-surface-700"
+                                        whitespace-nowrap select-none bg-bom-header-bg"
                                     style={{ width: header.getSize() }}
                                 >
                                     {flexRender(header.column.columnDef.header, header.getContext())}
@@ -257,14 +257,17 @@ function BomTable({ data, isLoading }) {
                                 const isEvenGroup = r._groupIndex % 2 === 0
 
                                 let rowClass = ''
-                                if (isSecond) {
-                                    rowClass = isEvenGroup
-                                        ? 'bg-sky-50/40 dark:bg-sky-900/10'
-                                        : 'bg-indigo-50/40 dark:bg-indigo-900/10'
+                                // 採用 Semantic Class (定義於 index.css & theme 檔案)
+                                if (isEvenGroup) {
+                                    // 偶數群組
+                                    rowClass = isSecond
+                                        ? 'bg-bom-row-second-even text-bom-text-second'
+                                        : 'bg-bom-row-main-even text-bom-text-main'
                                 } else {
-                                    rowClass = isEvenGroup
-                                        ? 'bg-white dark:bg-surface-800'
-                                        : 'bg-slate-50/70 dark:bg-surface-800/60'
+                                    // 奇數群組
+                                    rowClass = isSecond
+                                        ? 'bg-bom-row-second-odd text-bom-text-second'
+                                        : 'bg-bom-row-main-odd text-bom-text-main'
                                 }
 
                                 return (
@@ -273,13 +276,13 @@ function BomTable({ data, isLoading }) {
                                         data-index={virtualRow.index}
                                         ref={rowVirtualizer.measureElement}
                                         className={`${rowClass} border-b border-slate-100 dark:border-slate-700/50
-                                            hover:bg-primary-50/50 dark:hover:bg-primary-900/10 transition-colors`}
+                                            hover:bg-bom-row-hover transition-colors`}
                                     >
                                         {row.getVisibleCells().map((cell) => (
                                             <td
                                                 key={cell.id}
-                                                className={`py-1 px-2 text-slate-700 dark:text-slate-300
-                                                    ${isSecond ? 'text-slate-500 dark:text-slate-400 italic' : ''}
+                                                className={`py-1 px-2
+                                                    ${isSecond ? 'italic' : ''}
                                                     whitespace-nowrap overflow-hidden`}
                                                 style={{ maxWidth: cell.column.getSize() }}
                                             >
