@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import {
     FileSpreadsheet, Upload, Download, Trash2,
-    FolderOpen, ChevronDown, Info, X,
+    FolderOpen, ChevronDown, ChevronUp, Info, X, RotateCcw,
 } from 'lucide-react'
 import useSeriesStore from '../stores/useSeriesStore'
 import useProjectStore from '../stores/useProjectStore'
@@ -15,6 +15,18 @@ import ConfirmDialog from '../components/dialogs/ConfirmDialog'
 // BOM 檢視頁面
 // 提供專案/版本選取、BOM 表格檢視、Excel 匯入匯出功能
 // ========================================
+
+const DEFAULT_SEARCH_FIELDS = ['hhpn', 'description', 'supplier', 'supplier_pn', 'location']
+const ALL_SEARCH_FIELDS = ['hhpn', 'description', 'supplier', 'supplier_pn', 'location', 'remark']
+
+const FIELD_LABELS = {
+    hhpn: 'HHPN',
+    description: 'Description',
+    supplier: 'Supplier',
+    supplier_pn: 'Supplier PN',
+    location: 'Location',
+    remark: 'Remark'
+}
 
 /**
  * BOM 檢視頁面元件。
@@ -33,7 +45,7 @@ function BomPage() {
         selectProject, selectRevision, reloadBomView,
         deleteBom, importExcel, exportExcel,
         clearError, reset,
-        currentViewId, selectView, // New
+        currentViewId, selectView, 
     } = useBomStore()
 
     // Check if any export task is running
@@ -51,8 +63,33 @@ function BomPage() {
 
     // 視圖狀態 (Definitions)
     const [views, setViews] = useState({})
-    // 搜尋關鍵字
+    
+    // 搜尋狀態
     const [searchTerm, setSearchTerm] = useState('')
+    const [isSearchOptionsOpen, setIsSearchOptionsOpen] = useState(false)
+    const [searchFields, setSearchFields] = useState(new Set(DEFAULT_SEARCH_FIELDS))
+
+    // Refs for click outside detection
+    const searchOptionsPanelRef = useRef(null)
+    const searchToggleRef = useRef(null)
+
+    // Handle click outside to close search options
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (isSearchOptionsOpen && 
+                searchOptionsPanelRef.current && 
+                !searchOptionsPanelRef.current.contains(event.target) &&
+                searchToggleRef.current &&
+                !searchToggleRef.current.contains(event.target)) {
+                setIsSearchOptionsOpen(false)
+            }
+        }
+
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside)
+        }
+    }, [isSearchOptionsOpen])
 
     // 初始化：載入視圖定義
     useEffect(() => {
@@ -68,7 +105,7 @@ function BomPage() {
         }
         loadViews()
     }, [])
-    
+
     // 關鍵字過濾邏輯
     const filteredBom = useMemo(() => {
         if (!searchTerm || !searchTerm.trim()) return bomView
@@ -77,29 +114,22 @@ function BomPage() {
         
         // 檢查單一項目是否符合
         const checkMatch = (item) => {
-            return [
-                item.hhpn,
-                item.description,
-                item.supplier,
-                item.supplier_pn,
-                item.locations,
-                item.remark
-            ].some(field => field && String(field).toLowerCase().includes(term))
+            return Array.from(searchFields).some(field => {
+                // Map 'location' key to 'locations' property in source data
+                const value = field === 'location' ? item.locations : item[field]
+                return value && String(value).toLowerCase().includes(term)
+            })
         }
-
+        
+        // ... (filter logic unchanged)
         return bomView.filter(mainItem => {
-            // 1. 檢查 Main Item
             if (checkMatch(mainItem)) return true
-            
-            // 2. 檢查 2nd Sources (若任一 2nd Source 符合，顯示整個 Group)
             if (mainItem.second_sources && mainItem.second_sources.length > 0) {
                 if (mainItem.second_sources.some(ss => checkMatch(ss))) return true
             }
-            
             return false
         })
-    }, [bomView, searchTerm])
-
+    }, [bomView, searchTerm, searchFields])
 
 
     // 開啟系列後載入專案列表
@@ -110,6 +140,8 @@ function BomPage() {
             reset()
         }
     }, [isOpen, loadProjects, reset])
+                            
+
 
     /**
      * 專案選擇變更
@@ -296,29 +328,103 @@ function BomPage() {
 
                 {/* 搜尋框 (Search) */}
                 {selectedRevisionId && (
-                    <div className="relative ml-2">
-                        <input
-                            type="text"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Escape') setSearchTerm('')
-                            }}
-                            placeholder="Search..."
-                            className="pl-3 pr-8 py-1.5 text-sm w-40 focus:w-60 transition-all
-                                bg-white dark:bg-surface-800
-                                border border-slate-200 dark:border-slate-700
-                                rounded-lg text-slate-800 dark:text-slate-200
-                                focus:outline-none focus:ring-2 focus:ring-primary-500
-                                placeholder:text-slate-400"
-                        />
-                        {searchTerm && (
-                            <button
-                                onClick={() => setSearchTerm('')}
-                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                    <div className="relative ml-2 flex flex-col">
+                        <div className="relative">
+                            <input
+                                type="text"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                onDoubleClick={() => setIsSearchOptionsOpen(prev => !prev)}
+                                onFocus={() => setIsSearchOptionsOpen(false)} // Auto-collapse on focus
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Escape') {
+                                        setSearchTerm('')
+                                        setIsSearchOptionsOpen(false)
+                                    }
+                                }}
+                                placeholder="Search..."
+                                className={`pl-3 pr-14 py-1.5 text-sm w-40 transition-all
+                                    bg-white dark:bg-surface-800
+                                    border rounded-lg text-slate-800 dark:text-slate-200
+                                    placeholder:text-slate-400
+                                    focus:outline-none focus:ring-2 focus:ring-primary-500
+                                    ${searchFields.size !== DEFAULT_SEARCH_FIELDS.length ? 'border-amber-400 dark:border-amber-600' : 'border-slate-200 dark:border-slate-700'}
+                                    ${isSearchOptionsOpen ? 'w-80' : 'focus:w-60'}`}
+                            />
+                            
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                {/* Clear Button */}
+                                {searchTerm && (
+                                    <button
+                                        onClick={() => setSearchTerm('')}
+                                        className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                                        title="Clear search"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                )}
+
+                                {/* Reset Filter Button (Only show if changed) */}
+                                {searchFields.size !== DEFAULT_SEARCH_FIELDS.length && (
+                                    <button
+                                        onClick={() => setSearchFields(new Set(DEFAULT_SEARCH_FIELDS))}
+                                        className="text-amber-500 hover:text-amber-600 transition-colors"
+                                        title="Reset search fields"
+                                    >
+                                        <RotateCcw size={13} />
+                                    </button>
+                                )}
+
+                                {/* Toggle Options Button */}
+                                <button
+                                    ref={searchToggleRef}
+                                    onClick={() => setIsSearchOptionsOpen(prev => !prev)}
+                                    className={`text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-transform ${isSearchOptionsOpen ? 'rotate-180' : ''}`}
+                                    title="Toggle search options"
+                                >
+                                    <ChevronDown size={14} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Search Options Panel */}
+                        {isSearchOptionsOpen && (
+                            <div 
+                                ref={searchOptionsPanelRef}
+                                className="absolute top-full left-0 mt-1 w-80 p-2 
+                                    bg-white dark:bg-surface-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 
+                                    z-50 flex flex-wrap gap-1.5 animate-in fade-in slide-in-from-top-1"
                             >
-                                <X size={14} />
-                            </button>
+                                {ALL_SEARCH_FIELDS.map(field => {
+                                    const isSelected = searchFields.has(field)
+                                    return (
+                                        <button
+                                            key={field}
+                                            onClick={() => {
+                                                setSearchFields(prev => {
+                                                    const next = new Set(prev)
+                                                    if (next.has(field)) next.delete(field)
+                                                    else next.add(field)
+                                                    if (next.size === 0) return prev
+                                                    return next
+                                                })
+                                            }}
+                                            onDoubleClick={(e) => {
+                                                e.stopPropagation()
+                                                setSearchFields(new Set([field]))
+                                            }}
+                                            className={`px-2 py-0.5 text-[11px] rounded border transition-colors select-none
+                                                ${isSelected 
+                                                    ? 'bg-primary-50 text-primary-700 border-primary-200 dark:bg-primary-900/30 dark:text-primary-300 dark:border-primary-700/50 font-medium' 
+                                                    : 'bg-slate-50 text-slate-500 border-slate-200 dark:bg-surface-700 dark:text-slate-400 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-surface-600'
+                                                }`}
+                                            title="Click to toggle, Double-click to select only this"
+                                        >
+                                            {FIELD_LABELS[field]}
+                                        </button>
+                                    )
+                                })}
+                            </div>
                         )}
                     </div>
                 )}
@@ -353,8 +459,6 @@ function BomPage() {
                     <Download size={14} className={isExporting ? "animate-bounce" : ""} />
                     {isExporting ? "匯出中..." : "匯出"}
                 </button>
-
-                {/* 刪除按鈕已移除 */}
 
                 {/* 版本資訊 */}
                 {selectedRevision && (
@@ -393,7 +497,12 @@ function BomPage() {
              ======================================== */}
             <div className="flex-1 min-h-0 overflow-hidden">
                 {selectedRevisionId ? (
-                    <BomTable data={filteredBom} isLoading={isLoading} searchTerm={searchTerm} />
+                    <BomTable 
+                        data={filteredBom} 
+                        isLoading={isLoading} 
+                        searchTerm={searchTerm} 
+                        searchFields={searchFields} // Pass searchFields for selective highlighting
+                    />
                 ) : (
                     <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400 dark:text-slate-500">
                         <FileSpreadsheet size={40} className="text-slate-300 dark:text-slate-600" />

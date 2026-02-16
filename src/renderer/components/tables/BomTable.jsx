@@ -32,7 +32,8 @@ const HighlightText = ({ text, term }) => {
     )
 }
 
-function BomTable({ data, isLoading, searchTerm }) {
+
+function BomTable({ data, isLoading, searchTerm, searchFields }) {
     // 收合狀態
     const [expandedGroups, setExpandedGroups] = useState(new Set())
     const [sorting, setSorting] = useState([])
@@ -117,6 +118,7 @@ function BomTable({ data, isLoading, searchTerm }) {
             // Main Item 行
             rows.push({
                 ...mainItem,
+                location: mainItem.locations,
                 _rowType: 'main',
                 _groupIndex: groupIndex,
                 _key: key,
@@ -129,11 +131,12 @@ function BomTable({ data, isLoading, searchTerm }) {
                 mainItem.second_sources.forEach((ss) => {
                     rows.push({
                         ...ss,
+                        location: '',
                         _rowType: 'second',
                         _groupIndex: groupIndex,
                         bom_status: mainItem.bom_status,
                         type: mainItem.type,
-                        locations: '',
+                        locations: undefined,
                         quantity: '',
                         ccl: '',
                         remark: '',
@@ -200,7 +203,7 @@ function BomTable({ data, isLoading, searchTerm }) {
         {
             accessorKey: 'hhpn',
             header: 'HHPN',
-            cell: ({ getValue }) => <HighlightText text={getValue()} term={searchTerm} />
+            cell: ({ getValue }) => <HighlightText text={getValue()} term={searchFields?.has('hhpn') ? searchTerm : ''} />
         },
         {
             accessorKey: 'description',
@@ -208,30 +211,30 @@ function BomTable({ data, isLoading, searchTerm }) {
             size: 500, // Large logical size to encourage taking space
             cell: ({ getValue }) => (
                 <span className="truncate block w-full" title={getValue()}>
-                    <HighlightText text={getValue()} term={searchTerm} />
+                    <HighlightText text={getValue()} term={searchFields?.has('description') ? searchTerm : ''} />
                 </span>
             ),
         },
         {
             accessorKey: 'supplier',
             header: 'Supplier',
-            cell: ({ getValue }) => <HighlightText text={getValue()} term={searchTerm} />
+            cell: ({ getValue }) => <HighlightText text={getValue()} term={searchFields?.has('supplier') ? searchTerm : ''} />
         },
         {
             accessorKey: 'supplier_pn',
             header: 'Supplier PN',
-            cell: ({ getValue }) => <HighlightText text={getValue()} term={searchTerm} />
+            cell: ({ getValue }) => <HighlightText text={getValue()} term={searchFields?.has('supplier_pn') ? searchTerm : ''} />
         },
         {
-            accessorKey: 'locations',
+            accessorKey: 'location',
             header: 'Location',
             size: 200, 
             cell: ({ row }) => {
                 if (row.original._rowType === 'second') return ''
-                const loc = row.original.locations || ''
+                const loc = row.original.location || ''
                 return (
                     <span className="truncate block" title={loc}>
-                        <HighlightText text={loc} term={searchTerm} />
+                        <HighlightText text={loc} term={searchFields?.has('location') ? searchTerm : ''} />
                     </span>
                 )
             },
@@ -285,12 +288,12 @@ function BomTable({ data, isLoading, searchTerm }) {
                 const remark = row.original.remark || ''
                 return (
                     <span className="truncate block" title={remark}>
-                        <HighlightText text={remark} term={searchTerm} />
+                        <HighlightText text={remark} term={searchFields?.has('remark') ? searchTerm : ''} />
                     </span>
                 )
             },
         },
-    ], [expandState, toggleAll, toggleGroup, searchTerm])
+    ], [expandState, toggleAll, toggleGroup, searchTerm, searchFields])
 
     // TanStack Table 實例
     const table = useReactTable({
