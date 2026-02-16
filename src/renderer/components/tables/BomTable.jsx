@@ -350,7 +350,7 @@ function BomTable({ data, isLoading, searchTerm, searchFields }) {
                                         key={header.id}
                                         onClick={header.column.getToggleSortingHandler()}
                                         className={`text-left text-[11px] font-semibold text-bom-header-text
-                                            uppercase tracking-wider py-1.5 px-2 border-b border-slate-200 dark:border-slate-600
+                                            py-1.5 px-2 border-b border-slate-200 dark:border-slate-600
                                             whitespace-nowrap select-none bg-bom-header-bg
                                             ${header.column.getCanSort() ? 'cursor-pointer hover:text-slate-700 dark:hover:text-slate-200' : ''}`}
                                         style={{ width: header.getSize() }}
