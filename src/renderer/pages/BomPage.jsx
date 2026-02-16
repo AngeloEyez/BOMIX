@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import {
     FileSpreadsheet, Upload, Download, Trash2,
     FolderOpen, ChevronDown, Info, X,
@@ -33,6 +33,7 @@ function BomPage() {
         selectProject, selectRevision, reloadBomView,
         deleteBom, importExcel, exportExcel,
         clearError, reset,
+        currentViewId, selectView, // New
     } = useBomStore()
 
     // Check if any export task is running
@@ -48,6 +49,29 @@ function BomPage() {
     // 頁面層級拖曳狀態
     const [isDragOver, setIsDragOver] = useState(false)
 
+    // 視圖狀態 (Definitions)
+    const [views, setViews] = useState({})
+    // const [currentViewId, setCurrentViewId] = useState('all_view') // Removed local state
+
+    // 初始化：載入視圖定義
+    useEffect(() => {
+        const loadViews = async () => {
+            try {
+                const result = await window.api.bom.getViews()
+                if (result.success) {
+                    setViews(result.data)
+                }
+            } catch (err) {
+                console.error('Failed to load BOM views:', err)
+            }
+        }
+        loadViews()
+    }, [])
+    
+    // Removed getFilteredBom and filteredBomView logic
+
+
+
     // 開啟系列後載入專案列表
     useEffect(() => {
         if (isOpen) {
@@ -56,10 +80,6 @@ function BomPage() {
             reset()
         }
     }, [isOpen, loadProjects, reset])
-
-    // ========================================
-    // 事件處理
-    // ========================================
 
     /**
      * 專案選擇變更
@@ -220,6 +240,30 @@ function BomPage() {
                     <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
 
+                {/* 視圖切換 (View Switcher) */}
+                {selectedRevisionId && (
+                    <div className="flex items-center bg-slate-100 dark:bg-surface-700 rounded-lg p-1 ml-2">
+                        {['ALL', 'SMD', 'PTH', 'BOTTOM'].map(key => {
+                            const view = views[key]
+                            if (!view) return null
+                            const isActive = currentViewId === view.id
+                            return (
+                                <button
+                                    key={key}
+                                    onClick={() => selectView(view.id)}
+                                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all
+                                        ${isActive 
+                                            ? 'bg-white dark:bg-surface-600 text-primary-600 dark:text-primary-400 shadow-sm' 
+                                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                                        }`}
+                                >
+                                    {key}
+                                </button>
+                            )
+                        })}
+                    </div>
+                )}
+
                 {/* 分隔線 */}
                 <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
 
@@ -237,14 +281,13 @@ function BomPage() {
                     匯入
                 </button>
 
-                {/* 匯出按鈕 */}
+                {/* 匯出按鈕 (Updated Style) */}
                 <button
                     onClick={handleExport}
                     disabled={!selectedRevisionId || isExporting}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
-                        text-slate-600 dark:text-slate-300
-                        bg-slate-100 dark:bg-surface-700 hover:bg-slate-200 dark:hover:bg-surface-600
-                        rounded-lg transition-colors
+                        bg-primary-600 hover:bg-primary-700 text-white
+                        rounded-lg shadow-sm transition-colors
                         disabled:opacity-50 disabled:cursor-not-allowed"
                     title={isExporting ? "匯出中..." : "匯出 Excel BOM"}
                 >
@@ -252,19 +295,7 @@ function BomPage() {
                     {isExporting ? "匯出中..." : "匯出"}
                 </button>
 
-                {/* 刪除版本按鈕 */}
-                <button
-                    onClick={() => setDeleteTarget(selectedRevisionId)}
-                    disabled={!selectedRevisionId}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
-                        text-red-600 dark:text-red-400
-                        bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30
-                        rounded-lg transition-colors
-                        disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="刪除此 BOM 版本"
-                >
-                    <Trash2 size={14} />
-                </button>
+                {/* 刪除按鈕已移除 */}
 
                 {/* 版本資訊 */}
                 {selectedRevision && (

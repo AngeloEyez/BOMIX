@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
     useReactTable,
     getCoreRowModel,
@@ -23,12 +23,41 @@ import { useVirtualizer } from '@tanstack/react-virtual'
  * @returns {JSX.Element}
  */
 function BomTable({ data, isLoading }) {
+    // 排序狀態
+    const [sorting, setSorting] = useState([])
+
     // 將聚合資料展開為平面行列 (Main + 2nd Source 交錯)
+    // 且在此處進行 Main Items 的排序
     const flatRows = useMemo(() => {
-        if (isLoading) return [] // 載入中不處理資料
+        if (isLoading) return [] 
+        
+        let processedData = [...data]
+
+        // 1. 執行排序 (僅針對 Main Items)
+        if (sorting.length > 0) {
+            const { id, desc } = sorting[0]
+            processedData.sort((a, b) => {
+                let valA = a[id]
+                let valB = b[id]
+                
+                // Handle null/undefined
+                if (valA === null || valA === undefined) valA = ''
+                if (valB === null || valB === undefined) valB = ''
+
+                // String comparison (case-insensitive)
+                if (typeof valA === 'string') valA = valA.toLowerCase()
+                if (typeof valB === 'string') valB = valB.toLowerCase()
+
+                if (valA < valB) return desc ? 1 : -1
+                if (valA > valB) return desc ? -1 : 1
+                return 0
+            })
+        }
+
+        // 2. 展開為平面結構
         const rows = []
         let groupIndex = 0
-        data.forEach((mainItem) => {
+        processedData.forEach((mainItem) => {
             // Main Item 行
             rows.push({
                 ...mainItem,
@@ -54,24 +83,24 @@ function BomTable({ data, isLoading }) {
             groupIndex++
         })
         return rows
-    }, [data, isLoading])
+    }, [data, isLoading, sorting])
 
     // 欄位定義
     const columns = useMemo(() => [
         {
             id: 'rowIndicator',
             header: '',
-            size: 28,
+            size: 35,
             cell: ({ row }) => {
                 const r = row.original
-                if (r._rowType === 'second') {
+                if (r._rowType === 'main') {
                     return (
-                        <span className="text-[10px] text-slate-400 pl-1" title="2nd Source">
-                            2nd
+                        <span className="text-[10px] text-slate-400 font-bold pl-1" title="Main Source">
+                            Main
                         </span>
                     )
                 }
-                return null
+                return null // 2nd source keeps empty
             },
         },
         {
@@ -80,19 +109,9 @@ function BomTable({ data, isLoading }) {
             size: 140,
         },
         {
-            accessorKey: 'supplier',
-            header: 'Supplier',
-            size: 100,
-        },
-        {
-            accessorKey: 'supplier_pn',
-            header: 'Supplier PN',
-            size: 160,
-        },
-        {
             accessorKey: 'description',
             header: 'Description',
-            size: 260,
+            size: 260, // Increased priority
             cell: ({ getValue }) => (
                 <span className="truncate block" title={getValue()}>
                     {getValue()}
@@ -100,18 +119,19 @@ function BomTable({ data, isLoading }) {
             ),
         },
         {
-            accessorKey: 'quantity',
-            header: 'Qty',
-            size: 45,
-            cell: ({ row }) => {
-                if (row.original._rowType === 'second') return ''
-                return row.original.quantity
-            },
+            accessorKey: 'supplier',
+            header: 'Supplier',
+            size: 90,
+        },
+        {
+            accessorKey: 'supplier_pn',
+            header: 'Supplier PN',
+            size: 140,
         },
         {
             accessorKey: 'locations',
             header: 'Location',
-            size: 180,
+            size: 160, // Sort of priority 2
             cell: ({ row }) => {
                 if (row.original._rowType === 'second') return ''
                 const loc = row.original.locations || ''
@@ -120,6 +140,15 @@ function BomTable({ data, isLoading }) {
                         {loc}
                     </span>
                 )
+            },
+        },
+        {
+            accessorKey: 'quantity',
+            header: 'Qty',
+            size: 40,
+            cell: ({ row }) => {
+                if (row.original._rowType === 'second') return ''
+                return row.original.quantity
             },
         },
         {
@@ -136,7 +165,7 @@ function BomTable({ data, isLoading }) {
         {
             accessorKey: 'type',
             header: 'Type',
-            size: 65,
+            size: 60,
             cell: ({ row }) => {
                 if (row.original._rowType === 'second') return ''
                 return row.original.type || ''
@@ -156,7 +185,7 @@ function BomTable({ data, isLoading }) {
         {
             accessorKey: 'remark',
             header: 'Remark',
-            size: 120,
+            size: 100,
             cell: ({ row }) => {
                 if (row.original._rowType === 'second') return ''
                 const remark = row.original.remark || ''
@@ -174,6 +203,11 @@ function BomTable({ data, isLoading }) {
         data: flatRows,
         columns,
         getCoreRowModel: getCoreRowModel(),
+        state: {
+            sorting,
+        },
+        onSortingChange: setSorting,
+        manualSorting: true, // We sort the data manually in useMemo to preserve grouping
     })
     
     // 虛擬捲動
@@ -212,17 +246,28 @@ function BomTable({ data, isLoading }) {
                 <thead className="bg-bom-header-bg sticky top-0 z-10 shadow-sm">
                     {table.getHeaderGroups().map((headerGroup) => (
                         <tr key={headerGroup.id}>
-                            {headerGroup.headers.map((header) => (
-                                <th
-                                    key={header.id}
-                                    className="text-left text-[11px] font-semibold text-bom-header-text
-                                        uppercase tracking-wider py-1.5 px-2 border-b border-slate-200 dark:border-slate-600
-                                        whitespace-nowrap select-none bg-bom-header-bg"
-                                    style={{ width: header.getSize() }}
-                                >
-                                    {flexRender(header.column.columnDef.header, header.getContext())}
-                                </th>
-                            ))}
+                            {headerGroup.headers.map((header) => {
+                                const isSorted = header.column.getIsSorted()
+                                return (
+                                    <th
+                                        key={header.id}
+                                        onClick={header.column.getToggleSortingHandler()}
+                                        className={`text-left text-[11px] font-semibold text-bom-header-text
+                                            uppercase tracking-wider py-1.5 px-2 border-b border-slate-200 dark:border-slate-600
+                                            whitespace-nowrap select-none bg-bom-header-bg
+                                            ${header.column.getCanSort() ? 'cursor-pointer hover:text-slate-700 dark:hover:text-slate-200' : ''}`}
+                                        style={{ width: header.getSize() }}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            {flexRender(header.column.columnDef.header, header.getContext())}
+                                            {{
+                                                asc: ' 🔼',
+                                                desc: ' 🔽',
+                                            }[isSorted] ?? null}
+                                        </div>
+                                    </th>
+                                )
+                            })}
                         </tr>
                     ))}
                 </thead>

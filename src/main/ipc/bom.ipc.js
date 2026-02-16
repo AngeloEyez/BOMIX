@@ -6,6 +6,7 @@
 
 import bomService from '../services/bom.service.js';
 import bomRevisionRepo from '../database/repositories/bom-revision.repo.js';
+import bomFactory, { VIEWS } from '../services/bom-factory.service.js';
 
 /**
  * 註冊 BOM 管理相關的 IPC 通道
@@ -31,8 +32,43 @@ export function registerBomIpc(ipcMain) {
     ipcMain.handle('bom:getRevisions', withErrorHandling((projectId) => {
         return bomRevisionRepo.findByProject(projectId);
     }));
-    ipcMain.handle('bom:getView', withErrorHandling((bomRevisionId) => {
-        return bomService.getBomView(bomRevisionId);
+    ipcMain.handle('bom:getView', withErrorHandling((bomRevisionId, viewId) => {
+        // If viewId is provided, use executeView with factory definition
+        // If not (legacy or defaut), use original getBomView (which is basically ALL view Aggregation)
+        // Actually, to be safe and consistent, let's switch to using factory if viewId is present.
+        
+        if (viewId && viewId !== 'all_view') {
+             const viewDef = bomFactory.getViewDefinition(viewId);
+             return bomService.executeView(bomRevisionId, viewDef);
+        } else {
+             // For 'all_view' or undefined, we can still use getBomView or executeView with ALL definition.
+             // executeView is safer as it uses the same logic.
+             // But getBomView uses partsRepo.getAggregatedBom which might be faster (SQL group by) than executeView (JS group by)?
+             // Wait, executeView uses findByBomRevision and then JS group by.
+             // partsRepo.getAggregatedBom uses SQL GROUP BY.
+             // SQL is likely faster. 
+             // However, for consistency of filtering (like excluding 'X' status for ALL view), we should use executeView OR update getAggregatedBom to match.
+             // The factory definition for ALL is { statusLogic: 'ACTIVE' }.
+             // getBomView (SQL) doesn't filter status! It retrieves EVERYTHING.
+             // So getBomView = RAW view, not ALL view (which implies Active items).
+             // If we want "ALL" to match the Button "ALL", we should use executeView with ALL definition.
+             
+             if (viewId === 'all_view') {
+                 const viewDef = bomFactory.VIEWS.ALL;
+                 return bomService.executeView(bomRevisionId, viewDef);
+             }
+             
+             // Fallback for calls without viewId (e.g. initial load if old code) -> Return Raw
+             return bomService.getBomView(bomRevisionId);
+        }
+    }));
+
+    // 取得所有 BOM View 定義 (Factory)
+    ipcMain.handle('bom:get-views', withErrorHandling(() => {
+        // Return values of VIEWS object (or just the object itself, but frontend likely wants an array or similar)
+        // Let's return the full object for flexible access, or convert to array if needed.
+        // Plan said: "回傳 bom-factory.service.js 中的 VIEWS 物件"
+        return VIEWS;
     }));
 
     // 更新 Main Item (整組)

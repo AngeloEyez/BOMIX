@@ -4,7 +4,7 @@
  * @module services/bom-factory
  */
 
-const VIEWS = {
+export const VIEWS = {
     ALL: {
         id: 'all_view',
         filter: { statusLogic: 'ACTIVE' }
@@ -99,6 +99,7 @@ export function getExportDefinition(exportId) {
 }
 
 export default {
+    VIEWS,
     VIEW_IDS,
     EXPORT_IDS,
     getViewDefinition,
