@@ -51,7 +51,8 @@ function BomPage() {
 
     // 視圖狀態 (Definitions)
     const [views, setViews] = useState({})
-    // const [currentViewId, setCurrentViewId] = useState('all_view') // Removed local state
+    // 搜尋關鍵字
+    const [searchTerm, setSearchTerm] = useState('')
 
     // 初始化：載入視圖定義
     useEffect(() => {
@@ -68,7 +69,36 @@ function BomPage() {
         loadViews()
     }, [])
     
-    // Removed getFilteredBom and filteredBomView logic
+    // 關鍵字過濾邏輯
+    const filteredBom = useMemo(() => {
+        if (!searchTerm || !searchTerm.trim()) return bomView
+
+        const term = searchTerm.toLowerCase().trim()
+        
+        // 檢查單一項目是否符合
+        const checkMatch = (item) => {
+            return [
+                item.hhpn,
+                item.description,
+                item.supplier,
+                item.supplier_pn,
+                item.locations,
+                item.remark
+            ].some(field => field && String(field).toLowerCase().includes(term))
+        }
+
+        return bomView.filter(mainItem => {
+            // 1. 檢查 Main Item
+            if (checkMatch(mainItem)) return true
+            
+            // 2. 檢查 2nd Sources (若任一 2nd Source 符合，顯示整個 Group)
+            if (mainItem.second_sources && mainItem.second_sources.length > 0) {
+                if (mainItem.second_sources.some(ss => checkMatch(ss))) return true
+            }
+            
+            return false
+        })
+    }, [bomView, searchTerm])
 
 
 
@@ -264,6 +294,35 @@ function BomPage() {
                     </div>
                 )}
 
+                {/* 搜尋框 (Search) */}
+                {selectedRevisionId && (
+                    <div className="relative ml-2">
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Escape') setSearchTerm('')
+                            }}
+                            placeholder="Search..."
+                            className="pl-3 pr-8 py-1.5 text-sm w-40 focus:w-60 transition-all
+                                bg-white dark:bg-surface-800
+                                border border-slate-200 dark:border-slate-700
+                                rounded-lg text-slate-800 dark:text-slate-200
+                                focus:outline-none focus:ring-2 focus:ring-primary-500
+                                placeholder:text-slate-400"
+                        />
+                        {searchTerm && (
+                            <button
+                                onClick={() => setSearchTerm('')}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
+                )}
+
                 {/* 分隔線 */}
                 <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
 
@@ -334,7 +393,7 @@ function BomPage() {
              ======================================== */}
             <div className="flex-1 min-h-0 overflow-hidden">
                 {selectedRevisionId ? (
-                    <BomTable data={bomView} isLoading={isLoading} />
+                    <BomTable data={filteredBom} isLoading={isLoading} />
                 ) : (
                     <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400 dark:text-slate-500">
                         <FileSpreadsheet size={40} className="text-slate-300 dark:text-slate-600" />

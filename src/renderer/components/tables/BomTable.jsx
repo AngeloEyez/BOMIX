@@ -1,33 +1,71 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import {
     useReactTable,
     getCoreRowModel,
     flexRender,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { 
+    ChevronsUpDown, // All Expanded (or toggle)
+    ChevronsDown,   // All Collapsed (Expand All)
+    ListMinus,       // Partical
+    ChevronRight, ChevronDown as ChevronDownIcon
+} from 'lucide-react'
 
-// ========================================
-// BOM 聚合表格元件 (TanStack Table)
-// 以緊湊佈局顯示 Main Items 與 Second Sources
-// ========================================
+// ... (Header comments unchanged)
 
-/**
- * BOM 聚合表格元件。
- *
- * 將聚合後的 BOM 資料以表格呈現，Main Item 與 2nd Source
- * 透過背景色與縮排區分。表格為唯讀模式。
- *
- * @param {Object} props
- * @param {Array} props.data - 聚合 BOM 資料 (含 second_sources)
- * @param {boolean} props.isLoading - 是否正在載入
- * @returns {JSX.Element}
- */
 function BomTable({ data, isLoading }) {
-    // 排序狀態
+    // 收合狀態
+    const [expandedGroups, setExpandedGroups] = useState(new Set())
     const [sorting, setSorting] = useState([])
 
-    // 將聚合資料展開為平面行列 (Main + 2nd Source 交錯)
-    // 且在此處進行 Main Items 的排序
+    // 取得所有具有 2nd Source 的 Group Key
+    const allGroupKeys = useMemo(() => {
+        if (!data) return new Set()
+        const keys = new Set()
+        data.forEach(item => {
+            if (item.second_sources && item.second_sources.length > 0) {
+                keys.add(`${item.supplier}|${item.supplier_pn}`)
+            }
+        })
+        return keys
+    }, [data])
+
+    // 初始化：預設全部展開
+    useEffect(() => {
+        setExpandedGroups(allGroupKeys)
+    }, [allGroupKeys])
+
+    // 衍生狀態
+    const totalGroups = allGroupKeys.size
+    const expandedCount = expandedGroups.size
+    
+    let expandState = 'ALL_EXPANDED' // default
+    if (totalGroups > 0) {
+        if (expandedCount === 0) expandState = 'ALL_COLLAPSED'
+        else if (expandedCount < totalGroups) expandState = 'PARTIAL'
+    }
+
+    const toggleGroup = (key) => {
+        setExpandedGroups(prev => {
+            const next = new Set(prev)
+            if (next.has(key)) next.delete(key)
+            else next.add(key)
+            return next
+        })
+    }
+
+    const toggleAll = () => {
+        if (expandState === 'ALL_EXPANDED') {
+            // Collapse All
+            setExpandedGroups(new Set())
+        } else {
+            // Expand All (for both Collapsed and Partial)
+            setExpandedGroups(allGroupKeys)
+        }
+    }
+
+    // 將聚合資料展開為平面行列
     const flatRows = useMemo(() => {
         if (isLoading) return [] 
         
@@ -39,12 +77,8 @@ function BomTable({ data, isLoading }) {
             processedData.sort((a, b) => {
                 let valA = a[id]
                 let valB = b[id]
-                
-                // Handle null/undefined
                 if (valA === null || valA === undefined) valA = ''
                 if (valB === null || valB === undefined) valB = ''
-
-                // String comparison (case-insensitive)
                 if (typeof valA === 'string') valA = valA.toLowerCase()
                 if (typeof valB === 'string') valB = valB.toLowerCase()
 
@@ -58,14 +92,22 @@ function BomTable({ data, isLoading }) {
         const rows = []
         let groupIndex = 0
         processedData.forEach((mainItem) => {
+            const key = `${mainItem.supplier}|${mainItem.supplier_pn}`
+            const hasSecondSources = mainItem.second_sources?.length > 0
+            const isExpanded = expandedGroups.has(key)
+            
             // Main Item 行
             rows.push({
                 ...mainItem,
                 _rowType: 'main',
                 _groupIndex: groupIndex,
+                _key: key,
+                _hasSecondSources: hasSecondSources,
+                _isExpanded: isExpanded,
             })
+            
             // 2nd Source 行
-            if (mainItem.second_sources?.length > 0) {
+            if (hasSecondSources && isExpanded) {
                 mainItem.second_sources.forEach((ss) => {
                     rows.push({
                         ...ss,
@@ -83,37 +125,71 @@ function BomTable({ data, isLoading }) {
             groupIndex++
         })
         return rows
-    }, [data, isLoading, sorting])
+    }, [data, isLoading, sorting, expandedGroups])
 
     // 欄位定義
     const columns = useMemo(() => [
         {
             id: 'rowIndicator',
-            header: '',
-            size: 35,
+            header: () => {
+                // Determine Icon based on expandState
+                let Icon = ChevronsUpDown // Default (ALL_EXPANDED) logic
+
+                
+                if (expandState === 'ALL_EXPANDED') Icon = ChevronsUpDown
+                else if (expandState === 'ALL_COLLAPSED') Icon = ChevronsDown
+                else if (expandState === 'PARTIAL') Icon = ListMinus
+
+                return (
+                    <div 
+                        onClick={(e) => { e.stopPropagation(); toggleAll(); }}
+                        className="cursor-pointer hover:text-primary-600 select-none flex items-center justify-center w-full h-full p-1"
+                        title={expandState === 'ALL_EXPANDED' ? "點擊全部收合" : "點擊全部展開"}
+                    >
+                        <Icon size={16} className="text-slate-500" />
+                    </div>
+                )
+            },
+            size: 50,
             cell: ({ row }) => {
                 const r = row.original
                 if (r._rowType === 'main') {
                     return (
-                        <span className="text-[10px] text-slate-400 font-bold pl-1" title="Main Source">
-                            Main
-                        </span>
+                        <div 
+                            className="flex items-center gap-1 cursor-pointer select-none pl-1"
+                            onClick={(e) => {
+                                if (r._hasSecondSources) {
+                                    e.stopPropagation()
+                                    toggleGroup(r._key)
+                                }
+                            }}
+                        >
+                             {/* Text: Main. No emphasis color (slate-600). */}
+                            <span className="text-[10px] text-slate-600 font-bold" title="Main Source">Main</span>
+                            
+                            {/* Icon: Show if has 2nd sources */}
+                            {r._hasSecondSources && (
+                                <span className="text-slate-400">
+                                    {r._isExpanded ? <ChevronDownIcon size={12}/> : <ChevronRight size={12}/>}
+                                </span>
+                            )}
+                        </div>
                     )
                 }
-                return null // 2nd source keeps empty
+                return null
             },
         },
         {
             accessorKey: 'hhpn',
             header: 'HHPN',
-            size: 140,
+            // size: auto
         },
         {
             accessorKey: 'description',
             header: 'Description',
-            size: 260, // Increased priority
+            size: 500, // Large logical size to encourage taking space
             cell: ({ getValue }) => (
-                <span className="truncate block" title={getValue()}>
+                <span className="truncate block w-full" title={getValue()}>
                     {getValue()}
                 </span>
             ),
@@ -121,17 +197,17 @@ function BomTable({ data, isLoading }) {
         {
             accessorKey: 'supplier',
             header: 'Supplier',
-            size: 90,
+            // size: auto
         },
         {
             accessorKey: 'supplier_pn',
             header: 'Supplier PN',
-            size: 140,
+            // size: auto
         },
         {
             accessorKey: 'locations',
             header: 'Location',
-            size: 160, // Sort of priority 2
+            size: 200, 
             cell: ({ row }) => {
                 if (row.original._rowType === 'second') return ''
                 const loc = row.original.locations || ''
@@ -196,7 +272,7 @@ function BomTable({ data, isLoading }) {
                 )
             },
         },
-    ], [])
+    ], [expandState, toggleAll, toggleGroup])
 
     // TanStack Table 實例
     const table = useReactTable({
@@ -231,7 +307,7 @@ function BomTable({ data, isLoading }) {
     if (!isLoading && data.length === 0) {
         return (
             <div className="flex items-center justify-center h-64 text-sm text-slate-400 dark:text-slate-500">
-                尚無 BOM 資料。請選擇 BOM 版本，或匯入 Excel。
+                無資料 ... 
             </div>
         )
     }
