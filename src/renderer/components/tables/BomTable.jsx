@@ -1,50 +1,142 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState, useEffect } from 'react'
 import {
     useReactTable,
     getCoreRowModel,
     flexRender,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { 
+    ChevronsUpDown, // All Expanded (or toggle)
+    ChevronsDown,   // All Collapsed (Expand All)
+    ListMinus,       // Partical
+    ChevronRight, ChevronDown as ChevronDownIcon
+} from 'lucide-react'
 
 // ========================================
-// BOM 聚合表格元件 (TanStack Table)
-// 以緊湊佈局顯示 Main Items 與 Second Sources
+// 搜尋高亮輔助元件
 // ========================================
+const HighlightText = ({ text, term }) => {
+    if (!term || !text) return text
+    
+    const parts = String(text).split(new RegExp(`(${term})`, 'gi'))
+    return (
+        <span>
+            {parts.map((part, i) => 
+                part.toLowerCase() === term.toLowerCase() ? (
+                    <span key={i} className="bg-yellow-200 text-slate-800 dark:bg-yellow-600/50 dark:text-white rounded px-0.5">{part}</span>
+                ) : (
+                    part
+                )
+            )}
+        </span>
+    )
+}
 
-/**
- * BOM 聚合表格元件。
- *
- * 將聚合後的 BOM 資料以表格呈現，Main Item 與 2nd Source
- * 透過背景色與縮排區分。表格為唯讀模式。
- *
- * @param {Object} props
- * @param {Array} props.data - 聚合 BOM 資料 (含 second_sources)
- * @param {boolean} props.isLoading - 是否正在載入
- * @returns {JSX.Element}
- */
-function BomTable({ data, isLoading }) {
-    // 將聚合資料展開為平面行列 (Main + 2nd Source 交錯)
+
+function BomTable({ data, isLoading, searchTerm, searchFields }) {
+    // 收合狀態
+    const [expandedGroups, setExpandedGroups] = useState(new Set())
+    const [sorting, setSorting] = useState([])
+
+    // 取得所有具有 2nd Source 的 Group Key
+    const allGroupKeys = useMemo(() => {
+        if (!data) return new Set()
+        const keys = new Set()
+        data.forEach(item => {
+            if (item.second_sources && item.second_sources.length > 0) {
+                keys.add(`${item.supplier}|${item.supplier_pn}`)
+            }
+        })
+        return keys
+    }, [data])
+
+    // 初始化：預設全部展開
+    useEffect(() => {
+        setExpandedGroups(allGroupKeys)
+    }, [allGroupKeys])
+
+    // 衍生狀態
+    const totalGroups = allGroupKeys.size
+    const expandedCount = expandedGroups.size
+    
+    let expandState = 'ALL_EXPANDED' // default
+    if (totalGroups > 0) {
+        if (expandedCount === 0) expandState = 'ALL_COLLAPSED'
+        else if (expandedCount < totalGroups) expandState = 'PARTIAL'
+    }
+
+    const toggleGroup = (key) => {
+        setExpandedGroups(prev => {
+            const next = new Set(prev)
+            if (next.has(key)) next.delete(key)
+            else next.add(key)
+            return next
+        })
+    }
+
+    const toggleAll = () => {
+        if (expandState === 'ALL_EXPANDED') {
+            // Collapse All
+            setExpandedGroups(new Set())
+        } else {
+            // Expand All (for both Collapsed and Partial)
+            setExpandedGroups(allGroupKeys)
+        }
+    }
+
+    // 將聚合資料展開為平面行列
     const flatRows = useMemo(() => {
-        if (isLoading) return [] // 載入中不處理資料
+        if (isLoading) return [] 
+        
+        let processedData = [...data]
+
+        // 1. 執行排序 (僅針對 Main Items)
+        if (sorting.length > 0) {
+            const { id, desc } = sorting[0]
+            processedData.sort((a, b) => {
+                let valA = a[id]
+                let valB = b[id]
+                if (valA === null || valA === undefined) valA = ''
+                if (valB === null || valB === undefined) valB = ''
+                if (typeof valA === 'string') valA = valA.toLowerCase()
+                if (typeof valB === 'string') valB = valB.toLowerCase()
+
+                if (valA < valB) return desc ? 1 : -1
+                if (valA > valB) return desc ? -1 : 1
+                return 0
+            })
+        }
+
+        // 2. 展開為平面結構
         const rows = []
         let groupIndex = 0
-        data.forEach((mainItem) => {
+        processedData.forEach((mainItem) => {
+            const key = `${mainItem.supplier}|${mainItem.supplier_pn}`
+            const hasSecondSources = mainItem.second_sources?.length > 0
+            const isExpanded = expandedGroups.has(key)
+            
             // Main Item 行
             rows.push({
                 ...mainItem,
+                location: mainItem.locations,
                 _rowType: 'main',
                 _groupIndex: groupIndex,
+                _key: key,
+                _hasSecondSources: hasSecondSources,
+                _isExpanded: isExpanded,
             })
+            
             // 2nd Source 行
-            if (mainItem.second_sources?.length > 0) {
+            if (hasSecondSources && isExpanded) {
                 mainItem.second_sources.forEach((ss) => {
                     rows.push({
                         ...ss,
+                        location: '',
                         _rowType: 'second',
                         _groupIndex: groupIndex,
                         bom_status: mainItem.bom_status,
                         type: mainItem.type,
-                        locations: '',
+                        locations: undefined,
                         quantity: '',
                         ccl: '',
                         remark: '',
@@ -54,21 +146,55 @@ function BomTable({ data, isLoading }) {
             groupIndex++
         })
         return rows
-    }, [data, isLoading])
+    }, [data, isLoading, sorting, expandedGroups])
 
     // 欄位定義
     const columns = useMemo(() => [
         {
             id: 'rowIndicator',
-            header: '',
-            size: 28,
+            header: () => {
+                // Determine Icon based on expandState
+                let Icon = ChevronsUpDown // Default (ALL_EXPANDED) logic
+
+                
+                if (expandState === 'ALL_EXPANDED') Icon = ChevronsUpDown
+                else if (expandState === 'ALL_COLLAPSED') Icon = ChevronsDown
+                else if (expandState === 'PARTIAL') Icon = ListMinus
+
+                return (
+                    <div 
+                        onClick={(e) => { e.stopPropagation(); toggleAll(); }}
+                        className="cursor-pointer hover:text-primary-600 select-none flex items-center justify-center w-full h-full p-1"
+                        title={expandState === 'ALL_EXPANDED' ? "點擊全部收合" : "點擊全部展開"}
+                    >
+                        <Icon size={16} className="text-slate-500" />
+                    </div>
+                )
+            },
+            size: 60,
             cell: ({ row }) => {
                 const r = row.original
-                if (r._rowType === 'second') {
+                if (r._rowType === 'main') {
                     return (
-                        <span className="text-[10px] text-slate-400 pl-1" title="2nd Source">
-                            2nd
-                        </span>
+                        <div 
+                            className="flex items-center gap-1 cursor-pointer select-none pl-1"
+                            onClick={(e) => {
+                                if (r._hasSecondSources) {
+                                    e.stopPropagation()
+                                    toggleGroup(r._key)
+                                }
+                            }}
+                        >
+                             {/* Text: Main. No emphasis color (slate-600). */}
+                            <span className="text-[10px] text-slate-600 font-bold" title="Main Source">Main</span>
+                            
+                            {/* Icon: Show if has 2nd sources */}
+                            {r._hasSecondSources && (
+                                <span className="text-slate-400">
+                                    {r._isExpanded ? <ChevronDownIcon size={12}/> : <ChevronRight size={12}/>}
+                                </span>
+                            )}
+                        </div>
                     )
                 }
                 return null
@@ -77,49 +203,49 @@ function BomTable({ data, isLoading }) {
         {
             accessorKey: 'hhpn',
             header: 'HHPN',
-            size: 140,
-        },
-        {
-            accessorKey: 'supplier',
-            header: 'Supplier',
-            size: 100,
-        },
-        {
-            accessorKey: 'supplier_pn',
-            header: 'Supplier PN',
-            size: 160,
+            cell: ({ getValue }) => <HighlightText text={getValue()} term={searchFields?.has('hhpn') ? searchTerm : ''} />
         },
         {
             accessorKey: 'description',
             header: 'Description',
-            size: 260,
+            size: 500, // Large logical size to encourage taking space
             cell: ({ getValue }) => (
-                <span className="truncate block" title={getValue()}>
-                    {getValue()}
+                <span className="truncate block w-full" title={getValue()}>
+                    <HighlightText text={getValue()} term={searchFields?.has('description') ? searchTerm : ''} />
                 </span>
             ),
         },
         {
-            accessorKey: 'quantity',
-            header: 'Qty',
-            size: 45,
+            accessorKey: 'supplier',
+            header: 'Supplier',
+            cell: ({ getValue }) => <HighlightText text={getValue()} term={searchFields?.has('supplier') ? searchTerm : ''} />
+        },
+        {
+            accessorKey: 'supplier_pn',
+            header: 'Supplier PN',
+            cell: ({ getValue }) => <HighlightText text={getValue()} term={searchFields?.has('supplier_pn') ? searchTerm : ''} />
+        },
+        {
+            accessorKey: 'location',
+            header: 'Location',
+            size: 200, 
             cell: ({ row }) => {
                 if (row.original._rowType === 'second') return ''
-                return row.original.quantity
+                const loc = row.original.location || ''
+                return (
+                    <span className="truncate block" title={loc}>
+                        <HighlightText text={loc} term={searchFields?.has('location') ? searchTerm : ''} />
+                    </span>
+                )
             },
         },
         {
-            accessorKey: 'locations',
-            header: 'Location',
-            size: 180,
+            accessorKey: 'quantity',
+            header: 'Qty',
+            size: 40,
             cell: ({ row }) => {
                 if (row.original._rowType === 'second') return ''
-                const loc = row.original.locations || ''
-                return (
-                    <span className="truncate block" title={loc}>
-                        {loc}
-                    </span>
-                )
+                return row.original.quantity
             },
         },
         {
@@ -136,7 +262,7 @@ function BomTable({ data, isLoading }) {
         {
             accessorKey: 'type',
             header: 'Type',
-            size: 65,
+            size: 60,
             cell: ({ row }) => {
                 if (row.original._rowType === 'second') return ''
                 return row.original.type || ''
@@ -156,24 +282,29 @@ function BomTable({ data, isLoading }) {
         {
             accessorKey: 'remark',
             header: 'Remark',
-            size: 120,
+            size: 100,
             cell: ({ row }) => {
                 if (row.original._rowType === 'second') return ''
                 const remark = row.original.remark || ''
                 return (
                     <span className="truncate block" title={remark}>
-                        {remark}
+                        <HighlightText text={remark} term={searchFields?.has('remark') ? searchTerm : ''} />
                     </span>
                 )
             },
         },
-    ], [])
+    ], [expandState, toggleAll, toggleGroup, searchTerm, searchFields])
 
     // TanStack Table 實例
     const table = useReactTable({
         data: flatRows,
         columns,
         getCoreRowModel: getCoreRowModel(),
+        state: {
+            sorting,
+        },
+        onSortingChange: setSorting,
+        manualSorting: true, // We sort the data manually in useMemo to preserve grouping
     })
     
     // 虛擬捲動
@@ -197,7 +328,7 @@ function BomTable({ data, isLoading }) {
     if (!isLoading && data.length === 0) {
         return (
             <div className="flex items-center justify-center h-64 text-sm text-slate-400 dark:text-slate-500">
-                尚無 BOM 資料。請選擇 BOM 版本，或匯入 Excel。
+                無資料 ... 
             </div>
         )
     }
@@ -209,20 +340,31 @@ function BomTable({ data, isLoading }) {
         <div ref={tableContainerRef} className="h-full overflow-auto border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-surface-800 relative">
             <table className="w-full text-xs border-collapse relative">
                 {/* 表頭 (Sticky) */}
-                <thead className="bg-slate-100 dark:bg-surface-700 sticky top-0 z-10 shadow-sm">
+                <thead className="bg-bom-header-bg sticky top-0 z-10 shadow-sm">
                     {table.getHeaderGroups().map((headerGroup) => (
                         <tr key={headerGroup.id}>
-                            {headerGroup.headers.map((header) => (
-                                <th
-                                    key={header.id}
-                                    className="text-left text-[11px] font-semibold text-slate-500 dark:text-slate-400
-                                        uppercase tracking-wider py-1.5 px-2 border-b border-slate-200 dark:border-slate-600
-                                        whitespace-nowrap select-none bg-slate-100 dark:bg-surface-700"
-                                    style={{ width: header.getSize() }}
-                                >
-                                    {flexRender(header.column.columnDef.header, header.getContext())}
-                                </th>
-                            ))}
+                            {headerGroup.headers.map((header) => {
+                                const isSorted = header.column.getIsSorted()
+                                return (
+                                    <th
+                                        key={header.id}
+                                        onClick={header.column.getToggleSortingHandler()}
+                                        className={`text-left text-[11px] font-semibold text-bom-header-text
+                                            py-1.5 px-2 border-b border-slate-200 dark:border-slate-600
+                                            whitespace-nowrap select-none bg-bom-header-bg
+                                            ${header.column.getCanSort() ? 'cursor-pointer hover:text-slate-700 dark:hover:text-slate-200' : ''}`}
+                                        style={{ width: header.getSize() }}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            {flexRender(header.column.columnDef.header, header.getContext())}
+                                            {{
+                                                asc: ' 🔼',
+                                                desc: ' 🔽',
+                                            }[isSorted] ?? null}
+                                        </div>
+                                    </th>
+                                )
+                            })}
                         </tr>
                     ))}
                 </thead>
@@ -257,14 +399,17 @@ function BomTable({ data, isLoading }) {
                                 const isEvenGroup = r._groupIndex % 2 === 0
 
                                 let rowClass = ''
-                                if (isSecond) {
-                                    rowClass = isEvenGroup
-                                        ? 'bg-sky-50/40 dark:bg-sky-900/10'
-                                        : 'bg-indigo-50/40 dark:bg-indigo-900/10'
+                                // 採用 Semantic Class (定義於 index.css & theme 檔案)
+                                if (isEvenGroup) {
+                                    // 偶數群組
+                                    rowClass = isSecond
+                                        ? 'bg-bom-row-second-even text-bom-text-second'
+                                        : 'bg-bom-row-main-even text-bom-text-main'
                                 } else {
-                                    rowClass = isEvenGroup
-                                        ? 'bg-white dark:bg-surface-800'
-                                        : 'bg-slate-50/70 dark:bg-surface-800/60'
+                                    // 奇數群組
+                                    rowClass = isSecond
+                                        ? 'bg-bom-row-second-odd text-bom-text-second'
+                                        : 'bg-bom-row-main-odd text-bom-text-main'
                                 }
 
                                 return (
@@ -273,13 +418,13 @@ function BomTable({ data, isLoading }) {
                                         data-index={virtualRow.index}
                                         ref={rowVirtualizer.measureElement}
                                         className={`${rowClass} border-b border-slate-100 dark:border-slate-700/50
-                                            hover:bg-primary-50/50 dark:hover:bg-primary-900/10 transition-colors`}
+                                            hover:bg-bom-row-hover transition-colors`}
                                     >
                                         {row.getVisibleCells().map((cell) => (
                                             <td
                                                 key={cell.id}
-                                                className={`py-1 px-2 text-slate-700 dark:text-slate-300
-                                                    ${isSecond ? 'text-slate-500 dark:text-slate-400 italic' : ''}
+                                                className={`py-1 px-2
+                                                    ${isSecond ? 'italic' : ''}
                                                     whitespace-nowrap overflow-hidden`}
                                                 style={{ maxWidth: cell.column.getSize() }}
                                             >

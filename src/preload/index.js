@@ -48,13 +48,15 @@ const api = {
     // TODO: Phase 4 — BOM 管理 API
     bom: {
         getRevisions: (projectId) => ipcRenderer.invoke('bom:getRevisions', projectId),
-        getView: (bomRevisionId) => ipcRenderer.invoke('bom:getView', bomRevisionId),
+        getView: (bomRevisionId, viewId) => ipcRenderer.invoke('bom:getView', bomRevisionId, viewId),
         updateMainItem: (bomRevisionId, originalKey, updates) => ipcRenderer.invoke('bom:updateMainItem', bomRevisionId, originalKey, updates),
         deleteMainItem: (bomRevisionId, key) => ipcRenderer.invoke('bom:deleteMainItem', bomRevisionId, key),
         addSecondSource: (data) => ipcRenderer.invoke('bom:addSecondSource', data),
         updateSecondSource: (id, data) => ipcRenderer.invoke('bom:updateSecondSource', id, data),
         deleteSecondSource: (id) => ipcRenderer.invoke('bom:deleteSecondSource', id),
+        deleteSecondSource: (id) => ipcRenderer.invoke('bom:deleteSecondSource', id),
         delete: (bomRevisionId) => ipcRenderer.invoke('bom:delete', bomRevisionId),
+        getViews: () => ipcRenderer.invoke('bom:get-views'),
     },
 
     // TODO: Phase 5 — Excel 匯入匯出 API
@@ -83,6 +85,12 @@ const api = {
     // --- 工具 ---
     utils: {
         getPathForFile: (file) => webUtils.getPathForFile(file),
+    },
+
+    // --- 主題系統 ---
+    theme: {
+        getList: () => ipcRenderer.invoke('theme:get-list'),
+        getAttributes: (themeId) => ipcRenderer.invoke('theme:get-attributes', themeId),
     },
 }
 

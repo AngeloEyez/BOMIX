@@ -1,0 +1,67 @@
+{
+  "name": "Default Blue",
+  "author": "System",
+  "colors": {
+    /* ========================================
+     * 基礎色盤 (Base Palette)
+     * 定義 Light/Dark 模式共用的色階
+     * ======================================== */
+    "--color-primary-50": "#eff6ff",
+    "--color-primary-100": "#dbeafe",
+    "--color-primary-200": "#bfdbfe",
+    "--color-primary-300": "#93c5fd",
+    "--color-primary-400": "#60a5fa",
+    "--color-primary-500": "#3b82f6",
+    "--color-primary-600": "#2563eb",
+    "--color-primary-700": "#1d4ed8",
+    "--color-primary-800": "#1e40af",
+    "--color-primary-900": "#1e3a8a",
+
+    "--color-surface-50": "#f8fafc",
+    "--color-surface-100": "#f1f5f9",
+    "--color-surface-200": "#e2e8f0",
+    "--color-surface-700": "#334155",
+    "--color-surface-800": "#1e293b",
+    "--color-surface-900": "#0f172a",
+    "--color-surface-950": "#020617",
+
+    /* ========================================
+     * 模式專屬設定 (Mode Specific)
+     * 針對 Light/Dark 模式分別定義語義化變數
+     * ======================================== */
+    
+    /* 淺色模式 (Light Mode) */
+    "light": {
+      "--bom-header-bg": "#f1f5f9",        /* Slate-100: Clean header background */
+      "--bom-header-text": "#475569",      /* Slate-600: Darker text for readability */
+      
+      "--bom-row-main-odd": "#ffffff",     /* White */
+      "--bom-row-main-even": "#f8fafc",    /* Slate-50: Subtle zebra stripe */
+      
+      "--bom-row-second-odd": "#fcfcfc",   /* Very light gray for 2nd odd */
+      "--bom-row-second-even": "#f1f5f9",  /* Slate-100: Distinct 2nd even */
+      
+      "--bom-row-hover": "#eff6ff",        /* Primary-50: Clear hover state */
+      
+      "--bom-text-main": "#334155",        /* Slate-700 */
+      "--bom-text-second": "#64748b"       /* Slate-500: Lighter for 2nd source */
+    },
+
+    /* 深色模式 (Dark Mode) */
+    "dark": {
+      "--bom-header-bg": "#1e293b",        /* Surface-800: Distinct header */
+      "--bom-header-text": "#94a3b8",      /* Slate-400 */
+      
+      "--bom-row-main-odd": "#0f172a",     /* Surface-900: Darker base */
+      "--bom-row-main-even": "#1e293b",    /* Surface-800: Lighter stripe */
+      
+      "--bom-row-second-odd": "#0f172a",   /* Same as main odd */
+      "--bom-row-second-even": "#1e293b",  /* Same as main even */
+      
+      "--bom-row-hover": "#172554",        /* Primary-950/Mixed: Subtle hover */
+      
+      "--bom-text-main": "#e2e8f0",        /* Slate-200 */
+      "--bom-text-second": "#94a3b8"       /* Slate-400 */
+    }
+  }
+}

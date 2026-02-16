@@ -16,35 +16,45 @@ const useBomStore = create((set, get) => ({
     selectedRevisionId: null,
     /** 目前選取的 BOM Revision 物件 */
     selectedRevision: null,
-    /** 聚合 BOM 資料 (Main Items + 2nd Sources) */
-    bomView: [],
-    /** 是否正在載入中 */
-    isLoading: false,
-    /** 錯誤訊息 */
-    error: null,
-
-    // --- 動作 ---
+    /** 目前選取的視圖 ID */
+    currentViewId: 'all_view',
+    /** 視圖資料快取 { [viewId]: data[] } */
+    viewCache: {},
 
     /**
-     * 選擇專案並載入其 BOM 版本列表。
-     *
-     * @param {number} projectId - 專案 ID
+     * 切換視圖
+     * @param {string} viewId
      */
-    selectProject: async (projectId) => {
+    selectView: async (viewId) => {
+        const { selectedRevisionId, viewCache } = get()
+        if (!selectedRevisionId) return
+
+        // Update ID immediately for UI
+        set({ currentViewId: viewId })
+
+        // Check Cache
+        if (viewCache[viewId]) {
+            set({ bomView: viewCache[viewId] })
+            return
+        }
+
+        // Fetch from Backend
+        set({ isLoading: true, error: null })
         const { setDbBusy } = useAppStore.getState()
-        set({
-            selectedProjectId: projectId,
-            selectedRevisionId: null,
-            selectedRevision: null,
-            bomView: [],
-            isLoading: true,
-            error: null,
-        })
         setDbBusy(true)
+
         try {
-            const result = await window.api.bom.getRevisions(projectId)
+            const result = await window.api.bom.getView(selectedRevisionId, viewId)
             if (result.success) {
-                set({ revisions: result.data, isLoading: false })
+                // Update Cache and View
+                set(state => ({
+                    bomView: result.data,
+                    viewCache: {
+                        ...state.viewCache,
+                        [viewId]: result.data
+                    },
+                    isLoading: false
+                }))
             } else {
                 set({ error: result.error, isLoading: false })
             }
@@ -56,24 +66,51 @@ const useBomStore = create((set, get) => ({
     },
 
     /**
+     * 選擇專案並載入其 BOM 版本列表。
+     * ...原有代碼...
+     */
+    selectProject: async (projectId) => {
+        const { setDbBusy } = useAppStore.getState()
+        set({
+            selectedProjectId: projectId,
+            selectedRevisionId: null,
+            selectedRevision: null,
+            bomView: [],
+            currentViewId: 'all_view', // Reset View
+            viewCache: {}, // Reset Cache
+            isLoading: true,
+            error: null,
+        })
+        // ...
+    },
+
+    /**
      * 選擇 BOM 版本並載入聚合視圖。
-     *
-     * @param {number} revisionId - BOM Revision ID
+     * ...
      */
     selectRevision: async (revisionId) => {
         const { setDbBusy } = useAppStore.getState()
         const revision = get().revisions.find(r => r.id === revisionId) || null
+        
+        // Reset View State for new revision
         set({
             selectedRevisionId: revisionId,
             selectedRevision: revision,
+            currentViewId: 'all_view', 
+            viewCache: {},
             isLoading: true,
             error: null,
         })
         setDbBusy(true)
         try {
-            const result = await window.api.bom.getView(revisionId)
+            // Default load 'all_view'
+            const result = await window.api.bom.getView(revisionId, 'all_view')
             if (result.success) {
-                set({ bomView: result.data, isLoading: false })
+                set(state => ({ 
+                    bomView: result.data, 
+                    viewCache: { 'all_view': result.data }, // Prime cache
+                    isLoading: false 
+                }))
             } else {
                 set({ error: result.error, isLoading: false })
             }
@@ -285,6 +322,8 @@ const useBomStore = create((set, get) => ({
             selectedRevisionId: null,
             selectedRevision: null,
             bomView: [],
+            currentViewId: 'all_view',
+            viewCache: {},
             isLoading: false,
             error: null,
         })

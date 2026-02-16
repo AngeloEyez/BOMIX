@@ -1,0 +1,66 @@
+{
+  "name": "Morandi Gray",
+  "author": "System",
+  "colors": {
+    /* ========================================
+     * Morandi Gray Palette (Stone/Warm Gray)
+     * 風格：沈穩、高級、極簡
+     * ======================================== */
+    "--color-primary-50": "#fafaf9",   /* Stone-50 */
+    "--color-primary-100": "#f5f5f4",  /* Stone-100 */
+    "--color-primary-200": "#e7e5e4",  /* Stone-200 */
+    "--color-primary-300": "#d6d3d1",  /* Stone-300 */
+    "--color-primary-400": "#a8a29e",  /* Stone-400 */
+    "--color-primary-500": "#78716c",  /* Stone-500 */
+    "--color-primary-600": "#57534e",  /* Stone-600 */
+    "--color-primary-700": "#44403c",  /* Stone-700 */
+    "--color-primary-800": "#292524",  /* Stone-800 */
+    "--color-primary-900": "#1c1917",  /* Stone-900 */
+
+    "--color-surface-50": "#fafaf9",
+    "--color-surface-100": "#f5f5f4",
+    "--color-surface-200": "#e7e5e4",
+    "--color-surface-700": "#44403c",
+    "--color-surface-800": "#292524",
+    "--color-surface-900": "#1c1917",
+    "--color-surface-950": "#0c0a09",
+
+    /* ========================================
+     * Mode Specific
+     * ======================================== */
+    
+    /* Light Mode */
+    "light": {
+      "--bom-header-bg": "#e7e5e4",        /* Stone-200: Solid, warm header */
+      "--bom-header-text": "#44403c",      /* Stone-700: High contrast text */
+      
+      "--bom-row-main-odd": "#ffffff",     /* White */
+      "--bom-row-main-even": "#f5f5f4",    /* Stone-100: Soft warm gray stripe */
+      
+      "--bom-row-second-odd": "#fafaf9",   /* Stone-50 */
+      "--bom-row-second-even": "#f5f5f4",  /* Stone-100 */
+      
+      "--bom-row-hover": "#d6d3d1",        /* Stone-300: Visible interaction */
+      
+      "--bom-text-main": "#292524",        /* Stone-800: Sharp text */
+      "--bom-text-second": "#78716c"       /* Stone-500: Muted secondary */
+    },
+
+    /* Dark Mode */
+    "dark": {
+      "--bom-header-bg": "#292524",        /* Stone-800 */
+      "--bom-header-text": "#d6d3d1",      /* Stone-300 */
+      
+      "--bom-row-main-odd": "#0c0a09",     /* Stone-950: Deep black-brown */
+      "--bom-row-main-even": "#1c1917",    /* Stone-900: Dark stripe */
+      
+      "--bom-row-second-odd": "#0c0a09",   /* Stone-950 */
+      "--bom-row-second-even": "#1c1917",  /* Stone-900 */
+      
+      "--bom-row-hover": "#44403c",        /* Stone-700: Lighter lift */
+      
+      "--bom-text-main": "#e7e5e4",        /* Stone-200 */
+      "--bom-text-second": "#a8a29e"       /* Stone-400 */
+    }
+  }
+}

@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { Info, FileText, Monitor, Moon, Sun } from 'lucide-react'
+import { Info, FileText, Monitor, Moon, Sun, Palette } from 'lucide-react'
 import useSettingsStore from '../stores/useSettingsStore'
 import AboutDialog from '../components/dialogs/AboutDialog'
 import ChangelogDialog from '../components/dialogs/ChangelogDialog'
 
 function SettingsPage() {
-    const { theme, toggleTheme } = useSettingsStore()
+    const { theme, toggleTheme, activeThemeId, availableThemes, setThemeId } = useSettingsStore()
     const [isAboutOpen, setIsAboutOpen] = useState(false)
     const [isChangelogOpen, setIsChangelogOpen] = useState(false)
 
@@ -43,6 +43,32 @@ function SettingsPage() {
                         >
                             切換
                         </button>
+                    </div>
+
+                    {/* 主題配色 */}
+                    <div className="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-surface-700/50 transition-colors border-t border-slate-100 dark:border-slate-700">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 rounded-lg">
+                                <Palette size={20} />
+                            </div>
+                            <div>
+                                <h4 className="font-medium text-slate-900 dark:text-slate-100">配色風格</h4>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">
+                                    選擇應用程式的色彩主題
+                                </p>
+                            </div>
+                        </div>
+                        <select
+                            value={activeThemeId}
+                            onChange={(e) => setThemeId(e.target.value)}
+                            className="px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-surface-700 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                            {availableThemes.map(t => (
+                                <option key={t.id} value={t.id}>
+                                    {t.name}
+                                </option>
+                            ))}
+                        </select>
                     </div>
                 </div>
             </div>

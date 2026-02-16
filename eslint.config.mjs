@@ -10,7 +10,7 @@ import pluginReactHooks from 'eslint-plugin-react-hooks'
 export default [
     // 全域忽略
     {
-        ignores: ['out/**', 'dist/**', 'node_modules/**']
+        ignores: ['out/**', 'dist/**', 'node_modules/**', 'tests/**', 'agent-workspace/**']
     },
 
     // JavaScript 基礎規則

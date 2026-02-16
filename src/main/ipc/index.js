@@ -9,6 +9,7 @@ import { registerBomIpc } from './bom.ipc.js'
 import { registerExcelIpc } from './excel.ipc.js'
 import { registerAppIpc } from './app.ipc.js'
 import { registerProgressIpc } from './progress.ipc.js'
+import { registerThemeIpc } from './theme.ipc.js'
 // import { registerSeriesIpc } from './series.ipc.js'
 
 /**
@@ -37,4 +38,7 @@ export function registerAllIpcHandlers(ipcMain) {
 
     // 進度追蹤 IPC
     registerProgressIpc(ipcMain)
+
+    // 主題管理 IPC
+    registerThemeIpc(ipcMain)
 }

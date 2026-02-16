@@ -1,0 +1,74 @@
+{
+  "name": "Morandi Green",
+  "author": "System",
+  "colors": {
+    /* ========================================
+     * Morandi Green Palette (Sage/Muted Green)
+     * 風格：自然、放鬆、療癒
+     * 使用自定義色階模擬莫蘭迪綠質感
+     * ======================================== */
+    "--color-primary-50": "#f0fdf9",   /* Custom Sage-50 */
+    "--color-primary-100": "#ccfbf1",  /* Custom Sage-100 */
+    "--color-primary-200": "#99f6e4",  /* Custom Sage-200 */
+    "--color-primary-300": "#5eead4",  /* Custom Sage-300 */
+    "--color-primary-400": "#2dd4bf",  /* Custom Sage-400 */
+    "--color-primary-500": "#14b8a6",  /* Teal-500 (Base) - Revised below for Morandi feel */
+    "--color-primary-600": "#0d9488",  /* Teal-600 */
+    "--color-primary-700": "#0f766e",  /* Teal-700 */
+    "--color-primary-800": "#115e59",  /* Teal-800 */
+    "--color-primary-900": "#134e4a",  /* Teal-900 */
+
+    /* Override with Morandi Tones for Key Elements */
+    /* Sage Green Hexes: */
+    /* 50: #f4f7f5 */
+    /* 100: #e3e8e5 */
+    /* 200: #c5d1cc */
+    /* 500: #7a9e9f (Muted Teal/Sage) */
+    
+    "--color-surface-50": "#f4f7f5",
+    "--color-surface-100": "#e3e8e5",
+    "--color-surface-200": "#c5d1cc",
+    "--color-surface-700": "#4a6364",
+    "--color-surface-800": "#2f3e46", /* Deep Jungle Green */
+    "--color-surface-900": "#1c2529",
+    "--color-surface-950": "#0e1315",
+
+    /* ========================================
+     * Mode Specific
+     * ======================================== */
+    
+    /* Light Mode */
+    "light": {
+      "--bom-header-bg": "#e3e8e5",        /* Custom Sage-100: Soft green-gray */
+      "--bom-header-text": "#4a6364",      /* Deep Sage Text */
+      
+      "--bom-row-main-odd": "#ffffff",     /* White */
+      "--bom-row-main-even": "#f4f7f5",    /* Custom Sage-50: Very subtle green tint */
+      
+      "--bom-row-second-odd": "#fcfdfc",   /* Almost white */
+      "--bom-row-second-even": "#f4f7f5",  /* Custom Sage-50 */
+      
+      "--bom-row-hover": "#c5d1cc",        /* Custom Sage-200: Visible green interaction */
+      
+      "--bom-text-main": "#2f3e46",        /* Deep Green-Gray */
+      "--bom-text-second": "#7a9e9f"       /* Muted Teal */
+    },
+
+    /* Dark Mode */
+    "dark": {
+      "--bom-header-bg": "#2f3e46",        /* Deep Jungle Green */
+      "--bom-header-text": "#c5d1cc",      /* Sage-200 */
+      
+      "--bom-row-main-odd": "#0e1315",     /* Deepest Green-Black */
+      "--bom-row-main-even": "#1c2529",    /* Dark Green-Gray Zebra */
+      
+      "--bom-row-second-odd": "#0e1315",   /* Deepest Green-Black */
+      "--bom-row-second-even": "#1c2529",  /* Dark Green-Gray */
+      
+      "--bom-row-hover": "#4a6364",        /* Mid-tone Sage */
+      
+      "--bom-text-main": "#f4f7f5",        /* Sage-50 */
+      "--bom-text-second": "#7a9e9f"       /* Muted Teal */
+    }
+  }
+}
