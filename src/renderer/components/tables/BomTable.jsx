@@ -12,9 +12,27 @@ import {
     ChevronRight, ChevronDown as ChevronDownIcon
 } from 'lucide-react'
 
-// ... (Header comments unchanged)
+// ========================================
+// 搜尋高亮輔助元件
+// ========================================
+const HighlightText = ({ text, term }) => {
+    if (!term || !text) return text
+    
+    const parts = String(text).split(new RegExp(`(${term})`, 'gi'))
+    return (
+        <span>
+            {parts.map((part, i) => 
+                part.toLowerCase() === term.toLowerCase() ? (
+                    <span key={i} className="bg-yellow-200 text-slate-800 dark:bg-yellow-600/50 dark:text-white rounded px-0.5">{part}</span>
+                ) : (
+                    part
+                )
+            )}
+        </span>
+    )
+}
 
-function BomTable({ data, isLoading }) {
+function BomTable({ data, isLoading, searchTerm }) {
     // 收合狀態
     const [expandedGroups, setExpandedGroups] = useState(new Set())
     const [sorting, setSorting] = useState([])
@@ -150,7 +168,7 @@ function BomTable({ data, isLoading }) {
                     </div>
                 )
             },
-            size: 50,
+            size: 60,
             cell: ({ row }) => {
                 const r = row.original
                 if (r._rowType === 'main') {
@@ -182,7 +200,7 @@ function BomTable({ data, isLoading }) {
         {
             accessorKey: 'hhpn',
             header: 'HHPN',
-            // size: auto
+            cell: ({ getValue }) => <HighlightText text={getValue()} term={searchTerm} />
         },
         {
             accessorKey: 'description',
@@ -190,19 +208,19 @@ function BomTable({ data, isLoading }) {
             size: 500, // Large logical size to encourage taking space
             cell: ({ getValue }) => (
                 <span className="truncate block w-full" title={getValue()}>
-                    {getValue()}
+                    <HighlightText text={getValue()} term={searchTerm} />
                 </span>
             ),
         },
         {
             accessorKey: 'supplier',
             header: 'Supplier',
-            // size: auto
+            cell: ({ getValue }) => <HighlightText text={getValue()} term={searchTerm} />
         },
         {
             accessorKey: 'supplier_pn',
             header: 'Supplier PN',
-            // size: auto
+            cell: ({ getValue }) => <HighlightText text={getValue()} term={searchTerm} />
         },
         {
             accessorKey: 'locations',
@@ -213,7 +231,7 @@ function BomTable({ data, isLoading }) {
                 const loc = row.original.locations || ''
                 return (
                     <span className="truncate block" title={loc}>
-                        {loc}
+                        <HighlightText text={loc} term={searchTerm} />
                     </span>
                 )
             },
@@ -267,12 +285,12 @@ function BomTable({ data, isLoading }) {
                 const remark = row.original.remark || ''
                 return (
                     <span className="truncate block" title={remark}>
-                        {remark}
+                        <HighlightText text={remark} term={searchTerm} />
                     </span>
                 )
             },
         },
-    ], [expandState, toggleAll, toggleGroup])
+    ], [expandState, toggleAll, toggleGroup, searchTerm])
 
     // TanStack Table 實例
     const table = useReactTable({

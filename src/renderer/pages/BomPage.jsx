@@ -393,7 +393,7 @@ function BomPage() {
              ======================================== */}
             <div className="flex-1 min-h-0 overflow-hidden">
                 {selectedRevisionId ? (
-                    <BomTable data={filteredBom} isLoading={isLoading} />
+                    <BomTable data={filteredBom} isLoading={isLoading} searchTerm={searchTerm} />
                 ) : (
                     <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400 dark:text-slate-500">
                         <FileSpreadsheet size={40} className="text-slate-300 dark:text-slate-600" />
