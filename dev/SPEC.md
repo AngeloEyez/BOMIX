@@ -103,11 +103,19 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 ### 4.2 BOM 管理
 - 以**表格**方式呈現 BOM（使用 TanStack Table）
 - 檢視選定的 BOM，以**聚合視圖**方式根據篩選規則顯示：
-  - 以 Main Source 為主體，顯示 HHPN、Description、Supplier、Supplier PN、Qty、Location、CCL、Remark 等欄位
-  - Main Source 下方帶入 2nd Source 列表
-  - UI 設計須讓人**容易區分** Main Source 和 2nd Source（例如：縮排、顏色差異、圖標）
-- 能夠在表格上**直接編輯**零件資訊（包含 Main Source 和 2nd Source）
-- 能夠**新增或刪除** 2nd Source
+  - 支援**多種 BOM 視圖 (View)** 切換，邏輯由後端統一管理：
+    - **ALL**：顯示所有 Active 零件 (排除不需上件項目 `X`)。
+    - **SMD**：僅顯示製程為 `SMD` 的 Active 零件。
+    - **PTH**：僅顯示製程為 `PTH` 的 Active 零件。
+    - **BOTTOM**：僅顯示製程為 `BOTTOM` 的 Active 零件。
+  - 以 Main Source 為主體，顯示 HHPN、Description、Supplier、Supplier PN、Qty、Location、CCL、Remark 等欄位。
+  - Main Source 顯示「**Main**」標記，其下方帶入 2nd Source 列表 (無標記)。
+  - UI 設計須讓人**容易區分** Main Source 和 2nd Source（例如：縮排、顏色差異、圖標、Main 粗體）。
+- **表格排序功能**：
+  - 支援點擊表頭對 **Main Item** 進行排序 (如 HHPN、Description 等)。
+  - **分組保持**：排序僅影響 Main Item 的順序，其附屬的 2nd Source 會**永遠緊隨**其 Main Item，不受排序影響。
+- 能夠在表格上**直接編輯**零件資訊（包含 Main Source 和 2nd Source）。
+- 能夠**新增或刪除** 2nd Source。
 
 ### 4.3 Excel 匯入/匯出
 
