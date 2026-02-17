@@ -98,15 +98,16 @@ export function executeView(bomRevisionIdOrIds, viewDefinition) {
                 // Main Item Representative Fields
                 id: part.id, // Representative ID (Main Source ID)
                 bom_revision_id: part.bom_revision_id,
+                bom_ids: new Set([part.bom_revision_id]), // Track which BOMs have this part
                 supplier: part.supplier,
                 supplier_pn: part.supplier_pn,
-                type: part.type, // Pick first encountered type or maybe make it null? For now, first is fine as representative.
+                type: part.type,
                 hhpn: part.hhpn,
                 description: part.description,
                 bom_status: part.bom_status, 
                 ccl: part.ccl,
                 remark: part.remark,
-                item: part.item, // Min item usually
+                item: part.item,
 
                 // Aggregation Fields
                 locations: [],
@@ -115,6 +116,7 @@ export function executeView(bomRevisionIdOrIds, viewDefinition) {
         }
 
         const group = groupedMap.get(key);
+        group.bom_ids.add(part.bom_revision_id); // Add BOM ID to set
         group.locations.push(part.location);
         group.quantity += 1;
 
@@ -135,6 +137,7 @@ export function executeView(bomRevisionIdOrIds, viewDefinition) {
 
         return {
             ...group,
+            bom_ids: Array.from(group.bom_ids), // Convert Set to Array
             locations: group.locations.join(',')
         };
     });

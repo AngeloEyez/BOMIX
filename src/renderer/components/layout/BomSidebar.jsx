@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import {
-    ChevronRight, ChevronDown, FileText, FolderOpen
+    ChevronRight, ChevronDown, FileText, FolderOpen, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react'
 import useProjectStore from '../../stores/useProjectStore'
 import useBomStore from '../../stores/useBomStore'
@@ -75,10 +75,12 @@ const BomSidebar = () => {
     }
 
     const handleResize = (e) => {
+        e.preventDefault() // Prevent selection during drag
         const startX = e.clientX
         const startWidth = width
 
         const onMouseMove = (moveEvent) => {
+            // requestAnimationFrame optimization could be used here if laggy, but usually fine
             const newWidth = Math.max(200, Math.min(600, startWidth + (moveEvent.clientX - startX)))
             updateSettings({ bomSidebarWidth: newWidth })
         }
@@ -86,19 +88,51 @@ const BomSidebar = () => {
         const onMouseUp = () => {
             document.removeEventListener('mousemove', onMouseMove)
             document.removeEventListener('mouseup', onMouseUp)
+            document.body.style.cursor = '' // Reset cursor
         }
 
         document.addEventListener('mousemove', onMouseMove)
         document.addEventListener('mouseup', onMouseUp)
+        document.body.style.cursor = 'col-resize' // Force cursor during drag
     }
 
-    if (isCollapsed) return null // Handled by parent layout usually, or we show a small strip
+    const toggleCollapse = () => {
+        updateSettings({ isBomSidebarCollapsed: !isCollapsed })
+    }
+
+    if (isCollapsed) {
+        return (
+            <div className="h-full border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-surface-900 flex flex-col items-center py-2 w-10">
+                <button
+                    onClick={toggleCollapse}
+                    className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors"
+                    title="展開側邊欄"
+                >
+                    <PanelLeftOpen size={18} />
+                </button>
+            </div>
+        )
+    }
 
     return (
         <div
-            className="flex h-full border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-surface-900 relative flex-shrink-0"
+            className="flex flex-col h-full border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-surface-900 relative flex-shrink-0"
             style={{ width: `${width}px` }}
         >
+            {/* Header */}
+            <div className="flex items-center justify-between p-2 border-b border-slate-200 dark:border-slate-700">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider pl-2">
+                    專案列表
+                </span>
+                <button
+                    onClick={toggleCollapse}
+                    className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors"
+                    title="收合側邊欄"
+                >
+                    <PanelLeftClose size={16} />
+                </button>
+            </div>
+
             <div className="flex-1 overflow-y-auto p-2">
                 <div className="space-y-1">
                     {projects.map(project => (

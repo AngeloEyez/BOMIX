@@ -6,6 +6,8 @@
 
 import matrixModelRepo from '../database/repositories/matrix-model.repo.js';
 import matrixSelectionRepo from '../database/repositories/matrix-selection.repo.js';
+import bomRevisionRepo from '../database/repositories/bom-revision.repo.js'; // Need to fetch project info
+import projectRepo from '../database/repositories/project.repo.js'; // Need project code
 import bomService from './bom.service.js';
 
 /**
@@ -106,7 +108,42 @@ export function getMatrixData(bomRevisionIdOrIds) {
     const ids = Array.isArray(bomRevisionIdOrIds) ? bomRevisionIdOrIds : [bomRevisionIdOrIds];
 
     // 1. 取得 Models (Multi-BOM)
-    const models = matrixModelRepo.findByBomRevisionIds(ids);
+    let models = matrixModelRepo.findByBomRevisionIds(ids);
+
+    // Enrich models with Project info for UI grouping
+    // Optimized: Fetch all relevant BOMs and Projects in one go or cache
+    const bomMap = new Map(); // id -> bom
+    const projectMap = new Map(); // id -> project
+
+    // Get unique BOM IDs from models (though we passed them in `ids`, let's use `ids`)
+    // Actually we need to map model -> bom -> project
+    // Fetch BOM Revisions
+    // Since `ids` are bomRevisionIds
+    // We can fetch them to get project_id.
+    // bomRevisionRepo doesn't have `findByIds` yet, we can iterate or add it.
+    // Iterating `ids` is fine.
+
+    for (const bomId of ids) {
+        const bom = bomRevisionRepo.findById(bomId);
+        if (bom) {
+            bomMap.set(bomId, bom);
+            if (!projectMap.has(bom.project_id)) {
+                const project = projectRepo.findById(bom.project_id);
+                if (project) projectMap.set(bom.project_id, project);
+            }
+        }
+    }
+
+    models = models.map(m => {
+        const bom = bomMap.get(m.bom_revision_id);
+        const project = bom ? projectMap.get(bom.project_id) : null;
+        return {
+            ...m,
+            project_code: project ? project.project_code : 'Unknown',
+            phase_name: bom ? bom.phase_name : 'Unknown',
+            version: bom ? bom.version : ''
+        };
+    });
 
     // 2. 取得 Explicit Selections (Multi-BOM)
     const explicitSelections = matrixSelectionRepo.findByBomRevisionIds(ids);
@@ -140,6 +177,37 @@ export function getMatrixData(bomRevisionIdOrIds) {
 
         // 針對每個 Model 檢查
         for (const model of models) {
+            // Implicit Selection Logic:
+            // Must check if this item "belongs" to this Model's BOM.
+            // `executeView` returns UNION. `item` might not exist in `model.bom_revision_id`.
+            // We need to check if `item.bom_ids` includes `model.bom_revision_id`.
+            // `bomService.executeView` needs to ensure `bom_ids` (or equivalent) is present.
+            // Currently `executeView` adds `id` (representative).
+            // It assumes Union based on Supplier+PN.
+            // If the part exists in *any* BOM, it appears in Union View.
+            // But for a specific BOM (Model), does it need selection?
+            // ONLY if the part exists in THAT BOM.
+
+            // `executeView` logic needs to populate which BOMs have this part.
+            // Currently `executeView` doesn't strictly track `bom_ids` for the group.
+            // We need to fix `bom.service.js` to aggregate `bom_revision_id` list.
+
+            // Assuming `bom.service.js` is updated or we check existing fields.
+            // `item` from `executeView` currently has `bom_revision_id` from the *first* part found.
+            // This is insufficient for Union validation.
+            // We need to update `bom.service.js` first.
+
+            // However, assuming we fix `bom.service.js` to return `bom_ids` array:
+            // if (!item.bom_ids.includes(model.bom_revision_id)) continue;
+
+            // For now, let's assume `bom_ids` will be there.
+            // If not present, we fallback to relaxed check (assume it needs selection if simple view).
+            const relevantBoms = item.bom_ids || [item.bom_revision_id];
+            if (!relevantBoms.includes(model.bom_revision_id)) {
+                // This item is not in this model's BOM, so no selection needed.
+                continue;
+            }
+
             const mapKey = `${model.id}|${groupKey}`;
             const explicit = explicitMap.get(mapKey);
 
@@ -148,38 +216,6 @@ export function getMatrixData(bomRevisionIdOrIds) {
                 summary.modelStatus[model.id].selectedCount++;
             } else if (!hasSecondSource) {
                 // 無明確選擇，但無 Second Source -> Implicit Selection (選 Main)
-                // 為了方便前端，我們構造一個 Selection 物件
-                // 注意: Main Source 的 ID 需要從 item 中獲取。
-                // item 來自 bomService.executeView，其中包含 parts 聚合資訊。
-                // item.id 可能是其中一個 part 的 id (min item)。
-                // 為了穩健，我們需要一個代表性的 ID。executeView 回傳的 item 有 id 屬性嗎？
-                // executeView 回傳的 item 包含 `...group`，其中有 `item` (min item number), 但沒有 `id` (parts.id).
-                // partsRepo.getAggregatedBom does not return part ID because it aggregates multiple parts.
-                // However, executeView's `partsRepo.findByGroup` returns parts with IDs.
-                // Let's check `bom.service.js` executeView.
-                // It groups by supplier|supplier_pn.
-                // It does NOT return a specific part ID in the aggregated object directly unless we added it.
-                // In `bom.service.js`: `group` object has `bom_revision_id`, `supplier`, `supplier_pn`.
-                // It does NOT have `id`.
-                // Wait, `partsRepo.getAggregatedBom` usually uses `MIN(id)` or similar?
-                // `bom.service.js` uses in-memory aggregation.
-                // We need a valid `selected_id` for the implicit selection.
-                // If we select "Main", we need a part ID.
-                // Since we don't have it easily in `bomItems` from `executeView` (it aggregates),
-                // we might need to fetch it or just use a placeholder if the backend logic allows.
-                // BUT `matrix_selections` table requires `selected_id`.
-                // If the user *clicks* to select Main, the frontend will need an ID.
-                // The frontend receives `bomItems`. If `bomItems` doesn't have ID, frontend can't send it.
-                // We should probably include a representative ID in `bomItems` (e.g. `main_part_id`).
-
-                // Let's fix `bom.service.js` later or assume we can get it.
-                // Actually, `bom.service.js` `executeView`:
-                // const group = groupedMap.get(key);
-                // group has `item` (min item number).
-                // We can fetch the part ID corresponding to `bom_revision_id` + `supplier` + `supplier_pn`.
-                // But for Implicit Selection (Virtual), we don't necessarily need to persist it.
-                // We just need to tell Frontend "This is implicitly selected".
-                // So `selected_id` can be null or we can find one if we really want to simulate a record.
 
                 effectiveSelections.push({
                     matrix_model_id: model.id,
@@ -197,7 +233,21 @@ export function getMatrixData(bomRevisionIdOrIds) {
     // 更新完備狀態
     for (const model of models) {
         const status = summary.modelStatus[model.id];
-        status.isComplete = (status.selectedCount === summary.totalGroups) && (summary.totalGroups > 0);
+        // Total groups for *this* model might be less than total Union groups.
+        // We should calculate `totalGroups` per model.
+        // But `summary.totalGroups` is global count.
+        // UI uses `selectedCount / totalGroups`. This is misleading for Union View.
+        // We should calc `modelTotalGroups`.
+        // Let's recalculate model total groups loop.
+        let modelTotal = 0;
+        for (const item of bomItems) {
+             const relevantBoms = item.bom_ids || [item.bom_revision_id];
+             if (relevantBoms.includes(model.bom_revision_id)) {
+                 modelTotal++;
+             }
+        }
+
+        status.isComplete = (status.selectedCount === modelTotal) && (modelTotal > 0);
     }
 
     // 整體 Summary
@@ -209,7 +259,7 @@ export function getMatrixData(bomRevisionIdOrIds) {
         models,
         selections: effectiveSelections,
         summary: {
-            totalGroups: summary.totalGroups,
+            totalGroups: summary.totalGroups, // Global Union Count
             modelStatus: summary.modelStatus,
             hasMatrix: models.length > 0 && explicitSelections.length > 0,
             isSafe
@@ -233,6 +283,7 @@ export default {
     updateModel,
     deleteModel,
     saveSelection,
+    deleteSelection,
     getMatrixData,
     getMatrixSummary
 };

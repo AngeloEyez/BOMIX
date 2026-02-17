@@ -6,6 +6,8 @@ import bomService from '../../../src/main/services/bom.service.js';
 
 vi.mock('../../../src/main/database/repositories/matrix-model.repo.js');
 vi.mock('../../../src/main/database/repositories/matrix-selection.repo.js');
+vi.mock('../../../src/main/database/repositories/bom-revision.repo.js');
+vi.mock('../../../src/main/database/repositories/project.repo.js');
 vi.mock('../../../src/main/services/bom.service.js');
 
 describe('Matrix Service', () => {
@@ -64,7 +66,7 @@ describe('Matrix Service', () => {
     describe('getMatrixData', () => {
         it('should return implicit selections for single source groups', () => {
             // Mock Models
-            const models = [{ id: 10, name: 'Model A' }];
+            const models = [{ id: 10, name: 'Model A', bom_revision_id: 1 }];
             matrixModelRepo.findByBomRevisionIds.mockReturnValue(models);
 
             // Mock Explicit Selections (Empty)
@@ -78,20 +80,24 @@ describe('Matrix Service', () => {
                     id: 999, // Representative ID
                     supplier: 'S1',
                     supplier_pn: 'P1',
-                    second_sources: []
+                    second_sources: [],
+                    bom_ids: [1], // Matches Model BOM
+                    bom_revision_id: 1
                 },
                 {
                     id: 888,
                     supplier: 'S2',
                     supplier_pn: 'P2',
-                    second_sources: [{ supplier: 'SS1' }]
+                    second_sources: [{ supplier: 'SS1' }],
+                    bom_ids: [1],
+                    bom_revision_id: 1
                 }
             ];
             bomService.executeView.mockReturnValue(bomItems);
 
             const result = matrixService.getMatrixData(bomRevisionId);
 
-            expect(result.models).toEqual(models);
+            expect(result.models[0].name).toBe('Model A');
             expect(result.selections).toHaveLength(1); // Only one implicit selection
 
             const implicit = result.selections[0];
@@ -102,7 +108,7 @@ describe('Matrix Service', () => {
         });
 
         it('should calculate summary status correctly', () => {
-             const models = [{ id: 10, name: 'Model A' }];
+             const models = [{ id: 10, name: 'Model A', bom_revision_id: 1 }];
              matrixModelRepo.findByBomRevisionIds.mockReturnValue(models);
 
              // One explicit selection for the item with second source
@@ -115,8 +121,8 @@ describe('Matrix Service', () => {
              matrixSelectionRepo.findByBomRevisionIds.mockReturnValue(explicit);
 
              const bomItems = [
-                { id: 999, supplier: 'S1', supplier_pn: 'P1', second_sources: [] }, // Implicit
-                { id: 888, supplier: 'S2', supplier_pn: 'P2', second_sources: [{}] } // Explicitly selected
+                { id: 999, supplier: 'S1', supplier_pn: 'P1', second_sources: [], bom_ids: [1], bom_revision_id: 1 }, // Implicit
+                { id: 888, supplier: 'S2', supplier_pn: 'P2', second_sources: [{}], bom_ids: [1], bom_revision_id: 1 } // Explicitly selected
             ];
             bomService.executeView.mockReturnValue(bomItems);
 
@@ -129,12 +135,12 @@ describe('Matrix Service', () => {
         });
 
         it('should indicate incomplete status', () => {
-             const models = [{ id: 10, name: 'Model A' }];
+             const models = [{ id: 10, name: 'Model A', bom_revision_id: 1 }];
              matrixModelRepo.findByBomRevisionIds.mockReturnValue(models);
              matrixSelectionRepo.findByBomRevisionIds.mockReturnValue([]); // No explicit
 
              const bomItems = [
-                { id: 888, supplier: 'S2', supplier_pn: 'P2', second_sources: [{}] } // Needs selection, none provided
+                { id: 888, supplier: 'S2', supplier_pn: 'P2', second_sources: [{}], bom_ids: [1], bom_revision_id: 1 } // Needs selection, none provided
             ];
             bomService.executeView.mockReturnValue(bomItems);
 
