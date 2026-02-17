@@ -94,6 +94,11 @@ const useSettingsStore = create((set, get) => ({
         // Update local state
         set(newSettings)
         // Persist
+        // We use settings property for persistence in saveSettings?
+        // Wait, saveSettings reads top-level props: theme, activeThemeId, bomSidebarWidth, isBomSidebarCollapsed.
+        // And updateSettings spreads `newSettings` into store.
+        // So if newSettings contains `bomSidebarWidth`, it updates store, then saveSettings reads it.
+        // This is correct.
         await get().saveSettings()
     },
 

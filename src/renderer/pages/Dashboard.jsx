@@ -32,7 +32,7 @@ function Dashboard({ onNavigate }) {
     } = useProjectStore()
 
     const { 
-        selectProject, selectRevision, updateRevision, deleteBom
+        selectProject, toggleRevisionSelection, updateRevision, deleteBom
     } = useBomStore()
 
     // --- Local State ---
@@ -222,7 +222,7 @@ function Dashboard({ onNavigate }) {
 
     const handleBomClick = async (bom) => {
         await selectProject(bom.project_id)
-        await selectRevision(bom.id)
+        await toggleRevisionSelection(bom.id, false) // false for single select
         onNavigate('bom')
     }
 

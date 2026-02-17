@@ -23,8 +23,10 @@ const BomSidebar = () => {
     } = useBomStore()
 
     const { settings, updateSettings } = useSettingsStore()
-    const width = settings.bomSidebarWidth || 250
-    const isCollapsed = settings.isBomSidebarCollapsed
+    // Safety check for settings
+    const safeSettings = settings || {}
+    const width = safeSettings.bomSidebarWidth || 250
+    const isCollapsed = safeSettings.isBomSidebarCollapsed
 
     // Local state for tree expansion
     const [expandedProjects, setExpandedProjects] = useState({})
