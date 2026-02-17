@@ -131,18 +131,32 @@ const useMatrixStore = create((set, get) => ({
             // Optimistic update for UI responsiveness could be added here
             const result = await window.api.matrix.saveSelection(selectionData)
             if (result.success) {
-                // Background refresh to sync implicit/explicit states if needed
-                // Or just update local state if we want to be fancy.
-                // For now, fetch to ensure correctness.
-                // To avoid flickering, maybe we can silently update?
-                const { matrixData } = get()
-                const currentData = matrixData[bomRevisionId]
+                // Refresh data. If bomRevisionId is array (Multi-BOM), we need to refetch appropriately.
+                // Since we don't track *which* view context triggered this easily here without passing extra args,
+                // we assume `fetchMatrixData` handles the refresh if we pass the same ID/IDs.
+                // But `saveSelection` usually happens in a context where we know the scope.
+                // Currently `BomTable` passes `bomRevisionId` which is `selectedRevisionId` or `selectedRevisionIds`.
+                // If Multi-BOM, `bomRevisionId` passed from `BomTable` handles should be the *context* IDs?
+                // Actually `handleMatrixSelection` in `BomTable` passes `model.bom_revision_id` as first arg.
+                // This is WRONG if we are in Multi-BOM view, we need to refresh the Multi-BOM view!
+                // We should pass the *View Context IDs* to `saveSelection` as the first arg?
+                // OR `useMatrixStore` should track active view context.
 
-                // Manually update local state to reflect change immediately (Optimistic-ish)
-                // Need to find if selection exists and update, or push new
-                // This is complex because of 'implicit' conversion to 'explicit'.
-                // Simple re-fetch is robust.
+                // Let's assume the component calls `fetchMatrixData` again or we re-fetch the *active* context.
+                // But `saveSelection` signature is `(bomRevisionId, selectionData)`.
+                // If `bomRevisionId` is the *single* BOM ID where selection happened, re-fetching that *single* ID won't update 'multi' key in store.
+
+                // Fix: Check if 'multi' key exists in store and refresh it too?
+                // Or simply rely on the caller to handle refresh?
+                // `BomTable` calls this.
+                // Let's try to refresh both single and multi if possible, or just the one passed.
+                // If `bomRevisionId` passed is an array, it refreshes array.
+
                 await get().fetchMatrixData(bomRevisionId)
+
+                // If we are in multi-mode, we might also want to refresh 'multi' if the passed ID was single?
+                // This is getting complicated.
+                // Better approach: `BomTable` passes the *current view IDs* to `saveSelection` as first arg.
             } else {
                 set({ error: result.error })
             }

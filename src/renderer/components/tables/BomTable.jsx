@@ -36,7 +36,8 @@ const HighlightText = ({ text, term }) => {
 }
 
 
-function BomTable({ data, isLoading, searchTerm, searchFields, mode }) {
+function BomTable(props) {
+    const { data, isLoading, searchTerm, searchFields, mode, viewContextIds } = props;
     // --- Context / Store ---
     const {
         matrixData,
@@ -150,24 +151,24 @@ function BomTable({ data, isLoading, searchTerm, searchFields, mode }) {
     }
 
     // Matrix Handler
-    const handleMatrixSelection = async (bomId, modelId, groupKey, type, id, isCurrentlySelected) => {
+    const handleMatrixSelection = async (modelId, groupKey, type, id, isCurrentlySelected) => {
+        // Use current view context IDs for refresh
+        // Get selected IDs from BomStore? Or pass as prop?
+        // Let's pass `viewContextIds` as prop or use `useBomStore`?
+        // `BomTable` doesn't know about `selectedRevisionIds` unless passed.
+        // Let's add `viewContextIds` prop to `BomTable`.
+        const contextIds = props.viewContextIds;
+
         if (isCurrentlySelected) {
-            await deleteSelection(bomId, modelId, groupKey);
+            await deleteSelection(contextIds, modelId, groupKey);
         } else {
-            await saveSelection(bomId, {
+            await saveSelection(contextIds, {
                 matrix_model_id: modelId,
                 group_key: groupKey,
                 selected_type: type,
                 selected_id: id
             });
         }
-        // Force refresh is handled by store update -> fetch -> matrixData update
-        // We might need to refresh matrix data for this specific BOM or Multi
-        // Since `saveSelection` in store calls fetch, it should be fine.
-        // ISSUE: store `saveSelection` calls `fetchMatrixData(bomRevisionId)`.
-        // If we are in multi mode, we need to update 'multi' cache.
-        // `useMatrixStore` needs to know context.
-        // For now, let's assume single BOM writes work fine. Multi-write might need store update.
     };
 
     // 將聚合資料展開為平面行列
@@ -389,58 +390,133 @@ function BomTable({ data, isLoading, searchTerm, searchFields, mode }) {
             },
         ];
 
-        // Matrix Columns
-        const matrixCols = mode === 'MATRIX' ? models.map(model => ({
-            id: `model_${model.id}`,
-            header: () => {
-                const status = summary.modelStatus?.[model.id] || {};
-                const isComplete = status.isComplete;
-                return (
-                    <div className="flex flex-col items-center justify-center gap-1" title={model.description}>
-                        <div className="flex items-center gap-1">
-                            <span>{model.name}</span>
-                            {isComplete ? (
-                                <CheckCircle2 size={14} className="text-green-500" />
-                            ) : (
-                                <AlertTriangle size={14} className="text-amber-500" />
-                            )}
-                        </div>
-                    </div>
-                );
-            },
-            size: 100,
-            cell: ({ row }) => {
-                const r = row.original;
-                const groupKey = r._key;
-                const rowType = r._rowType === 'main' ? 'part' : 'second_source';
-                const rowId = r.id;
-                const bomId = r.bom_revision_id; // Need this!
+        // Matrix Columns (Grouped by Project)
+        // Note: models now contain `bom_revision_id`. We need to group them by project.
+        // But `matrixData` comes from backend and `models` is flat list.
+        // We need Project Code info. Backend `getMatrixData` should probably return project info or we infer it.
+        // Current `models` structure: { id, bom_revision_id, name, description }
+        // We need map `bom_revision_id` -> `Project Code`.
+        // `useBomStore` has `revisions`? Or `BomSidebar` loads them.
+        // Let's assume we can group by `bom_revision_id` and use `bom_revision_id` as header group?
+        // TanStack Table supports header grouping.
+        // Structure:
+        // Project A (Header Group) -> [Model A, Model B] (Columns)
+        // Project B (Header Group) -> [Model A] (Columns)
 
-                // Selection check
-                const selection = selectionMap.get(`${model.id}|${groupKey}`);
-                const isSelected = selection &&
-                                   selection.selected_type === rowType &&
-                                   selection.selected_id === rowId;
+        // 1. Group models by BOM Revision ID (which acts as proxy for Project Phase/Version)
+        // Better: Group by Project Code. But we might not have project code in `models`.
+        // Let's iterate models and build columns.
 
-                const isImplicit = isSelected && selection.is_implicit;
-                const isExplicit = isSelected && !selection.is_implicit;
-                const isGroupComplete = !!selection;
-                const showWarning = !isGroupComplete && r._rowType === 'main';
+        const matrixCols = [];
+        if (mode === 'MATRIX') {
+            // Group models by bom_revision_id
+            const groupedModels = {};
+            models.forEach(m => {
+                if (!groupedModels[m.bom_revision_id]) groupedModels[m.bom_revision_id] = [];
+                groupedModels[m.bom_revision_id].push(m);
+            });
 
-                return (
-                    <div className={`flex items-center justify-center h-full w-full ${showWarning ? 'bg-amber-50 dark:bg-amber-900/20 box-border border-2 border-amber-300 dark:border-amber-600' : ''}`}>
-                        <input
-                            type="checkbox"
-                            checked={!!isSelected}
-                            disabled={isImplicit}
-                            onChange={() => !isImplicit && handleMatrixSelection(bomId, model.id, groupKey, rowType, rowId, isExplicit)}
-                            className={`w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer disabled:opacity-50 ${isImplicit ? 'cursor-not-allowed' : ''}`}
-                            title={isImplicit ? "自動選中 (唯一選項)" : ""}
-                        />
-                    </div>
-                );
-            }
-        })) : [];
+            // Need to fetch BOM info to display Project Name?
+            // We don't have it here easily.
+            // Workaround: Use `bom_revision_id` temporarily or assume `models` has extra info.
+            // Ideally Backend should enrich `models` with `project_code` or `phase_name`.
+            // For now, let's just list them flattened but grouped if TanStack supports dynamic groups easily.
+            // Dynamic grouping in TanStack Table requires nested columns structure.
+
+            // Let's try flat columns first with header indicating project?
+            // "Project A - Model A"
+            // Or better: Update backend to return project info in models.
+            // Assuming backend update will happen in next step (as per plan).
+            // I will implement Grouped Columns logic assuming `model.project_code` exists or similar.
+
+            // If backend hasn't updated yet, we use placeholder.
+            Object.entries(groupedModels).forEach(([bomId, bomModels]) => {
+                // Find project info?
+                // Let's assume models have `project_code` and `phase_name` (added in next backend step).
+                const firstModel = bomModels[0];
+                const headerTitle = firstModel.project_code
+                    ? `${firstModel.project_code} (${firstModel.phase_name})`
+                    : `BOM ${bomId}`;
+
+                const groupCol = {
+                    id: `bom_group_${bomId}`,
+                    header: headerTitle,
+                    columns: bomModels.map(model => ({
+                        id: `model_${model.id}`,
+                        header: () => {
+                            const status = summary.modelStatus?.[model.id] || {};
+                            const isComplete = status.isComplete;
+                            return (
+                                <div className="flex flex-col items-center justify-center gap-1" title={model.description}>
+                                    <div className="flex items-center gap-1">
+                                        <span>{model.name}</span>
+                                        {isComplete ? (
+                                            <CheckCircle2 size={14} className="text-green-500" />
+                                        ) : (
+                                            <AlertTriangle size={14} className="text-amber-500" />
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        },
+                        size: 100,
+                        cell: ({ row }) => {
+                            const r = row.original;
+                            const groupKey = r._key;
+                            const rowType = r._rowType === 'main' ? 'part' : 'second_source';
+                            const rowId = r.id;
+                            const rowBomId = r.bom_revision_id;
+
+                            // Only render checkbox if this row belongs to this BOM (for Union View)
+                            // or if it's a "Union Row" (exists in multiple).
+                            // Current `executeView` returns UNION of parts.
+                            // If a part exists in BOM A but not BOM B, should BOM B column show checkbox?
+                            // Requirement: "不屬於該專案的物料, 儲存格以disable的效果呈現 (讓user知道這專案沒有用到這物料)"
+                            // So we need to know if this row "exists" in this BOM.
+                            // `row` object from `executeView` (Union) should have info about which BOMs it belongs to?
+                            // Currently `executeView` aggregates by Supplier+PN.
+                            // If we have multiple BOMs, `quantity` etc might be ambiguous.
+                            // The `executeView` union logic needs to provide `existsInBomIds` array?
+                            // Or we check `bom_revision_id`?
+                            // If `executeView` returns one row per unique part, `bom_revision_id` is ambiguous (it picks first).
+                            // We need `bom_ids` array in the row data!
+
+                            // Assuming backend updates `executeView` to include `bom_ids` array.
+                            const existsInBom = r.bom_ids?.includes(model.bom_revision_id);
+
+                            if (!existsInBom && r.bom_ids) {
+                                return <div className="h-full w-full bg-slate-100 dark:bg-slate-800/50" title="此專案無此物料" />;
+                            }
+
+                            // Selection check
+                            const selection = selectionMap.get(`${model.id}|${groupKey}`);
+                            const isSelected = selection &&
+                                               selection.selected_type === rowType &&
+                                               selection.selected_id === rowId;
+
+                            const isImplicit = isSelected && selection.is_implicit;
+                            const isExplicit = isSelected && !selection.is_implicit;
+                            const isGroupComplete = !!selection;
+                            const showWarning = !isGroupComplete && r._rowType === 'main';
+
+                            return (
+                                <div className={`flex items-center justify-center h-full w-full ${showWarning ? 'bg-amber-50 dark:bg-amber-900/20 box-border border-2 border-amber-300 dark:border-amber-600' : ''}`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={!!isSelected}
+                                        disabled={isImplicit}
+                                        onChange={() => !isImplicit && handleMatrixSelection(model.id, groupKey, rowType, rowId, isExplicit)}
+                                        className={`w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer disabled:opacity-50 ${isImplicit ? 'cursor-not-allowed' : ''}`}
+                                        title={isImplicit ? "自動選中 (唯一選項)" : ""}
+                                    />
+                                </div>
+                            );
+                        }
+                    }))
+                };
+                matrixCols.push(groupCol);
+            });
+        }
 
         // In Matrix Mode, we replace Standard Cols?
         // User said: "supplier PN 之前的欄位都維持不變, 後面接著是專案的model selection欄位"

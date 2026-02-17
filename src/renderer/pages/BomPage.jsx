@@ -464,6 +464,7 @@ function BomPage() {
                             searchTerm={searchTerm}
                             searchFields={searchFields}
                             mode={bomMode}
+                            viewContextIds={Array.from(selectedRevisionIds)}
                         />
                     ) : (
                         <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400 dark:text-slate-500">
