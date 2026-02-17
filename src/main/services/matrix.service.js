@@ -111,7 +111,8 @@ export function getMatrixData(bomRevisionId) {
     const explicitSelections = matrixSelectionRepo.findByBomRevisionId(bomRevisionId);
 
     // 3. 取得 BOM View (ACTIVE parts) 用於計算 Implicit Selection
-    const viewDef = { filter: { statusLogic: 'ACTIVE' } };
+    // 根據需求，Matrix 僅針對 CCL=Y 的物料進行驗證
+    const viewDef = { filter: { statusLogic: 'ACTIVE', ccl: 'Y' } };
     const bomItems = bomService.executeView(bomRevisionId, viewDef);
 
     // 4. 計算 Implicit Selections 與 統計資料

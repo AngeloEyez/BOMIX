@@ -125,7 +125,14 @@ function BomPage() {
 
     // 關鍵字過濾邏輯
     const filteredBom = useMemo(() => {
-        if (!searchTerm || !searchTerm.trim()) return bomView
+        let data = bomView
+
+        // Matrix Mode 僅顯示 CCL=Y
+        if (isMatrixMode) {
+            data = data.filter(item => item.ccl === 'Y')
+        }
+
+        if (!searchTerm || !searchTerm.trim()) return data
 
         const term = searchTerm.toLowerCase().trim()
         
@@ -139,14 +146,14 @@ function BomPage() {
         }
         
         // ... (filter logic unchanged)
-        return bomView.filter(mainItem => {
+        return data.filter(mainItem => {
             if (checkMatch(mainItem)) return true
             if (mainItem.second_sources && mainItem.second_sources.length > 0) {
                 if (mainItem.second_sources.some(ss => checkMatch(ss))) return true
             }
             return false
         })
-    }, [bomView, searchTerm, searchFields])
+    }, [bomView, searchTerm, searchFields, isMatrixMode])
 
 
     // 開啟系列後載入專案列表
