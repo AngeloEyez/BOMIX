@@ -5,8 +5,8 @@
 // ========================================
 
 import { Sun, Moon, Menu, Settings } from 'lucide-react'
-import useAppStore from '../../stores/useAppStore' // useAppStore has toggleTheme
-import useSettingsStore from '../../stores/useSettingsStore' // SettingStore handles sidebar state etc.
+// import useAppStore from '../../stores/useAppStore' // Deprecated for theme
+import useSettingsStore from '../../stores/useSettingsStore'
 import useSeriesStore from '../../stores/useSeriesStore'
 import useProgressStore from '../../stores/useProgressStore'
 import { useEffect } from 'react'
@@ -28,8 +28,8 @@ import ProgressDialog from '../dialogs/ProgressDialog'
  * @returns {JSX.Element} 主佈局
  */
 function AppLayout({ pages, currentPage, onNavigate, children }) {
-    const { isDarkMode, toggleTheme } = useAppStore() // Correct store for theme
-    const { loadSettings, isLoading } = useSettingsStore()
+    // const { isDarkMode, toggleTheme } = useAppStore() // Moved to useSettingsStore
+    const { loadSettings, isLoading, theme, toggleTheme } = useSettingsStore()
     const { isOpen, currentPath } = useSeriesStore()
     const initProgressListeners = useProgressStore(state => state.initListeners)
 
@@ -53,12 +53,12 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
 
     // Theme effect
     useEffect(() => {
-        if (isDarkMode) {
+        if (theme === 'dark') {
             document.documentElement.classList.add('dark')
         } else {
             document.documentElement.classList.remove('dark')
         }
-    }, [isDarkMode])
+    }, [theme])
 
     if (isLoading) {
         return <div className="flex items-center justify-center h-screen">Loading...</div>
@@ -98,9 +98,9 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
                     <button
                         onClick={toggleTheme}
                         className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-surface-800 text-slate-600 dark:text-slate-400 transition-colors"
-                        title={isDarkMode ? '切換至淺色模式' : '切換至深色模式'}
+                        title={theme === 'dark' ? '切換至淺色模式' : '切換至深色模式'}
                     >
-                        {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+                        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                     </button>
 
                     {/* Settings Button Moved Here */}
