@@ -54,7 +54,6 @@ const api = {
         addSecondSource: (data) => ipcRenderer.invoke('bom:addSecondSource', data),
         updateSecondSource: (id, data) => ipcRenderer.invoke('bom:updateSecondSource', id, data),
         deleteSecondSource: (id) => ipcRenderer.invoke('bom:deleteSecondSource', id),
-        deleteSecondSource: (id) => ipcRenderer.invoke('bom:deleteSecondSource', id),
         delete: (bomRevisionId) => ipcRenderer.invoke('bom:delete', bomRevisionId),
         getViews: () => ipcRenderer.invoke('bom:get-views'),
     },
@@ -63,6 +62,18 @@ const api = {
     excel: {
         import: (filePath, projectId, phaseName, version) => ipcRenderer.invoke('excel:import', filePath, projectId, phaseName, version),
         export: (bomRevisionId, outputFilePath) => ipcRenderer.invoke('excel:export', bomRevisionId, outputFilePath),
+    },
+
+    // Phase 7: Matrix BOM API
+    matrix: {
+        createModels: (bomRevisionId, models) => ipcRenderer.invoke('matrix:createModels', bomRevisionId, models),
+        listModels: (bomRevisionId) => ipcRenderer.invoke('matrix:listModels', bomRevisionId),
+        updateModel: (id, updates) => ipcRenderer.invoke('matrix:updateModel', id, updates),
+        deleteModel: (id) => ipcRenderer.invoke('matrix:deleteModel', id),
+        saveSelection: (selectionData) => ipcRenderer.invoke('matrix:saveSelection', selectionData),
+        deleteSelection: (matrixModelId, groupKey) => ipcRenderer.invoke('matrix:deleteSelection', matrixModelId, groupKey),
+        getData: (bomRevisionId) => ipcRenderer.invoke('matrix:getData', bomRevisionId),
+        getSummary: (bomRevisionId) => ipcRenderer.invoke('matrix:getSummary', bomRevisionId),
     },
 
     // 進度追蹤 API

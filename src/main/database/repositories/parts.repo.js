@@ -129,7 +129,8 @@ function getAggregatedBom(bomRevisionId) {
       remark,
       GROUP_CONCAT(location, ',') AS locations,
       COUNT(location) AS quantity,
-      MIN(item) as item
+      MIN(item) as item,
+      MIN(id) as id
     FROM parts
     WHERE bom_revision_id = ?
     GROUP BY supplier, supplier_pn

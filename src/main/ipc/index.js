@@ -10,6 +10,7 @@ import { registerExcelIpc } from './excel.ipc.js'
 import { registerAppIpc } from './app.ipc.js'
 import { registerProgressIpc } from './progress.ipc.js'
 import { registerThemeIpc } from './theme.ipc.js'
+import { registerMatrixIpc } from './matrix.ipc.js'
 // import { registerSeriesIpc } from './series.ipc.js'
 
 /**
@@ -41,4 +42,7 @@ export function registerAllIpcHandlers(ipcMain) {
 
     // 主題管理 IPC
     registerThemeIpc(ipcMain)
+
+    // Phase 7: Matrix BOM IPC
+    registerMatrixIpc(ipcMain)
 }

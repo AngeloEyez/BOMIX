@@ -82,6 +82,7 @@ export function executeView(bomRevisionId, viewDefinition) {
         if (!groupedMap.has(key)) {
             groupedMap.set(key, {
                 // Main Item Representative Fields
+                id: part.id, // Representative ID (Main Source ID)
                 bom_revision_id: part.bom_revision_id,
                 supplier: part.supplier,
                 supplier_pn: part.supplier_pn,

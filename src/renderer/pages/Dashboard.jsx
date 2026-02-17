@@ -85,9 +85,22 @@ function Dashboard({ onNavigate }) {
     useEffect(() => {
         if (isOpen && projects.length > 0) {
             projects.forEach(p => {
-                window.api.bom.getRevisions(p.id).then(res => {
+                window.api.bom.getRevisions(p.id).then(async (res) => {
                     if (res.success) {
-                        setProjectBoms(prev => ({ ...prev, [p.id]: res.data }))
+                        const boms = res.data;
+                        // Fetch Matrix Summary for each BOM
+                        const bomsWithMatrix = await Promise.all(boms.map(async (bom) => {
+                             try {
+                                 const summaryRes = await window.api.matrix.getSummary(bom.id);
+                                 return {
+                                     ...bom,
+                                     matrixSummary: summaryRes.success ? summaryRes.data : null
+                                 };
+                             } catch (e) {
+                                 return bom;
+                             }
+                        }));
+                        setProjectBoms(prev => ({ ...prev, [p.id]: bomsWithMatrix }))
                     }
                 })
             })
@@ -580,6 +593,12 @@ function Dashboard({ onNavigate }) {
                                                                 <span className="text-xs px-1.5 py-0.5 bg-slate-100 dark:bg-surface-700 text-slate-500 rounded text-[10px]">
                                                                     {bom.mode || 'NPI'}
                                                                 </span>
+                                                                {bom.matrixSummary && bom.matrixSummary.hasMatrix && (
+                                                                    <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-surface-800" title={bom.matrixSummary.isSafe ? "Matrix Complete" : "Matrix Incomplete"}>
+                                                                        <span className="font-semibold text-slate-500">M</span>
+                                                                        <div className={`w-1.5 h-1.5 rounded-full ${bom.matrixSummary.isSafe ? 'bg-green-500' : 'bg-amber-500'}`} />
+                                                                    </div>
+                                                                )}
                                                                 {bom.bom_date && <span className="text-xs text-slate-400">{bom.bom_date}</span>}
                                                             </div>
                                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>

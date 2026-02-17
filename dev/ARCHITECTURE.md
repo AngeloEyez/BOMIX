@@ -1,6 +1,6 @@
 # BOMIX 系統架構設計
 
-> 版本：1.0.0 | 最後更新：2026-02-13
+> 版本：1.1.0 | 最後更新：2026-02-13
 
 ## 架構概覽
 
@@ -32,6 +32,7 @@ React Component → Zustand Store → window.api.xxx()
 Excel 檔案 → importService → bomService → partsRepo → SQLite
 SQLite → partsRepo → bomService → exportService → Excel 檔案
 SQLite → partsRepo → compareService → 差異報告 → React UI
+SQLite → matrixService → Matrix Data (含 Selection) → React UI
 ```
 
 ## UI 架構
@@ -45,14 +46,15 @@ App
 │   ├── Content Area                    ← 頁面動態切換
 │   │   ├── HomePage                    ← 首頁（歡迎畫面）
 │   │   ├── ProjectPage                 ← 專案管理
-│   │   ├── BomPage                     ← BOM 檢視/編輯
+│   │   ├── BomPage                     ← BOM 檢視/編輯/Matrix
 │   │   ├── ComparePage                 ← 版本比較
 │   │   └── SettingsPage                ← 設定
 │   └── StatusBar                       ← 底部狀態列
 └── Dialogs (components/dialogs/)
     ├── AboutDialog                     ← 關於對話框
     ├── ChangelogDialog                 ← 更新記錄
-    └── ImportDialog                    ← 匯入對話框
+    ├── ImportDialog                    ← 匯入對話框
+    └── MatrixModelDialog               ← Matrix Model 管理
 ```
 
 ### 導航機制
@@ -76,7 +78,7 @@ App
 ### IPC 通道命名規範
 ```
 {模組}:{動作}
-例：series:create, project:list, bom:getMainItems, excel:import
+例：series:create, project:list, bom:getMainItems, matrix:getData
 ```
 
 ### 模組依賴方向
@@ -93,9 +95,10 @@ IPC Handlers → Services → Repositories → SQLite
 
 ## 資料庫設計概要
 
-- 5 個資料表：`series_meta` + `projects` → `bom_revisions` → `parts` + `second_sources`
+- 7 個資料表：`series_meta`, `projects`, `bom_revisions`, `parts`, `second_sources`, `matrix_models`, `matrix_selections`
 - 零件原子化儲存（一個 location = 一行紀錄）
 - BOM Main Item 為查詢聚合視圖（`GROUP BY supplier, supplier_pn, type`）
+- Matrix Selection 使用 `group_key` 與 BOM Main Item 關聯
 - 詳見 [DATABASE.md](DATABASE.md)
 
 ## 資料庫連線策略
@@ -117,6 +120,6 @@ IPC Handlers → Services → Repositories → SQLite
 |------|-----------|------|
 | `src/main/` | **Jules** | 主行程、IPC、Services、Database |
 | `src/preload/` | 雙方 | API 橋接（需同步更新） |
-| `src/renderer/` | **Antigravity** | React UI、元件、頁面、樣式 |
+| `src/renderer/` | **Jules/Antigravity** | React UI、元件、頁面、樣式 (Matrix 功能由 Jules 負責) |
 
 > 詳見 [COLLABORATION.md](COLLABORATION.md)

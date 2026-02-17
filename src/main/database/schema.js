@@ -114,6 +114,37 @@ const CREATE_SECOND_SOURCES_INDICES = [
 ];
 
 /**
+ * 建立 Matrix Models 表 SQL
+ * @type {string}
+ */
+const CREATE_MATRIX_MODELS = `
+CREATE TABLE IF NOT EXISTS matrix_models (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bom_revision_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (bom_revision_id) REFERENCES bom_revisions(id) ON DELETE CASCADE
+);
+`;
+
+/**
+ * 建立 Matrix Selections 表 SQL
+ * @type {string}
+ */
+const CREATE_MATRIX_SELECTIONS = `
+CREATE TABLE IF NOT EXISTS matrix_selections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    matrix_model_id INTEGER NOT NULL,
+    group_key TEXT NOT NULL,
+    selected_type TEXT NOT NULL,
+    selected_id INTEGER NOT NULL,
+    FOREIGN KEY (matrix_model_id) REFERENCES matrix_models(id) ON DELETE CASCADE,
+    UNIQUE(matrix_model_id, group_key)
+);
+`;
+
+/**
  * 初始化資料庫 Schema
  * @param {import('better-sqlite3').Database} db - 資料庫實例
  */
@@ -127,6 +158,8 @@ function createSchema(db) {
         CREATE_PARTS_INDICES.forEach(sql => db.exec(sql));
         db.exec(CREATE_SECOND_SOURCES);
         CREATE_SECOND_SOURCES_INDICES.forEach(sql => db.exec(sql));
+        db.exec(CREATE_MATRIX_MODELS);
+        db.exec(CREATE_MATRIX_SELECTIONS);
 
         // 確保 series_meta 至少有一筆資料 (id=1)
         const stmt = db.prepare('INSERT OR IGNORE INTO series_meta (id, description) VALUES (1, ?)');
@@ -170,6 +203,15 @@ function migrateSchema(db) {
     if (!columns.has('suffix')) {
         console.log('[Schema] 正在遷移: 新增 suffix 欄位至 bom_revisions');
         db.exec("ALTER TABLE bom_revisions ADD COLUMN suffix TEXT");
+    }
+
+    // 3. Phase 7: Matrix BOM
+    // 檢查 matrix_models 表是否存在
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='matrix_models'").get();
+    if (!tables) {
+        console.log('[Schema] 正在遷移: 建立 Matrix BOM 相關資料表');
+        db.exec(CREATE_MATRIX_MODELS);
+        db.exec(CREATE_MATRIX_SELECTIONS);
     }
 }
 

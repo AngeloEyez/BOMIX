@@ -1,12 +1,12 @@
 # BOMIX 開發計畫
 
-> 版本：1.1.0 | 最後更新：2026-02-13
+> 版本：1.2.0 | 最後更新：2026-02-13
 
 ## 開發策略
 
 採用 **前後端分離、循序開發** 策略：
-- **Jules (Backend)** 先行開發 API 與資料邏輯
-- **Antigravity (Frontend)** 接續整合 UI
+- **Jules (Backend/Frontend)** 負責後端與 Matrix 模組的全端開發
+- **Antigravity (Frontend)** 負責其他 UI 整合
 - 透過明確的 Phase 切分，讓兩位 Agent 的職責更清晰
 
 ---
@@ -45,7 +45,7 @@
   - [x] `components/dialogs/AboutDialog.jsx`
   - [x] `components/dialogs/ChangelogDialog.jsx`
 
-### Phase 2：主行程資料層 (Jules)
+### Phase 2：主行程資料層 (Jules) ⭐ 已完成
 **負責人：Jules**
 建立資料庫架構與 Repository Pattern，不含 IPC 與 UI 整合。
 
@@ -58,7 +58,7 @@
 - [x] `src/main/database/repositories/second-source.repo.js`
 - [x] 單元測試 (Repositories)
 
-### Phase 3：系列與專案管理 - 後端 (Jules)
+### Phase 3：系列與專案管理 - 後端 (Jules) ⭐ 已完成
 **負責人：Jules**
 實作核心業務邏輯並開放 API。
 
@@ -105,7 +105,29 @@ BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 - [x] 拖曳匯入功能實作
 - [x] 整合測試
 
-### Phase 7：版本比較 - 後端 (Jules)
+### Phase 7：Matrix BOM 功能 (Jules) ⭐ 進行中
+**負責人：Jules** (涵蓋前後端)
+實作多 Model 選擇、勾選與狀態顯示。
+
+- [ ] **文件與架構**
+  - [x] 更新 `dev/SPEC.md`, `dev/DATABASE.md`, `dev/PLAN.md`, `dev/ARCHITECTURE.md`
+- [ ] **後端實作**
+  - [ ] 修改 `src/main/database/schema.js` (新增 Matrix Tables)
+  - [ ] `src/main/database/repositories/matrix-model.repo.js`
+  - [ ] `src/main/database/repositories/matrix-selection.repo.js`
+  - [ ] `src/main/services/matrix.service.js` (含 Implicit Selection 邏輯)
+  - [ ] `src/main/ipc/matrix.ipc.js`
+  - [ ] 更新 `src/preload/index.js`
+  - [ ] API 文件 `dev/modules/matrix.md`
+  - [ ] 單元測試 `tests/unit/matrix.service.test.js`
+- [ ] **前端實作**
+  - [ ] `src/renderer/stores/useMatrixStore.js`
+  - [ ] `src/renderer/components/dialogs/MatrixModelDialog.jsx`
+  - [ ] `src/renderer/components/tables/MatrixTable.jsx`
+  - [ ] 更新 `src/renderer/pages/BomPage.jsx` (整合 Matrix View)
+  - [ ] 更新 `src/renderer/pages/DashboardPage.jsx` (整合 Tag 與燈號)
+
+### Phase 8：版本比較 - 後端 (Jules)
 **負責人：Jules**
 實作 BOM 版本差異比對演算法。
 
@@ -115,7 +137,7 @@ BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 - [ ] 撰寫 API 文件 (`dev/modules/`)
 - [ ] 單元測試 (演算法驗證)
 
-### Phase 8：版本比較 - 前端 (Antigravity)
+### Phase 9：版本比較 - 前端 (Antigravity)
 **負責人：Antigravity**
 呈現比對結果。
 
@@ -123,7 +145,7 @@ BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 - [ ] 更新 `pages/ComparePage.jsx` (差異視覺化呈現)
 - [ ] 整合測試
 
-### Phase 9：打包與發佈
+### Phase 10：打包與發佈
 最終打包、E2E 測試與文件完善。
 
 - [ ] electron-builder 完整打包測試

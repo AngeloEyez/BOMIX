@@ -1,6 +1,6 @@
 # BOMIX 軟體規格書
 
-> 版本：1.0.0 | 最後更新：2026-02-13
+> 版本：1.1.0 | 最後更新：2026-02-13
 
 ## 1. 系統概述
 
@@ -10,6 +10,7 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 - 管理多專案、多 Phase、多版本的 BOM 資料
 - 追蹤 BOM 版本間的變化
 - 支援 Excel 匯入/匯出
+- **支援 Matrix BOM 管理 (多 Model 選擇)**
 - 提供圖形化操作介面
 
 ---
@@ -70,14 +71,13 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 ├── series_meta             ← 系列設定與資訊
 ├── 專案 A（Project）
 │   ├── DB 0.1              ← bom_revision（phase_name + version）
+│   │   └── Matrix Models   ← Matrix 定義依附於 BOM Revision 下
+│   │       ├── Model A
+│   │       ├── Model B
+│   │       └── SKU 1
 │   ├── DB 0.2
-│   ├── SI 0.1
-│   ├── PV 0.1
-│   └── MVB 0.1
-└── 專案 B（Project）
-    ├── EVT 0.1             ← Phase 名稱可自訂
-    ├── DVT 0.1
-    └── PVT 0.1
+│   └── ...
+└── ...
 ```
 
 ### 3.1 Phase 類型
@@ -117,24 +117,51 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 - 能夠在表格上**直接編輯**零件資訊（包含 Main Source 和 2nd Source）。
 - 能夠**新增或刪除** 2nd Source。
 
-### 4.3 Excel 匯入/匯出
+### 4.3 Matrix BOM 功能 (Phase 7 新增)
+
+#### 4.3.1 核心概念
+- 針對物料群組 (Main + 2nd sources) 中的每個物料做驗證時，需按照 Matrix BOM。
+- 分為 A, B, C 等數個 Model (數量不定)。
+- 每個 Model 讓 User 勾選群組中某個物料 (Main 或 2nd Source)。
+- Matrix 資訊依附於特定版本的 BOM。
+
+#### 4.3.2 Model 管理
+- 在 BOM 頁面或儀表板中，可開啟 Matrix Model 管理對話框。
+- 可新增、編輯名稱、刪除 Model。
+- 預設建立 3 個 Model：A, B, C。
+- **刪除保護**：若 Model 已有勾選資料，刪除前須經過使用者確認。
+
+#### 4.3.3 Matrix 選擇視圖
+- 呈現方式：在 BOM 表格右側動態增加欄位，每欄代表一個 Model。
+- **Checkbox 選擇**：在每個 Model 欄位中，針對每個 Main Item 群組 (Main + 2nd Sources)，只能勾選其中一個物料。
+- **即時儲存**：勾選或取消勾選時，立即寫入資料庫 (`matrix_selections`)。
+- **自動勾選 (Implicit Selection)**：若某群組只有 Main Source (無 2nd Source)，系統視為已自動選中 Main，使用者無需手動勾選，但 UI 上應清楚顯示為已選中狀態。
+
+#### 4.3.4 狀態與燈號
+- **Matrix Tag**：當 BOM 存在 Matrix 定義 (Model > 0 且有任一 Selection) 時，在儀表板顯示 "Matrix" Tag。
+- **燈號顏色**：
+  - **綠燈 (Safe)**：所有 Model 的所有群組皆已完成勾選 (含自動勾選)。
+  - **黃/紅燈 (Warning)**：任一 Model 尚有未完成勾選的群組。
+- **警示 UI**：在 Matrix 表格表頭顯示各 Model 的完成狀態燈號；未完成的儲存格顯示警告框線。
+
+### 4.4 Excel 匯入/匯出
 
 #### 匯入
 - 支援讀取 `.xls` 與 `.xlsx` 格式
 - 支援**拖曳開啟**檔案，同時支援點擊按鈕選擇檔案
-- 匯入邏輯詳見 [4.3.1 Excel BOM 匯入規則](#431-excel-bom-匯入規則)
+- 匯入邏輯詳見 [4.4.1 Excel BOM 匯入規則](#441-excel-bom-匯入規則)
 
 #### 匯出
 - 僅支援寫入 `.xlsx` 格式
-- 匯出邏輯詳見 [4.3.2 Excel BOM 匯出規則](#432-excel-bom-匯出規則)
+- 匯出邏輯詳見 [4.4.2 Excel BOM 匯出規則](#442-excel-bom-匯出規則)
 
-### 4.4 版本比較
+### 4.5 版本比較 (待開發)
 - 比較同一專案不同版本的 BOM
 - 標示新增、刪除、修改的項目
 
 ---
 
-### 4.3.1 Excel BOM 匯入規則
+### 4.4.1 Excel BOM 匯入規則
 
 #### 表頭解析（bom_revisions 資料）
 
@@ -233,7 +260,7 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 
 ---
 
-### 4.3.2 Excel BOM 匯出規則
+### 4.4.2 Excel BOM 匯出規則
 
 #### 支援格式
 - 匯出格式為 `.xlsx`。
@@ -309,6 +336,8 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 | `bom_revisions` | BOM 版本（合併 Phase + Version，含 schematic/PCB 版本等） |
 | `parts` | 原子化零件紀錄（一個 location 一行） |
 | `second_sources` | 替代料（透過邏輯鍵關聯零件群組） |
+| `matrix_models` | Matrix 專案定義 |
+| `matrix_selections` | Matrix 勾選紀錄 |
 
 > 詳細 Schema 定義請參考 [DATABASE.md](DATABASE.md)
 
@@ -397,7 +426,8 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
   - **樹狀視圖**：階層式顯示 `系列 -> 專案 -> BOM`。
   - **編輯功能**：
     - 專案：編輯代碼與描述。
-    - BOM：編輯屬性 (Mode, Date, Suffix, Desc)。
+    - BOM：編輯屬性 (Mode, Date, Suffix, Desc) 與 **Matrix Model 設定**。
+  - **Matrix 狀態**：顯示 Matrix Tag 與健康度燈號。
   - **導航**：點擊 BOM 版本直接跳轉至 BOM 功能頁面。
 
 ### 7.5 About 對話框
