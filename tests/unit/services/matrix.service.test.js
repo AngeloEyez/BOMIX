@@ -65,10 +65,10 @@ describe('Matrix Service', () => {
         it('should return implicit selections for single source groups', () => {
             // Mock Models
             const models = [{ id: 10, name: 'Model A' }];
-            matrixModelRepo.findByBomRevisionId.mockReturnValue(models);
+            matrixModelRepo.findByBomRevisionIds.mockReturnValue(models);
 
             // Mock Explicit Selections (Empty)
-            matrixSelectionRepo.findByBomRevisionId.mockReturnValue([]);
+            matrixSelectionRepo.findByBomRevisionIds.mockReturnValue([]);
 
             // Mock BOM Items (from executeView)
             // One item with only Main Source (Implicit candidate)
@@ -103,7 +103,7 @@ describe('Matrix Service', () => {
 
         it('should calculate summary status correctly', () => {
              const models = [{ id: 10, name: 'Model A' }];
-             matrixModelRepo.findByBomRevisionId.mockReturnValue(models);
+             matrixModelRepo.findByBomRevisionIds.mockReturnValue(models);
 
              // One explicit selection for the item with second source
              const explicit = [{
@@ -112,7 +112,7 @@ describe('Matrix Service', () => {
                  selected_type: 'second_source',
                  selected_id: 200
              }];
-             matrixSelectionRepo.findByBomRevisionId.mockReturnValue(explicit);
+             matrixSelectionRepo.findByBomRevisionIds.mockReturnValue(explicit);
 
              const bomItems = [
                 { id: 999, supplier: 'S1', supplier_pn: 'P1', second_sources: [] }, // Implicit
@@ -130,8 +130,8 @@ describe('Matrix Service', () => {
 
         it('should indicate incomplete status', () => {
              const models = [{ id: 10, name: 'Model A' }];
-             matrixModelRepo.findByBomRevisionId.mockReturnValue(models);
-             matrixSelectionRepo.findByBomRevisionId.mockReturnValue([]); // No explicit
+             matrixModelRepo.findByBomRevisionIds.mockReturnValue(models);
+             matrixSelectionRepo.findByBomRevisionIds.mockReturnValue([]); // No explicit
 
              const bomItems = [
                 { id: 888, supplier: 'S2', supplier_pn: 'P2', second_sources: [{}] } // Needs selection, none provided

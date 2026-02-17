@@ -22,21 +22,35 @@ export function getBomData(bomRevisionId) {
 
 /**
  * 執行 BOM View (In-Memory Aggregation)
+ * 支援單一 ID 或 IDs 陣列 (Union View)
  *
- * @param {number} bomRevisionId
+ * @param {number|Array<number>} bomRevisionIdOrIds
  * @param {Object} viewDefinition - 從 bom-factory 取得的 View 定義
  * @returns {Array<Object>} 聚合後的 BOM 列表
  */
-export function executeView(bomRevisionId, viewDefinition) {
-    // 1. 取得 BOM Revision (確認 Mode)
-    const revision = bomRevisionRepo.findById(bomRevisionId);
-    if (!revision) {
-        throw new Error(`找不到 ID 為 ${bomRevisionId} 的 BOM 版本`);
-    }
-    const mode = revision.mode || 'NPI'; // Default to NPI
+export function executeView(bomRevisionIdOrIds, viewDefinition) {
+    let ids = Array.isArray(bomRevisionIdOrIds) ? bomRevisionIdOrIds : [bomRevisionIdOrIds];
+    if (ids.length === 0) return [];
 
-    // 2. 取得原始資料
-    const { parts, secondSources } = getBomData(bomRevisionId);
+    // 1. 取得 BOM Revisions (確認 Mode - 優先使用第一個 BOM 的 Mode 或統一 Mode)
+    // 假設 Union View 的 Mode 必須一致，或以第一個為主
+    const firstRevision = bomRevisionRepo.findById(ids[0]);
+    if (!firstRevision) {
+        throw new Error(`找不到 ID 為 ${ids[0]} 的 BOM 版本`);
+    }
+    const mode = firstRevision.mode || 'NPI';
+
+    // 2. 取得原始資料 (Multi-BOM)
+    let parts = partsRepo.findByBomRevisions(ids);
+    // secondSourceRepo also needs multi-id support or fetch iteratively
+    // Currently secondSourceRepo doesn't have `findByBomRevisions`.
+    // Let's iterate for SS or add repo method. Iterating is fine for now as SS count is usually low relative to parts.
+    // Or better, update secondSourceRepo later. For now, fetch all SS for these IDs.
+    // Wait, secondSourceRepo.findByBomRevision returns *all* SS for that BOM.
+    let secondSources = [];
+    for (const id of ids) {
+        secondSources = secondSources.concat(secondSourceRepo.findByBomRevision(id));
+    }
 
     // 3. 準備 Filter 邏輯
     const filter = viewDefinition.filter;

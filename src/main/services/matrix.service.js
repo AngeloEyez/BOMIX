@@ -97,23 +97,23 @@ export function deleteSelection(matrixModelId, groupKey) {
 
 /**
  * 取得 Matrix 完整資料 (含 Implicit Selections)
+ * 支援單一或多個 BOM ID
  *
- * @param {number} bomRevisionId
+ * @param {number|Array<number>} bomRevisionIdOrIds
  * @returns {Object} { models, selections, summary }
  */
-export function getMatrixData(bomRevisionId) {
-    // 1. 取得 Models
-    const models = matrixModelRepo.findByBomRevisionId(bomRevisionId);
+export function getMatrixData(bomRevisionIdOrIds) {
+    const ids = Array.isArray(bomRevisionIdOrIds) ? bomRevisionIdOrIds : [bomRevisionIdOrIds];
 
-    // 2. 取得 Explicit Selections
-    // 這裡我們只取出屬於這些 Models 的 Selections
-    // 由於 matrixSelectionRepo.findByBomRevisionId 已經做了 Join，我們可以直接用
-    const explicitSelections = matrixSelectionRepo.findByBomRevisionId(bomRevisionId);
+    // 1. 取得 Models (Multi-BOM)
+    const models = matrixModelRepo.findByBomRevisionIds(ids);
 
-    // 3. 取得 BOM View (ACTIVE parts) 用於計算 Implicit Selection
-    // 根據需求，Matrix 僅針對 CCL=Y 的物料進行驗證
+    // 2. 取得 Explicit Selections (Multi-BOM)
+    const explicitSelections = matrixSelectionRepo.findByBomRevisionIds(ids);
+
+    // 3. 取得 BOM View (ACTIVE parts + Union) 用於計算 Implicit Selection
     const viewDef = { filter: { statusLogic: 'ACTIVE', ccl: 'Y' } };
-    const bomItems = bomService.executeView(bomRevisionId, viewDef);
+    const bomItems = bomService.executeView(ids, viewDef);
 
     // 4. 計算 Implicit Selections 與 統計資料
     const effectiveSelections = [...explicitSelections];

@@ -4,15 +4,16 @@
 // 參考 Windows 11 Fluent Design 風格
 // ========================================
 
-import { Sun, Moon, Menu } from 'lucide-react'
-import useSettingsStore from '../../stores/useSettingsStore'
+import { Sun, Moon, Menu, Settings } from 'lucide-react'
+import useAppStore from '../../stores/useAppStore' // useAppStore has toggleTheme
+import useSettingsStore from '../../stores/useSettingsStore' // SettingStore handles sidebar state etc.
 import useSeriesStore from '../../stores/useSeriesStore'
-import useProgressStore from '../../stores/useProgressStore' // [New]
+import useProgressStore from '../../stores/useProgressStore'
 import { useEffect } from 'react'
 
 // Components
-import AppStatusLine from './AppStatusLine' // [New]
-import ProgressDialog from '../dialogs/ProgressDialog' // [New]
+import AppStatusLine from './AppStatusLine'
+import ProgressDialog from '../dialogs/ProgressDialog'
 
 /**
  * 應用程式主佈局元件。
@@ -27,19 +28,20 @@ import ProgressDialog from '../dialogs/ProgressDialog' // [New]
  * @returns {JSX.Element} 主佈局
  */
 function AppLayout({ pages, currentPage, onNavigate, children }) {
-    const { theme, toggleTheme, initSettings, isLoading } = useSettingsStore()
+    const { isDarkMode, toggleTheme } = useAppStore() // Correct store for theme
+    const { loadSettings, isLoading } = useSettingsStore()
     const { isOpen, currentPath } = useSeriesStore()
-    const initProgressListeners = useProgressStore(state => state.initListeners) // [New]
+    const initProgressListeners = useProgressStore(state => state.initListeners)
 
     // 從路徑取得檔案名稱
     const seriesName = currentPath ? currentPath.split(/[\\/]/).pop()?.replace('.bomix', '') : null
 
     // 初始化設定
     useEffect(() => {
-        initSettings()
-    }, [initSettings])
+        loadSettings()
+    }, [loadSettings])
 
-    // 初始化進度監聽 [New]
+    // 初始化進度監聽
     useEffect(() => {
         initProgressListeners()
     }, [initProgressListeners])
@@ -48,6 +50,15 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
     useEffect(() => {
         document.title = seriesName ? `BOMIX - ${seriesName}` : 'BOMIX'
     }, [seriesName])
+
+    // Theme effect
+    useEffect(() => {
+        if (isDarkMode) {
+            document.documentElement.classList.add('dark')
+        } else {
+            document.documentElement.classList.remove('dark')
+        }
+    }, [isDarkMode])
 
     if (isLoading) {
         return <div className="flex items-center justify-center h-screen">Loading...</div>
@@ -59,25 +70,26 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
             <header className="flex items-center justify-between h-12 px-4
         bg-white/80 dark:bg-surface-900/80 backdrop-blur-sm
         border-b border-slate-200 dark:border-slate-800
-        shrink-0 z-10 app-drag-region"> {/* Added app-drag-region if supported for dragging */}
+        shrink-0 z-10 app-drag-region">
                 <div className="flex items-center gap-1">
-                    {/* 功能導航 (原側邊欄) */}
-                    {pages.map((page) => {
+                    {/* 功能導航 */}
+                    {pages.filter(p => p.id !== 'settings').map((page) => {
                         const isActive = page.id === currentPage
                         return (
                             <button
                                 key={page.id}
                                 onClick={() => onNavigate(page.id)}
                                 className={`
-                                    p-2 rounded-lg transition-all duration-200
+                                    p-2 rounded-lg transition-all duration-200 flex items-center gap-2
                                     ${isActive
-                                        ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400'
+                                        ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400 font-medium'
                                         : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200'
                                     }
                                 `}
                                 title={page.label}
                             >
                                 {page.icon}
+                                <span className="text-sm">{page.label}</span>
                             </button>
                         )
                     })}
@@ -86,12 +98,22 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
                     <button
                         onClick={toggleTheme}
                         className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-surface-800 text-slate-600 dark:text-slate-400 transition-colors"
-                        title={theme === 'light' ? '切換至深色模式' : '切換至淺色模式'}
+                        title={isDarkMode ? '切換至淺色模式' : '切換至深色模式'}
                     >
-                        {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+                        {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
                     </button>
-                    <button className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-surface-800 text-slate-600 dark:text-slate-400">
-                        <Menu size={18} />
+
+                    {/* Settings Button Moved Here */}
+                    <button
+                        onClick={() => onNavigate('settings')}
+                        className={`p-2 rounded-lg transition-all duration-200
+                            ${currentPage === 'settings'
+                                ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400'
+                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-surface-800'
+                            }`}
+                        title="設定"
+                    >
+                        <Settings size={18} />
                     </button>
                 </div>
             </header>

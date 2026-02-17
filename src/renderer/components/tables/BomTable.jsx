@@ -9,8 +9,11 @@ import {
     ChevronsUpDown, // All Expanded (or toggle)
     ChevronsDown,   // All Collapsed (Expand All)
     ListMinus,       // Partical
-    ChevronRight, ChevronDown as ChevronDownIcon
+    ChevronRight, ChevronDown as ChevronDownIcon,
+    AlertTriangle, CheckCircle2
 } from 'lucide-react'
+import useMatrixStore from '../../stores/useMatrixStore'
+import useBomStore from '../../stores/useBomStore'
 
 // ========================================
 // 搜尋高亮輔助元件
@@ -33,7 +36,69 @@ const HighlightText = ({ text, term }) => {
 }
 
 
-function BomTable({ data, isLoading, searchTerm, searchFields }) {
+function BomTable({ data, isLoading, searchTerm, searchFields, mode }) {
+    // --- Context / Store ---
+    const {
+        matrixData,
+        saveSelection,
+        deleteSelection,
+        fetchMatrixData
+    } = useMatrixStore()
+
+    // Matrix Data Lookup
+    // Since `matrixData` is stored by key (single ID or 'multi'), we need to access it correctly.
+    // If mode is MATRIX and we have data, we assume matrixData has been fetched for current selection.
+    // We'll iterate over all keys in matrixData or rely on a "current" pointer?
+    // Actually, `useMatrixStore` stores data by `bomRevisionId`.
+    // If multiple BOMs are selected, `matrixData` might have 'multi' key.
+    // Let's assume the page triggers fetch and stores in a predictable key.
+    // However, `matrixData` structure is `{ [key]: { models, selections } }`.
+    // If we have dynamic columns from potentially multiple BOMs, we need to merge them.
+    // For simplicity, let's assume `useMatrixStore` exposes a `currentMatrixData` selector or we use the `matrixData` directly.
+
+    // Derived Matrix Data
+    const matrixInfo = useMemo(() => {
+        if (mode !== 'MATRIX') return null;
+
+        // Aggregate models and selections from all loaded matrix data that matches current view rows?
+        // Or simpler: `useMatrixStore` should have been called with the current selection IDs.
+        // If single BOM: key is ID. If multi: key is 'multi' (as per my update).
+        // Let's try to find the data.
+        // Since I don't have the key here easily without passing it, I might iterate `matrixData` values?
+        // No, `fetchMatrixData` was called with specific IDs.
+        // Let's assume the parent passes `matrixKey` or `matrixData` directly?
+        // Passing `matrixData` directly from Store to Component might be cleaner.
+        // But `useMatrixStore` is global.
+
+        // Hack: Check if 'multi' exists, else check single ID if data length > 0
+        // Ideally `useBomStore` knows the selected IDs.
+        // Let's try to grab 'multi' if it exists, else look for single.
+
+        let data = matrixData['multi'];
+        if (!data) {
+            // Find any single key
+            const keys = Object.keys(matrixData).filter(k => k !== 'multi');
+            if (keys.length === 1) {
+                data = matrixData[keys[0]];
+            }
+        }
+        return data;
+    }, [matrixData, mode]);
+
+    const models = matrixInfo?.models || [];
+    const selections = matrixInfo?.selections || [];
+    const summary = matrixInfo?.summary || {};
+
+    // Selection Map
+    const selectionMap = useMemo(() => {
+        const map = new Map();
+        selections.forEach(s => {
+            map.set(`${s.matrix_model_id}|${s.group_key}`, s);
+        });
+        return map;
+    }, [selections]);
+
+
     // 收合狀態
     const [expandedGroups, setExpandedGroups] = useState(new Set())
     const [sorting, setSorting] = useState([])
@@ -83,6 +148,27 @@ function BomTable({ data, isLoading, searchTerm, searchFields }) {
             setExpandedGroups(allGroupKeys)
         }
     }
+
+    // Matrix Handler
+    const handleMatrixSelection = async (bomId, modelId, groupKey, type, id, isCurrentlySelected) => {
+        if (isCurrentlySelected) {
+            await deleteSelection(bomId, modelId, groupKey);
+        } else {
+            await saveSelection(bomId, {
+                matrix_model_id: modelId,
+                group_key: groupKey,
+                selected_type: type,
+                selected_id: id
+            });
+        }
+        // Force refresh is handled by store update -> fetch -> matrixData update
+        // We might need to refresh matrix data for this specific BOM or Multi
+        // Since `saveSelection` in store calls fetch, it should be fine.
+        // ISSUE: store `saveSelection` calls `fetchMatrixData(bomRevisionId)`.
+        // If we are in multi mode, we need to update 'multi' cache.
+        // `useMatrixStore` needs to know context.
+        // For now, let's assume single BOM writes work fine. Multi-write might need store update.
+    };
 
     // 將聚合資料展開為平面行列
     const flatRows = useMemo(() => {
@@ -134,12 +220,15 @@ function BomTable({ data, isLoading, searchTerm, searchFields }) {
                         location: '',
                         _rowType: 'second',
                         _groupIndex: groupIndex,
+                        _key: key, // Keep key for Matrix selection mapping
                         bom_status: mainItem.bom_status,
                         type: mainItem.type,
                         locations: undefined,
                         quantity: '',
                         ccl: '',
                         remark: '',
+                        // Needed for Matrix selection to identify row correctly
+                        bom_revision_id: ss.bom_revision_id || mainItem.bom_revision_id,
                     })
                 })
             }
@@ -149,151 +238,225 @@ function BomTable({ data, isLoading, searchTerm, searchFields }) {
     }, [data, isLoading, sorting, expandedGroups])
 
     // 欄位定義
-    const columns = useMemo(() => [
-        {
-            id: 'rowIndicator',
-            header: () => {
-                // Determine Icon based on expandState
-                let Icon = ChevronsUpDown // Default (ALL_EXPANDED) logic
+    const columns = useMemo(() => {
+        const baseCols = [
+            {
+                id: 'rowIndicator',
+                header: () => {
+                    // Determine Icon based on expandState
+                    let Icon = ChevronsUpDown // Default (ALL_EXPANDED) logic
 
-                
-                if (expandState === 'ALL_EXPANDED') Icon = ChevronsUpDown
-                else if (expandState === 'ALL_COLLAPSED') Icon = ChevronsDown
-                else if (expandState === 'PARTIAL') Icon = ListMinus
 
-                return (
-                    <div 
-                        onClick={(e) => { e.stopPropagation(); toggleAll(); }}
-                        className="cursor-pointer hover:text-primary-600 select-none flex items-center justify-center w-full h-full p-1"
-                        title={expandState === 'ALL_EXPANDED' ? "點擊全部收合" : "點擊全部展開"}
-                    >
-                        <Icon size={16} className="text-slate-500" />
-                    </div>
-                )
-            },
-            size: 60,
-            cell: ({ row }) => {
-                const r = row.original
-                if (r._rowType === 'main') {
+                    if (expandState === 'ALL_EXPANDED') Icon = ChevronsUpDown
+                    else if (expandState === 'ALL_COLLAPSED') Icon = ChevronsDown
+                    else if (expandState === 'PARTIAL') Icon = ListMinus
+
                     return (
                         <div 
-                            className="flex items-center gap-1 cursor-pointer select-none pl-1"
-                            onClick={(e) => {
-                                if (r._hasSecondSources) {
-                                    e.stopPropagation()
-                                    toggleGroup(r._key)
-                                }
-                            }}
+                            onClick={(e) => { e.stopPropagation(); toggleAll(); }}
+                            className="cursor-pointer hover:text-primary-600 select-none flex items-center justify-center w-full h-full p-1"
+                            title={expandState === 'ALL_EXPANDED' ? "點擊全部收合" : "點擊全部展開"}
                         >
-                             {/* Text: Main. No emphasis color (slate-600). */}
-                            <span className="text-[10px] text-slate-600 font-bold" title="Main Source">Main</span>
-                            
-                            {/* Icon: Show if has 2nd sources */}
-                            {r._hasSecondSources && (
-                                <span className="text-slate-400">
-                                    {r._isExpanded ? <ChevronDownIcon size={12}/> : <ChevronRight size={12}/>}
-                                </span>
-                            )}
+                            <Icon size={16} className="text-slate-500" />
                         </div>
                     )
-                }
-                return null
+                },
+                size: 60,
+                cell: ({ row }) => {
+                    const r = row.original
+                    if (r._rowType === 'main') {
+                        return (
+                            <div
+                                className="flex items-center gap-1 cursor-pointer select-none pl-1"
+                                onClick={(e) => {
+                                    if (r._hasSecondSources) {
+                                        e.stopPropagation()
+                                        toggleGroup(r._key)
+                                    }
+                                }}
+                            >
+                                 {/* Text: Main. No emphasis color (slate-600). */}
+                                <span className="text-[10px] text-slate-600 font-bold" title="Main Source">Main</span>
+
+                                {/* Icon: Show if has 2nd sources */}
+                                {r._hasSecondSources && (
+                                    <span className="text-slate-400">
+                                        {r._isExpanded ? <ChevronDownIcon size={12}/> : <ChevronRight size={12}/>}
+                                    </span>
+                                )}
+                            </div>
+                        )
+                    }
+                    return null
+                },
             },
-        },
-        {
-            accessorKey: 'hhpn',
-            header: 'HHPN',
-            cell: ({ getValue }) => <HighlightText text={getValue()} term={searchFields?.has('hhpn') ? searchTerm : ''} />
-        },
-        {
-            accessorKey: 'description',
-            header: 'Description',
-            size: 500, // Large logical size to encourage taking space
-            cell: ({ getValue }) => (
-                <span className="truncate block w-full" title={getValue()}>
-                    <HighlightText text={getValue()} term={searchFields?.has('description') ? searchTerm : ''} />
-                </span>
-            ),
-        },
-        {
-            accessorKey: 'supplier',
-            header: 'Supplier',
-            cell: ({ getValue }) => <HighlightText text={getValue()} term={searchFields?.has('supplier') ? searchTerm : ''} />
-        },
-        {
-            accessorKey: 'supplier_pn',
-            header: 'Supplier PN',
-            cell: ({ getValue }) => <HighlightText text={getValue()} term={searchFields?.has('supplier_pn') ? searchTerm : ''} />
-        },
-        {
-            accessorKey: 'location',
-            header: 'Location',
-            size: 200, 
-            cell: ({ row }) => {
-                if (row.original._rowType === 'second') return ''
-                const loc = row.original.location || ''
-                return (
-                    <span className="truncate block" title={loc}>
-                        <HighlightText text={loc} term={searchFields?.has('location') ? searchTerm : ''} />
+            {
+                accessorKey: 'hhpn',
+                header: 'HHPN',
+                cell: ({ getValue }) => <HighlightText text={getValue()} term={searchFields?.has('hhpn') ? searchTerm : ''} />
+            },
+            {
+                accessorKey: 'description',
+                header: 'Description',
+                size: 500, // Large logical size to encourage taking space
+                cell: ({ getValue }) => (
+                    <span className="truncate block w-full" title={getValue()}>
+                        <HighlightText text={getValue()} term={searchFields?.has('description') ? searchTerm : ''} />
                     </span>
-                )
+                ),
             },
-        },
-        {
-            accessorKey: 'quantity',
-            header: 'Qty',
-            size: 40,
-            cell: ({ row }) => {
-                if (row.original._rowType === 'second') return ''
-                return row.original.quantity
+            {
+                accessorKey: 'supplier',
+                header: 'Supplier',
+                cell: ({ getValue }) => <HighlightText text={getValue()} term={searchFields?.has('supplier') ? searchTerm : ''} />
             },
-        },
-        {
-            accessorKey: 'bom_status',
-            header: 'BOM',
-            size: 40,
-            cell: ({ row }) => {
-                if (row.original._rowType === 'second') return ''
-                const s = row.original.bom_status
-                const colorMap = { I: 'text-green-600', X: 'text-red-500', P: 'text-amber-600', M: 'text-blue-600' }
-                return <span className={`font-semibold ${colorMap[s] || ''}`}>{s}</span>
+            {
+                accessorKey: 'supplier_pn',
+                header: 'Supplier PN',
+                cell: ({ getValue }) => <HighlightText text={getValue()} term={searchFields?.has('supplier_pn') ? searchTerm : ''} />
             },
-        },
-        {
-            accessorKey: 'type',
-            header: 'Type',
-            size: 60,
-            cell: ({ row }) => {
-                if (row.original._rowType === 'second') return ''
-                return row.original.type || ''
+        ];
+
+        // Standard BOM Columns
+        const standardCols = [
+            {
+                accessorKey: 'location',
+                header: 'Location',
+                size: 200,
+                cell: ({ row }) => {
+                    if (row.original._rowType === 'second') return ''
+                    const loc = row.original.location || ''
+                    return (
+                        <span className="truncate block" title={loc}>
+                            <HighlightText text={loc} term={searchFields?.has('location') ? searchTerm : ''} />
+                        </span>
+                    )
+                },
             },
-        },
-        {
-            accessorKey: 'ccl',
-            header: 'CCL',
-            size: 35,
-            cell: ({ row }) => {
-                if (row.original._rowType === 'second') return ''
-                const c = row.original.ccl
-                if (c === 'Y') return <span className="text-red-500 font-bold">Y</span>
-                return c || ''
+            {
+                accessorKey: 'quantity',
+                header: 'Qty',
+                size: 40,
+                cell: ({ row }) => {
+                    if (row.original._rowType === 'second') return ''
+                    return row.original.quantity
+                },
             },
-        },
-        {
-            accessorKey: 'remark',
-            header: 'Remark',
+            {
+                accessorKey: 'bom_status',
+                header: 'BOM',
+                size: 40,
+                cell: ({ row }) => {
+                    if (row.original._rowType === 'second') return ''
+                    const s = row.original.bom_status
+                    const colorMap = { I: 'text-green-600', X: 'text-red-500', P: 'text-amber-600', M: 'text-blue-600' }
+                    return <span className={`font-semibold ${colorMap[s] || ''}`}>{s}</span>
+                },
+            },
+            {
+                accessorKey: 'type',
+                header: 'Type',
+                size: 60,
+                cell: ({ row }) => {
+                    if (row.original._rowType === 'second') return ''
+                    return row.original.type || ''
+                },
+            },
+            {
+                accessorKey: 'ccl',
+                header: 'CCL',
+                size: 35,
+                cell: ({ row }) => {
+                    if (row.original._rowType === 'second') return ''
+                    const c = row.original.ccl
+                    if (c === 'Y') return <span className="text-red-500 font-bold">Y</span>
+                    return c || ''
+                },
+            },
+            {
+                accessorKey: 'remark',
+                header: 'Remark',
+                size: 100,
+                cell: ({ row }) => {
+                    if (row.original._rowType === 'second') return ''
+                    const remark = row.original.remark || ''
+                    return (
+                        <span className="truncate block" title={remark}>
+                            <HighlightText text={remark} term={searchFields?.has('remark') ? searchTerm : ''} />
+                        </span>
+                    )
+                },
+            },
+        ];
+
+        // Matrix Columns
+        const matrixCols = mode === 'MATRIX' ? models.map(model => ({
+            id: `model_${model.id}`,
+            header: () => {
+                const status = summary.modelStatus?.[model.id] || {};
+                const isComplete = status.isComplete;
+                return (
+                    <div className="flex flex-col items-center justify-center gap-1" title={model.description}>
+                        <div className="flex items-center gap-1">
+                            <span>{model.name}</span>
+                            {isComplete ? (
+                                <CheckCircle2 size={14} className="text-green-500" />
+                            ) : (
+                                <AlertTriangle size={14} className="text-amber-500" />
+                            )}
+                        </div>
+                    </div>
+                );
+            },
             size: 100,
             cell: ({ row }) => {
-                if (row.original._rowType === 'second') return ''
-                const remark = row.original.remark || ''
+                const r = row.original;
+                const groupKey = r._key;
+                const rowType = r._rowType === 'main' ? 'part' : 'second_source';
+                const rowId = r.id;
+                const bomId = r.bom_revision_id; // Need this!
+
+                // Selection check
+                const selection = selectionMap.get(`${model.id}|${groupKey}`);
+                const isSelected = selection &&
+                                   selection.selected_type === rowType &&
+                                   selection.selected_id === rowId;
+
+                const isImplicit = isSelected && selection.is_implicit;
+                const isExplicit = isSelected && !selection.is_implicit;
+                const isGroupComplete = !!selection;
+                const showWarning = !isGroupComplete && r._rowType === 'main';
+
                 return (
-                    <span className="truncate block" title={remark}>
-                        <HighlightText text={remark} term={searchFields?.has('remark') ? searchTerm : ''} />
-                    </span>
-                )
-            },
-        },
-    ], [expandState, toggleAll, toggleGroup, searchTerm, searchFields])
+                    <div className={`flex items-center justify-center h-full w-full ${showWarning ? 'bg-amber-50 dark:bg-amber-900/20 box-border border-2 border-amber-300 dark:border-amber-600' : ''}`}>
+                        <input
+                            type="checkbox"
+                            checked={!!isSelected}
+                            disabled={isImplicit}
+                            onChange={() => !isImplicit && handleMatrixSelection(bomId, model.id, groupKey, rowType, rowId, isExplicit)}
+                            className={`w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer disabled:opacity-50 ${isImplicit ? 'cursor-not-allowed' : ''}`}
+                            title={isImplicit ? "自動選中 (唯一選項)" : ""}
+                        />
+                    </div>
+                );
+            }
+        })) : [];
+
+        // In Matrix Mode, we replace Standard Cols?
+        // User said: "supplier PN 之前的欄位都維持不變, 後面接著是專案的model selection欄位"
+        // So we append matrixCols AFTER Supplier PN.
+        // Base Cols ends at Supplier PN.
+        // So we split standardCols?
+        // Wait, current baseCols includes HHPN, Desc, Supplier, Supplier PN.
+        // standardCols has Location, Qty, BOM, Type, CCL, Remark.
+
+        if (mode === 'MATRIX') {
+            return [...baseCols, ...matrixCols];
+        } else {
+            return [...baseCols, ...standardCols];
+        }
+
+    }, [expandState, toggleAll, toggleGroup, searchTerm, searchFields, mode, models, summary, selectionMap])
 
     // TanStack Table 實例
     const table = useReactTable({

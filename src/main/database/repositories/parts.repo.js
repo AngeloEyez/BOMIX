@@ -99,6 +99,19 @@ function findByBomRevision(bomRevisionId) {
 }
 
 /**
+ * 取得多個 BOM 版本的所有零件 (原子化列表)
+ * @param {Array<number>} bomRevisionIds - BOM 版本 ID 陣列
+ * @returns {Array<Object>} 零件列表
+ */
+function findByBomRevisions(bomRevisionIds) {
+  const db = dbManager.getDb();
+  if (!bomRevisionIds || bomRevisionIds.length === 0) return [];
+  const placeholders = bomRevisionIds.map(() => '?').join(',');
+  const stmt = db.prepare(`SELECT * FROM parts WHERE bom_revision_id IN (${placeholders})`);
+  return stmt.all(...bomRevisionIds);
+}
+
+/**
  * 刪除指定 BOM 版本的所有零件
  * @param {number} bomRevisionId - BOM 版本 ID
  */
@@ -206,6 +219,7 @@ export default {
   create,
   createMany,
   findByBomRevision,
+  findByBomRevisions,
   deleteByBomRevision,
   getAggregatedBom,
   update,

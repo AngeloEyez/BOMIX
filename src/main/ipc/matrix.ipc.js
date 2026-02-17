@@ -114,12 +114,12 @@ export function registerMatrixIpc(ipcMainInstance) {
     /**
      * @channel matrix:getData
      * @param {Object} event
-     * @param {number} bomRevisionId
+     * @param {number|Array<number>} bomRevisionIdOrIds
      * @returns {Object} { success, data }
      */
-    ipcMainInstance.handle('matrix:getData', async (event, bomRevisionId) => {
+    ipcMainInstance.handle('matrix:getData', async (event, bomRevisionIdOrIds) => {
         try {
-            const result = matrixService.getMatrixData(bomRevisionId);
+            const result = matrixService.getMatrixData(bomRevisionIdOrIds);
             return { success: true, data: result };
         } catch (error) {
             console.error('[IPC] matrix:getData error:', error);

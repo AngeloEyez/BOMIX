@@ -94,6 +94,19 @@ function findByBomRevisionId(bomRevisionId) {
 }
 
 /**
+ * 根據多個 BOM Revision ID 查詢所有 Matrix Model
+ * @param {Array<number>} bomRevisionIds
+ * @returns {Array<Object>}
+ */
+function findByBomRevisionIds(bomRevisionIds) {
+    const db = dbManager.getDb();
+    if (!bomRevisionIds || bomRevisionIds.length === 0) return [];
+    const placeholders = bomRevisionIds.map(() => '?').join(',');
+    const stmt = db.prepare(`SELECT * FROM matrix_models WHERE bom_revision_id IN (${placeholders}) ORDER BY bom_revision_id ASC, id ASC`);
+    return stmt.all(...bomRevisionIds);
+}
+
+/**
  * 計算指定 BOM Revision 下的 Matrix Model 數量
  * @param {number} bomRevisionId
  * @returns {number}
@@ -111,5 +124,6 @@ export default {
     delete: deleteModel,
     findById,
     findByBomRevisionId,
+    findByBomRevisionIds,
     countByBomRevisionId
 };

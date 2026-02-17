@@ -14,18 +14,24 @@ const useMatrixStore = create((set, get) => ({
     matrixData: {},
 
     /**
-     * 取得指定 BOM 的 Matrix 資料
-     * @param {number} bomRevisionId
+     * 取得指定 BOM (或多個 BOM) 的 Matrix 資料
+     * @param {number|Array<number>} bomRevisionIdOrIds
+     * @param {string} cacheKey - 用於儲存資料的鍵值 (通常是 ID 或 Hash)
      */
-    fetchMatrixData: async (bomRevisionId) => {
+    fetchMatrixData: async (bomRevisionIdOrIds, cacheKey) => {
         set({ isLoading: true, error: null })
         try {
-            const result = await window.api.matrix.getData(bomRevisionId)
+            const result = await window.api.matrix.getData(bomRevisionIdOrIds)
             if (result.success) {
+                // 如果是陣列，cacheKey 通常是 'multi' 或特定的 key，這裡簡化處理
+                // 為了支援多 BOM 模式，我們可能需要一個更靈活的結構
+                // 暫時使用傳入的 cacheKey 或第一個 ID
+                const key = cacheKey || (Array.isArray(bomRevisionIdOrIds) ? 'multi' : bomRevisionIdOrIds);
+
                 set(state => ({
                     matrixData: {
                         ...state.matrixData,
-                        [bomRevisionId]: result.data
+                        [key]: result.data
                     },
                     isLoading: false
                 }))

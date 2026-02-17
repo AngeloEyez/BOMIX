@@ -76,6 +76,26 @@ function findByBomRevisionId(bomRevisionId) {
 }
 
 /**
+ * 根據多個 BOM Revision ID 查詢所有相關 Selection
+ * @param {Array<number>} bomRevisionIds
+ * @returns {Array<Object>} Returns selections with model_id info
+ */
+function findByBomRevisionIds(bomRevisionIds) {
+    const db = dbManager.getDb();
+    if (!bomRevisionIds || bomRevisionIds.length === 0) return [];
+
+    const placeholders = bomRevisionIds.map(() => '?').join(',');
+    const sql = `
+        SELECT ms.*
+        FROM matrix_selections ms
+        JOIN matrix_models mm ON ms.matrix_model_id = mm.id
+        WHERE mm.bom_revision_id IN (${placeholders})
+    `;
+    const stmt = db.prepare(sql);
+    return stmt.all(...bomRevisionIds);
+}
+
+/**
  * 計算指定 Model 下的 Selection 數量
  * @param {number} matrixModelId
  * @returns {number}
@@ -117,6 +137,7 @@ export default {
     findByModelId,
     findByModelAndGroup,
     findByBomRevisionId,
+    findByBomRevisionIds,
     countByModelId,
     deleteByModelId,
     deleteByModelAndGroup
