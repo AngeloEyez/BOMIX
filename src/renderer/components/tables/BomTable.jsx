@@ -589,7 +589,7 @@ function BomTable(props) {
         <div ref={tableContainerRef} className="h-full overflow-auto border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-surface-800 relative">
             <table className="w-full text-xs border-collapse relative">
                 {/* 表頭 (Sticky) */}
-                <thead className="bg-bom-header-bg sticky top-0 z-10 shadow-sm">
+                <thead className="sticky top-0 z-10 shadow-sm">
                     {table.getHeaderGroups().map((headerGroup, index) => (
                         <tr key={headerGroup.id}>
                             {headerGroup.headers.map((header) => {
@@ -627,11 +627,10 @@ function BomTable(props) {
                                         onClick={header.column.getToggleSortingHandler()}
                                         className={`text-left text-[11px] font-semibold
                                             py-1.5 px-2 border-b border-slate-200 dark:border-slate-600
-                                            whitespace-nowrap select-none
-                                            bg-bom-header-bg
+                                            whitespace-nowrap select-none bg-clip-padding
                                             ${isUnfinishedModel 
-                                                ? 'text-amber-600 dark:text-amber-400' 
-                                                : 'text-bom-header-text'}
+                                                ? 'bg-slate-50 dark:bg-surface-800 text-amber-600 dark:text-amber-400' 
+                                                : 'bg-slate-50 dark:bg-surface-800 text-bom-header-text'}
                                             ${hasLeftDivider ? 'border-l-2 border-slate-300 dark:border-slate-500' : ''}
                                             ${header.column.getCanSort() ? 'cursor-pointer hover:text-slate-700 dark:hover:text-slate-200' : ''}`}
                                         style={{ width: header.getSize() }}
