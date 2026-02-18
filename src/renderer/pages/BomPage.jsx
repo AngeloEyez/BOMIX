@@ -242,7 +242,7 @@ function BomPage() {
     const headerTitle = selectionCount === 0
         ? '未選擇 BOM'
         : selectionCount === 1
-            ? `${selectedRevision?.phase_name} ${selectedRevision?.version} ${selectedRevision?.suffix ? `-${selectedRevision.suffix}` : ''}`
+            ? `${selectedRevision?.phase_name}-${selectedRevision?.version}${selectedRevision?.suffix ? `-${selectedRevision.suffix}` : ''}`
             : `${selectionCount} 個 BOM 已選取`
 
     // ========================================

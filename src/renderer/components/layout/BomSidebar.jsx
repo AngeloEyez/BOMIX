@@ -19,6 +19,7 @@ import useSettingsStore from '../../stores/useSettingsStore'
  * - 拖曳右側邊界調整寬度（放開後才持久化）
  * - 點擊收合按鈕收合至最小寬度（狀態持久化）
  * - 再次點擊展開按鈕恢復至收合前的寬度
+ * - 緊湊佈局：縮小空間與字體，最大化可見資訊量
  *
  * @returns {JSX.Element} BOM 側邊欄
  */
@@ -29,15 +30,14 @@ const BomSidebar = () => {
         selectProject,
     } = useBomStore()
 
-    // 直接從 store 頂層讀取側邊欄相關設定（非巢狀 settings 物件）
+    // 直接從 store 頂層讀取側邊欄相關設定
     const { bomSidebarWidth, isBomSidebarCollapsed, updateSettings } = useSettingsStore()
     const isCollapsed = isBomSidebarCollapsed
 
     // 拖曳時使用 local state，避免每次 mousemove 都觸發 IPC 儲存
-    // 初始值從 store 讀取，後續由 store 同步（如應用程式啟動後讀取持久化設定）
     const [localWidth, setLocalWidth] = useState(bomSidebarWidth || 250)
 
-    // 當 store 中的寬度更新時（如初始化讀取持久化設定），同步 local state
+    // 當 store 中的寬度更新時，同步 local state
     useEffect(() => {
         setLocalWidth(bomSidebarWidth || 250)
     }, [bomSidebarWidth])
@@ -112,7 +112,7 @@ const BomSidebar = () => {
          * @param {MouseEvent} moveEvent
          */
         const onMouseMove = (moveEvent) => {
-            const newWidth = Math.max(200, Math.min(600, startWidth + (moveEvent.clientX - startX)))
+            const newWidth = Math.max(120, Math.min(600, startWidth + (moveEvent.clientX - startX)))
             setLocalWidth(newWidth)
         }
 
@@ -126,7 +126,7 @@ const BomSidebar = () => {
             document.body.style.cursor = '' // 恢復游標樣式
 
             // 放開後才持久化最終寬度
-            const finalWidth = Math.max(200, Math.min(600, startWidth + (upEvent.clientX - startX)))
+            const finalWidth = Math.max(120, Math.min(600, startWidth + (upEvent.clientX - startX)))
             setLocalWidth(finalWidth)
             updateSettings({ bomSidebarWidth: finalWidth })
         }
@@ -148,13 +148,13 @@ const BomSidebar = () => {
     // ========================================
     if (isCollapsed) {
         return (
-            <div className="h-full border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-surface-900 flex flex-col items-center py-2 w-10 flex-shrink-0">
+            <div className="h-full border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-surface-900 flex flex-col items-center py-2 w-9 flex-shrink-0">
                 <button
                     onClick={toggleCollapse}
-                    className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors"
+                    className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors"
                     title="展開側邊欄"
                 >
-                    <PanelLeftOpen size={18} />
+                    <PanelLeftOpen size={16} />
                 </button>
             </div>
         )
@@ -168,54 +168,55 @@ const BomSidebar = () => {
             className="flex flex-col h-full border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-surface-900 relative flex-shrink-0"
             style={{ width: `${localWidth}px` }}
         >
-            {/* 標頭：顯示標題與收合按鈕 */}
-            <div className="flex items-center justify-between p-2 border-b border-slate-200 dark:border-slate-700">
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider pl-2">
-                    專案列表
+            {/* 標頭 (緊湊) */}
+            <div className="flex items-center justify-between px-2 py-1 border-b border-slate-200 dark:border-slate-700">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">
+                    Projects
                 </span>
                 <button
                     onClick={toggleCollapse}
-                    className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors"
+                    className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors"
                     title="收合側邊欄"
                 >
-                    <PanelLeftClose size={16} />
+                    <PanelLeftClose size={14} />
                 </button>
             </div>
 
-            {/* 專案樹狀列表 */}
-            <div className="flex-1 overflow-y-auto p-2">
-                <div className="space-y-1">
+            {/* 列表容器 (緊湊) */}
+            <div className="flex-1 overflow-y-auto pt-1 pb-2">
+                <div className="space-y-0">
                     {projects.map(project => (
                         <div key={project.id}>
                             {/* 專案列 */}
                             <div
-                                className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-surface-800 transition-colors select-none text-sm font-medium text-slate-700 dark:text-slate-300"
+                                className="flex items-center gap-1.5 px-2 py-0.5 hover:bg-slate-200/60 dark:hover:bg-surface-800 transition-colors cursor-pointer select-none text-xs font-semibold text-slate-600 dark:text-slate-300"
                                 onClick={() => toggleProject(project.id)}
                             >
-                                {expandedProjects[project.id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                <FolderOpen size={16} className="text-sky-500" />
+                                <span className="text-slate-400 flex-shrink-0">
+                                    {expandedProjects[project.id] ? <ChevronDown size={12} strokeWidth={2.5} /> : <ChevronRight size={12} strokeWidth={2.5} />}
+                                </span>
+                                <FolderOpen size={14} className="text-sky-500 flex-shrink-0" />
                                 <span className="truncate">{project.project_code}</span>
                             </div>
 
                             {/* BOM Revision 列表（展開時顯示） */}
                             {expandedProjects[project.id] && (
-                                <div className="ml-4 pl-2 border-l border-slate-200 dark:border-slate-700 mt-1 space-y-0.5">
+                                <div className="ml-3.5 pl-2 border-l border-slate-200/60 dark:border-slate-700/60 py-0.5 space-y-0">
                                     {projectBoms[project.id]?.map(bom => {
                                         const isSelected = selectedRevisionIds.has(bom.id)
                                         return (
                                             <div
                                                 key={bom.id}
                                                 onClick={(e) => handleBomClick(e, bom.id)}
-                                                className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer select-none text-xs transition-colors
+                                                className={`flex items-center gap-1.5 px-2 py-0.5 rounded-sm cursor-pointer select-none text-[11px] transition-colors
                                                     ${isSelected
-                                                        ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300 font-medium'
-                                                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-surface-800'
+                                                        ? 'bg-primary-500/10 text-primary-600 dark:text-primary-400 font-medium'
+                                                        : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-surface-800/80 hover:text-slate-700 dark:hover:text-slate-200'
                                                     }`}
                                             >
-                                                <FileText size={14} className={isSelected ? 'text-primary-500' : 'text-slate-400'} />
+                                                <FileText size={12} className={isSelected ? 'text-primary-500' : 'text-slate-400'} />
                                                 <span className="truncate">
-                                                    {bom.phase_name} {bom.version}
-                                                    {bom.suffix ? `-${bom.suffix}` : ''}
+                                                    {bom.phase_name}-{bom.version}{bom.suffix ? `-${bom.suffix}` : ''}
                                                 </span>
                                             </div>
                                         )
@@ -229,7 +230,7 @@ const BomSidebar = () => {
 
             {/* 右側拖曳調整寬度的把手 */}
             <div
-                className="w-1 cursor-col-resize hover:bg-primary-500/50 absolute right-0 top-0 bottom-0 z-10 transition-colors"
+                className="w-1 cursor-col-resize hover:bg-primary-500/30 absolute right-0 top-0 bottom-0 z-10 transition-colors"
                 onMouseDown={handleResize}
             />
         </div>
