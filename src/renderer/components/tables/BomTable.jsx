@@ -440,25 +440,34 @@ function BomTable(props) {
 
                 const groupCol = {
                     id: `bom_group_${bomId}`,
-                    header: headerTitle,
-                    columns: bomModels.map(model => ({
-                        id: `model_${model.id}`,
-                        header: () => {
-                            const status = summary.modelStatus?.[model.id] || {};
-                            const isComplete = status.isComplete;
-                            return (
-                                <div className="flex flex-col items-center justify-center gap-1" title={model.description}>
-                                    <div className="flex items-center gap-1">
-                                        <span>{model.name}</span>
-                                        {isComplete ? (
-                                            <CheckCircle2 size={14} className="text-green-500" />
-                                        ) : (
-                                            <AlertTriangle size={14} className="text-amber-500" />
-                                        )}
+                    meta: { isFirstOfGroup: true }, // 頂層分組也標記為第一欄，以顯示分隔線
+                    header: () => (
+                        <div className="w-full text-center">
+                            {headerTitle}
+                        </div>
+                    ),
+                    columns: bomModels.map((model, idx) => {
+                        const status = summary.modelStatus?.[model.id] || {};
+                        const isComplete = status.isComplete;
+                        
+                        return {
+                            id: `model_${model.id}`,
+                            meta: { 
+                                isComplete, 
+                                isFirstOfGroup: idx === 0 // 標記是否為專案分組的第一欄
+                            },
+                            header: () => {
+                                return (
+                                    <div className="flex flex-col items-center justify-center py-0.5 text-center px-1" title={model.description}>
+                                        <div className="flex flex-col items-center gap-0.5">
+                                            <span className="truncate max-w-[90px]">{model.name}</span>
+                                            {isComplete && (
+                                                <CheckCircle2 size={11} className="text-green-500 flex-shrink-0" />
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        },
+                                );
+                            },
                         size: 100,
                         cell: ({ row }) => {
                             const r = row.original;
@@ -512,7 +521,8 @@ function BomTable(props) {
                                 </div>
                             );
                         }
-                    }))
+                    };
+                })
                 };
                 matrixCols.push(groupCol);
             });
@@ -580,21 +590,53 @@ function BomTable(props) {
             <table className="w-full text-xs border-collapse relative">
                 {/* 表頭 (Sticky) */}
                 <thead className="bg-bom-header-bg sticky top-0 z-10 shadow-sm">
-                    {table.getHeaderGroups().map((headerGroup) => (
+                    {table.getHeaderGroups().map((headerGroup, index) => (
                         <tr key={headerGroup.id}>
                             {headerGroup.headers.map((header) => {
+                                // 在 Matrix 模式下，處理基礎欄位的合併 (rowSpan)
+                                // 如果是第一層 (index 0) 且該欄位沒有子欄位 (isPlaceholder 為假)，則讓他跨兩行
+                                const isMatrix = mode === 'MATRIX'
+                                const isFirstGroup = index === 0
+                                const isLeaf = !header.column.columnDef.columns
+                                
+                                // 如果在第二層以後：
+                                // 1. 如果是佔位符 (代表他在上面的層級已經被 rowSpan 處理過)，則不渲染
+                                // 2. 在 Matrix 模式下，第二層只應該顯示屬於分組內 (有 parent) 的欄位
+                                if (isMatrix && !isFirstGroup) {
+                                    if (header.isPlaceholder || !header.column.parent) {
+                                        return null
+                                    }
+                                }
+
+                                const rowSpan = (isMatrix && isFirstGroup && isLeaf) ? 2 : 1
+                                const colSpan = header.colSpan
                                 const isSorted = header.column.getIsSorted()
+
+                                // 警告樣式邏輯
+                                const meta = header.column.columnDef.meta
+                                const isUnfinishedModel = isMatrix && !isFirstGroup && meta && meta.isComplete === false
+                                
+                                // 分隔線邏輯：Matrix 模式下，每個分組的第一個欄位左側加深框線
+                                const hasLeftDivider = isMatrix && meta?.isFirstOfGroup
+
                                 return (
                                     <th
                                         key={header.id}
+                                        colSpan={colSpan}
+                                        rowSpan={rowSpan}
                                         onClick={header.column.getToggleSortingHandler()}
-                                        className={`text-left text-[11px] font-semibold text-bom-header-text
+                                        className={`text-left text-[11px] font-semibold
                                             py-1.5 px-2 border-b border-slate-200 dark:border-slate-600
-                                            whitespace-nowrap select-none bg-bom-header-bg
+                                            whitespace-nowrap select-none
+                                            bg-bom-header-bg
+                                            ${isUnfinishedModel 
+                                                ? 'text-amber-600 dark:text-amber-400' 
+                                                : 'text-bom-header-text'}
+                                            ${hasLeftDivider ? 'border-l-2 border-slate-300 dark:border-slate-500' : ''}
                                             ${header.column.getCanSort() ? 'cursor-pointer hover:text-slate-700 dark:hover:text-slate-200' : ''}`}
                                         style={{ width: header.getSize() }}
                                     >
-                                        <div className="flex items-center gap-1">
+                                        <div className={`flex items-center gap-1 ${!isFirstGroup && isMatrix ? 'justify-center' : ''}`}>
                                             {flexRender(header.column.columnDef.header, header.getContext())}
                                             {{
                                                 asc: ' 🔼',
@@ -659,17 +701,23 @@ function BomTable(props) {
                                         className={`${rowClass} border-b border-slate-100 dark:border-slate-700/50
                                             hover:bg-bom-row-hover transition-colors`}
                                     >
-                                        {row.getVisibleCells().map((cell) => (
-                                            <td
-                                                key={cell.id}
-                                                className={`py-1 px-2
-                                                    ${isSecond ? 'italic' : ''}
-                                                    whitespace-nowrap overflow-hidden`}
-                                                style={{ maxWidth: cell.column.getSize() }}
-                                            >
-                                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                            </td>
-                                        ))}
+                                        {row.getVisibleCells().map((cell) => {
+                                            const cellMeta = cell.column.columnDef.meta;
+                                            const hasLeftDivider = mode === 'MATRIX' && cellMeta?.isFirstOfGroup;
+                                            
+                                            return (
+                                                <td
+                                                    key={cell.id}
+                                                    className={`py-1 px-2
+                                                        ${isSecond ? 'italic' : ''}
+                                                        ${hasLeftDivider ? 'border-l-2 border-slate-200 dark:border-slate-700' : ''}
+                                                        whitespace-nowrap overflow-hidden`}
+                                                    style={{ maxWidth: cell.column.getSize() }}
+                                                >
+                                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                                </td>
+                                            );
+                                        })}
                                     </tr>
                                 )
                             })}
