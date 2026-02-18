@@ -9,7 +9,6 @@ import useProjectStore from '../stores/useProjectStore'
 import useBomStore from '../stores/useBomStore'
 import useProgressStore from '../stores/useProgressStore'
 import useMatrixStore from '../stores/useMatrixStore'
-import useSettingsStore from '../stores/useSettingsStore' // [New]
 import BomTable from '../components/tables/BomTable'
 import BomSidebar from '../components/layout/BomSidebar' // [New]
 import ImportDialog from '../components/dialogs/ImportDialog'
@@ -60,7 +59,6 @@ function BomPage() {
     )
 
     const { fetchMatrixData } = useMatrixStore()
-    const { settings } = useSettingsStore() // [New]
 
     // 匯入對話框
     const [isImportOpen, setIsImportOpen] = useState(false)

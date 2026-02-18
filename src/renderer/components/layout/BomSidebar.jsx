@@ -9,35 +9,46 @@ import useSettingsStore from '../../stores/useSettingsStore'
 // ========================================
 // BOM 側邊欄
 // 樹狀顯示系列中所有專案與 BOM Revisions
-// 支援單選/多選
+// 支援單選/多選、拖曳調整寬度、收合展開
 // ========================================
 
+/**
+ * BOM 側邊欄元件。
+ *
+ * 提供專案與 BOM Revision 的樹狀列表，支援：
+ * - 拖曳右側邊界調整寬度（放開後才持久化）
+ * - 點擊收合按鈕收合至最小寬度（狀態持久化）
+ * - 再次點擊展開按鈕恢復至收合前的寬度
+ *
+ * @returns {JSX.Element} BOM 側邊欄
+ */
 const BomSidebar = () => {
     const { projects } = useProjectStore()
     const {
         selectedRevisionId, selectedRevisionIds, toggleRevisionSelection,
-        selectProject, // Used to load revisions if not loaded?
-        // Actually we need to make sure we have all revisions for tree view.
-        // Dashboard loads all. BomPage only loads for selected project initially.
-        // We should load all if we want a full tree.
+        selectProject,
     } = useBomStore()
 
-    const { settings, updateSettings } = useSettingsStore()
-    // Safety check for settings
-    const safeSettings = settings || {}
-    const width = safeSettings.bomSidebarWidth || 250
-    const isCollapsed = safeSettings.isBomSidebarCollapsed
+    // 直接從 store 頂層讀取側邊欄相關設定（非巢狀 settings 物件）
+    const { bomSidebarWidth, isBomSidebarCollapsed, updateSettings } = useSettingsStore()
+    const isCollapsed = isBomSidebarCollapsed
+
+    // 拖曳時使用 local state，避免每次 mousemove 都觸發 IPC 儲存
+    // 初始值從 store 讀取，後續由 store 同步（如應用程式啟動後讀取持久化設定）
+    const [localWidth, setLocalWidth] = useState(bomSidebarWidth || 250)
+
+    // 當 store 中的寬度更新時（如初始化讀取持久化設定），同步 local state
+    useEffect(() => {
+        setLocalWidth(bomSidebarWidth || 250)
+    }, [bomSidebarWidth])
 
     // Local state for tree expansion
     const [expandedProjects, setExpandedProjects] = useState({})
-    // Local state for BOMs cache (since BomStore might only keep current project's)
-    // Actually, BomStore `revisions` is for `selectedProjectId`.
-    // If we want a global tree, we need `useProjectStore` to hold revisions or fetch them here.
-    // Let's fetch them here for now or assume `Dashboard` logic style.
+    // Local state for BOMs cache
     const [projectBoms, setProjectBoms] = useState({})
 
     useEffect(() => {
-        // Load revisions for all projects
+        // 載入所有專案的 BOM Revisions
         const loadAllRevisions = async () => {
             if (projects.length === 0) return
             const newProjectBoms = {}
@@ -49,10 +60,9 @@ const BomSidebar = () => {
             }))
             setProjectBoms(newProjectBoms)
 
-            // Auto expand projects with selected BOMs
+            // 自動展開含有已選取 BOM 的專案
             const newExpanded = {}
             projects.forEach(p => {
-                // If any BOM in this project is selected, expand it
                 const boms = newProjectBoms[p.id] || []
                 if (boms.some(b => selectedRevisionIds.has(b.id))) {
                     newExpanded[p.id] = true
@@ -61,48 +71,84 @@ const BomSidebar = () => {
             setExpandedProjects(prev => ({ ...prev, ...newExpanded }))
         }
         loadAllRevisions()
-    }, [projects, selectedRevisionIds]) // Re-run when selected IDs change to auto-expand? Maybe only initially?
+    }, [projects, selectedRevisionIds])
 
+    /**
+     * 切換專案展開/收合狀態。
+     *
+     * @param {number} projectId - 專案 ID
+     */
     const toggleProject = (projectId) => {
         setExpandedProjects(prev => ({ ...prev, [projectId]: !prev[projectId] }))
     }
 
+    /**
+     * 處理 BOM 點擊選取（支援 Ctrl/Cmd 多選）。
+     *
+     * @param {React.MouseEvent} e - 滑鼠事件
+     * @param {number} bomId - BOM Revision ID
+     */
     const handleBomClick = (e, bomId) => {
         e.stopPropagation()
-        // Ctrl/Cmd click for multi-select
         const isMulti = e.ctrlKey || e.metaKey
         toggleRevisionSelection(bomId, isMulti)
     }
 
+    /**
+     * 處理側邊欄寬度拖曳調整。
+     *
+     * 拖曳過程中只更新 local state（不觸發 IPC），
+     * 放開滑鼠後才呼叫 updateSettings 持久化最終寬度。
+     *
+     * @param {React.MouseEvent} e - 滑鼠按下事件
+     */
     const handleResize = (e) => {
-        e.preventDefault() // Prevent selection during drag
+        e.preventDefault() // 防止拖曳時選取文字
         const startX = e.clientX
-        const startWidth = width
+        const startWidth = localWidth
 
+        /**
+         * 拖曳移動：即時更新 local state 以反映視覺變化，不觸發 IPC。
+         * @param {MouseEvent} moveEvent
+         */
         const onMouseMove = (moveEvent) => {
-            // requestAnimationFrame optimization could be used here if laggy, but usually fine
             const newWidth = Math.max(200, Math.min(600, startWidth + (moveEvent.clientX - startX)))
-            updateSettings({ bomSidebarWidth: newWidth })
+            setLocalWidth(newWidth)
         }
 
-        const onMouseUp = () => {
+        /**
+         * 放開滑鼠：計算最終寬度並持久化至設定。
+         * @param {MouseEvent} upEvent
+         */
+        const onMouseUp = (upEvent) => {
             document.removeEventListener('mousemove', onMouseMove)
             document.removeEventListener('mouseup', onMouseUp)
-            document.body.style.cursor = '' // Reset cursor
+            document.body.style.cursor = '' // 恢復游標樣式
+
+            // 放開後才持久化最終寬度
+            const finalWidth = Math.max(200, Math.min(600, startWidth + (upEvent.clientX - startX)))
+            setLocalWidth(finalWidth)
+            updateSettings({ bomSidebarWidth: finalWidth })
         }
 
         document.addEventListener('mousemove', onMouseMove)
         document.addEventListener('mouseup', onMouseUp)
-        document.body.style.cursor = 'col-resize' // Force cursor during drag
+        document.body.style.cursor = 'col-resize' // 拖曳期間強制顯示調整游標
     }
 
+    /**
+     * 切換側邊欄收合/展開狀態並立即持久化。
+     */
     const toggleCollapse = () => {
         updateSettings({ isBomSidebarCollapsed: !isCollapsed })
     }
 
+    // ========================================
+    // 收合狀態：僅顯示展開按鈕
+    // ========================================
     if (isCollapsed) {
         return (
-            <div className="h-full border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-surface-900 flex flex-col items-center py-2 w-10">
+            <div className="h-full border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-surface-900 flex flex-col items-center py-2 w-10 flex-shrink-0">
                 <button
                     onClick={toggleCollapse}
                     className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors"
@@ -114,12 +160,15 @@ const BomSidebar = () => {
         )
     }
 
+    // ========================================
+    // 展開狀態：完整側邊欄
+    // ========================================
     return (
         <div
             className="flex flex-col h-full border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-surface-900 relative flex-shrink-0"
-            style={{ width: `${width}px` }}
+            style={{ width: `${localWidth}px` }}
         >
-            {/* Header */}
+            {/* 標頭：顯示標題與收合按鈕 */}
             <div className="flex items-center justify-between p-2 border-b border-slate-200 dark:border-slate-700">
                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider pl-2">
                     專案列表
@@ -133,10 +182,12 @@ const BomSidebar = () => {
                 </button>
             </div>
 
+            {/* 專案樹狀列表 */}
             <div className="flex-1 overflow-y-auto p-2">
                 <div className="space-y-1">
                     {projects.map(project => (
                         <div key={project.id}>
+                            {/* 專案列 */}
                             <div
                                 className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-slate-100 dark:hover:bg-surface-800 transition-colors select-none text-sm font-medium text-slate-700 dark:text-slate-300"
                                 onClick={() => toggleProject(project.id)}
@@ -146,6 +197,7 @@ const BomSidebar = () => {
                                 <span className="truncate">{project.project_code}</span>
                             </div>
 
+                            {/* BOM Revision 列表（展開時顯示） */}
                             {expandedProjects[project.id] && (
                                 <div className="ml-4 pl-2 border-l border-slate-200 dark:border-slate-700 mt-1 space-y-0.5">
                                     {projectBoms[project.id]?.map(bom => {
@@ -175,7 +227,7 @@ const BomSidebar = () => {
                 </div>
             </div>
 
-            {/* Resizer */}
+            {/* 右側拖曳調整寬度的把手 */}
             <div
                 className="w-1 cursor-col-resize hover:bg-primary-500/50 absolute right-0 top-0 bottom-0 z-10 transition-colors"
                 onMouseDown={handleResize}
