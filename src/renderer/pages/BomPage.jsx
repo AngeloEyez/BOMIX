@@ -129,11 +129,11 @@ function BomPage() {
         let data = bomView
 
         // Matrix Mode 僅顯示 CCL=Y
-        if (bomMode === 'MATRIX') {
+        if (bomMode === 'MATRIX' && Array.isArray(data)) {
             data = data.filter(item => item.ccl === 'Y')
         }
 
-        if (!searchTerm || !searchTerm.trim()) return data
+        if (!Array.isArray(data) || !searchTerm || !searchTerm.trim()) return data || []
 
         const term = searchTerm.toLowerCase().trim()
         

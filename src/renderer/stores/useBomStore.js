@@ -22,6 +22,8 @@ const useBomStore = create((set, get) => ({
     bomMode: 'BOM',
     /** 目前選取的視圖 ID */
     currentViewId: 'all_view',
+    /** BOM 檢視資料 */
+    bomView: [],
     /** 視圖資料快取 { [viewId]: data[] } */
     viewCache: {},
 
