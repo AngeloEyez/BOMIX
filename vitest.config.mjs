@@ -6,7 +6,6 @@ export default defineConfig({
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
-      'tests/**',
       'agent-workspace/**',
     ],
     // 支援環境

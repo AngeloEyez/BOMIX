@@ -1,6 +1,6 @@
 # BOMIX 資料庫結構設計
 
-> 版本：1.0.0 | 最後更新：2026-02-13
+> 版本：1.1.0 | 最後更新：2026-02-13
 >
 > 詳細 Schema 定義請參考 `src/main/database/schema.js`
 
@@ -11,6 +11,7 @@
 - 支援手動備份（直接複製 .bomix 檔案）
 - 零件採用**原子化儲存**：每個 location 為一筆獨立紀錄
 - 主行程使用 `better-sqlite3` 同步 API 存取 SQLite
+- **Matrix BOM** 採用獨立表儲存，不影響 Base BOM 結構
 
 ## ER 圖
 
@@ -18,8 +19,10 @@
 series_meta（單一紀錄）
 
 projects 1──* bom_revisions 1──* parts
-                                   ↑ (邏輯群組關聯)
-                            second_sources
+                 |                 ↑ (邏輯群組關聯)
+                 |          second_sources
+                 |
+                 └──* matrix_models 1──* matrix_selections
 ```
 
 ```mermaid
@@ -27,7 +30,9 @@ erDiagram
     projects ||--o{ bom_revisions : "擁有"
     bom_revisions ||--o{ parts : "包含"
     bom_revisions ||--o{ second_sources : "包含"
+    bom_revisions ||--o{ matrix_models : "包含"
     parts }o..o{ second_sources : "邏輯關聯"
+    matrix_models ||--o{ matrix_selections : "擁有"
 
     series_meta {
         INTEGER id PK
@@ -53,8 +58,11 @@ erDiagram
         TEXT schematic_version
         TEXT pcb_version
         TEXT pca_pn
-        TEXT date
+        TEXT bom_date
         TEXT note
+        TEXT mode
+        TEXT filename
+        TEXT suffix
         DATETIME created_at
     }
 
@@ -82,6 +90,22 @@ erDiagram
         TEXT supplier
         TEXT supplier_pn
         TEXT description
+    }
+
+    matrix_models {
+        INTEGER id PK
+        INTEGER bom_revision_id FK
+        TEXT name
+        TEXT description
+        DATETIME created_at
+    }
+
+    matrix_selections {
+        INTEGER id PK
+        INTEGER matrix_model_id FK
+        TEXT group_key
+        TEXT selected_type
+        INTEGER selected_id
     }
 ```
 
@@ -174,6 +198,30 @@ erDiagram
 
 ---
 
+### matrix_models — Matrix 專案定義
+| 欄位 | 型別 | 約束 | 說明 |
+|------|------|------|------|
+| id | INTEGER | PK, AUTOINCREMENT | 主鍵 |
+| bom_revision_id | INTEGER | FK → bom_revisions.id, NOT NULL | 所屬 BOM 版本 (ON DELETE CASCADE) |
+| name | TEXT | NOT NULL | Model 名稱 (如 Model A, SKU_1) |
+| description | TEXT | | Model 備註 |
+| created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | 建立時間 |
+
+---
+
+### matrix_selections — Matrix 勾選紀錄
+| 欄位 | 型別 | 約束 | 說明 |
+|------|------|------|------|
+| id | INTEGER | PK, AUTOINCREMENT | 主鍵 |
+| matrix_model_id | INTEGER | FK → matrix_models.id, NOT NULL | 所屬 Matrix Model (ON DELETE CASCADE) |
+| group_key | TEXT | NOT NULL | 群組識別鍵 (`supplier\|supplier_pn`) |
+| selected_type | TEXT | NOT NULL | 'part' 或 'second_source' |
+| selected_id | INTEGER | NOT NULL | 對應 `parts.id` 或 `second_sources.id` |
+
+**唯一約束**：`UNIQUE(matrix_model_id, group_key)` - 確保每個 Model 在每個零件群組只能選一個
+
+---
+
 ## 常用查詢範例
 
 ### 取得 BOM Main Item 聚合視圖
@@ -203,17 +251,8 @@ WHERE ss.bom_revision_id = ?
   AND ss.main_supplier_pn = ?;
 ```
 
-### 取得某專案所有 Phase 的版本清單
+### 查詢 Matrix Model 的所有選擇
 ```sql
-SELECT phase_name, version, description, schematic_version, pcb_version, pca_pn, date, note, created_at
-FROM bom_revisions
-WHERE project_id = ?
-ORDER BY phase_name, version;
-```
-
-### 取得系列資訊
-```sql
-SELECT description, created_at, updated_at
-FROM series_meta
-WHERE id = 1;
+SELECT * FROM matrix_selections
+WHERE matrix_model_id = ?;
 ```

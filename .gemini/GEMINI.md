@@ -7,7 +7,7 @@ BOMIX 是一個 BOM（Bill of Materials）變化管理與追蹤工具，用於�
 
 ## 技術堆疊
 - **執行環境**：Electron
-- **UI 框架**：React + Tailwind CSS v4
+- **UI 框架**：React + Tailwind CSS v4 + shadcn/ui with mcp server
 - **表格元件**：TanStack Table
 - **建置工具**：Vite（electron-vite）
 - **狀態管理**：Zustand

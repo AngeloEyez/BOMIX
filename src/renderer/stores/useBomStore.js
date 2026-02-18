@@ -12,31 +12,41 @@ const useBomStore = create((set, get) => ({
     selectedProjectId: null,
     /** 該專案下的 BOM Revision 列表 */
     revisions: [],
-    /** 目前選取的 BOM Revision ID */
+    /** 目前選取的 BOM Revision ID (單選) - 用於傳統 BOM 檢視 */
     selectedRevisionId: null,
+    /** 目前選取的 BOM Revision ID 集合 (多選) - 用於 Matrix/BigBOM */
+    selectedRevisionIds: new Set(),
     /** 目前選取的 BOM Revision 物件 */
     selectedRevision: null,
+    /** BOM 頁面模式: 'BOM' | 'MATRIX' | 'BIGBOM' */
+    bomMode: 'BOM',
     /** 目前選取的視圖 ID */
     currentViewId: 'all_view',
+    /** BOM 檢視資料 */
+    bomView: [],
     /** 視圖資料快取 { [viewId]: data[] } */
     viewCache: {},
+
+    /**
+     * 設定 BOM 模式
+     * @param {'BOM'|'MATRIX'|'BIGBOM'} mode
+     */
+    setBomMode: (mode) => set({ bomMode: mode }),
 
     /**
      * 切換視圖
      * @param {string} viewId
      */
     selectView: async (viewId) => {
-        const { selectedRevisionId, viewCache } = get()
-        if (!selectedRevisionId) return
+        const { selectedRevisionIds, viewCache } = get()
+        if (selectedRevisionIds.size === 0) return
 
         // Update ID immediately for UI
         set({ currentViewId: viewId })
 
-        // Check Cache
-        if (viewCache[viewId]) {
-            set({ bomView: viewCache[viewId] })
-            return
-        }
+        // Check Cache (Cache key logic needs to include revision IDs hash?)
+        // For simplicity, disable cache for multi-BOM or clear cache on selection change.
+        // Let's rely on fetch for now to ensure correctness with dynamic IDs.
 
         // Fetch from Backend
         set({ isLoading: true, error: null })
@@ -44,17 +54,13 @@ const useBomStore = create((set, get) => ({
         setDbBusy(true)
 
         try {
-            const result = await window.api.bom.getView(selectedRevisionId, viewId)
+            const idsArray = Array.from(selectedRevisionIds)
+            const result = await window.api.bom.getView(idsArray, viewId)
             if (result.success) {
-                // Update Cache and View
-                set(state => ({
+                set({
                     bomView: result.data,
-                    viewCache: {
-                        ...state.viewCache,
-                        [viewId]: result.data
-                    },
                     isLoading: false
-                }))
+                })
             } else {
                 set({ error: result.error, isLoading: false })
             }
@@ -67,50 +73,109 @@ const useBomStore = create((set, get) => ({
 
     /**
      * 選擇專案並載入其 BOM 版本列表。
-     * ...原有代碼...
      */
     selectProject: async (projectId) => {
         const { setDbBusy } = useAppStore.getState()
         set({
             selectedProjectId: projectId,
             selectedRevisionId: null,
+            selectedRevisionIds: new Set(),
             selectedRevision: null,
             bomView: [],
-            currentViewId: 'all_view', // Reset View
-            viewCache: {}, // Reset Cache
-            isLoading: true,
-            error: null,
-        })
-        // ...
-    },
-
-    /**
-     * 選擇 BOM 版本並載入聚合視圖。
-     * ...
-     */
-    selectRevision: async (revisionId) => {
-        const { setDbBusy } = useAppStore.getState()
-        const revision = get().revisions.find(r => r.id === revisionId) || null
-        
-        // Reset View State for new revision
-        set({
-            selectedRevisionId: revisionId,
-            selectedRevision: revision,
-            currentViewId: 'all_view', 
+            currentViewId: 'all_view',
             viewCache: {},
             isLoading: true,
             error: null,
         })
+        // Revisions loading happens in reloadRevisions usually called by component or here?
+        // Let's call it here to be safe.
         setDbBusy(true)
         try {
-            // Default load 'all_view'
-            const result = await window.api.bom.getView(revisionId, 'all_view')
+            const result = await window.api.bom.getRevisions(projectId)
             if (result.success) {
-                set(state => ({ 
-                    bomView: result.data, 
-                    viewCache: { 'all_view': result.data }, // Prime cache
-                    isLoading: false 
-                }))
+                set({ revisions: result.data })
+            }
+        } finally {
+            setDbBusy(false)
+        }
+    },
+
+    /**
+     * 選擇 BOM 版本 (單選/多選切換)
+     * @param {number} revisionId
+     * @param {boolean} multiSelect - 是否為多選模式 (Ctrl/Cmd click)
+     */
+    toggleRevisionSelection: async (revisionId, multiSelect = false) => {
+        const { revisions, selectedRevisionIds, bomMode } = get()
+        let newIds = new Set(multiSelect ? selectedRevisionIds : [])
+
+        if (multiSelect) {
+            if (newIds.has(revisionId)) {
+                newIds.delete(revisionId)
+            } else {
+                newIds.add(revisionId)
+            }
+        } else {
+            newIds = new Set([revisionId])
+        }
+
+        // 根據選擇數量與當前模式自動切換
+        let newMode = bomMode
+        if (newIds.size > 1 && newMode === 'BOM') {
+            // 多選時，若在 BOM 模式則切換到 BIGBOM (Placeholder) or stay in current if Matrix
+            newMode = 'BIGBOM'
+        } else if (newIds.size === 1 && newMode === 'BIGBOM') {
+            newMode = 'BOM'
+        }
+
+        const selectedRevision = revisions.find(r => r.id === revisionId) || null
+        
+        set({
+            selectedRevisionId: newIds.size === 1 ? Array.from(newIds)[0] : null,
+            selectedRevisionIds: newIds,
+            selectedRevision: newIds.size === 1 ? selectedRevision : null,
+            bomMode: newMode,
+            viewCache: {}, // Clear cache on selection change
+        })
+
+        // Trigger Data Fetch
+        await get().fetchData()
+    },
+
+    /**
+     * 根據當前選擇與模式，抓取對應資料
+     */
+    fetchData: async () => {
+        const { selectedRevisionIds, currentViewId, bomMode } = get()
+        if (selectedRevisionIds.size === 0) {
+            set({ bomView: [] })
+            return
+        }
+
+        const { setDbBusy } = useAppStore.getState()
+        set({ isLoading: true, error: null })
+        setDbBusy(true)
+
+        try {
+            const idsArray = Array.from(selectedRevisionIds)
+
+            // 如果是 Matrix 模式，資料由 useMatrixStore 負責 (但這裡是 BOM View store...)
+            // 根據需求 "MATRIX 模式支援一到多個BOM, 即時更新table內的資料"
+            // MatrixTable 需要 Matrix Data (Models + Selections) AND BOM Rows (Parts).
+            // `matrix.service.getMatrixData` returns { models, selections, summary } but relies on BOM View for parts implicitly?
+            // Actually `getMatrixData` implementation calls `executeView` internally for summary calculation,
+            // BUT it does NOT return the BOM rows directly in `data` structure (it returns models, selections, summary).
+            // Frontend MatrixTable needs the rows to render!
+            // Currently MatrixTable takes `data={filteredBom}` which comes from `useBomStore.bomView`.
+            // So YES, we MUST fetch BOM View here even for Matrix Mode.
+
+            // For Matrix Mode, we usually want 'ALL' view or specific logic?
+            // User: "當 state=MATRIX的時候... 移植目前MatrixTable.jsx中selection欄位的作法"
+            // So we fetch standard view here.
+
+            const result = await window.api.bom.getView(idsArray, currentViewId)
+            if (result.success) {
+                set({ bomView: result.data, isLoading: false })
             } else {
                 set({ error: result.error, isLoading: false })
             }

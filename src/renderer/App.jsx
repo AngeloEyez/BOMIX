@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { LayoutDashboard, FileSpreadsheet, Grid3X3, ArrowRightLeft, Database, Settings } from 'lucide-react'
 import AppLayout from './components/layout/AppLayout'
 import Dashboard from './pages/Dashboard'
 import BomPage from './pages/BomPage'
 import ComparePage from './pages/ComparePage'
 import SettingsPage from './pages/SettingsPage'
+import useBomStore from './stores/useBomStore'
 
 // ========================================
 // BOMIX 主應用程式元件
@@ -12,10 +14,12 @@ import SettingsPage from './pages/SettingsPage'
 
 /** 所有頁面的定義，用於導航與動態渲染 */
 const PAGES = [
-    { id: 'dashboard', label: '儀表板', icon: '🏠', component: Dashboard },
-    { id: 'bom', label: 'BOM', icon: '📊', component: BomPage },
-    { id: 'compare', label: '比較', icon: '🔄', component: ComparePage },
-    { id: 'settings', label: '設定', icon: '⚙️', component: SettingsPage },
+    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} />, component: Dashboard },
+    { id: 'bom', label: 'BOM', icon: <FileSpreadsheet size={18} />, component: BomPage },
+    { id: 'matrix', label: 'Matrix', icon: <Grid3X3 size={18} />, component: BomPage },
+    { id: 'bigbom', label: 'BigBOM', icon: <Database size={18} />, component: BomPage }, // Placeholder
+    { id: 'compare', label: 'Compare', icon: <ArrowRightLeft size={18} />, component: ComparePage },
+    { id: 'settings', label: '設定', icon: <Settings size={18} />, component: SettingsPage }, // Handled in layout
 ]
 
 /**
@@ -32,6 +36,17 @@ import ErrorBoundary from './components/ErrorBoundary'
 function App() {
     // 預設顯示儀表板
     const [currentPage, setCurrentPage] = useState('dashboard')
+    const { setBomMode } = useBomStore()
+
+    // 處理導航切換時的狀態設定
+    const handleNavigate = (pageId) => {
+        setCurrentPage(pageId)
+
+        // 根據頁面設定 BomMode
+        if (pageId === 'bom') setBomMode('BOM')
+        else if (pageId === 'matrix') setBomMode('MATRIX')
+        else if (pageId === 'bigbom') setBomMode('BIGBOM')
+    }
 
     // 取得目前頁面的元件
     const ActivePage = PAGES.find(p => p.id === currentPage)?.component || Dashboard
@@ -41,10 +56,10 @@ function App() {
             <AppLayout
                 pages={PAGES}
                 currentPage={currentPage}
-                onNavigate={setCurrentPage}
+                onNavigate={handleNavigate}
             >
                 <ErrorBoundary>
-                    <ActivePage onNavigate={setCurrentPage} />
+                    <ActivePage onNavigate={handleNavigate} />
                 </ErrorBoundary>
             </AppLayout>
         </ErrorBoundary>
