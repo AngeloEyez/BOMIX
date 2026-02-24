@@ -35,7 +35,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.3",
     "@tailwindcss/typography": "^0.5.19",
-    "@tailwindcss/vite": "^4.0.0",
+    "@tailwindcss/vite": "^4.2.1",
     "@vitejs/plugin-react": "^5.1.4",
     "electron": "^40.6.0",
     "electron-builder": "^26.8.1",
@@ -46,7 +46,7 @@
     "globals": "^17.3.0",
     "node-gyp": "^12.2.0",
     "prettier": "^3.4.2",
-    "tailwindcss": "^4.0.0",
+    "tailwindcss": "^4.2.1",
     "vite": "^7.3.1",
     "vitest": "^4.0.18"
   },
