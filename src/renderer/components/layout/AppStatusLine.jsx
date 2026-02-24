@@ -22,7 +22,8 @@ function AppStatusLine() {
         if (window.api?.getVersion) {
             window.api.getVersion().then(setVersion).catch(() => setVersion('dev'))
         } else {
-            setVersion('dev')
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setVersion('dev')  // API 不存在時（開發環境備用），一次性初始化
         }
     }, [])
 

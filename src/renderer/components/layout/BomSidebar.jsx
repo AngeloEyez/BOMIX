@@ -35,12 +35,8 @@ const BomSidebar = () => {
     const isCollapsed = isBomSidebarCollapsed
 
     // 拖曳時使用 local state，避免每次 mousemove 都觸發 IPC 儲存
+    // 初始化時直接讀取 store 值；拖曳放開後由 updateSettings 更新 store（不需要 Effect 反向同步）
     const [localWidth, setLocalWidth] = useState(bomSidebarWidth || 250)
-
-    // 當 store 中的寬度更新時，同步 local state
-    useEffect(() => {
-        setLocalWidth(bomSidebarWidth || 250)
-    }, [bomSidebarWidth])
 
     // Local state for tree expansion
     const [expandedProjects, setExpandedProjects] = useState({})

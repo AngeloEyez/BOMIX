@@ -14,7 +14,9 @@ function ChangelogDialog({ isOpen, onClose }) {
 
     useEffect(() => {
         if (isOpen) {
-            setLoading(true)
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setLoading(true)  // 對話框開啟時重置為載入中狀態，屬於語義正確的 Effect 初始化
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setError(null)
             window.api.app.getChangelog()
                 .then(result => {

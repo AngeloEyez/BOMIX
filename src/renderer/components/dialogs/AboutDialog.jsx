@@ -9,18 +9,19 @@ import { useState, useEffect } from 'react'
 
 function AboutDialog({ isOpen, onClose }) {
     const [version, setVersion] = useState('Unknown')
-    const [versions, setVersions] = useState({ electron: '', chrome: '', node: '' })
+    // getVersions 是同步呼叫，且 app 啟動後值不變，使用惰性初始化一次取得即可
+    const [versions] = useState(() => {
+        try {
+            return window.api.getVersions() ?? { electron: '', chrome: '', node: '' }
+        } catch (_e) {
+            return { electron: '', chrome: '', node: '' }
+        }
+    })
 
+    // 非同步取得應用程式版本號，僅在對話框開啟時觸發
     useEffect(() => {
         if (isOpen) {
             window.api.getVersion().then(setVersion)
-            // 安全地取得版本資訊
-            try {
-                const v = window.api.getVersions()
-                if (v) setVersions(v)
-            } catch (e) {
-                console.error("Failed to get versions:", e)
-            }
         }
     }, [isOpen])
 

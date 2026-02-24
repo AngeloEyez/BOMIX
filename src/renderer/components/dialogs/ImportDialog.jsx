@@ -31,11 +31,13 @@ function ImportDialog({ isOpen, onClose, projectId, projectCode, onImport, initi
     const [isImporting, setIsImporting] = useState(false)
     const [isDragOver, setIsDragOver] = useState(false)
 
-    // 處理初始檔案 (來自頁面拖曳)
+    // 處理初始檔案 (來自頁面拖曳)，在對話框開啟時同步帶入預設路徑
     useEffect(() => {
         if (isOpen && initialFile) {
             if (initialFile.path) {
-                setFilePath(initialFile.path)
+                // eslint-disable-next-line react-hooks/set-state-in-effect
+                setFilePath(initialFile.path)  // 初始化拖曳帶入的檔案路徑，非循環觸發
+                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setFileName(initialFile.name)
             }
         }

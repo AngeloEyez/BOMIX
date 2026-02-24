@@ -69,26 +69,27 @@ function Dashboard({ onNavigate }) {
         initRecentFiles()
     }, [initRecentFiles])
 
-    // Load Projects when Series Opens
+    // 系列開啟時載入專案，關閉時重置
     useEffect(() => {
         if (isOpen) {
             loadProjects()
         } else {
             resetProjects()
-            setProjectBoms({})
-            setExpandedProjects({})
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setProjectBoms({})  // 系列關閉時一次性清除本地 BOM 快取
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setExpandedProjects({})  // 同步清除幕開狀態
         }
     }, [isOpen, loadProjects, resetProjects])
 
-    // Fetch BOMs for all projects (or lazy load)
-    // Here we fetch all to show the full tree structure capabilities
+    // 載入所有專案的 BOM 資料並建立樹狀結構
     useEffect(() => {
         if (isOpen && projects.length > 0) {
             projects.forEach(p => {
                 window.api.bom.getRevisions(p.id).then(async (res) => {
                     if (res.success) {
                         const boms = res.data;
-                        // Fetch Matrix Summary for each BOM
+                        // 取得每個 BOM 的 Matrix 要約
                         const bomsWithMatrix = await Promise.all(boms.map(async (bom) => {
                              try {
                                  const summaryRes = await window.api.matrix.getSummary(bom.id);
@@ -104,10 +105,12 @@ function Dashboard({ onNavigate }) {
                     }
                 })
             })
-            // Default expand all? Or collapse? Let's expand all for visibility.
-            const initialExpanded = {}
-            projects.forEach(p => initialExpanded[p.id] = true)
-            setExpandedProjects(prev => ({ ...initialExpanded, ...prev }))
+            // 預設展開所有專案：在待機任務中執行，避免在 Effect 同步路徑中 setState
+            Promise.resolve().then(() => {
+                const initialExpanded = {}
+                projects.forEach(p => initialExpanded[p.id] = true)
+                setExpandedProjects(prev => ({ ...initialExpanded, ...prev }))
+            })
         }
     }, [isOpen, projects])
 
