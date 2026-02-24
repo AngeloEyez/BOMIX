@@ -58,7 +58,7 @@ export default [
     // 通用規則
     {
         rules: {
-            'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+            'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
             'no-console': 'off', // Electron 開發經常需要 console
         },
     },

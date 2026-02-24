@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from 'react'
-import { 
-    FolderPlus, FolderOpen, Clock, X, Database, ChevronRight, ChevronDown, 
-    Pencil, Check, FileText, Settings, Trash2, MoreVertical, FileDown 
+import { useEffect, useState } from 'react'
+import {
+    FolderPlus, FolderOpen, Clock, X, Database, ChevronRight,
+    Pencil, FileText, Trash2, FileDown 
 } from 'lucide-react'
 import useSeriesStore from '../stores/useSeriesStore'
 import useProjectStore from '../stores/useProjectStore'
@@ -28,7 +28,7 @@ function Dashboard({ onNavigate }) {
 
     const { 
         projects, loadProjects, createProject, updateProject, deleteProject, 
-        isLoading: isProjectLoading, reset: resetProjects 
+        reset: resetProjects 
     } = useProjectStore()
 
     const { 
@@ -77,7 +77,6 @@ function Dashboard({ onNavigate }) {
             resetProjects()
             // eslint-disable-next-line react-hooks/set-state-in-effect
             setProjectBoms({})  // 系列關閉時一次性清除本地 BOM 快取
-            // eslint-disable-next-line react-hooks/set-state-in-effect
             setExpandedProjects({})  // 同步清除幕開狀態
         }
     }, [isOpen, loadProjects, resetProjects])
@@ -97,7 +96,7 @@ function Dashboard({ onNavigate }) {
                                      ...bom,
                                      matrixSummary: summaryRes.success ? summaryRes.data : null
                                  };
-                             } catch (e) {
+                             } catch (_e) {
                                  return bom;
                              }
                         }));
@@ -196,14 +195,7 @@ function Dashboard({ onNavigate }) {
             // We need to know which project this BOM belongs to.
             // Updates return the updated object.
             // Or we just re-fetch revisions for that project.
-            const projectIds = Object.keys(projectBoms)
-            // It's inefficient to find owner, but we can iterate.
-            // Or use result.success (stores updated).
-            // But we need to update `projectBoms` state to reflect changes in Tree.
-            // `updateRevision` updates `useBomStore` revisions, but NOT `projectBoms` local state.
-            // So we need to re-fetch or manual update.
             // Manual update:
-            const updatedBom = result.access ? result.data : null // Wait, updateRevision returns { success, data }?
             // updateRevision returns { success: true } in store, BUT I should have it return data.
             // In Store:
             /*
@@ -239,21 +231,6 @@ function Dashboard({ onNavigate }) {
             danger: true,
             confirmText: "刪除"
         })
-    }
-
-    const handleConfirmDelete = async () => {
-        const { type, data } = deleteConfirm
-        if (type === 'project') {
-            await deleteProject(data.id)
-        } else if (type === 'bom') {
-            await deleteBom(data.id)
-            // Refresh BOM list
-            const res = await window.api.bom.getRevisions(data.project_id)
-            if (res.success) {
-                setProjectBoms(prev => ({ ...prev, [data.project_id]: res.data }))
-            }
-        }
-        setDeleteConfirm({ ...deleteConfirm, isOpen: false })
     }
 
     // --- Handlers: Import ---

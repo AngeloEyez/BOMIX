@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useEffect } from 'react'
+import { useMemo, useRef, useState, useEffect, useCallback } from 'react'
 import {
     useReactTable,
     getCoreRowModel,
@@ -10,10 +10,10 @@ import {
     ChevronsDown,   // All Collapsed (Expand All)
     ListMinus,       // Partical
     ChevronRight, ChevronDown as ChevronDownIcon,
-    AlertTriangle, CheckCircle2
+    CheckCircle2
 } from 'lucide-react'
 import useMatrixStore from '../../stores/useMatrixStore'
-import useBomStore from '../../stores/useBomStore'
+
 
 // ========================================
 // 搜尋高亮輔助元件
@@ -37,13 +37,12 @@ const HighlightText = ({ text, term }) => {
 
 
 function BomTable(props) {
-    const { data, isLoading, searchTerm, searchFields, mode, viewContextIds } = props;
+    const { data, isLoading, searchTerm, searchFields, mode } = props;
     // --- Context / Store ---
     const {
         matrixData,
         saveSelection,
-        deleteSelection,
-        fetchMatrixData
+        deleteSelection
     } = useMatrixStore()
 
     // Matrix Data Lookup
@@ -86,9 +85,9 @@ function BomTable(props) {
         return data;
     }, [matrixData, mode]);
 
-    const models = matrixInfo?.models || [];
-    const selections = matrixInfo?.selections || [];
-    const summary = matrixInfo?.summary || {};
+    const models = useMemo(() => matrixInfo?.models || [], [matrixInfo?.models]);
+    const selections = useMemo(() => matrixInfo?.selections || [], [matrixInfo?.selections]);
+    const summary = useMemo(() => matrixInfo?.summary || {}, [matrixInfo?.summary]);
 
     // Selection Map
     const selectionMap = useMemo(() => {
@@ -131,16 +130,16 @@ function BomTable(props) {
         else if (expandedCount < totalGroups) expandState = 'PARTIAL'
     }
 
-    const toggleGroup = (key) => {
+    const toggleGroup = useCallback((key) => {
         setExpandedGroups(prev => {
             const next = new Set(prev)
             if (next.has(key)) next.delete(key)
             else next.add(key)
             return next
         })
-    }
+    }, [])
 
-    const toggleAll = () => {
+    const toggleAll = useCallback(() => {
         if (expandState === 'ALL_EXPANDED') {
             // Collapse All
             setExpandedGroups(new Set())
@@ -148,10 +147,10 @@ function BomTable(props) {
             // Expand All (for both Collapsed and Partial)
             setExpandedGroups(allGroupKeys)
         }
-    }
+    }, [expandState, allGroupKeys])
 
     // Matrix Handler
-    const handleMatrixSelection = async (modelId, groupKey, type, id, isCurrentlySelected) => {
+    const handleMatrixSelection = useCallback(async (modelId, groupKey, type, id, isCurrentlySelected) => {
         // Use current view context IDs for refresh
         // Get selected IDs from BomStore? Or pass as prop?
         // Let's pass `viewContextIds` as prop or use `useBomStore`?
@@ -169,7 +168,7 @@ function BomTable(props) {
                 selected_id: id
             });
         }
-    };
+    }, [props.viewContextIds, saveSelection, deleteSelection]);
 
     // 將聚合資料展開為平面行列
     const flatRows = useMemo(() => {
@@ -474,7 +473,6 @@ function BomTable(props) {
                             const groupKey = r._key;
                             const rowType = r._rowType === 'main' ? 'part' : 'second_source';
                             const rowId = r.id;
-                            const rowBomId = r.bom_revision_id;
 
                             // Only render checkbox if this row belongs to this BOM (for Union View)
                             // or if it's a "Union Row" (exists in multiple).
@@ -542,7 +540,7 @@ function BomTable(props) {
             return [...baseCols, ...standardCols];
         }
 
-    }, [expandState, toggleAll, toggleGroup, searchTerm, searchFields, mode, models, summary, selectionMap])
+    }, [expandState, toggleAll, toggleGroup, searchTerm, searchFields, mode, models, summary, selectionMap, handleMatrixSelection])
 
     // TanStack Table 實例
     const table = useReactTable({

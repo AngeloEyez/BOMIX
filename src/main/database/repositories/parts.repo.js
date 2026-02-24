@@ -200,7 +200,7 @@ function deletePart(id) {
  * @param {string} type
  * @returns {Array<Object>}
  */
-function findByGroup(bomRevisionId, supplier, supplier_pn, type) {
+function findByGroup(bomRevisionId, supplier, supplier_pn, _type) {
   const db = dbManager.getDb();
   let sql = `
     SELECT * FROM parts

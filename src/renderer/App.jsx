@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { LayoutDashboard, FileSpreadsheet, Grid3X3, ArrowRightLeft, Database, Settings } from 'lucide-react'
 import AppLayout from './components/layout/AppLayout'
 import Dashboard from './pages/Dashboard'

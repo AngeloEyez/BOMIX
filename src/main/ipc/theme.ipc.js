@@ -3,7 +3,6 @@
  * @description 主題管理 IPC 介面
  */
 
-import { ipcMain } from 'electron'
 import themeService from '../services/theme.service.js'
 
 /**

@@ -37,7 +37,6 @@ function ImportDialog({ isOpen, onClose, projectId, projectCode, onImport, initi
             if (initialFile.path) {
                 // eslint-disable-next-line react-hooks/set-state-in-effect
                 setFilePath(initialFile.path)  // 初始化拖曳帶入的檔案路徑，非循環觸發
-                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setFileName(initialFile.name)
             }
         }
@@ -70,7 +69,7 @@ function ImportDialog({ isOpen, onClose, projectId, projectCode, onImport, initi
                 setFileName(path.split(/[\\/]/).pop())
                 setError('')
             }
-        } catch (e) {
+        } catch (_e) {
             setError('開啟檔案失敗')
         }
     }

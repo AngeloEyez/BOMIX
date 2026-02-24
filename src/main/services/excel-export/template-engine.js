@@ -165,7 +165,7 @@ function fillSheet(sheet, data) {
     
     // 1. Unmerge everything immediately
     currentMerges.forEach(range => {
-        try { sheet.unMergeCells(range); } catch (e) { /* ignore */ }
+        try { sheet.unMergeCells(range); } catch (_e) { /* ignore */ }
     });
 
     // Helper to parse range
@@ -242,8 +242,8 @@ function fillSheet(sheet, data) {
         currentMerges.forEach(range => {
             try {
                 sheet.mergeCells(range);
-            } catch (error) {
-                 // console.error(`[TemplateEngine] Failed to re-merge ${range}:`, error);
+            } catch (_error) {
+                 // console.error(`[TemplateEngine] Failed to re-merge ${range}:`, _error);
             }
         });
     }

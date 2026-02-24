@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import Dialog from './Dialog'
-import { Check, X, FileText, Calendar, Clock, Lock } from 'lucide-react'
+import { Check, X, FileText, Calendar, Clock } from 'lucide-react'
 
 /**
  * BOM 屬性編輯對話框

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Info, FileText, Monitor, Moon, Sun, Palette } from 'lucide-react'
+import { Info, FileText, Moon, Sun, Palette } from 'lucide-react'
 import useSettingsStore from '../stores/useSettingsStore'
 import AboutDialog from '../components/dialogs/AboutDialog'
 import ChangelogDialog from '../components/dialogs/ChangelogDialog'

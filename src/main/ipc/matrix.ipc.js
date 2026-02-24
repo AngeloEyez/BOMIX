@@ -4,7 +4,6 @@
  * @module ipc/matrix
  */
 
-import { ipcMain } from 'electron';
 import matrixService from '../services/matrix.service.js';
 
 /**

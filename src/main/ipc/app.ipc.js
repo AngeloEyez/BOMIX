@@ -1,4 +1,4 @@
-import { app, ipcMain, dialog, BrowserWindow } from 'electron'
+import { app, dialog, BrowserWindow } from 'electron'
 import fs from 'fs'
 import path from 'path'
 
@@ -60,7 +60,7 @@ async function saveSettings(event, newSettings) {
     if (fs.existsSync(settingsPath)) {
        try {
          currentSettings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
-       } catch (e) { /* 忽略損壞的設定檔 */ }
+       } catch (_e) { /* 忽略損壞的設定檔 */ }
     }
 
     const updatedSettings = { ...currentSettings, ...newSettings }

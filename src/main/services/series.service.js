@@ -162,7 +162,7 @@ export function renameSeries(newName) {
             if (dbManager.currentPath && !dbManager.db) {
                dbManager.connect(dbManager.currentPath);
             }
-        } catch (e) { /* ignore */ }
+        } catch (_e) { /* ignore */ }
         
         throw new Error(`重新命名失敗: ${error.message}`);
     }

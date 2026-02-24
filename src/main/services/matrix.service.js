@@ -92,8 +92,8 @@ export function saveSelection(selectionData) {
  * @returns {Object} { success: true }
  */
 export function deleteSelection(matrixModelId, groupKey) {
-    const success = matrixSelectionRepo.deleteByModelAndGroup(matrixModelId, groupKey);
-    // If not found, still success
+    matrixSelectionRepo.deleteByModelAndGroup(matrixModelId, groupKey);
+    // 即使找不到也視為成功
     return { success: true };
 }
 
@@ -251,8 +251,7 @@ export function getMatrixData(bomRevisionIdOrIds) {
     }
 
     // 整體 Summary
-    const hasMatrix = models.length > 0 && explicitSelections.length > 0; // Or just models > 0?
-    // User spec: "存在matrix bom的判斷: 1.有設定1個以上的model and name. 2. 有勾選 1個以上的物料"
+    // isSafe 為所有 Model 都完成選擇
     const isSafe = models.length > 0 && models.every(m => summary.modelStatus[m.id].isComplete);
 
     return {

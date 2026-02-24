@@ -5,7 +5,7 @@
  */
 
 import { BrowserWindow } from 'electron';
-import progressService, { TASK_STATUS } from '../services/progress.service.js';
+import progressService from '../services/progress.service.js';
 
 /**
  * 註冊進度追蹤相關的 IPC 通道

@@ -17,11 +17,12 @@ function ProgressDialog() {
     const [sortBy, setSortBy] = useState('startTime') // 'startTime' | 'lastUpdate'
 
     // Auto-scroll to TOP of logs when active session updates (since logs are reversed)
+    const activeSessionLogsLength = sessions.get(activeSessionId)?.logs?.length
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = 0
         }
-    }, [sessions.get(activeSessionId)?.logs?.length, activeSessionId])
+    }, [activeSessionLogsLength, activeSessionId])
 
     if (!isDialogOpen) return null
 

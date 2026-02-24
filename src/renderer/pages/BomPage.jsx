@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import {
-    FileSpreadsheet, Upload, Download, Trash2,
-    FolderOpen, ChevronDown, ChevronUp, Info, X, RotateCcw,
-    Grid3X3, Settings
+    FileSpreadsheet, Upload, Download,
+    FolderOpen, ChevronDown, X, RotateCcw, Settings
 } from 'lucide-react'
 import useSeriesStore from '../stores/useSeriesStore'
 import useProjectStore from '../stores/useProjectStore'
@@ -42,15 +41,14 @@ const FIELD_LABELS = {
  */
 function BomPage() {
     const { isOpen } = useSeriesStore()
-    const { projects, loadProjects } = useProjectStore()
+    const { loadProjects } = useProjectStore()
     const {
         selectedRevisionId, selectedRevisionIds, selectedRevision,
         bomView, isLoading, error,
-        selectProject, selectRevision, reloadBomView,
         deleteBom, importExcel, exportExcel,
         clearError, reset,
         currentViewId, selectView, 
-        bomMode, setBomMode // [New]
+        bomMode 
     } = useBomStore()
 
     // Check if any export task is running

@@ -174,12 +174,7 @@ const useSeriesStore = create((set, get) => ({
                 // 實際上 addToRecentFiles 會處理去重，但這是一個更名操作。
                 // 我們應該把舊路徑從 recentFiles 替換成新路徑。
                 
-                // 修正 Recent Files
-                const state = get()
-                const oldPath = state.currentPath // 在 set 更新前取得舊路徑? No, set 已經執行了? No, set is async? No, batch updates?
-                // Zustand set merges state.
-                // 讓我們重構一下順序:
-                
+                // 修正 Recent Files：先取得舊路徑，再更新狀態
                 // 1. 取得舊路徑
                 const oldPathForRecent = get().currentPath
                 

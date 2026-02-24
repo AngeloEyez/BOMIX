@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
     ChevronRight, ChevronDown, FileText, FolderOpen, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react'
@@ -26,8 +26,7 @@ import useSettingsStore from '../../stores/useSettingsStore'
 const BomSidebar = () => {
     const { projects } = useProjectStore()
     const {
-        selectedRevisionId, selectedRevisionIds, toggleRevisionSelection,
-        selectProject,
+        selectedRevisionIds, toggleRevisionSelection,
     } = useBomStore()
 
     // 直接從 store 頂層讀取側邊欄相關設定

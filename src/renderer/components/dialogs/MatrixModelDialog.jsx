@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import useMatrixStore from '../../stores/useMatrixStore';
 import { Trash2, Plus, RefreshCw, X } from 'lucide-react';
 

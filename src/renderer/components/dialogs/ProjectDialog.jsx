@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import Dialog from './Dialog'
-import { Check, X } from 'lucide-react'
+import { X } from 'lucide-react'
 
 /**
  * 專案編輯對話框

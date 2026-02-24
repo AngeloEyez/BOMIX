@@ -4,7 +4,7 @@
 // 參考 Windows 11 Fluent Design 風格
 // ========================================
 
-import { Sun, Moon, Menu, Settings } from 'lucide-react'
+import { Sun, Moon, Settings } from 'lucide-react'
 // import useAppStore from '../../stores/useAppStore' // Deprecated for theme
 import useSettingsStore from '../../stores/useSettingsStore'
 import useSeriesStore from '../../stores/useSeriesStore'
@@ -30,7 +30,7 @@ import ProgressDialog from '../dialogs/ProgressDialog'
 function AppLayout({ pages, currentPage, onNavigate, children }) {
     // const { isDarkMode, toggleTheme } = useAppStore() // Moved to useSettingsStore
     const { loadSettings, isLoading, theme, toggleTheme } = useSettingsStore()
-    const { isOpen, currentPath } = useSeriesStore()
+    const { currentPath } = useSeriesStore()
     const initProgressListeners = useProgressStore(state => state.initListeners)
 
     // 從路徑取得檔案名稱

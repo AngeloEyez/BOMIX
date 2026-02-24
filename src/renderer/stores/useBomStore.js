@@ -38,7 +38,7 @@ const useBomStore = create((set, get) => ({
      * @param {string} viewId
      */
     selectView: async (viewId) => {
-        const { selectedRevisionIds, viewCache } = get()
+        const { selectedRevisionIds } = get()
         if (selectedRevisionIds.size === 0) return
 
         // Update ID immediately for UI
@@ -146,7 +146,7 @@ const useBomStore = create((set, get) => ({
      * 根據當前選擇與模式，抓取對應資料
      */
     fetchData: async () => {
-        const { selectedRevisionIds, currentViewId, bomMode } = get()
+        const { selectedRevisionIds, currentViewId } = get()
         if (selectedRevisionIds.size === 0) {
             set({ bomView: [] })
             return
@@ -190,9 +190,8 @@ const useBomStore = create((set, get) => ({
      * 重新載入目前選取的 BOM 版本視圖。
      */
     reloadBomView: async () => {
-        const revisionId = get().selectedRevisionId
-        if (!revisionId) return
-        await get().selectRevision(revisionId)
+        // reloadBomView 目前瞼軟，不演算任何操作 (revisionId 已在 fetchData 中處理)
+        await get().fetchData()
     },
 
     /**
