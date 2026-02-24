@@ -3,6 +3,8 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerAllIpcHandlers } from './ipc/index.js'
 
+app.commandLine.appendSwitch('disable-gpu-sandbox')
+
 // ========================================
 // BOMIX 主行程進入點
 // 負責建立視窗、註冊 IPC 通道、管理應用程式生命週期
