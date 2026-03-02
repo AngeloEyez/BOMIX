@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import useAppStore from './useAppStore'
+import useToastStore from './useToastStore'
 
 // ========================================
 // BOM 狀態管理 (Zustand)
@@ -251,61 +252,24 @@ const useBomStore = create((set, get) => ({
         }
     },
 
-    /**
-     * 匯入 Excel BOM。
-     *
-     * @param {string} filePath - Excel 檔案路徑
-     * @param {number} projectId - 專案 ID
-     * @param {string} phaseName - Phase 名稱
-     * @param {string} version - 版本號
-     * @returns {Promise<{success: boolean, data?: Object, error?: string}>}
-     */
     importExcel: async (filePath, projectId, phaseName, version, suffix) => {
-        const { setDbBusy } = useAppStore.getState()
-        set({ isLoading: true, error: null })
-        setDbBusy(true)
         try {
             const result = await window.api.excel.import(filePath, projectId, phaseName, version, suffix)
             if (result.success) {
-                // 重新載入 Revision 列表
-                await get().reloadRevisions()
-                // 自動選取新匯入的版本
-                if (result.data?.bomRevisionId) {
-                    await get().selectRevision(result.data.bomRevisionId)
-                }
-                set({ isLoading: false })
                 return { success: true, data: result.data }
             } else {
-                set({ error: result.error, isLoading: false })
+                useToastStore.getState().addToast(`加入匯入排程失敗: ${result.error}`, 'error')
                 return { success: false, error: result.error }
             }
         } catch (error) {
-            set({ error: error.message, isLoading: false })
+            useToastStore.getState().addToast(`匯入發生錯誤: ${error.message}`, 'error')
             return { success: false, error: error.message }
-        } finally {
-            setDbBusy(false)
         }
     },
 
-    /**
-     * 匯出 BOM 為 Excel。
-     *
-     * @param {number} revisionId - BOM Revision ID
-     * @returns {Promise<{success: boolean, error?: string}>}
-     */
-    /**
-     * 匯出 BOM 為 Excel (Async Task)。
-     *
-     * @param {number} revisionId - BOM Revision ID
-     * @returns {Promise<{success: boolean, error?: string}>}
-     */
     exportExcel: async (revisionId) => {
-        // const { setDbBusy } = useAppStore.getState() // Export is now async/non-blocking on DB (mostly)
         try {
-            // 開啟儲存對話框
             const currentRevision = get().selectedRevision
-
-            // 取得原始檔名並將其副檔名強制改為 .xlsx
             const baseName = currentRevision?.filename?.replace(/\.[^/.]+$/, "") || 'BOM_Export'
             const defaultName = `${baseName}.xlsx`
             
@@ -318,28 +282,17 @@ const useBomStore = create((set, get) => ({
                 return { success: false, error: '使用者取消' }
             }
 
-            // set({ isLoading: true, error: null }) // 不再鎖定 UI
-            // setDbBusy(true)
-            
-            // 呼叫 API，立即取得 Task ID
             const result = await window.api.excel.export(revisionId, dialogResult.data)
-            
-            // set({ isLoading: false }) 
-            // setDbBusy(false)
 
             if (result.success) {
-                console.log('[BomStore] Export started, Task ID:', result.data.taskId)
-                // 進度回饋由 useTaskStore 自動處理
                 return { success: true }
             } else {
-                set({ error: result.error })
+                useToastStore.getState().addToast(`加入匯出排程失敗: ${result.error}`, 'error')
                 return { success: false, error: result.error }
             }
         } catch (error) {
-            set({ error: error.message, isLoading: false })
+            useToastStore.getState().addToast(`匯出發生錯誤: ${error.message}`, 'error')
             return { success: false, error: error.message }
-        } finally {
-            // setDbBusy(false)
         }
     },
 

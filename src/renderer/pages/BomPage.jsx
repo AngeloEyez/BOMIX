@@ -7,9 +7,10 @@ import useSeriesStore from '../stores/useSeriesStore'
 import useProjectStore from '../stores/useProjectStore'
 import useBomStore from '../stores/useBomStore'
 import useTaskStore from '../stores/useTaskStore'
+import useToastStore from '../stores/useToastStore'
 import useMatrixStore from '../stores/useMatrixStore'
 import BomTable from '../components/tables/BomTable'
-import BomSidebar from '../components/layout/BomSidebar' // [New]
+import BomSidebar from '../components/layout/BomSidebar'
 import ImportDialog from '../components/dialogs/ImportDialog'
 import ConfirmDialog from '../components/dialogs/ConfirmDialog'
 import MatrixModelDialog from '../components/dialogs/MatrixModelDialog'
@@ -55,6 +56,8 @@ function BomPage() {
     const isExporting = useTaskStore(state => 
         Array.from(state.sessions.values()).some(s => s.type === 'EXPORT_BOM' && s.status === 'RUNNING')
     )
+    const registerCompletedCallback = useTaskStore(state => state.registerCompletedCallback)
+    const addToast = useToastStore(state => state.addToast)
 
     const { fetchMatrixData } = useMatrixStore()
 
@@ -163,6 +166,32 @@ function BomPage() {
             reset()
         }
     }, [isOpen, loadProjects, reset])
+
+    // 註冊 IMPORT_BOM 完成的 Callback (對應 BomPage 情境)
+    useEffect(() => {
+        if (!isOpen) return
+        
+        const unsubscribe = registerCompletedCallback('IMPORT_BOM', async (data) => {
+            const { result, metadata } = data
+            const { phaseName, version } = metadata || {}
+
+            if (result && result.success) {
+                // 重新載入 Revision 列表
+                await useBomStore.getState().reloadRevisions()
+                // 自動選取新匯入的版本
+                if (result.bomRevisionId) {
+                    await useBomStore.getState().toggleRevisionSelection(result.bomRevisionId, false)
+                }
+            } else if (result && result.error === 'PROJECT_CODE_MISMATCH') {
+                 addToast(`匯入失敗：專案代碼不符 (${result.parsedProjectCode})，請回 Dashboard 處理或建立新專案`, 'warning')
+            } else {
+                const errMsg = result ? result.error : '未知錯誤'
+                addToast(`匯入失敗：${errMsg}`, 'error')
+            }
+        })
+        
+        return () => unsubscribe()
+    }, [isOpen, registerCompletedCallback, addToast])
 
     /**
      * 處理刪除 BOM 版本確認

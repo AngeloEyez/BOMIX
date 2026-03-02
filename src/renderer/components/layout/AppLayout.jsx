@@ -14,6 +14,7 @@ import { useEffect } from 'react'
 // Components
 import AppStatusLine from './AppStatusLine'
 import ProgressDialog from '../dialogs/ProgressDialog'
+import ToastContainer from './ToastContainer'
 
 /**
  * 應用程式主佈局元件。
@@ -126,8 +127,11 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
             {/* --- 底部狀態列 --- */}
             <AppStatusLine />
 
-            {/* --- 全域對話框 --- */}
+            {/* Progress Dialog */}
             <ProgressDialog />
+            
+            {/* Global Toasts */}
+            <ToastContainer />
         </div>
     )
 }

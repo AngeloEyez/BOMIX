@@ -29,7 +29,7 @@ const useTaskStore = create((set, get) => ({
     queueLength: 0,
 
     // --- 任務完成 Callback 註冊 ---
-    /** @type {Map<string, Function>} 任務完成時的 callback (依 type 分類) */
+    /** @type {Map<string, Set<Function>>} 任務完成時的 callback (依 type 分類) */
     _completedCallbacks: new Map(),
 
     // --- Actions ---
@@ -87,14 +87,26 @@ const useTaskStore = create((set, get) => ({
      */
     registerCompletedCallback: (taskType, callback) => {
         const callbacks = get()._completedCallbacks
-        callbacks.set(taskType, callback)
-        set({ _completedCallbacks: new Map(callbacks) })
+        const newCallbacks = new Map(callbacks)
+        
+        if (!newCallbacks.has(taskType)) {
+            newCallbacks.set(taskType, new Set())
+        }
+        newCallbacks.get(taskType).add(callback)
+        
+        set({ _completedCallbacks: newCallbacks })
 
         // 返回取消註冊的函數
         return () => {
             const current = get()._completedCallbacks
-            current.delete(taskType)
-            set({ _completedCallbacks: new Map(current) })
+            const updated = new Map(current)
+            if (updated.has(taskType)) {
+                updated.get(taskType).delete(callback)
+                if (updated.get(taskType).size === 0) {
+                    updated.delete(taskType)
+                }
+            }
+            set({ _completedCallbacks: updated })
         }
     },
 
@@ -188,15 +200,17 @@ const useTaskStore = create((set, get) => ({
             })
         }
 
-        // --- task:completed 監聯 —— 觸發 UI callback ---
+        // --- task:completed 監聽 —— 觸發 UI callback ---
         const handleCompleted = (data) => {
             const callbacks = get()._completedCallbacks
-            const callback = callbacks.get(data.type)
-            if (callback) {
-                try {
-                    callback(data)
-                } catch (err) {
-                    console.error(`[TaskStore] callback 執行錯誤 (${data.type}):`, err)
+            const callbackSet = callbacks.get(data.type)
+            if (callbackSet) {
+                for (const callback of callbackSet) {
+                    try {
+                        callback(data)
+                    } catch (err) {
+                        console.error(`[TaskStore] callback 執行錯誤 (${data.type}):`, err)
+                    }
                 }
             }
         }

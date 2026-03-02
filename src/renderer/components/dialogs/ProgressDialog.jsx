@@ -67,15 +67,15 @@ function ProgressDialog() {
                                 </button>
                             </div>
                             {/* Sort Controls */}
-                            <div className="flex bg-gray-200 dark:bg-surface-700 rounded p-0.5">
+                            <div className="flex bg-gray-200 dark:bg-slate-800 rounded p-0.5 gap-0.5">
                                 <button 
-                                    className={`flex-1 text-xs py-1 rounded transition-colors ${sortBy === 'startTime' ? 'bg-white dark:bg-surface-600 shadow-sm text-slate-800 dark:text-slate-200' : 'text-gray-600 dark:text-slate-400 hover:bg-gray-300 dark:hover:bg-surface-600'}`}
+                                    className={`flex-1 text-xs py-1 rounded transition-colors ${sortBy === 'startTime' ? 'bg-white dark:bg-slate-600 shadow-sm text-slate-800 dark:text-slate-100' : 'text-gray-600 dark:text-slate-400 hover:bg-gray-300 dark:hover:bg-slate-700'}`}
                                     onClick={() => setSortBy('startTime')}
                                 >
                                     依開始時間
                                 </button>
                                 <button 
-                                    className={`flex-1 text-xs py-1 rounded transition-colors ${sortBy === 'lastUpdate' ? 'bg-white dark:bg-surface-600 shadow-sm text-slate-800 dark:text-slate-200' : 'text-gray-600 dark:text-slate-400 hover:bg-gray-300 dark:hover:bg-surface-600'}`}
+                                    className={`flex-1 text-xs py-1 rounded transition-colors ${sortBy === 'lastUpdate' ? 'bg-white dark:bg-slate-600 shadow-sm text-slate-800 dark:text-slate-100' : 'text-gray-600 dark:text-slate-400 hover:bg-gray-300 dark:hover:bg-slate-700'}`}
                                     onClick={() => setSortBy('lastUpdate')}
                                 >
                                     依更新時間
@@ -102,7 +102,7 @@ function ProgressDialog() {
                                     </div>
                                     <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-slate-500 mb-2">
                                         <span>Logs: {session.logs?.length || 0}</span>
-                                        <span>{new Date(session.updatedAt).toLocaleTimeString()}</span>
+                                        <span>{new Date(session.updatedAt).toLocaleTimeString('en-US', { hour12: false })}</span>
                                     </div>
                                     {session.status === 'RUNNING' && (
                                         <div className="h-1.5 bg-gray-200 dark:bg-surface-600 rounded-full overflow-hidden">
@@ -123,7 +123,7 @@ function ProgressDialog() {
                     </div>
 
                     {/* Right: Detailed Logs */}
-                    <div className="flex-1 flex flex-col bg-white dark:bg-surface-900 min-w-0">
+                    <div className="flex-1 flex flex-col bg-white dark:bg-surface-900 min-w-0 select-text">
                          {/* ... Right pane remains similar but uses activeSession determined above ... */}
                         {activeSession ? (
                             <>
@@ -151,10 +151,10 @@ function ProgressDialog() {
                                     {activeSession.logs && activeSession.logs.length > 0 ? (
                                         [...activeSession.logs].reverse().map((log, index) => (
                                             <div key={index} className="flex space-x-2 hover:bg-gray-50 dark:hover:bg-surface-800 p-0.5 rounded group">
-                                                <span className="text-gray-400 dark:text-slate-500 min-w-[70px] select-none">
-                                                    {new Date(log.timestamp).toLocaleTimeString()}
+                                                <span className="text-gray-400 dark:text-slate-500 min-w-[70px]">
+                                                    {new Date(log.timestamp).toLocaleTimeString('en-US', { hour12: false })}
                                                 </span>
-                                                <span className={`font-semibold ${getLevelColor(log.level)} min-w-[40px] uppercase text-center select-none`}>
+                                                <span className={`font-semibold ${getLevelColor(log.level)} min-w-[40px] uppercase text-center`}>
                                                     {log.level}
                                                 </span>
                                                 <span className="text-gray-800 dark:text-slate-300 break-all group-hover:text-black dark:group-hover:text-white">
