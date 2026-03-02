@@ -1,15 +1,15 @@
 
 import { useState, useEffect } from 'react'
-import useProgressStore from '../../stores/useProgressStore'
+import useTaskStore from '../../stores/useTaskStore'
 import useSeriesStore from '../../stores/useSeriesStore'
 import useAppStore from '../../stores/useAppStore'
 
 /**
  * 應用程式狀態列元件
  *
- * 整合原有的 StatusBar 功能與新的進度回饋顯示。
+ * 整合原有的 StatusBar 功能與任務排程進度顯示。
  * 左側：資料庫連線狀態、路徑
- * 中間：長時間任務進度回饋 (可點擊)
+ * 中間：任務排程狀態面板（永遠顯示，idle / 任務名稱 + 進度 + 最後 log + 排隊數）
  * 右側：應用程式版本
  */
 function AppStatusLine() {
@@ -27,22 +27,35 @@ function AppStatusLine() {
         }
     }, [])
 
-    // --- Progress Feedback ---
-    const sessions = useProgressStore(state => state.sessions)
-    const toggleDialog = useProgressStore(state => state.toggleDialog)
+    // --- 任務排程狀態 ---
+    const sessions = useTaskStore(state => state.sessions)
+    const queueLength = useTaskStore(state => state.queueLength)
+    const toggleDialog = useTaskStore(state => state.toggleDialog)
     
-    // Find the session with the latest update time
-    const activeSession = Array.from(sessions.values())
-        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0]
+    // 找出最近更新的活躍任務（優先顯示 RUNNING，其次 QUEUED）
+    const activeSession = (() => {
+        const allSessions = Array.from(sessions.values())
+        // 優先找 RUNNING 中的任務
+        const running = allSessions.find(s => s.status === 'RUNNING')
+        if (running) return running
+        // 退而求其次找最近更新的任務
+        return allSessions.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0]
+    })()
 
-    // Helper to get status color
-    const getStatusColor = (status) => {
+    // 取得最後一條 log 訊息
+    const lastLog = activeSession?.logs?.length > 0
+        ? activeSession.logs[activeSession.logs.length - 1]?.message
+        : activeSession?.message
+
+    // 狀態顏色與圖示對應
+    const getStatusIndicator = (status) => {
         switch (status) {
-            case 'RUNNING': return 'bg-blue-500'
-            case 'COMPLETED': return 'bg-green-500'
-            case 'FAILED': return 'bg-red-500'
-            case 'CANCELLED': return 'bg-gray-500'
-            default: return 'bg-gray-400'
+            case 'RUNNING': return { color: 'bg-blue-500', animate: 'animate-pulse', icon: '📋' }
+            case 'QUEUED': return { color: 'bg-amber-400', animate: '', icon: '⏳' }
+            case 'COMPLETED': return { color: 'bg-green-500', animate: '', icon: '✅' }
+            case 'FAILED': return { color: 'bg-red-500', animate: '', icon: '❌' }
+            case 'CANCELLED': return { color: 'bg-gray-500', animate: '', icon: '⊘' }
+            default: return { color: 'bg-gray-400', animate: '', icon: '💤' }
         }
     }
 
@@ -72,41 +85,65 @@ function AppStatusLine() {
                 )}
             </div>
 
-            {/* Middle: Progress Feedback (Elastic Width, Aligned Left) */}
+            {/* Middle: 任務排程狀態面板（永遠顯示，可點擊） */}
             <div className="flex-1 flex justify-start items-center px-4 overflow-hidden">
-                {activeSession ? (
-                    <div 
-                        className="flex items-center space-x-3 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 px-3 py-0.5 rounded transition-colors max-w-full"
-                        onClick={() => toggleDialog(true)}
-                        title="點擊查看詳細進度"
-                    >
-                        {/* Status Dot */}
-                        <div className={`w-2 h-2 rounded-full shrink-0 ${activeSession.status === 'RUNNING' ? 'animate-pulse' : ''} ${getStatusColor(activeSession.status)}`} />
-                        
-                        {/* Activity Info */}
-                        <span className="font-medium text-gray-700 dark:text-gray-300 truncate max-w-[200px]">
-                            {activeSession.title}
-                        </span>
-                        <span className="text-gray-500 truncate max-w-[300px]">
-                            - {activeSession.message || activeSession.currentTask}
-                        </span>
+                <div 
+                    className="flex items-center space-x-3 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 px-3 py-0.5 rounded transition-colors max-w-full"
+                    onClick={() => toggleDialog(true)}
+                    title="點擊查看任務排程詳情"
+                >
+                    {activeSession ? (
+                        <>
+                            {/* 狀態指示點 */}
+                            {(() => {
+                                const indicator = getStatusIndicator(activeSession.status)
+                                return (
+                                    <div className={`w-2 h-2 rounded-full shrink-0 ${indicator.animate} ${indicator.color}`} />
+                                )
+                            })()}
+                            
+                            {/* 任務名稱 */}
+                            <span className="font-medium text-gray-700 dark:text-gray-300 truncate max-w-[150px]">
+                                {activeSession.title}
+                            </span>
 
-                        {/* Progress Bar (Mini) */}
-                        {activeSession.status === 'RUNNING' && (
-                            <div className="w-20 h-1.5 bg-gray-300 dark:bg-slate-700 rounded-full overflow-hidden shrink-0">
-                                <div 
-                                    className="h-full bg-blue-500 transition-all duration-300"
-                                    style={{ width: `${activeSession.progress}%` }}
-                                />
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    // Placeholder
-                    <span className="text-gray-300 dark:text-slate-700 italic">
-                        
-                    </span>
-                )}
+                            {/* 進度條（RUNNING 時顯示） */}
+                            {activeSession.status === 'RUNNING' && (
+                                <div className="w-20 h-1.5 bg-gray-300 dark:bg-slate-700 rounded-full overflow-hidden shrink-0">
+                                    <div 
+                                        className="h-full bg-blue-500 transition-all duration-300"
+                                        style={{ width: `${activeSession.progress}%` }}
+                                    />
+                                </div>
+                            )}
+
+                            {/* 進度百分比（RUNNING 時顯示） */}
+                            {activeSession.status === 'RUNNING' && (
+                                <span className="text-gray-500 dark:text-slate-400 shrink-0 w-8 text-right">
+                                    {activeSession.progress}%
+                                </span>
+                            )}
+
+                            {/* 最後一條 log */}
+                            <span className="text-gray-400 dark:text-slate-500 truncate max-w-[250px]">
+                                {lastLog || ''}
+                            </span>
+
+                            {/* 排隊數（有等待任務時顯示） */}
+                            {queueLength > 0 && (
+                                <span className="text-amber-500 dark:text-amber-400 shrink-0 font-medium">
+                                    ({queueLength} 排隊)
+                                </span>
+                            )}
+                        </>
+                    ) : (
+                        // 無任務時顯示 idle
+                        <>
+                            <span className="text-gray-400 dark:text-slate-600">💤</span>
+                            <span className="text-gray-400 dark:text-slate-600 italic">idle</span>
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* Right: Version info */}

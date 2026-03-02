@@ -6,7 +6,7 @@ import {
 import useSeriesStore from '../stores/useSeriesStore'
 import useProjectStore from '../stores/useProjectStore'
 import useBomStore from '../stores/useBomStore'
-import useProgressStore from '../stores/useProgressStore'
+import useTaskStore from '../stores/useTaskStore'
 import useMatrixStore from '../stores/useMatrixStore'
 import BomTable from '../components/tables/BomTable'
 import BomSidebar from '../components/layout/BomSidebar' // [New]
@@ -51,8 +51,8 @@ function BomPage() {
         bomMode 
     } = useBomStore()
 
-    // Check if any export task is running
-    const isExporting = useProgressStore(state => 
+    // 檢查是否有匯出任務正在執行
+    const isExporting = useTaskStore(state => 
         Array.from(state.sessions.values()).some(s => s.type === 'EXPORT_BOM' && s.status === 'RUNNING')
     )
 

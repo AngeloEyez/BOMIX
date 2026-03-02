@@ -29,8 +29,14 @@ React Component → Zustand Store → window.api.xxx()
 ```
 
 ```
-Excel 檔案 → importService → bomService → partsRepo → SQLite
-SQLite → partsRepo → bomService → exportService → Excel 檔案
+React Component → Zustand Store → window.api.xxx()
+→ IPC invoke → Main Process Handler → Service → Repository → SQLite
+→ 回傳結果 → IPC reply → Store 更新 → React re-render
+```
+
+```
+Excel 檔案 → excel.ipc → taskManager.enqueue() → importService (非阻塞) → SQLite
+SQLite → bomService → exportService → taskManager.enqueue() → Excel 檔案
 SQLite → partsRepo → compareService → 差異報告 → React UI
 SQLite → matrixService → Matrix Data (含 Selection) → React UI
 ```

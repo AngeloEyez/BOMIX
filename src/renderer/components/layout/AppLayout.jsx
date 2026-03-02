@@ -8,7 +8,7 @@ import { Sun, Moon, Settings } from 'lucide-react'
 // import useAppStore from '../../stores/useAppStore' // Deprecated for theme
 import useSettingsStore from '../../stores/useSettingsStore'
 import useSeriesStore from '../../stores/useSeriesStore'
-import useProgressStore from '../../stores/useProgressStore'
+import useTaskStore from '../../stores/useTaskStore'
 import { useEffect } from 'react'
 
 // Components
@@ -31,7 +31,7 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
     // const { isDarkMode, toggleTheme } = useAppStore() // Moved to useSettingsStore
     const { loadSettings, isLoading, theme, toggleTheme } = useSettingsStore()
     const { currentPath } = useSeriesStore()
-    const initProgressListeners = useProgressStore(state => state.initListeners)
+    const initTaskListeners = useTaskStore(state => state.initListeners)
 
     // 從路徑取得檔案名稱
     const seriesName = currentPath ? currentPath.split(/[\\/]/).pop()?.replace('.bomix', '') : null
@@ -41,10 +41,10 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
         loadSettings()
     }, [loadSettings])
 
-    // 初始化進度監聽
+    // 初始化任務排程監聽
     useEffect(() => {
-        initProgressListeners()
-    }, [initProgressListeners])
+        initTaskListeners()
+    }, [initTaskListeners])
 
     // 更新視窗標題
     useEffect(() => {

@@ -329,7 +329,7 @@ const useBomStore = create((set, get) => ({
 
             if (result.success) {
                 console.log('[BomStore] Export started, Task ID:', result.data.taskId)
-                // 進度回饋由 useProgressStore 自動處理
+                // 進度回饋由 useTaskStore 自動處理
                 return { success: true }
             } else {
                 set({ error: result.error })

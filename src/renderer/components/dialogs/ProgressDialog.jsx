@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import useProgressStore, { MAX_SESSIONS } from '../../stores/useProgressStore'
+import useTaskStore, { MAX_TASKS } from '../../stores/useTaskStore'
 
 /**
  * 詳細進度對話框
  * 顯示所有 Sessions 的列表與 Logs
  */
 function ProgressDialog() {
-    const isDialogOpen = useProgressStore(state => state.isDialogOpen)
-    const toggleDialog = useProgressStore(state => state.toggleDialog)
-    const sessions = useProgressStore(state => state.sessions)
-    const activeSessionId = useProgressStore(state => state.activeSessionId)
-    const setActiveSession = useProgressStore(state => state.setActiveSession)
-    const clearCompletedSessions = useProgressStore(state => state.clearCompletedSessions)
+    const isDialogOpen = useTaskStore(state => state.isDialogOpen)
+    const toggleDialog = useTaskStore(state => state.toggleDialog)
+    const sessions = useTaskStore(state => state.sessions)
+    const activeSessionId = useTaskStore(state => state.activeSessionId)
+    const setActiveSession = useTaskStore(state => state.setActiveSession)
+    const clearCompletedSessions = useTaskStore(state => state.clearCompletedSessions)
 
     const scrollRef = useRef(null)
     const [sortBy, setSortBy] = useState('startTime') // 'startTime' | 'lastUpdate'
@@ -58,7 +58,7 @@ function ProgressDialog() {
                     <div className="w-[350px] border-r border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-surface-950 flex flex-col">
                          <div className="p-2 border-b border-gray-200 dark:border-slate-700 flex flex-col gap-2 bg-gray-100 dark:bg-surface-800">
                             <div className="flex justify-between items-center">
-                                <span className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Sessions ({sessions.size} / {MAX_SESSIONS})</span>
+                                <span className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Tasks ({sessions.size} / {MAX_TASKS})</span>
                                 <button 
                                     onClick={clearCompletedSessions}
                                     className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
@@ -181,6 +181,7 @@ function ProgressDialog() {
 
 function StatusBadge({ status }) {
     const colors = {
+        QUEUED: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
         PENDING: 'bg-gray-100 text-gray-600 dark:bg-surface-700 dark:text-slate-400',
         RUNNING: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
         COMPLETED: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',

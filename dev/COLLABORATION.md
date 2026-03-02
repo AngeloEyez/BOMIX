@@ -48,7 +48,8 @@ src/
   series:open      — 開啟系列
   project:list     — 列出專案
   bom:getMainItems — 取得 BOM 聚合視圖
-  excel:import     — 匯入 Excel
+  excel:import     — 將 Excel 匯入任務加入佇列並回傳 taskId
+  task:get         — 任務狀態查詢
 ```
 
 ### 契約定義流程

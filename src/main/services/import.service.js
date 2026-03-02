@@ -14,16 +14,29 @@ import projectRepo from '../database/repositories/project.repo.js';
 /**
  * 解析 Excel 檔案並匯入 BOM
  *
+ * 支援 taskContext 進度追蹤（由 TaskManager 注入）。
+ * 在三個關鍵階段更新進度：解析 Excel → 處理零件 → 儲存至 DB。
+ *
  * @param {string} filePath - Excel 檔案路徑
  * @param {number} projectId - 專案 ID
  * @param {string} phaseName - Phase 名稱
- * @param {string} suffix - 版本後綴 (Optional)
+ * @param {string} version - 版本號
+ * @param {string} [suffix] - 版本後綴 (Optional)
+ * @param {Object} [ctx] - TaskManager 提供的任務上下文 (Optional)
  * @returns {Object} 匯入結果 { success: true, bomRevisionId }
  */
-export function importBom(filePath, projectId, phaseName, version, suffix) {
+export function importBom(filePath, projectId, phaseName, version, suffix, ctx = null) {
+    // 進度更新輔助函數（ctx 為 null 時不做任何事）
+    const progress = (pct, msg) => ctx?.updateProgress?.(pct, msg);
+    const log = (msg, level = 'info') => ctx?.log?.(msg, level);
+
+    log('開始匯入流程...');
+    progress(5, '讀取 Excel 檔案...');
+
     // 1. 讀取 Excel 檔案
     const workbook = xlsx.readFile(filePath);
     const filename = path.basename(filePath);
+    log(`已讀取檔案: ${filename}`);
 
     // 2. 解析表頭 (Header)
     // 優先順序: SMD -> PTH -> BOTTOM
@@ -73,6 +86,9 @@ export function importBom(filePath, projectId, phaseName, version, suffix) {
             }
         }
     }
+
+    progress(20, '解析零件資料...');
+    log('開始解析各工作表零件...');
 
     // 3. 讀取各 Sheet 的零件
     // 階段一：製程頁面
@@ -130,6 +146,9 @@ export function importBom(filePath, projectId, phaseName, version, suffix) {
     // 預設: NPI
     const locationsInMainProcess = new Set(partsMap.keys());
     const mode = determineMode(locationsInMainProcess, locationsInProto, locationsInMp);
+
+    progress(50, '處理零件狀態...');
+    log(`Mode 判定: ${mode}`);
 
     // 5. 根據 Mode 與 Sheet 來源更新 partsMap
     // 邏輯:
@@ -213,6 +232,9 @@ export function importBom(filePath, projectId, phaseName, version, suffix) {
         }
     });
 
+    progress(70, '儲存至資料庫...');
+    log('開始寫入資料庫...');
+
     // 6. 儲存至資料庫
     // 建立 BOM Revision
     const revisionData = {
@@ -265,6 +287,9 @@ export function importBom(filePath, projectId, phaseName, version, suffix) {
     if (secondSourcesToInsert.length > 0) {
         secondSourceRepo.createMany(secondSourcesToInsert);
     }
+
+    log(`匯入完成: ${partsToInsert.length} 筆零件, ${secondSourcesToInsert.length} 筆替代料`);
+    progress(100, '匯入完成');
 
     return { success: true, bomRevisionId };
 }

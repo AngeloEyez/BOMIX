@@ -76,14 +76,21 @@ const api = {
         getSummary: (bomRevisionId) => ipcRenderer.invoke('matrix:getSummary', bomRevisionId),
     },
 
-    // 進度追蹤 API
-    progress: {
-        get: (taskId) => ipcRenderer.invoke('progress:get', taskId),
-        cancel: (taskId) => ipcRenderer.invoke('progress:cancel', taskId),
+    // 任務排程管理器 API
+    task: {
+        get: (taskId) => ipcRenderer.invoke('task:get', taskId),
+        cancel: (taskId) => ipcRenderer.invoke('task:cancel', taskId),
+        remove: (taskId) => ipcRenderer.invoke('task:remove', taskId),
+        getQueueStatus: () => ipcRenderer.invoke('task:getQueueStatus'),
         onUpdate: (callback) => {
             const subscription = (_event, data) => callback(data);
-            ipcRenderer.on('progress:update', subscription);
-            return () => ipcRenderer.removeListener('progress:update', subscription);
+            ipcRenderer.on('task:update', subscription);
+            return () => ipcRenderer.removeListener('task:update', subscription);
+        },
+        onCompleted: (callback) => {
+            const subscription = (_event, data) => callback(data);
+            ipcRenderer.on('task:completed', subscription);
+            return () => ipcRenderer.removeListener('task:completed', subscription);
         },
     },
 
