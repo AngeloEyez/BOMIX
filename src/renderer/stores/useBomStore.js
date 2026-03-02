@@ -252,9 +252,9 @@ const useBomStore = create((set, get) => ({
         }
     },
 
-    importExcel: async (filePath, projectId, phaseName, version, suffix) => {
+    importExcel: async (filePaths) => {
         try {
-            const result = await window.api.excel.import(filePath, projectId, phaseName, version, suffix)
+            const result = await window.api.excel.import(filePaths)
             if (result.success) {
                 return { success: true, data: result.data }
             } else {

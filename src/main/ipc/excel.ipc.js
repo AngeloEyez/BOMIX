@@ -8,6 +8,7 @@
  */
 
 import importService from '../services/import.service.js';
+import importBatchService from '../services/import-batch.service.js';
 import { runExport } from '../services/export.service.js';
 import taskManager from '../services/task-manager.service.js';
 
@@ -36,22 +37,12 @@ export function registerExcelIpc(ipcMain) {
 
     // ========================================
     // 匯入 Excel — 透過 TaskManager 排程
-    // 匯入為同步操作，以 setImmediate 包裝為非同步，
-    // 分三階段更新進度（解析→處理→儲存），確保不阻塞 UI。
+    // 支援傳入多檔案路徑陣列，轉交 BatchImportService 排序與排程
     // ========================================
-    ipcMain.handle('excel:import', withErrorHandling((filePath, projectId, phaseName, version, suffix) => {
-        const taskId = taskManager.enqueue('IMPORT_BOM', {
-            title: `匯入 BOM: ${filePath.split(/[/\\]/).pop()}`,
-            metadata: { filePath, projectId, phaseName, version, suffix },
-            executeFn: async (ctx) => {
-                // 以 setImmediate 包裝同步操作，確保 UI 有機會更新
-                await ctx.yield();
-                const result = importService.importBom(
-                    filePath, projectId, phaseName, version, suffix, ctx
-                );
-                return result;
-            }
-        });
+    ipcMain.handle('excel:import', withErrorHandling((filePaths) => {
+        // 先確認是否為陣列，若是單個字串則轉為陣列以保持相容性
+        const paths = Array.isArray(filePaths) ? filePaths : [filePaths];
+        const taskId = importBatchService.enqueueBatchImport(paths);
         return { taskId };
     }));
 

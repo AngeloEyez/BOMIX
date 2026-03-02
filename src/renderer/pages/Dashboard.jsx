@@ -118,49 +118,17 @@ function Dashboard({ onNavigate }) {
         }
     }, [isOpen, projects])
 
-    // 註冊 IMPORT_BOM 完成時的 Callback
+    // 註冊 BATCH_IMPORT 完成時的 Callback
     useEffect(() => {
         if (!isOpen) return
 
-        const unsubscribe = registerCompletedCallback('IMPORT_BOM', async (data) => {
-            const { result, metadata } = data
-            const { projectId, filePath, phaseName, version } = metadata || {}
-
-            if (result && result.success) {
-                if (projectId) {
-                    const res = await window.api.bom.getRevisions(projectId)
-                    if (res.success) {
-                        setProjectBoms(prev => ({ ...prev, [projectId]: res.data }))
-                        setExpandedProjects(prev => ({ ...prev, [projectId]: true }))
-                    }
-                }
-            } else if (result && result.error === 'PROJECT_CODE_MISMATCH') {
-                const parsedCode = result.parsedProjectCode
-                const currProject = projects.find(p => p.id === projectId)
-                const currentCode = currProject ? currProject.project_code : '未知'
-                const existingProject = projects.find(p => p.project_code.toLowerCase() === parsedCode.toLowerCase())
-
-                if (existingProject) {
-                    setDeleteConfirm({
-                        isOpen: true,
-                        type: 'import_mismatch_existing',
-                        data: { filePath, phaseName, version, targetProjectId: existingProject.id, targetProjectCode: existingProject.project_code },
-                        title: '專案代碼不符（專案已存在）',
-                        message: `BOM 表頭專案代碼「${parsedCode}」與目前專案「${currentCode}」不符。\n\n系統偵測到專案「${existingProject.project_code}」已經存在。\n是否將 BOM 直接匯入至「${existingProject.project_code}」？`,
-                        confirmText: `匯入至 ${existingProject.project_code}`,
-                        variant: 'info'
-                    })
-                } else {
-                    setDeleteConfirm({
-                        isOpen: true,
-                        type: 'import_mismatch',
-                        data: { filePath, phaseName, version, parsedCode },
-                        title: '專案代碼不符',
-                        message: `BOM 表頭專案代碼「${parsedCode}」與目前專案「${currentCode}」不符。\n是否依據 BOM 建立「${parsedCode}」專案，並將 BOM 匯入到新專案？`,
-                        confirmText: '創建並匯入',
-                        variant: 'success'
-                    })
-                }
+        const unsubscribe = registerCompletedCallback('BATCH_IMPORT', async (data) => {
+            const { result } = data
+            // Batch Import 會自行處理 DB 更新
+            // 當它完成時，直接重新載入所有的 Projects 和 BOMs
+            if (result && !result.error) {
+                // 重新刷新左側樹狀結構
+                loadProjects()
             } else {
                 const errMsg = result ? result.error : '未知錯誤'
                 addToast(`匯入失敗：${errMsg}`, 'error')
@@ -168,7 +136,7 @@ function Dashboard({ onNavigate }) {
         })
 
         return () => unsubscribe()
-    }, [isOpen, registerCompletedCallback, projects, addToast])
+    }, [isOpen, registerCompletedCallback, loadProjects, addToast])
 
     // --- Handlers: Series ---
 
@@ -296,8 +264,8 @@ function Dashboard({ onNavigate }) {
         setImportDialog({ isOpen: true, projectId: project.id, projectCode: project.project_code })
     }
 
-    const handleImportSubmit = async (filePath, projectId, phaseName, version) => {
-        const ipcResult = await window.api.excel.import(filePath, projectId, phaseName, version)
+    const handleImportSubmit = async (filePaths) => {
+        const ipcResult = await window.api.excel.import(filePaths)
         
         if (ipcResult.success) {
             setImportDialog(prev => ({ ...prev, isOpen: false }))
@@ -307,47 +275,9 @@ function Dashboard({ onNavigate }) {
         }
     }
     
-    // Handle Mismatch Confirm (Create New Project)
-    // We need to modify handleConfirmDelete/Confirm logic to handle this new type.
     const handleConfirmAction = async () => {
         const { type, data } = deleteConfirm
         
-        if (type === 'import_mismatch_existing') {
-            try {
-                 const importIpcRes = await window.api.excel.import(data.filePath, data.targetProjectId, data.phaseName, data.version)
-                 
-                 if (!importIpcRes.success) {
-                     addToast(`加入匯入排程失敗: ${importIpcRes.error}`, 'error')
-                 }
-            } catch (e) {
-                 addToast(`匯入發生錯誤: ${e.message}`, 'error')
-            }
-            setDeleteConfirm({ ...deleteConfirm, isOpen: false })
-            return
-        }
-
-        if (type === 'import_mismatch') {
-            try {
-                const projectRes = await createProject(data.parsedCode, `Imported from ${data.parsedCode}`)
-                
-                if (projectRes.success && projectRes.data) {
-                     const newProjectId = projectRes.data.id
-                     
-                     const importIpcRes = await window.api.excel.import(data.filePath, newProjectId, data.phaseName, data.version)
-                     
-                     if (!importIpcRes.success) {
-                         addToast(`新專案建立成功，但加入匯入排程失敗: ${importIpcRes.error}`, 'error')
-                     }
-                } else {
-                     addToast(`建立新專案失敗: ${projectRes.error}`, 'error')
-                }
-            } catch (e) {
-                console.error(e)
-            }
-            setDeleteConfirm({ ...deleteConfirm, isOpen: false })
-            return
-        }
-
         // Original Delete Logic
         if (type === 'project') {
              // ...
@@ -637,8 +567,6 @@ function Dashboard({ onNavigate }) {
             <ImportDialog
                 isOpen={importDialog.isOpen}
                 onClose={() => setImportDialog({ ...importDialog, isOpen: false })}
-                projectId={importDialog.projectId}
-                projectCode={importDialog.projectCode}
                 onImport={handleImportSubmit}
             />
 

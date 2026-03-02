@@ -17,15 +17,15 @@ import projectRepo from '../database/repositories/project.repo.js';
  * 支援 taskContext 進度追蹤（由 TaskManager 注入）。
  * 在三個關鍵階段更新進度：解析 Excel → 處理零件 → 儲存至 DB。
  *
- * @param {string} filePath - Excel 檔案路徑
- * @param {number} projectId - 專案 ID
+ * @param {string} projectName - 專案名稱
  * @param {string} phaseName - Phase 名稱
  * @param {string} version - 版本號
- * @param {string} [suffix] - 版本後綴 (Optional)
+ * @param {string} bomType - BOM 類型 ('BOM' | 'MATRIXBOM')
+ * @param {string} filePath - Excel 檔案路徑
  * @param {Object} [ctx] - TaskManager 提供的任務上下文 (Optional)
  * @returns {Object} 匯入結果 { success: true, bomRevisionId }
  */
-export function importBom(filePath, projectId, phaseName, version, suffix, ctx = null) {
+export async function importBom(projectName, phaseName, version, bomType, filePath, ctx = null) {
     // 進度更新輔助函數（ctx 為 null 時不做任何事）
     const progress = (pct, msg) => ctx?.updateProgress?.(pct, msg);
     const log = (msg, level = 'info') => ctx?.log?.(msg, level);
@@ -67,24 +67,47 @@ export function importBom(filePath, projectId, phaseName, version, suffix, ctx =
     if (!headerFound) {
         console.warn('[Import] Warning: Could not find valid header in SMD/PTH/BOTTOM sheets. Using default/empty values.');
     } else {
-        // 驗證 Project Code (若有讀取到)
-        if (headerInfo.project_code && projectId) {
-            const project = projectRepo.findById(projectId);
-            if (project) {
-                const dbCode = project.project_code.replace(/[\s\-_]/g, '').toLowerCase();
-                const headerCode = headerInfo.project_code.replace(/[\s\-_]/g, '').toLowerCase();
-                
-                if (dbCode !== headerCode) {
-                    console.warn(`[Import] Project Code Mismatch: DB=${project.project_code}, Header=${headerInfo.project_code}`);
-                    return { 
-                        success: false, 
-                        error: 'PROJECT_CODE_MISMATCH', 
-                        parsedProjectCode: headerInfo.project_code,
-                        targetProjectCode: project.project_code
-                    };
-                }
+        // 驗證 Excel 表頭內容與檔名是否相符
+        if (headerInfo.project_code || headerInfo.date || headerInfo.description || headerInfo.pca_pn || headerInfo.pcb_version || headerInfo.schematic_version) {
+            // Excel 有表頭
+            const headerCode = (headerInfo.project_code || '').replace(/[\s\-_]/g, '').toLowerCase();
+            const targetCode = projectName.replace(/[\s\-_]/g, '').toLowerCase();
+            
+            if (headerCode && targetCode !== headerCode) {
+                const errMsg = `[Import Error] Project Code Mismatch: Excel=${headerInfo.project_code}, Filename=${projectName}`;
+                log(errMsg, 'error');
+                return { 
+                    success: false, 
+                    error: errMsg
+                };
             }
         }
+    }
+
+    // 取得或自動建立專案
+    let project = projectRepo.findByCode(projectName);
+    if (!project) {
+        log(`查無專案 [${projectName}]，自動建立中...`, 'info');
+        // 自動建立專案
+        project = projectRepo.create({
+            project_code: projectName,
+            brand: 'AutoCreated', // 預設值
+            status: 'active'
+        });
+    }
+    const projectId = project.id;
+
+    // 檢查版本是否已存在，若存在則先刪除 (含舊零件與 SecondSources)
+    log('檢查是否已有相同版本的 BOM...', 'info');
+    const existingRevisions = bomRevisionRepo.findByProject(projectId);
+    const targetRev = existingRevisions.find(r => 
+        r.phase_name.toLowerCase() === phaseName.toLowerCase() && 
+        r.version.toLowerCase() === version.toLowerCase()
+    );
+
+    if (targetRev) {
+        log(`發現既存版本 (Phase: ${phaseName}, Version: ${version})，進行覆寫...`, 'warn');
+        bomRevisionRepo.delete(targetRev.id);
     }
 
     progress(20, '解析零件資料...');
@@ -248,7 +271,7 @@ export function importBom(filePath, projectId, phaseName, version, suffix, ctx =
         bom_date: headerInfo.date,
         mode: mode,
         filename: filename,
-        suffix: suffix
+        suffix: ''
     };
 
     const bomRevision = bomRevisionRepo.create(revisionData);

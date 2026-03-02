@@ -21,12 +21,8 @@ import Dialog from './Dialog'
  * @param {Function} props.onImport - 匯入回呼 (filePath, projectId, phaseName, version) => Promise
  * @returns {JSX.Element}
  */
-function ImportDialog({ isOpen, onClose, projectId, projectCode, onImport, initialFile }) {
-    const [filePath, setFilePath] = useState('')
-    const [fileName, setFileName] = useState('')
-    const [phaseName, setPhaseName] = useState('')
-    const [version, setVersion] = useState('')
-    const [suffix, setSuffix] = useState('')
+function ImportDialog({ isOpen, onClose, onImport, initialFile }) {
+    const [filePaths, setFilePaths] = useState([])
     const [error, setError] = useState('')
     const [isImporting, setIsImporting] = useState(false)
     const [isDragOver, setIsDragOver] = useState(false)
@@ -36,19 +32,14 @@ function ImportDialog({ isOpen, onClose, projectId, projectCode, onImport, initi
         if (isOpen && initialFile) {
             if (initialFile.path) {
                 // eslint-disable-next-line react-hooks/set-state-in-effect
-                setFilePath(initialFile.path)  // 初始化拖曳帶入的檔案路徑，非循環觸發
-                setFileName(initialFile.name)
+                setFilePaths([initialFile.path])  // 初始化拖曳帶入的檔案路徑，非循環觸發
             }
         }
     }, [isOpen, initialFile])
 
     // 重置表單
     const resetForm = useCallback(() => {
-        setFilePath('')
-        setFileName('')
-        setPhaseName('')
-        setVersion('')
-        setSuffix('')
+        setFilePaths([])
         setError('')
         setIsImporting(false)
         setIsDragOver(false)
@@ -58,15 +49,14 @@ function ImportDialog({ isOpen, onClose, projectId, projectCode, onImport, initi
     const handleSelectFile = async () => {
         try {
             const result = await window.api.dialog.showOpen({
-                title: '選擇 BOM Excel 檔案',
+                title: '選擇 BOM Excel 檔案 (可多選)',
+                properties: ['openFile', 'multiSelections'],
                 filters: [
                     { name: 'Excel Files', extensions: ['xls', 'xlsx'] },
                 ],
             })
-            if (!result.canceled && result.data) {
-                const path = result.data
-                setFilePath(path)
-                setFileName(path.split(/[\\/]/).pop())
+            if (!result.canceled && result.data && result.data.length > 0) {
+                setFilePaths(result.data)
                 setError('')
             }
         } catch (_e) {
@@ -94,13 +84,22 @@ function ImportDialog({ isOpen, onClose, projectId, projectCode, onImport, initi
 
         const files = e.dataTransfer?.files
         if (files && files.length > 0) {
-            const file = files[0]
-            const ext = file.name.split('.').pop()?.toLowerCase()
-            if (ext === 'xls' || ext === 'xlsx') {
-                const path = window.api.utils.getPathForFile(file)
-                setFilePath(path)
-                setFileName(file.name)
-                setError('')
+            const validPaths = []
+            let hasInvalid = false
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i]
+                const ext = file.name.split('.').pop()?.toLowerCase()
+                if (ext === 'xls' || ext === 'xlsx') {
+                    validPaths.push(window.api.utils.getPathForFile(file))
+                } else {
+                    hasInvalid = true
+                }
+            }
+
+            if (validPaths.length > 0) {
+                setFilePaths(validPaths)
+                setError(hasInvalid ? '僅支援 .xls 或 .xlsx 格式，已過濾非支援檔案' : '')
             } else {
                 setError('僅支援 .xls 或 .xlsx 格式')
             }
@@ -109,16 +108,8 @@ function ImportDialog({ isOpen, onClose, projectId, projectCode, onImport, initi
 
     // 送出匯入
     const handleSubmit = async () => {
-        if (!filePath) {
+        if (!filePaths || filePaths.length === 0) {
             setError('請選擇 Excel 檔案')
-            return
-        }
-        if (!phaseName.trim()) {
-            setError('請輸入 Phase 名稱')
-            return
-        }
-        if (!version.trim()) {
-            setError('請輸入版本號')
             return
         }
 
@@ -126,7 +117,7 @@ function ImportDialog({ isOpen, onClose, projectId, projectCode, onImport, initi
         setError('')
 
         try {
-            const result = await onImport(filePath, projectId, phaseName.trim(), version.trim())
+            const result = await onImport(filePaths)
             if (result.success) {
                 resetForm()
                 onClose()
@@ -151,11 +142,13 @@ function ImportDialog({ isOpen, onClose, projectId, projectCode, onImport, initi
             isOpen={isOpen} 
             onClose={handleClose} 
             title={
-                <span>
-                    匯入 BOM Excel
-                    {projectCode && <span className="ml-2 text-primary-600 dark:text-primary-400 font-bold bg-primary-50 dark:bg-primary-900/40 px-2 py-0.5 rounded text-base">{projectCode}</span>}
-                </span>
-            } 
+                <div className="flex flex-col">
+                    <span>匯入 Excel</span>
+                    <span className="text-xs font-normal text-slate-500 dark:text-slate-400 mt-0.5">
+                        BOM, Matrix
+                    </span>
+                </div>
+            }
             className="max-w-md"
         >
             <div className="space-y-4">
@@ -164,30 +157,44 @@ function ImportDialog({ isOpen, onClose, projectId, projectCode, onImport, initi
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
-                    onClick={!filePath ? handleSelectFile : undefined}
+                    onClick={filePaths.length === 0 ? handleSelectFile : undefined}
                     className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors
                         ${isDragOver
                             ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/20'
-                            : filePath
+                            : filePaths.length > 0
                                 ? 'border-green-300 bg-green-50/50 dark:border-green-700 dark:bg-green-900/10'
                                 : 'border-slate-300 dark:border-slate-600 hover:border-primary-300 dark:hover:border-primary-600'
                         }`}
                 >
-                    {filePath ? (
-                        <div className="flex items-center justify-center gap-2">
-                            <FileSpreadsheet size={20} className="text-green-600" />
-                            <span className="text-sm text-slate-700 dark:text-slate-300 font-medium truncate max-w-[260px]">
-                                {fileName}
-                            </span>
+                    {filePaths.length > 0 ? (
+                        <div className="flex flex-col items-center justify-center w-full">
+                            <div className="flex items-center gap-2 mb-2">
+                                <FileSpreadsheet size={20} className="text-green-600" />
+                                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                                    已選取 {filePaths.length} 個檔案
+                                </span>
+                            </div>
+                            
+                            {/* 檔案連結列表 */}
+                            <div className="w-full max-h-40 overflow-y-auto bg-white/50 dark:bg-black/20 rounded border border-green-200 dark:border-green-900/50 p-2 space-y-1">
+                                {filePaths.map((path, index) => (
+                                    <div key={index} className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 group">
+                                        <div className="w-1 h-1 rounded-full bg-green-500 shrink-0" />
+                                        <span className="truncate flex-1 text-left" title={path}>
+                                            {path.split(/[/\\]/).pop()}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation()
-                                    setFilePath('')
-                                    setFileName('')
+                                    setFilePaths([])
                                 }}
-                                className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-surface-600 text-slate-400"
+                                className="mt-3 text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 transition-colors"
                             >
-                                <X size={14} />
+                                清除重新選擇
                             </button>
                         </div>
                     ) : (
@@ -198,61 +205,7 @@ function ImportDialog({ isOpen, onClose, projectId, projectCode, onImport, initi
                     )}
                 </div>
 
-                {/* Phase 名稱 */}
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                        Phase 名稱 <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                        type="text"
-                        value={phaseName}
-                        onChange={(e) => setPhaseName(e.target.value.toUpperCase())}
-                        placeholder="例：EVT, SI, DB"
-                        className="w-full px-3 py-2 text-sm
-                            bg-white dark:bg-surface-900
-                            border border-slate-300 dark:border-slate-600
-                            rounded-lg text-slate-800 dark:text-slate-200
-                            focus:outline-none focus:ring-2 focus:ring-primary-500
-                            placeholder:text-slate-400"
-                    />
-                </div>
 
-                {/* 版本號 */}
-                <div>
-                    <div className="space-y-1">
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                            版本 (Version) <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                            type="text"
-                            value={version}
-                            onChange={(e) => setVersion(e.target.value)}
-                            placeholder="e.g. 0.1, 1.0"
-                            className="w-full px-3 py-2 text-sm
-                                bg-white dark:bg-surface-800
-                                border border-slate-300 dark:border-slate-600
-                                rounded-lg text-slate-800 dark:text-slate-200
-                                focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        />
-                    </div>
-
-                    <div className="space-y-1 mt-4"> {/* Added mt-4 for spacing between Version and Suffix */}
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                            後綴 (Suffix) <span className="text-xs text-slate-400 font-normal">(選填)</span>
-                        </label>
-                        <input
-                            type="text"
-                            value={suffix}
-                            onChange={(e) => setSuffix(e.target.value)}
-                            placeholder="e.g. A, B, Test"
-                            className="w-full px-3 py-2 text-sm
-                                bg-white dark:bg-surface-800
-                                border border-slate-300 dark:border-slate-600
-                                rounded-lg text-slate-800 dark:text-slate-200
-                                focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        />
-                    </div>
-                </div>
 
                 {/* 錯誤訊息 */}
                 {error && (

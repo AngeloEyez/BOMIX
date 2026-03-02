@@ -38,7 +38,7 @@ export function parseImportFilename(filePath) {
         phase: match[2],
         version: match[3],
         bomType: match[4].toUpperCase(), // 'BOM' 或 'MATRIXBOM'
-        extension: match[5].toLowerCase(),
+        extension: `.${match[5].toLowerCase()}`,
         originalPath: filePath,
         originalName: filename
     }

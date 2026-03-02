@@ -1,30 +1,31 @@
 # Excel API
 
-## `window.api.excel.import(filePath, projectId, phaseName, version)`
-從 Excel 檔案匯入 BOM。
+## `window.api.excel.import(filePaths)`
+從多個 Excel 檔案批次匯入 BOM。
 
 - **參數**
-  - `filePath` (string) — Excel 檔案完整路徑
-  - `projectId` (number) — 專案 ID
-  - `phaseName` (string) — Phase 名稱 (如 "EVT")
-  - `version` (string) — 版本號 (如 "0.1")
+  - `filePaths` (Array<string> | string) — Excel 檔案完整路徑陣列或單一字串。
 - **回傳**
   ```javascript
   {
     success: true,
     data: {
-      taskId: 'uuid'
+      taskId: 'uuid' // 此為 Batch Task ID
     }
   }
   ```
-  *(註：此 API 為非同步排程，需透過 `window.api.task.onUpdate` 監聽進度，完成後會拋出 `task:completed` 事件。原有的同步回傳 `bomRevisionId` 行為已變更。)*
+  *(註：此 API 為非同步排程，需透過 `window.api.task.onUpdate` 監聽進度，完成後會拋出 `task:completed` 事件，事件結果帶有所有的解析與匯入結果。)*
 
 - **邏輯**
-  - 解析 Excel 標頭 (Product Code, Description, Date 等)
-  - 根據 SMD, PTH, BOTTOM 等 Sheet 讀取零件
-  - 根據 PROTO, MP Sheet 判斷 NPI/MP Mode
-  - 自動處理 Location 原子化與 Main/2nd Source 判斷
-  - 以上步驟以 TaskManager 背景佇列執行，透過 `setImmediate` 防止阻塞 UI。
+  - 自動透過檔名提取 Project Name, Phase, Version 以及 BOM Type (BOM 或是 MatrixBOM)。
+  - 解析檔名檢查專案與主 BOM 存在與否的相依關係。
+  - 根據關聯性依序將合法檔案推入獨立的 `IMPORT_BOM` 子 Task 中。
+  - 解析 Excel 標頭 (Project Code, Date 等) 並與檔名做交叉比對，若專案不存在會自動建立專案。
+  - **零件處理細節**：
+    - 優先從 `SMD`, `PTH`, `BOTTOM` 工作表讀取零件。
+    - 根據 `PROTO`, `MP` 工作表是否存在特定 Location 零件自動判定 NPI/MP Mode。
+    - 自動執行 Location 原子化（拆分 `C1-C5` 為獨立位號）並處理 Main/2nd Source 判斷。
+  - 這些所有步驟都會以 TaskManager 背景佇列執行，透過 `setImmediate` 防止阻塞 UI。
 
 ## `window.api.excel.export(bomRevisionId, outputFilePath)`
 將 BOM 匯出為 Excel 檔案。

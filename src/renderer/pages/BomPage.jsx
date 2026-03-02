@@ -167,23 +167,17 @@ function BomPage() {
         }
     }, [isOpen, loadProjects, reset])
 
-    // 註冊 IMPORT_BOM 完成的 Callback (對應 BomPage 情境)
+    // 註冊 BATCH_IMPORT 完成的 Callback
     useEffect(() => {
         if (!isOpen) return
         
-        const unsubscribe = registerCompletedCallback('IMPORT_BOM', async (data) => {
-            const { result, metadata } = data
-            const { phaseName, version } = metadata || {}
+        const unsubscribe = registerCompletedCallback('BATCH_IMPORT', async (data) => {
+            const { result } = data
 
-            if (result && result.success) {
+            if (result && !result.error) {
                 // 重新載入 Revision 列表
                 await useBomStore.getState().reloadRevisions()
-                // 自動選取新匯入的版本
-                if (result.bomRevisionId) {
-                    await useBomStore.getState().toggleRevisionSelection(result.bomRevisionId, false)
-                }
-            } else if (result && result.error === 'PROJECT_CODE_MISMATCH') {
-                 addToast(`匯入失敗：專案代碼不符 (${result.parsedProjectCode})，請回 Dashboard 處理或建立新專案`, 'warning')
+                // 如果有匯入新的 BOM，會在此刷新
             } else {
                 const errMsg = result ? result.error : '未知錯誤'
                 addToast(`匯入失敗：${errMsg}`, 'error')
@@ -523,7 +517,6 @@ function BomPage() {
                     setIsImportOpen(false)
                     setImportFile(null)
                 }}
-                projectId={null} // Let dialog handle project selection? Or Sidebar needs to track active project.
                 onImport={importExcel}
                 initialFile={importFile}
             />
