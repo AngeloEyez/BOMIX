@@ -48,6 +48,20 @@ function findById(id) {
 }
 
 /**
+ * 根據 project_code 取得專案
+ *
+ * 用於匯入流程中，依專案代碼查詢是否已存在對應的專案。
+ *
+ * @param {string} code - 專案代碼
+ * @returns {Object|undefined} 專案物件，若不存在則回傳 undefined
+ */
+function findByCode(code) {
+  const db = dbManager.getDb();
+  const stmt = db.prepare('SELECT * FROM projects WHERE project_code = ?');
+  return stmt.get(code);
+}
+
+/**
  * 更新專案
  * @param {number} id - 專案 ID
  * @param {Object} data - 更新資料
@@ -93,6 +107,7 @@ export default {
   create,
   findAll,
   findById,
+  findByCode,
   update,
   delete: deleteProject
 };

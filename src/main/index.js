@@ -11,7 +11,7 @@ import { registerAllIpcHandlers } from './ipc/index.js'
 // ⚠️  警告：禁止同時加上 --disable-gpu 或 --disable-software-rasterizer，
 //       否則 DevTools 視窗本身將因渲染器被停用而無法顯示（只有 log 無視窗）。
 // ========================================
-app.commandLine.appendSwitch('disable-gpu-sandbox')
+//app.commandLine.appendSwitch('disable-gpu-sandbox')
 
 // ========================================
 // BOMIX 主行程進入點
