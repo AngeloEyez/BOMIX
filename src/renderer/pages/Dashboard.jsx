@@ -138,6 +138,22 @@ function Dashboard({ onNavigate }) {
         return () => unsubscribe()
     }, [isOpen, registerCompletedCallback, loadProjects, addToast])
 
+    // 每個 IMPORT_BOM 子任務完成後，靜默刷新專案/BOM 樹
+    // BATCH_IMPORT 完成時僅代表「排佇列完成」，IMPORT_BOM 才是真正的檔案匯入
+    useEffect(() => {
+        if (!isOpen) return
+
+        const unsubscribe = registerCompletedCallback('IMPORT_BOM', async (data) => {
+            const { result } = data
+            if (result?.success !== false) {
+                // 靜默重新載入專案列表；React diff 只更新有變化的節點，不會閃爍
+                loadProjects()
+            }
+        })
+
+        return () => unsubscribe()
+    }, [isOpen, registerCompletedCallback, loadProjects])
+
     // --- Handlers: Series ---
 
     const handleSeriesCreate = async () => createSeries()

@@ -9,6 +9,8 @@ const useProjectStore = create((set, get) => ({
     // --- 狀態 ---
     /** 專案列表 */
     projects: [],
+    /** 所有專案的 BOM Revision 快取 { [projectId]: revision[] } */
+    allBoms: {},
     /** 目前選取的專案 */
     selectedProject: null,
     /** 是否正在載入中 */
@@ -19,7 +21,7 @@ const useProjectStore = create((set, get) => ({
     // --- 動作 ---
 
     /**
-     * 載入目前系列下的所有專案。
+     * 載入目前系列下的所有專案，並自動觸發 loadAllBoms 同步 BOM 快取。
      */
     loadProjects: async () => {
         set({ isLoading: true, error: null })
@@ -27,12 +29,35 @@ const useProjectStore = create((set, get) => ({
             const result = await window.api.project.getAll()
             if (result.success) {
                 set({ projects: result.data, isLoading: false })
+                // 專案列表更新後，自動同步所有 BOM 快取
+                await get().loadAllBoms(result.data)
             } else {
                 set({ error: result.error, isLoading: false })
             }
         } catch (error) {
             set({ error: error.message, isLoading: false })
         }
+    },
+
+    /**
+     * 載入所有專案的 BOM Revision 列表，更新 allBoms 快取。
+     *
+     * 可傳入已知的 projects 陣列以避免重複讀取 store；
+     * 若不傳則使用 store 中的現有 projects。
+     *
+     * @param {Array<Object>} [projectList] - 專案陣列（選填）
+     */
+    loadAllBoms: async (projectList) => {
+        const projects = projectList ?? get().projects
+        if (projects.length === 0) return
+
+        const entries = await Promise.all(
+            projects.map(async (p) => {
+                const res = await window.api.bom.getRevisions(p.id)
+                return [p.id, res.success ? res.data : []]
+            })
+        )
+        set({ allBoms: Object.fromEntries(entries) })
     },
 
     /**
@@ -135,6 +160,7 @@ const useProjectStore = create((set, get) => ({
     reset: () => {
         set({
             projects: [],
+            allBoms: {},
             selectedProject: null,
             isLoading: false,
             error: null,

@@ -104,6 +104,11 @@ BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 - [x] `components/dialogs/ImportDialog.jsx`
 - [x] 拖曳匯入功能實作
 - [x] 整合測試
+- [x] **UI 持久化與刷新優化**：
+  - [x] 實作 `IMPORT_BOM` 回調機制，匯入後 UI 自動更新
+  - [x] 整合 `useProjectStore.allBoms` 全域快取，解決新專案匯入不更新問題
+  - [x] 側邊欄 UI 改善（全部展開/收合切換按鈕）
+
 
 ### Phase 7：Matrix BOM 功能 (Jules) ⭐ 進行中
 **負責人：Jules** (涵蓋前後端)

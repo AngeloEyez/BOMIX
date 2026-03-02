@@ -187,6 +187,27 @@ function BomPage() {
         return () => unsubscribe()
     }, [isOpen, registerCompletedCallback, addToast])
 
+    // 每個 IMPORT_BOM 子任務完成後，靜默刷新專案列表與所有 BOM 快取
+    // 呼叫 loadProjects 可同時涵蓋：
+    //   (1) 新專案被自動建立的情境（useProjectStore.projects 更新）
+    //   (2) 現有專案新增版本的情境（loadAllBoms 自動更新 allBoms）
+    // 不清除已選取的 BOM 或搜尋狀態（避免閃爍）
+    useEffect(() => {
+        if (!isOpen) return
+
+        const unsubscribe = registerCompletedCallback('IMPORT_BOM', async (data) => {
+            const { result } = data
+            if (result?.success !== false) {
+                // 刷新專案列表（含 allBoms）→ BomSidebar 自動反映最新狀態
+                await loadProjects()
+                // 同時刷新 useBomStore.revisions（保持 BomPage 選取狀態與側邊欄一致）
+                await useBomStore.getState().reloadRevisions()
+            }
+        })
+
+        return () => unsubscribe()
+    }, [isOpen, registerCompletedCallback, loadProjects])
+
     /**
      * 處理刪除 BOM 版本確認
      */
