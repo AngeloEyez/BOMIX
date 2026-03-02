@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
     FolderPlus, FolderOpen, Clock, X, Database, ChevronRight,
-    Pencil, FileText, Trash2, FileDown 
+    Pencil, FileText, Trash2
 } from 'lucide-react'
 import useSeriesStore from '../stores/useSeriesStore'
 import useProjectStore from '../stores/useProjectStore'
@@ -9,10 +9,9 @@ import useBomStore from '../stores/useBomStore'
 import useTaskStore from '../stores/useTaskStore'
 import useToastStore from '../stores/useToastStore'
 import Dialog from '../components/dialogs/Dialog'
-import ProjectDialog from '../components/dialogs/ProjectDialog' // Assuming this exists or I'll need to check location
+import ProjectDialog from '../components/dialogs/ProjectDialog'
 
 import BomMetaDialog from '../components/dialogs/BomMetaDialog'
-import ImportDialog from '../components/dialogs/ImportDialog'
 import ConfirmDialog from '../components/dialogs/ConfirmDialog'
 
 // ========================================
@@ -55,9 +54,6 @@ function Dashboard({ onNavigate }) {
 
     // BOM Meta Dialog (Edit)
     const [bomDialog, setBomDialog] = useState({ isOpen: false, data: null })
-
-    // Import Dialog
-    const [importDialog, setImportDialog] = useState({ isOpen: false, projectId: null, projectCode: '' })
 
     // Delete Confirm
     const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, type: '', data: null })
@@ -196,12 +192,9 @@ function Dashboard({ onNavigate }) {
 
     const handleProjectSave = async (code, desc) => {
         if (projectDialog.mode === 'create') {
+            // create 模式對应到 AppLayout 的全域按鈕，此處保留 handler 以防萬一
             await createProject(code, desc)
         } else {
-            // Check project.service.js updateProject(id, data)
-            // It expects { project_code, description }
-            // If code is not changed, maybe don't send it? Or service handles unique check.
-            // Since we upgraded service to support project_code update.
             await updateProject(projectDialog.data.id, { project_code: code, description: desc })
         }
         setProjectDialog({ ...projectDialog, isOpen: false })
@@ -275,21 +268,7 @@ function Dashboard({ onNavigate }) {
     }
 
     // --- Handlers: Import ---
-
-    const handleImportOpen = (project) => {
-        setImportDialog({ isOpen: true, projectId: project.id, projectCode: project.project_code })
-    }
-
-    const handleImportSubmit = async (filePaths) => {
-        const ipcResult = await window.api.excel.import(filePaths)
-        
-        if (ipcResult.success) {
-            setImportDialog(prev => ({ ...prev, isOpen: false }))
-            return { success: true }
-        } else {
-            return { success: false, error: ipcResult.error }
-        }
-    }
+    // (已移至 AppLayout 全域套且，此處保留空白）
     
     const handleConfirmAction = async () => {
         const { type, data } = deleteConfirm
@@ -418,10 +397,6 @@ function Dashboard({ onNavigate }) {
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
-                     <button onClick={handleCreateProject} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 shadow-sm transition-colors">
-                        <FolderPlus size={16} />
-                        新增專案
-                    </button>
                     <button onClick={handleSeriesClose} className="p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-surface-800 rounded-lg transition-colors" title="關閉系列">
                         <X size={20} />
                     </button>
@@ -454,15 +429,6 @@ function Dashboard({ onNavigate }) {
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-
-                                            <button 
-                                                onClick={() => handleImportOpen(project)}
-                                                className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors"
-                                                title="匯入 BOM"
-                                            >
-                                                <FileDown size={15} />
-                                            </button>
-                                
                                             <button 
                                                 onClick={() => handleEditProject(project)}
                                                 className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded transition-colors"
@@ -578,12 +544,6 @@ function Dashboard({ onNavigate }) {
                 bom={bomDialog.data}
                 projectCode={bomDialog.projectCode}
                 onSave={handleBomSave}
-            />
-
-            <ImportDialog
-                isOpen={importDialog.isOpen}
-                onClose={() => setImportDialog({ ...importDialog, isOpen: false })}
-                onImport={handleImportSubmit}
             />
 
             <ConfirmDialog 

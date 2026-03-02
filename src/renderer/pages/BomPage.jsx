@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import {
-    FileSpreadsheet, Upload, Download,
+    FileSpreadsheet, Download,
     FolderOpen, ChevronDown, X, RotateCcw, Settings
 } from 'lucide-react'
 import useSeriesStore from '../stores/useSeriesStore'
@@ -11,7 +11,6 @@ import useToastStore from '../stores/useToastStore'
 import useMatrixStore from '../stores/useMatrixStore'
 import BomTable from '../components/tables/BomTable'
 import BomSidebar from '../components/layout/BomSidebar'
-import ImportDialog from '../components/dialogs/ImportDialog'
 import ConfirmDialog from '../components/dialogs/ConfirmDialog'
 import MatrixModelDialog from '../components/dialogs/MatrixModelDialog'
 
@@ -46,7 +45,7 @@ function BomPage() {
     const {
         selectedRevisionId, selectedRevisionIds, selectedRevision,
         bomView, isLoading, error,
-        deleteBom, importExcel, exportExcel,
+        deleteBom, exportExcel,
         clearError, reset,
         currentViewId, selectView, 
         bomMode 
@@ -61,10 +60,7 @@ function BomPage() {
 
     const { fetchMatrixData } = useMatrixStore()
 
-    // 匯入對話框
-    const [isImportOpen, setIsImportOpen] = useState(false)
-    const [importFile, setImportFile] = useState(null)
-    // 刪除確認對話框
+    // 删除確認對話框
     const [deleteTarget, setDeleteTarget] = useState(null)
     // Matrix Model 管理對話框
     const [isMatrixModelDialogOpen, setIsMatrixModelDialogOpen] = useState(false)
@@ -453,20 +449,6 @@ function BomPage() {
                     {/* 分隔線 */}
                     <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
 
-                    {/* 匯入按鈕 */}
-                    <button
-                        onClick={() => setIsImportOpen(true)}
-                        // disabled={!selectedProjectId} // Need project context
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
-                            bg-primary-600 hover:bg-primary-700 text-white
-                            rounded-lg shadow-sm transition-colors
-                            disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="匯入 Excel BOM"
-                    >
-                        <Upload size={14} />
-                        匯入
-                    </button>
-
                     {/* 匯出按鈕 */}
                     <button
                         onClick={handleExport}
@@ -530,17 +512,6 @@ function BomPage() {
                     </div>
                 </div>
             )}
-
-            {/* 匯入對話框 */}
-            <ImportDialog
-                isOpen={isImportOpen}
-                onClose={() => {
-                    setIsImportOpen(false)
-                    setImportFile(null)
-                }}
-                onImport={importExcel}
-                initialFile={importFile}
-            />
 
             {/* Matrix Model 管理對話框 */}
             {/* Use first selected ID for model management? Or disable for multi-select? */}

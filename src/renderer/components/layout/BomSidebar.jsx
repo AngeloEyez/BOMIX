@@ -47,6 +47,27 @@ const BomSidebar = () => {
     // 樹狀展開狀態（純 UI 狀態，不需放 Store）
     const [expandedProjects, setExpandedProjects] = useState({})
 
+    /**
+     * 自動展開邏輯：
+     * 當 projects 列表更新時（例如匯入新專案），
+     * 預設將尚未有紀錄的專案設為展開。
+     */
+    React.useEffect(() => {
+        if (projects.length === 0) return
+        setExpandedProjects(prev => {
+            const next = { ...prev }
+            let changed = false
+            projects.forEach(p => {
+                // 如果該專案 ID 還不在 expandedProjects 中，則預設為展開（true）
+                if (next[p.id] === undefined) {
+                    next[p.id] = true
+                    changed = true
+                }
+            })
+            return changed ? next : prev
+        })
+    }, [projects])
+
     // ========================================
     // 計算「是否所有專案都已展開」以決定切換按鈕的圖示
     // ========================================
@@ -58,7 +79,8 @@ const BomSidebar = () => {
      */
     const toggleAllProjects = useCallback(() => {
         const next = {}
-        projects.forEach(p => { next[p.id] = !allExpanded })
+        const targetValue = !allExpanded
+        projects.forEach(p => { next[p.id] = targetValue })
         setExpandedProjects(next)
     }, [projects, allExpanded])
 
