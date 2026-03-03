@@ -4,12 +4,13 @@
 // 使用 shadcn UI 元件統一風格
 // ========================================
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Sun, Moon, Settings, FolderPlus, FileDown } from 'lucide-react'
 import useSettingsStore from '../../stores/useSettingsStore'
 import useSeriesStore from '../../stores/useSeriesStore'
 import useTaskStore from '../../stores/useTaskStore'
 import useProjectStore from '../../stores/useProjectStore'
+import useToastStore from '../../stores/useToastStore'
 
 // shadcn UI 元件
 import { Button } from '@/components/ui/button'
@@ -46,6 +47,10 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
     const [projectDialogOpen, setProjectDialogOpen] = useState(false)
     // 全域「匯入 BOM」對話框狀態
     const [importDialogOpen, setImportDialogOpen] = useState(false)
+    // 全域拖曳狀態
+    const [isDragOver, setIsDragOver] = useState(false)
+
+    const addToast = useToastStore(state => state.addToast)
 
     // 從路徑取得檔案名稱（不含副檔名）
     const seriesName = currentPath ? currentPath.split(/[\\/]/).pop()?.replace('.bomix', '') : null
@@ -99,6 +104,63 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
         }
         return { success: false, error: result.error }
     }
+
+    // ========================================
+    // 全域拖曳匯入處理
+    // ========================================
+    const handleDragOver = useCallback((e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        if (!isSeriesOpen) return // 未開啟系列不允許匯入
+        setIsDragOver(true)
+    }, [isSeriesOpen])
+
+    const handleDragLeave = useCallback((e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        // 避免子元素觸發 dragleave 導致閃爍
+        if (e.currentTarget && e.relatedTarget && e.currentTarget.contains(e.relatedTarget)) {
+            return
+        }
+        setIsDragOver(false)
+    }, [])
+
+    const handleDrop = useCallback(async (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setIsDragOver(false)
+
+        if (!isSeriesOpen) return
+
+        const files = e.dataTransfer?.files
+        if (!files || files.length === 0) return
+
+        const validPaths = []
+        let hasInvalid = false
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i]
+            const ext = file.name.split('.').pop()?.toLowerCase()
+            if (ext === 'xls' || ext === 'xlsx') {
+                validPaths.push(window.api.utils.getPathForFile(file))
+            } else {
+                hasInvalid = true
+            }
+        }
+
+        if (hasInvalid) {
+            addToast('已忽略不支援的檔案格式，僅接受 .xls 與 .xlsx。', 'warning')
+        }
+
+        if (validPaths.length > 0) {
+            const result = await handleImportSubmit(validPaths)
+            if (!result.success && result.error) {
+                addToast(`匯入失敗：${result.error}`, 'error')
+            }
+        } else if (!hasInvalid) {
+             addToast('未找到有效的 Excel 檔案。', 'warning')
+        }
+    }, [isSeriesOpen, addToast, handleImportSubmit])
 
     if (isLoading) {
         return (
@@ -225,8 +287,27 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
                 </header>
 
                 {/* --- 主體區域 --- */}
-                <main className="flex-1 overflow-hidden relative flex flex-col">
+                <main 
+                    className="flex-1 overflow-hidden relative flex flex-col"
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                >
                     {children}
+
+                    {/* 拖曳覆蓋層 */}
+                    {isDragOver && (
+                        <div className="absolute inset-0 z-[100] flex items-center justify-center
+                            bg-primary/5 backdrop-blur-[1px] border-4 border-dashed border-primary
+                            pointer-events-none transition-all duration-200">
+                            <div className="bg-background/95 rounded-xl shadow-2xl px-10 py-8 text-center transform scale-105 border border-primary/30">
+                                <FileDown className="size-12 mx-auto mb-4 text-primary animate-bounce" />
+                                <p className="text-xl font-bold text-foreground">放開以匯入 Excel BOM</p>
+                                <p className="text-sm text-muted-foreground mt-2">支援多選 .xls / .xlsx 格式檔案</p>
+                                <p className="text-xs text-muted-foreground mt-1">匯入任務將於背景執行</p>
+                            </div>
+                        </div>
+                    )}
                 </main>
 
                 {/* --- 底部狀態列 --- */}

@@ -65,8 +65,6 @@ function BomPage() {
     const [deleteTarget, setDeleteTarget] = useState(null)
     // Matrix Model 管理對話框
     const [isMatrixModelDialogOpen, setIsMatrixModelDialogOpen] = useState(false)
-    // 頁面層級拖曳狀態
-    const [isDragOver, setIsDragOver] = useState(false)
 
     // 視圖狀態 (Definitions)
     const [views, setViews] = useState({})
@@ -225,45 +223,6 @@ function BomPage() {
     }
 
     // ========================================
-    // 頁面層級拖曳匯入
-    // ========================================
-    const handlePageDragOver = useCallback((e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        // 僅在已選擇專案時允許拖曳 (Wait, sidebar selects BOMs, what about project?)
-        // If we have selected IDs, we probably can infer project.
-        // Or if we have `selectedProjectId` in store.
-        // `useBomStore` keeps `selectedProjectId`.
-        // Let's assume user must select a project via sidebar to enable drop?
-        // Actually, drop on sidebar project item would be cool, but page drop needs context.
-        setIsDragOver(true)
-    }, [])
-
-    const handlePageDragLeave = useCallback((e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        setIsDragOver(false)
-    }, [])
-
-    const handlePageDrop = useCallback((e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        setIsDragOver(false)
-
-        // Find active project if any
-        // We need a target project ID. `selectedProjectId` in BomStore is updated when clicking project in sidebar?
-        // Let's assume BomStore tracks last selected project.
-        // If no project selected, we can't import easily unless we parse filename or ask user.
-        // For now, require selectedProjectId.
-
-        // Warning: BomSidebar updates `selectedRevisionIds`. Does it update `selectedProjectId`?
-        // Yes, `BomSidebar` uses `selectProject` or user might click project.
-
-        // const files = e.dataTransfer?.files
-        // ... (Import logic needs valid projectId)
-    }, [])
-
-    // ========================================
     // 未開啟系列 — 提示畫面
     // ========================================
     if (!isOpen) {
@@ -335,12 +294,7 @@ function BomPage() {
             <BomSidebar />
 
             {/* 主要內容區 */}
-            <div
-                className="flex-1 flex flex-col min-w-0 p-3 gap-2"
-                onDragOver={handlePageDragOver}
-                onDragLeave={handlePageDragLeave}
-                onDrop={handlePageDrop}
-            >
+            <div className="flex-1 flex flex-col min-w-0 p-3 gap-2">
                 {/* 工具列 */}
                 <div className="flex items-center gap-2 flex-wrap bg-background p-2 rounded-lg shadow-sm border border-border">
 
@@ -527,18 +481,6 @@ function BomPage() {
                     )}
                 </div>
             </div>
-
-            {/* 拖曳覆蓋層 */}
-            {isDragOver && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center
-                    bg-primary/10 border-4 border-dashed border-primary
-                    pointer-events-none">
-                    <div className="bg-background rounded-xl shadow-lg px-8 py-6 text-center">
-                        <p className="text-base font-semibold text-foreground">放開以匯入 Excel</p>
-                        <p className="text-xs text-muted-foreground mt-1">支援 .xls / .xlsx 格式</p>
-                    </div>
-                </div>
-            )}
 
             {/* Matrix Model 管理對話框 */}
             {/* Use first selected ID for model management? Or disable for multi-select? */}
