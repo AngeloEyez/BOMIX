@@ -296,14 +296,14 @@ function BomTable(props) {
             {
                 accessorKey: 'hhpn',
                 header: 'HHPN',
-                cell: ({ getValue }) => <HighlightText text={getValue()} term={searchFields?.has('hhpn') ? searchTerm : ''} />
+                cell: ({ getValue }) => <span className="select-text cursor-text"><HighlightText text={getValue()} term={searchFields?.has('hhpn') ? searchTerm : ''} /></span>
             },
             {
                 accessorKey: 'description',
                 header: 'Description',
                 size: 500, // Large logical size to encourage taking space
                 cell: ({ getValue }) => (
-                    <span className="truncate block w-full" title={getValue()}>
+                    <span className="truncate block w-full select-text cursor-text" title={getValue()}>
                         <HighlightText text={getValue()} term={searchFields?.has('description') ? searchTerm : ''} />
                     </span>
                 ),
@@ -311,12 +311,12 @@ function BomTable(props) {
             {
                 accessorKey: 'supplier',
                 header: 'Supplier',
-                cell: ({ getValue }) => <HighlightText text={getValue()} term={searchFields?.has('supplier') ? searchTerm : ''} />
+                cell: ({ getValue }) => <span className="select-text cursor-text"><HighlightText text={getValue()} term={searchFields?.has('supplier') ? searchTerm : ''} /></span>
             },
             {
                 accessorKey: 'supplier_pn',
                 header: 'Supplier PN',
-                cell: ({ getValue }) => <HighlightText text={getValue()} term={searchFields?.has('supplier_pn') ? searchTerm : ''} />
+                cell: ({ getValue }) => <span className="select-text cursor-text"><HighlightText text={getValue()} term={searchFields?.has('supplier_pn') ? searchTerm : ''} /></span>
             },
         ];
 
@@ -330,7 +330,7 @@ function BomTable(props) {
                     if (row.original._rowType === 'second') return ''
                     const loc = row.original.location || ''
                     return (
-                        <span className="truncate block" title={loc}>
+                        <span className="truncate block select-text cursor-text" title={loc}>
                             <HighlightText text={loc} term={searchFields?.has('location') ? searchTerm : ''} />
                         </span>
                     )
@@ -384,7 +384,7 @@ function BomTable(props) {
                     if (row.original._rowType === 'second') return ''
                     const remark = row.original.remark || ''
                     return (
-                        <span className="truncate block" title={remark}>
+                        <span className="truncate block select-text cursor-text" title={remark}>
                             <HighlightText text={remark} term={searchFields?.has('remark') ? searchTerm : ''} />
                         </span>
                     )
