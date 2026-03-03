@@ -42,9 +42,9 @@ const FIELD_LABELS = {
  */
 function BomPage() {
     const { isOpen } = useSeriesStore()
-    const { loadProjects } = useProjectStore()
+    const { projects, allBoms, loadProjects } = useProjectStore()
     const {
-        selectedRevisionId, selectedRevisionIds, selectedRevision,
+        selectedProjectId, selectedRevisionId, selectedRevisionIds, selectedRevision,
         bomView, isLoading, error,
         deleteBom, exportExcel,
         clearError, reset,
@@ -276,13 +276,55 @@ function BomPage() {
         )
     }
 
+    // 取得當前選取 BOM 的所屬專案名稱
+    const selectedProjectCode = useMemo(() => {
+        // 優先從 selectedRevision 取得 project_id，若無則使用 store 的 selectedProjectId
+        const pid = selectedRevision?.project_id || selectedProjectId
+        if (pid && projects.length > 0) {
+            // 使用 == 以相容 string/number 型別差異
+            const project = projects.find(p => p.id == pid)
+            return project ? project.project_code : ''
+        }
+        return ''
+    }, [selectedRevision, selectedProjectId, projects])
+
+    // 計算選取的專案數量 (跨專案多選)
+    const selectedProjectCount = useMemo(() => {
+        if (selectedRevisionIds.size === 0) return 0
+        const pIds = new Set()
+        Object.entries(allBoms).forEach(([projectId, revs]) => {
+            if (revs.some(r => selectedRevisionIds.has(r.id))) {
+                pIds.add(projectId)
+            }
+        })
+        return pIds.size
+    }, [selectedRevisionIds, allBoms])
+
     // 計算目前選取的版本顯示名稱 (Multi-select handling?)
     const selectionCount = selectedRevisionIds.size;
     const headerTitle = selectionCount === 0
-        ? '未選擇 BOM'
+        ? <span className="text-sm font-semibold text-muted-foreground">未選擇 BOM</span>
         : selectionCount === 1
-            ? `${selectedRevision?.phase_name}-${selectedRevision?.version}${selectedRevision?.suffix ? `-${selectedRevision.suffix}` : ''}`
-            : `${selectionCount} 個 BOM 已選取`
+            ? (
+                <div className="flex flex-col leading-tight">
+                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                        {selectedProjectCode || 'Unknown Project'}
+                    </span>
+                    <span className="text-sm font-bold text-foreground">
+                        {selectedRevision?.phase_name}-{selectedRevision?.version}{selectedRevision?.suffix ? `-${selectedRevision.suffix}` : ''}
+                    </span>
+                </div>
+            )
+            : (
+                <div className="flex flex-col leading-tight">
+                    <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                        {selectedProjectCount} Projects
+                    </span>
+                    <span className="text-sm font-bold text-foreground">
+                        {selectionCount} BOMs
+                    </span>
+                </div>
+            )
 
     // ========================================
     // 頁面主體
@@ -303,8 +345,8 @@ function BomPage() {
                 <div className="flex items-center gap-2 flex-wrap bg-background p-2 rounded-lg shadow-sm border border-border">
 
                     {/* 標題/狀態 */}
-                    <div className="flex items-center gap-2 px-2 mr-2 border-r border-border">
-                        <span className="text-sm font-semibold text-foreground">{headerTitle}</span>
+                    <div className="flex items-center gap-2 px-2 mr-2 border-r border-border min-h-[32px]">
+                        {headerTitle}
                     </div>
 
                     {/* 視圖切換 (View Switcher) */}

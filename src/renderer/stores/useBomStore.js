@@ -105,8 +105,9 @@ const useBomStore = create((set, get) => ({
      * 選擇 BOM 版本 (單選/多選切換)
      * @param {number} revisionId
      * @param {boolean} multiSelect - 是否為多選模式 (Ctrl/Cmd click)
+     * @param {Object} [revisionObj] - 選填，BOM Revision 物件 (若提供則不需從現有 revisions 尋找)
      */
-    toggleRevisionSelection: async (revisionId, multiSelect = false) => {
+    toggleRevisionSelection: async (revisionId, multiSelect = false, revisionObj = null) => {
         const { revisions, selectedRevisionIds, bomMode } = get()
         let newIds = new Set(multiSelect ? selectedRevisionIds : [])
 
@@ -129,12 +130,15 @@ const useBomStore = create((set, get) => ({
             newMode = 'BOM'
         }
 
-        const selectedRevision = revisions.find(r => r.id === revisionId) || null
+        // 優先使用傳入的物件，若無則在目前的 revisions 列表中尋找
+        const selectedRevision = revisionObj || revisions.find(r => r.id === revisionId) || null
         
         set({
             selectedRevisionId: newIds.size === 1 ? Array.from(newIds)[0] : null,
             selectedRevisionIds: newIds,
             selectedRevision: newIds.size === 1 ? selectedRevision : null,
+            // 如果只有一個選擇且我們有專案 ID，則同步更新選取的專案 ID (確保 BomPage 能找到正確的專案名稱)
+            selectedProjectId: (newIds.size === 1 && selectedRevision) ? selectedRevision.project_id : get().selectedProjectId,
             bomMode: newMode,
             viewCache: {}, // Clear cache on selection change
         })

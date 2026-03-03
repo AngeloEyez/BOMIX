@@ -97,12 +97,12 @@ const BomSidebar = () => {
      * 處理 BOM 點擊選取（支援 Ctrl/Cmd 多選）。
      *
      * @param {React.MouseEvent} e - 滑鼠事件
-     * @param {number} bomId - BOM Revision ID
+     * @param {Object} bom - BOM Revision 物件
      */
-    const handleBomClick = (e, bomId) => {
+    const handleBomClick = (e, bom) => {
         e.stopPropagation()
         const isMulti = e.ctrlKey || e.metaKey
-        toggleRevisionSelection(bomId, isMulti)
+        toggleRevisionSelection(bom.id, isMulti, bom)
     }
 
     /**
@@ -227,7 +227,7 @@ const BomSidebar = () => {
                                                 return (
                                                     <div
                                                         key={bom.id}
-                                                        onClick={(e) => handleBomClick(e, bom.id)}
+                                                        onClick={(e) => handleBomClick(e, bom)}
                                                         className={`flex items-center gap-1.5 px-2 py-0.5 rounded-sm cursor-pointer select-none text-[11px] transition-colors
                                                             ${isSelected
                                                                 ? 'bg-primary-500/10 text-primary-600 dark:text-primary-400 font-medium'
