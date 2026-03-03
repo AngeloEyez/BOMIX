@@ -1,148 +1,159 @@
-import React, { useEffect } from 'react';
-import useMatrixStore from '../../stores/useMatrixStore';
-import { Trash2, Plus, RefreshCw, X } from 'lucide-react';
+// ========================================
+// Matrix Model 管理對話框 (MatrixModelDialog)
+// 改用 shadcn Dialog 封裝與 Button/Input 統一風格
+// ========================================
 
+import { useEffect } from 'react'
+import useMatrixStore from '../../stores/useMatrixStore'
+import { Trash2, Plus, RefreshCw, AlertCircle } from 'lucide-react'
+import Dialog from './Dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+
+/**
+ * Matrix Model 管理對話框。
+ *
+ * 提供 Model 的新增、編輯（編輯後 blur 時自動儲存）、刪除功能。
+ * 當沒有任何 Model 時顯示初始化按鈕。
+ *
+ * @param {Object} props
+ * @param {boolean} props.isOpen - 是否開啟
+ * @param {Function} props.onClose - 關閉回呼
+ * @param {number} props.bomRevisionId - 當前 BOM 版本 ID
+ * @returns {JSX.Element}
+ */
 const MatrixModelDialog = ({ isOpen, onClose, bomRevisionId }) => {
-    const { matrixData, fetchMatrixData, createModels, updateModel, deleteModel, isLoading, error } = useMatrixStore();
-    const models = matrixData[bomRevisionId]?.models || [];
+    const {
+        matrixData, fetchMatrixData, createModels,
+        updateModel, deleteModel, isLoading, error
+    } = useMatrixStore()
 
-    // Local state for tracking changes before update (optional, but good for UX)
-    // Actually, let's do direct updates for simplicity first, maybe with debounce if needed.
-    // For now, "onBlur" update is good.
+    const models = matrixData[bomRevisionId]?.models || []
 
+    // 開啟時載入 Model 資料
     useEffect(() => {
-        if (isOpen && bomRevisionId) {
-            fetchMatrixData(bomRevisionId);
-        }
-    }, [isOpen, bomRevisionId, fetchMatrixData]);
+        if (isOpen && bomRevisionId) fetchMatrixData(bomRevisionId)
+    }, [isOpen, bomRevisionId, fetchMatrixData])
 
-    const handleCreateDefault = async () => {
-        await createModels(bomRevisionId); // Defaults
-    };
+    /** 初始化預設 Models (A, B, C) */
+    const handleCreateDefault = () => createModels(bomRevisionId)
 
-    const handleAddModel = async () => {
-        await createModels(bomRevisionId, [{ name: 'New Model', description: '' }]);
-    };
+    /** 新增一筆空白 Model */
+    const handleAddModel = () => createModels(bomRevisionId, [{ name: 'New Model', description: '' }])
 
-    const handleUpdate = async (id, field, value) => {
-        await updateModel(bomRevisionId, id, { [field]: value });
-    };
+    /**
+     * 更新單一 Model 的指定欄位（blur 時觸發）。
+     *
+     * @param {number} id - Model ID
+     * @param {string} field - 欄位名稱
+     * @param {string} value - 新值
+     */
+    const handleUpdate = (id, field, value) => updateModel(bomRevisionId, id, { [field]: value })
 
-    const handleDelete = async (id, name) => {
+    /**
+     * 刪除 Model（確認後執行）。
+     *
+     * @param {number} id - Model ID
+     * @param {string} name - Model 名稱（顯示於確認訊息）
+     */
+    const handleDelete = (id, name) => {
         if (confirm(`確定要刪除 Model "${name}" 嗎？\n如果有相關聯的選擇紀錄，必須先清除選擇才能刪除。`)) {
-            await deleteModel(bomRevisionId, id);
+            deleteModel(bomRevisionId, id)
         }
-    };
-
-    if (!isOpen) return null;
+    }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-                {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-                    <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">
-                        Matrix Model 管理
-                    </h2>
-                    <button
-                        onClick={onClose}
-                        className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                    >
-                        <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-                    </button>
-                </div>
+        <Dialog isOpen={isOpen} onClose={onClose} title="Matrix Model 管理" className="max-w-2xl">
+            <div className="space-y-3">
+                {/* 錯誤訊息 */}
+                {error && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 border border-destructive/30 rounded-lg text-xs text-destructive">
+                        <AlertCircle size={13} />
+                        {error}
+                    </div>
+                )}
 
-                {/* Content */}
-                <div className="p-6 overflow-y-auto flex-1">
-                    {error && (
-                        <div className="mb-4 p-3 bg-red-100 border border-red-200 text-red-700 rounded-lg text-sm">
-                            {error}
-                        </div>
-                    )}
+                {/* 載入中 */}
+                {isLoading && (
+                    <div className="flex justify-center py-6">
+                        <RefreshCw size={20} className="animate-spin text-muted-foreground" />
+                    </div>
+                )}
 
-                    {isLoading && (
-                        <div className="flex justify-center p-4">
-                            <RefreshCw className="w-6 h-6 animate-spin text-primary-500" />
-                        </div>
-                    )}
+                {/* 空狀態：初始化提示 */}
+                {!isLoading && models.length === 0 && (
+                    <div className="text-center py-8 space-y-3">
+                        <p className="text-sm text-muted-foreground">目前沒有任何 Matrix Model</p>
+                        <Button size="sm" onClick={handleCreateDefault} className="gap-1.5">
+                            <RefreshCw size={13} />
+                            初始化預設 Models (A, B, C)
+                        </Button>
+                    </div>
+                )}
 
-                    {!isLoading && models.length === 0 && (
-                        <div className="text-center py-8">
-                            <p className="text-gray-500 dark:text-gray-400 mb-4">
-                                目前沒有任何 Matrix Model
-                            </p>
-                            <button
-                                onClick={handleCreateDefault}
-                                className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors flex items-center gap-2 mx-auto"
+                {/* Model 列表 */}
+                {models.length > 0 && (
+                    <div className="space-y-2 max-h-80 overflow-y-auto -mr-1 pr-1">
+                        {models.map((model) => (
+                            <div
+                                key={model.id}
+                                className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg border border-border"
                             >
-                                <RefreshCw className="w-4 h-4" />
-                                初始化預設 Models (A, B, C)
-                            </button>
-                        </div>
-                    )}
-
-                    {models.length > 0 && (
-                        <div className="space-y-3">
-                            {models.map((model) => (
-                                <div key={model.id} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                                    <div className="flex-1 space-y-2">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm font-medium text-gray-500 w-12">名稱</span>
-                                            <input
-                                                type="text"
-                                                defaultValue={model.name}
-                                                onBlur={(e) => {
-                                                    if (e.target.value !== model.name) {
-                                                        handleUpdate(model.id, 'name', e.target.value);
-                                                    }
-                                                }}
-                                                className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                                            />
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm font-medium text-gray-500 w-12">描述</span>
-                                            <input
-                                                type="text"
-                                                defaultValue={model.description}
-                                                onBlur={(e) => {
-                                                    if (e.target.value !== model.description) {
-                                                        handleUpdate(model.id, 'description', e.target.value);
-                                                    }
-                                                }}
-                                                className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-primary-500 outline-none"
-                                                placeholder="選填..."
-                                            />
-                                        </div>
+                                <div className="flex-1 space-y-2">
+                                    {/* 名稱輸入 */}
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-medium text-muted-foreground w-10">名稱</span>
+                                        <Input
+                                            className="h-7 text-xs"
+                                            defaultValue={model.name}
+                                            onBlur={(e) => {
+                                                if (e.target.value !== model.name) {
+                                                    handleUpdate(model.id, 'name', e.target.value)
+                                                }
+                                            }}
+                                        />
                                     </div>
-                                    <button
-                                        onClick={() => handleDelete(model.id, model.name)}
-                                        className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                                        title="刪除"
-                                    >
-                                        <Trash2 className="w-5 h-5" />
-                                    </button>
+                                    {/* 描述輸入 */}
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-medium text-muted-foreground w-10">描述</span>
+                                        <Input
+                                            className="h-7 text-xs"
+                                            defaultValue={model.description}
+                                            placeholder="選填..."
+                                            onBlur={(e) => {
+                                                if (e.target.value !== model.description) {
+                                                    handleUpdate(model.id, 'description', e.target.value)
+                                                }
+                                            }}
+                                        />
+                                    </div>
                                 </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                                {/* 刪除按鈕 */}
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    onClick={() => handleDelete(model.id, model.name)}
+                                    title="刪除"
+                                >
+                                    <Trash2 size={15} />
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                )}
 
-                {/* Footer */}
-                <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex justify-between items-center">
-                    <span className="text-sm text-gray-500">
-                        共 {models.length} 個 Model
-                    </span>
-                    <button
-                        onClick={handleAddModel}
-                        className="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
-                    >
-                        <Plus className="w-4 h-4" />
+                {/* 底部：Model 數量 + 新增按鈕 */}
+                <div className="flex items-center justify-between pt-2 border-t border-border">
+                    <span className="text-xs text-muted-foreground">共 {models.length} 個 Model</span>
+                    <Button variant="outline" size="sm" onClick={handleAddModel} className="gap-1.5">
+                        <Plus size={13} />
                         新增 Model
-                    </button>
+                    </Button>
                 </div>
             </div>
-        </div>
-    );
-};
+        </Dialog>
+    )
+}
 
-export default MatrixModelDialog;
+export default MatrixModelDialog

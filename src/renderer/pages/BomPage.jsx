@@ -13,6 +13,7 @@ import BomTable from '../components/tables/BomTable'
 import BomSidebar from '../components/layout/BomSidebar'
 import ConfirmDialog from '../components/dialogs/ConfirmDialog'
 import MatrixModelDialog from '../components/dialogs/MatrixModelDialog'
+import { Button } from '@/components/ui/button'
 
 // ========================================
 // BOM 檢視頁面
@@ -267,9 +268,9 @@ function BomPage() {
     // ========================================
     if (!isOpen) {
         return (
-            <div className="flex flex-col items-center justify-center h-full gap-4 text-slate-400 dark:text-slate-500 animate-fade-in">
-                <FolderOpen size={48} className="text-slate-300 dark:text-slate-600" />
-                <h2 className="text-xl font-semibold">尚未開啟系列</h2>
+            <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground animate-fade-in">
+                <FolderOpen size={40} className="text-border" />
+                <h2 className="text-lg font-semibold">尚未開啟系列</h2>
                 <p className="text-sm">請先從首頁建立或開啟系列資料庫，再檢視 BOM。</p>
             </div>
         )
@@ -299,18 +300,16 @@ function BomPage() {
                 onDrop={handlePageDrop}
             >
                 {/* 工具列 */}
-                <div className="flex items-center gap-2 flex-wrap bg-white dark:bg-surface-900 p-2 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2 flex-wrap bg-background p-2 rounded-lg shadow-sm border border-border">
 
                     {/* 標題/狀態 */}
-                    <div className="flex items-center gap-2 px-2 mr-2 border-r border-slate-200 dark:border-slate-700">
-                        <span className="font-semibold text-slate-700 dark:text-slate-200">
-                            {headerTitle}
-                        </span>
+                    <div className="flex items-center gap-2 px-2 mr-2 border-r border-border">
+                        <span className="text-sm font-semibold text-foreground">{headerTitle}</span>
                     </div>
 
-                    {/* 視圖切換 (View Switcher) - 僅在非 Matrix 模式或 Matrix 模式也需要過濾時顯示 */}
+                    {/* 視圖切換 (View Switcher) */}
                     {selectionCount > 0 && (
-                        <div className="flex items-center bg-slate-100 dark:bg-surface-700 rounded-lg p-1">
+                        <div className="flex items-center bg-muted rounded-md p-0.5">
                             {['ALL', 'SMD', 'PTH', 'BOTTOM'].map(key => {
                                 const view = views[key]
                                 if (!view) return null
@@ -319,10 +318,10 @@ function BomPage() {
                                     <button
                                         key={key}
                                         onClick={() => selectView(view.id)}
-                                        className={`px-3 py-1 text-xs font-medium rounded-md transition-all
+                                        className={`px-2.5 py-1 text-xs font-medium rounded transition-all
                                             ${isActive
-                                                ? 'bg-white dark:bg-surface-600 text-primary-600 dark:text-primary-400 shadow-sm'
-                                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                                                ? 'bg-background text-primary shadow-sm'
+                                                : 'text-muted-foreground hover:text-foreground'
                                             }`}
                                     >
                                         {key}
@@ -334,13 +333,15 @@ function BomPage() {
 
                     {/* Matrix 設定按鈕 (Only in Matrix Mode) */}
                     {selectionCount > 0 && bomMode === 'MATRIX' && (
-                        <button
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-indigo-500"
                             onClick={() => setIsMatrixModelDialogOpen(true)}
-                            className="p-1.5 ml-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors"
                             title="管理 Matrix Models"
                         >
-                            <Settings size={16} />
-                        </button>
+                            <Settings size={15} />
+                        </Button>
                     )}
 
                     {/* 搜尋框 (Search) */}
@@ -352,7 +353,7 @@ function BomPage() {
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     onDoubleClick={() => setIsSearchOptionsOpen(prev => !prev)}
-                                    onFocus={() => setIsSearchOptionsOpen(false)} // Auto-collapse on focus
+                                    onFocus={() => setIsSearchOptionsOpen(false)}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Escape') {
                                             setSearchTerm('')
@@ -360,46 +361,40 @@ function BomPage() {
                                         }
                                     }}
                                     placeholder="Search..."
-                                    className={`pl-3 pr-14 py-1.5 text-sm w-40 transition-all
-                                        bg-white dark:bg-surface-800
-                                        border rounded-lg text-slate-800 dark:text-slate-200
-                                        placeholder:text-slate-400
-                                        focus:outline-none focus:ring-2 focus:ring-primary-500
-                                        ${searchFields.size !== DEFAULT_SEARCH_FIELDS.length ? 'border-amber-400 dark:border-amber-600' : 'border-slate-200 dark:border-slate-700'}
-                                        ${isSearchOptionsOpen ? 'w-80' : 'focus:w-60'}`}
+                                    className={`pl-3 pr-14 py-1.5 text-xs h-8 transition-all
+                                        bg-background border rounded-md
+                                        text-foreground placeholder:text-muted-foreground
+                                        focus:outline-none focus:ring-1 focus:ring-ring
+                                        ${searchFields.size !== DEFAULT_SEARCH_FIELDS.length ? 'border-amber-400' : 'border-input'}
+                                        ${isSearchOptionsOpen ? 'w-72' : 'focus:w-56 w-36'}`}
                                 />
 
                                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                                    {/* Clear Button */}
                                     {searchTerm && (
                                         <button
                                             onClick={() => setSearchTerm('')}
-                                            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                                            className="text-muted-foreground hover:text-foreground"
                                             title="Clear search"
                                         >
-                                            <X size={14} />
+                                            <X size={12} />
                                         </button>
                                     )}
-
-                                    {/* Reset Filter Button (Only show if changed) */}
                                     {searchFields.size !== DEFAULT_SEARCH_FIELDS.length && (
                                         <button
                                             onClick={() => setSearchFields(new Set(DEFAULT_SEARCH_FIELDS))}
-                                            className="text-amber-500 hover:text-amber-600 transition-colors"
+                                            className="text-amber-500 hover:text-amber-600"
                                             title="Reset search fields"
                                         >
-                                            <RotateCcw size={13} />
+                                            <RotateCcw size={12} />
                                         </button>
                                     )}
-
-                                    {/* Toggle Options Button */}
                                     <button
                                         ref={searchToggleRef}
                                         onClick={() => setIsSearchOptionsOpen(prev => !prev)}
-                                        className={`text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-transform ${isSearchOptionsOpen ? 'rotate-180' : ''}`}
+                                        className={`text-muted-foreground hover:text-foreground transition-transform ${isSearchOptionsOpen ? 'rotate-180' : ''}`}
                                         title="Toggle search options"
                                     >
-                                        <ChevronDown size={14} />
+                                        <ChevronDown size={13} />
                                     </button>
                                 </div>
                             </div>
@@ -408,8 +403,8 @@ function BomPage() {
                             {isSearchOptionsOpen && (
                                 <div
                                     ref={searchOptionsPanelRef}
-                                    className="absolute top-full right-0 mt-1 w-80 p-2
-                                        bg-white dark:bg-surface-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700
+                                    className="absolute top-full right-0 mt-1 w-72 p-2
+                                        bg-background rounded-lg shadow-xl border border-border
                                         z-50 flex flex-wrap gap-1.5 animate-in fade-in slide-in-from-top-1"
                                 >
                                     {ALL_SEARCH_FIELDS.map(field => {
@@ -432,8 +427,8 @@ function BomPage() {
                                                 }}
                                                 className={`px-2 py-0.5 text-[11px] rounded border transition-colors select-none
                                                     ${isSelected
-                                                        ? 'bg-primary-50 text-primary-700 border-primary-200 dark:bg-primary-900/30 dark:text-primary-300 dark:border-primary-700/50 font-medium'
-                                                        : 'bg-slate-50 text-slate-500 border-slate-200 dark:bg-surface-700 dark:text-slate-400 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-surface-600'
+                                                        ? 'bg-primary/10 text-primary border-primary/30 font-medium'
+                                                        : 'bg-muted text-muted-foreground border-border hover:bg-muted/70'
                                                     }`}
                                                 title="Click to toggle, Double-click to select only this"
                                             >
@@ -447,31 +442,26 @@ function BomPage() {
                     )}
 
                     {/* 分隔線 */}
-                    <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1" />
+                    <div className="h-5 w-px bg-border mx-1" />
 
-                    {/* 匯出按鈕 */}
-                    <button
+                    {/* 匠出按鈕 */}
+                    <Button
+                        size="sm"
                         onClick={handleExport}
                         disabled={selectionCount === 0 || isExporting}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium
-                            bg-primary-600 hover:bg-primary-700 text-white
-                            rounded-lg shadow-sm transition-colors
-                            disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={isExporting ? "匯出中..." : "匯出 Excel BOM"}
+                        title={isExporting ? '匯出中...' : '匯出 Excel BOM'}
                     >
-                        <Download size={14} className={isExporting ? "animate-bounce" : ""} />
-                        {isExporting ? "匯出中..." : "匯出"}
-                    </button>
+                        <Download size={13} className={isExporting ? 'animate-bounce' : ''} />
+                        {isExporting ? '匯出中...' : '匯出'}
+                    </Button>
                 </div>
 
                 {/* 錯誤提示 */}
                 {error && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 dark:bg-red-900/20
-                        border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-600 dark:text-red-400">
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-destructive/10
+                        border border-destructive/30 rounded-lg text-xs text-destructive">
                         <span>{error}</span>
-                        <button onClick={clearError} className="ml-auto hover:text-red-800">
-                            <X size={12} />
-                        </button>
+                        <button onClick={clearError} className="ml-auto hover:opacity-70"><X size={12} /></button>
                     </div>
                 )}
 
@@ -489,11 +479,9 @@ function BomPage() {
                             viewContextIds={Array.from(selectedRevisionIds)}
                         />
                     ) : (
-                        <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400 dark:text-slate-500">
-                            <FileSpreadsheet size={40} className="text-slate-300 dark:text-slate-600" />
-                            <p className="text-sm">
-                                請從左側選擇 BOM 版本。
-                            </p>
+                        <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+                            <FileSpreadsheet size={36} className="text-border" />
+                            <p className="text-sm">請從左側選擇 BOM 版本。</p>
                         </div>
                     )}
                 </div>
@@ -502,13 +490,11 @@ function BomPage() {
             {/* 拖曳覆蓋層 */}
             {isDragOver && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center
-                    bg-primary-500/10 dark:bg-primary-400/10
-                    border-4 border-dashed border-primary-400 dark:border-primary-500
+                    bg-primary/10 border-4 border-dashed border-primary
                     pointer-events-none">
-                    <div className="bg-white dark:bg-surface-800 rounded-xl shadow-lg px-8 py-6 text-center">
-                        <Upload size={32} className="mx-auto mb-2 text-primary-500" />
-                        <p className="text-lg font-semibold text-slate-700 dark:text-white">放開以匯入 Excel</p>
-                        <p className="text-sm text-slate-400 mt-1">支援 .xls / .xlsx 格式</p>
+                    <div className="bg-background rounded-xl shadow-lg px-8 py-6 text-center">
+                        <p className="text-base font-semibold text-foreground">放開以匯入 Excel</p>
+                        <p className="text-xs text-muted-foreground mt-1">支援 .xls / .xlsx 格式</p>
                     </div>
                 </div>
             )}

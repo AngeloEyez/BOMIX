@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
     FolderPlus, FolderOpen, Clock, X, Database, ChevronRight,
-    Pencil, FileText, Trash2
+    Pencil, FileText, Trash2, AlertCircle
 } from 'lucide-react'
 import useSeriesStore from '../stores/useSeriesStore'
 import useProjectStore from '../stores/useProjectStore'
@@ -10,9 +10,11 @@ import useTaskStore from '../stores/useTaskStore'
 import useToastStore from '../stores/useToastStore'
 import Dialog from '../components/dialogs/Dialog'
 import ProjectDialog from '../components/dialogs/ProjectDialog'
-
 import BomMetaDialog from '../components/dialogs/BomMetaDialog'
 import ConfirmDialog from '../components/dialogs/ConfirmDialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card, CardContent } from '@/components/ui/card'
 
 // ========================================
 // 儀表板 (Dashboard)
@@ -294,62 +296,63 @@ function Dashboard({ onNavigate }) {
     // ========================================
     if (!isOpen) {
         return (
-            <div className="flex flex-col items-center justify-center h-full gap-8 p-6 overflow-auto animate-fade-in relative">
-                 {/* 錯誤提示 */}
-                 {seriesError && (
-                    <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400 shadow-md">
+            <div className="flex flex-col items-center justify-center h-full gap-6 p-6 overflow-auto animate-fade-in relative">
+                {/* 錯誤提示 */}
+                {seriesError && (
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-2 bg-destructive/10 border border-destructive/30 rounded-lg text-xs text-destructive shadow-md">
+                        <AlertCircle size={13} />
                         <span>{seriesError}</span>
-                        <button onClick={clearSeriesError} className="ml-2 hover:text-red-800">
-                            <X size={14} />
-                        </button>
+                        <Button variant="ghost" size="icon" className="h-5 w-5 ml-1" onClick={clearSeriesError}><X size={12} /></Button>
                     </div>
                 )}
-            
+
                 <div className="text-center">
-                    <h1 className="text-4xl font-bold text-primary-600 dark:text-primary-400 mb-2">BOMIX</h1>
-                    <p className="text-lg text-slate-500 dark:text-slate-400">BOM 變化管理與追蹤工具</p>
+                    <h1 className="text-3xl font-bold text-primary mb-1">BOMIX</h1>
+                    <p className="text-sm text-muted-foreground">BOM 變化管理與追蹤工具</p>
                 </div>
 
-                <div className="flex gap-4">
+                <div className="flex gap-3">
                     <button onClick={handleSeriesCreate} disabled={isSeriesLoading}
-                        className="flex flex-col items-center gap-2 px-8 py-6 bg-white dark:bg-surface-800 rounded-xl shadow-sm hover:shadow-md border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-600 transition-all duration-200 cursor-pointer group disabled:opacity-50">
-                        <span className="text-primary-500 group-hover:scale-110 transition-transform"><FolderPlus size={32} /></span>
-                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">建立新系列</span>
+                        className="flex flex-col items-center gap-2 px-8 py-5 bg-card rounded-xl shadow-sm hover:shadow-md border border-border hover:border-primary/50 transition-all duration-200 cursor-pointer group disabled:opacity-50">
+                        <span className="text-primary group-hover:scale-110 transition-transform"><FolderPlus size={28} /></span>
+                        <span className="text-xs font-medium text-foreground">建立新系列</span>
                     </button>
                     <button onClick={() => handleSeriesOpen()} disabled={isSeriesLoading}
-                        className="flex flex-col items-center gap-2 px-8 py-6 bg-white dark:bg-surface-800 rounded-xl shadow-sm hover:shadow-md border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-600 transition-all duration-200 cursor-pointer group disabled:opacity-50">
-                        <span className="text-primary-500 group-hover:scale-110 transition-transform"><FolderOpen size={32} /></span>
-                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">開啟系列</span>
+                        className="flex flex-col items-center gap-2 px-8 py-5 bg-card rounded-xl shadow-sm hover:shadow-md border border-border hover:border-primary/50 transition-all duration-200 cursor-pointer group disabled:opacity-50">
+                        <span className="text-primary group-hover:scale-110 transition-transform"><FolderOpen size={28} /></span>
+                        <span className="text-xs font-medium text-foreground">開啟系列</span>
                     </button>
                 </div>
 
                 <div className="w-full max-w-md">
-                    <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-2">
-                        <Clock size={14} /> 最近開啟
+                    <h2 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
+                        <Clock size={12} /> 最近開啟
                     </h2>
                     {recentFiles.length > 0 ? (
-                        <div className="bg-white dark:bg-surface-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden divide-y divide-slate-100 dark:divide-slate-700">
-                            {recentFiles.map((filePath) => {
-                                const name = filePath.split(/[\\/]/).pop()?.replace('.bomix', '') || filePath
-                                return (
-                                    <div key={filePath} className="flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-surface-700/50 transition-colors group">
-                                        <button onClick={() => handleSeriesOpen(filePath)} className="flex-1 flex items-center gap-3 text-left min-w-0">
-                                            <Database size={16} className="shrink-0 text-primary-500" />
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{name}</p>
-                                                <p className="text-xs text-slate-400 truncate font-mono">{filePath}</p>
-                                            </div>
-                                            <ChevronRight size={14} className="shrink-0 text-slate-300 group-hover:text-primary-500 transition-colors" />
-                                        </button>
-                                        <button onClick={() => removeFromRecentFiles(filePath)} className="shrink-0 ml-2 p-1 rounded hover:bg-slate-200 dark:hover:bg-surface-600 text-slate-300 hover:text-slate-500 opacity-0 group-hover:opacity-100 transition-all">
-                                            <X size={14} />
-                                        </button>
-                                    </div>
-                                )
-                            })}
-                        </div>
+                        <Card>
+                            <CardContent className="p-0 divide-y divide-border">
+                                {recentFiles.map((filePath) => {
+                                    const name = filePath.split(/[\/\\]/).pop()?.replace('.bomix', '') || filePath
+                                    return (
+                                        <div key={filePath} className="flex items-center justify-between px-3 py-2 hover:bg-muted/50 transition-colors group">
+                                            <button onClick={() => handleSeriesOpen(filePath)} className="flex-1 flex items-center gap-2 text-left min-w-0">
+                                                <Database size={14} className="shrink-0 text-primary" />
+                                                <div className="min-w-0">
+                                                    <p className="text-xs font-medium text-foreground truncate">{name}</p>
+                                                    <p className="text-xs text-muted-foreground truncate font-mono">{filePath}</p>
+                                                </div>
+                                                <ChevronRight size={12} className="shrink-0 text-muted-foreground/40 group-hover:text-primary transition-colors" />
+                                            </button>
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => removeFromRecentFiles(filePath)}>
+                                                <X size={12} />
+                                            </Button>
+                                        </div>
+                                    )
+                                })}
+                            </CardContent>
+                        </Card>
                     ) : (
-                        <div className="p-4 text-center text-sm text-slate-400 border border-slate-200 dark:border-slate-700 rounded-xl">尚無開啟記錄</div>
+                        <div className="p-4 text-center text-xs text-muted-foreground border border-border rounded-xl">尚無開啟記錄</div>
                     )}
                 </div>
             </div>
@@ -359,143 +362,122 @@ function Dashboard({ onNavigate }) {
     // ========================================
     // B. Dashboard (已開啟系列)
     // ========================================
-    const displayName = currentPath?.split(/[\\/]/).pop().replace('.bomix', '') || '未命名系列'
+    const displayName = currentPath?.split(/[\/\\]/).pop().replace('.bomix', '') || '未命名系列'
 
     return (
-        <div className="flex flex-col h-full animate-fade-in bg-slate-50 dark:bg-surface-950">
+        <div className="flex flex-col h-full animate-fade-in bg-muted/30">
             {/* 1. Header Area: Series Info */}
-            <div className="bg-white dark:bg-surface-900 border-b border-slate-200 dark:border-slate-800 px-6 py-4 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-4 min-w-0">
-                    <div className="p-3 bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 rounded-xl">
-                        <Database size={24} />
+            <div className="bg-background border-b border-border px-4 py-3 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2 bg-primary/10 text-primary rounded-lg shrink-0">
+                        <Database size={18} />
                     </div>
                     <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                            <h2 className="text-xl font-bold text-slate-800 dark:text-white truncate">{displayName}</h2>
-                            <button onClick={handleOpenRename} className="p-1 rounded-md text-slate-400 hover:text-primary-600 hover:bg-slate-100 dark:hover:bg-surface-800 transition-colors">
-                                <Pencil size={14} />
-                            </button>
+                        <div className="flex items-center gap-1.5">
+                            <h2 className="text-sm font-bold text-foreground truncate">{displayName}</h2>
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleOpenRename}>
+                                <Pencil size={12} />
+                            </Button>
                         </div>
                         {isEditingDesc ? (
-                            <div className="flex gap-2 mt-1">
-                                <input
-                                    type="text"
+                            <div className="flex gap-2 mt-0.5">
+                                <Input
                                     value={editDesc}
                                     onChange={(e) => setEditDesc(e.target.value)}
-                                    className="px-2 py-0.5 text-sm border rounded bg-white dark:bg-surface-800 dark:border-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-primary-500"
+                                    className="h-7 text-xs w-64"
                                     autoFocus
                                     onKeyDown={(e) => e.key === 'Enter' && handleSaveDesc()}
                                 />
-                                <button onClick={handleSaveDesc} className="px-2 py-0.5 bg-primary-600 text-white rounded text-xs">儲存</button>
+                                <Button size="sm" className="h-7 text-xs" onClick={handleSaveDesc}>儲存</Button>
                             </div>
                         ) : (
-                            <div className="flex items-center gap-2 group cursor-pointer mt-1" onClick={handleStartEditDesc}>
-                                <p className="text-sm text-slate-500 truncate max-w-lg">{currentSeries.description || '點擊新增描述...'}</p>
-                                <Pencil size={12} className="opacity-0 group-hover:opacity-100 text-slate-400" />
+                            <div className="flex items-center gap-1.5 group cursor-pointer" onClick={handleStartEditDesc}>
+                                <p className="text-xs text-muted-foreground truncate max-w-xs">{currentSeries.description || '點擊新增描述...'}</p>
+                                <Pencil size={11} className="opacity-0 group-hover:opacity-100 text-muted-foreground" />
                             </div>
                         )}
                     </div>
                 </div>
-                <div className="flex items-center gap-3">
-                    <button onClick={handleSeriesClose} className="p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-surface-800 rounded-lg transition-colors" title="關閉系列">
-                        <X size={20} />
-                    </button>
-                </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleSeriesClose} title="關閉系列">
+                    <X size={16} />
+                </Button>
             </div>
 
             {/* 2. Content Area: Tree View */}
-            <div className="flex-1 overflow-auto p-6">
+            <div className="flex-1 overflow-auto p-4">
                 <div className="max-w-5xl mx-auto">
                     {projects.length === 0 ? (
-                        <div className="text-center py-20 text-slate-400">
-                            <FolderOpen size={48} className="mx-auto mb-4 opacity-20" />
-                            <p>尚無專案，請點擊右上方「新增專案」</p>
+                        <div className="text-center py-16 text-muted-foreground">
+                            <FolderOpen size={40} className="mx-auto mb-3 opacity-20" />
+                            <p className="text-sm">尚無專案，請點擊右上方「新增專案」</p>
                         </div>
                     ) : (
-                        <div className="space-y-4">
+                        <div className="space-y-3">
                             {projects.map(project => (
-                                <div key={project.id} className="bg-white dark:bg-surface-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                                <div key={project.id} className="bg-background rounded-lg border border-border shadow-sm overflow-hidden">
                                     {/* Project Header */}
-                                    <div 
-                                        className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-surface-800/50 transition-colors"
+                                    <div
+                                        className="flex items-center justify-between px-3 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
                                         onClick={() => toggleProjectExpand(project.id)}
                                     >
-                                        <div className="flex items-center gap-3">
-                                            <ChevronRight size={18} className={`text-slate-400 transition-transform ${expandedProjects[project.id] ? 'rotate-90' : ''}`} />
-                                            <FolderOpen size={20} className="text-sky-500" />
+                                        <div className="flex items-center gap-2">
+                                            <ChevronRight size={15} className={`text-muted-foreground/60 transition-transform ${expandedProjects[project.id] ? 'rotate-90' : ''}`} />
+                                            <FolderOpen size={16} className="text-sky-400" />
                                             <div>
-                                                <h3 className="font-medium text-slate-800 dark:text-slate-200">{project.project_code}</h3>
-                                                {project.description && <p className="text-xs text-slate-400">{project.description}</p>}
+                                                <h3 className="text-sm font-medium text-foreground">{project.project_code}</h3>
+                                                {project.description && <p className="text-xs text-muted-foreground">{project.description}</p>}
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                                            <button 
-                                                onClick={() => handleEditProject(project)}
-                                                className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded transition-colors"
-                                                title="編輯專案"
-                                            >
-                                                <Pencil size={15} />
-                                            </button>
-                                            <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1"></div>
-
-                                            <button 
-                                                onClick={() => handleDeleteProject(project)}
-                                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                                                title="刪除專案"
-                                            >
-                                                <Trash2 size={15} />
-                                            </button>
+                                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditProject(project)} title="編輯專案">
+                                                <Pencil size={13} />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive/60 hover:text-destructive" onClick={() => handleDeleteProject(project)} title="刪除專案">
+                                                <Trash2 size={13} />
+                                            </Button>
                                         </div>
                                     </div>
 
                                     {/* BOM List (Children) */}
                                     {expandedProjects[project.id] && (
-                                        <div className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-surface-950/30 px-3 py-2">
-                                            <div className="ml-9 space-y-1">
+                                        <div className="border-t border-border bg-muted/20 px-3 py-1.5">
+                                            <div className="ml-8 space-y-0.5">
                                                 {projectBoms[project.id]?.length > 0 ? (
                                                     projectBoms[project.id].map(bom => (
-                                                        <div 
-                                                            key={bom.id} 
-                                                            className="flex items-center justify-between p-2 rounded-lg hover:bg-white dark:hover:bg-surface-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-all cursor-pointer group"
+                                                        <div
+                                                            key={bom.id}
+                                                            className="flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-background border border-transparent hover:border-border transition-all cursor-pointer group"
                                                             onClick={() => handleBomClick(bom)}
                                                         >
-                                                            <div className="flex items-center gap-3">
-                                                                <FileText size={16} className="text-emerald-500" />
-                                                                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                                                            <div className="flex items-center gap-2">
+                                                                <FileText size={13} className="text-emerald-400" />
+                                                                <span className="text-xs font-medium text-foreground">
                                                                     {bom.phase_name} {bom.version}
-                                                                    {bom.suffix && <span className="ml-1 text-slate-500">-{bom.suffix}</span>}
+                                                                    {bom.suffix && <span className="ml-1 text-muted-foreground">-{bom.suffix}</span>}
                                                                 </span>
-                                                                <span className="text-xs px-1.5 py-0.5 bg-slate-100 dark:bg-surface-700 text-slate-500 rounded text-[10px]">
+                                                                <span className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded">
                                                                     {bom.mode || 'NPI'}
                                                                 </span>
-                                                                {bom.matrixSummary && bom.matrixSummary.hasMatrix && (
-                                                                    <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-surface-800" title={bom.matrixSummary.isSafe ? "Matrix Complete" : "Matrix Incomplete"}>
-                                                                        <span className="font-semibold text-slate-500">M</span>
-                                                                        <div className={`w-1.5 h-1.5 rounded-full ${bom.matrixSummary.isSafe ? 'bg-green-500' : 'bg-amber-500'}`} />
+                                                                {bom.matrixSummary?.hasMatrix && (
+                                                                    <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border border-border" title={bom.matrixSummary.isSafe ? 'Matrix Complete' : 'Matrix Incomplete'}>
+                                                                        <span className="font-semibold text-muted-foreground">M</span>
+                                                                        <div className={`w-1.5 h-1.5 rounded-full ${bom.matrixSummary.isSafe ? 'bg-emerald-500' : 'bg-amber-400'}`} />
                                                                     </div>
                                                                 )}
-                                                                {bom.bom_date && <span className="text-xs text-slate-400">{bom.bom_date}</span>}
+                                                                {bom.bom_date && <span className="text-[10px] text-muted-foreground">{bom.bom_date}</span>}
                                                             </div>
-                                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                                                                <button 
-                                                                    onClick={() => handleEditBom(bom, project.project_code)}
-                                                                    className="p-1 text-slate-400 hover:text-primary-600 rounded"
-                                                                    title="編輯 BOM 屬性"
-                                                                >
-                                                                    <Pencil size={14} />
-                                                                </button>
-                                                                <button 
-                                                                    onClick={() => handleDeleteBom(bom)}
-                                                                    className="p-1 text-slate-400 hover:text-red-600 rounded"
-                                                                    title="刪除 BOM"
-                                                                >
-                                                                    <Trash2 size={14} />
-                                                                </button>
+                                                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditBom(bom, project.project_code)} title="編輯 BOM 屬性">
+                                                                    <Pencil size={12} />
+                                                                </Button>
+                                                                <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/60 hover:text-destructive" onClick={() => handleDeleteBom(bom)} title="刪除 BOM">
+                                                                    <Trash2 size={12} />
+                                                                </Button>
                                                             </div>
                                                         </div>
                                                     ))
                                                 ) : (
-                                                    <div className="text-xs text-slate-400 py-2 pl-2 italic">尚無 BOM 版本</div>
+                                                    <div className="text-xs text-muted-foreground py-1.5 pl-2 italic">尚無 BOM 版本</div>
                                                 )}
                                             </div>
                                         </div>
@@ -507,25 +489,21 @@ function Dashboard({ onNavigate }) {
                 </div>
             </div>
 
-            {/* Dialogs */}
-            <Dialog
-                isOpen={isRenameOpen}
-                onClose={() => setIsRenameOpen(false)}
-                title="重新命名系列"
-                className="max-w-sm"
-            >
-                <div className="space-y-4">
-                    <input
-                        type="text"
+            {/* 對話框 */}
+            <Dialog isOpen={isRenameOpen} onClose={() => setIsRenameOpen(false)} title="重新命名系列" className="max-w-sm">
+                <div className="space-y-3">
+                    <Input
                         value={renameValue}
                         onChange={(e) => setRenameValue(e.target.value)}
                         placeholder="輸入新的系列名稱"
-                        className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-surface-900 dark:border-slate-600"
+                        className="h-8 text-xs"
+                        autoFocus
+                        onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()}
                     />
-                    {renameError && <p className="text-xs text-red-500">{renameError}</p>}
+                    {renameError && <p className="text-xs text-destructive">{renameError}</p>}
                     <div className="flex justify-end gap-2">
-                        <button onClick={() => setIsRenameOpen(false)} className="px-4 py-2 text-sm hover:bg-slate-100 dark:hover:bg-surface-700 rounded-lg">取消</button>
-                        <button onClick={handleRenameSubmit} className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg">確定</button>
+                        <Button variant="outline" size="sm" onClick={() => setIsRenameOpen(false)}>取消</Button>
+                        <Button size="sm" onClick={handleRenameSubmit}>確定</Button>
                     </div>
                 </div>
             </Dialog>
