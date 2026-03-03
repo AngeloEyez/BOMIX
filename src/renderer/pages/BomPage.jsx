@@ -486,9 +486,8 @@ function BomPage() {
                     {/* 分隔線 */}
                     <div className="h-5 w-px bg-border mx-1" />
 
-                    {/* 匠出按鈕 */}
+                    {/* 匯出按鈕 */}
                     <Button
-                        size="sm"
                         onClick={handleExport}
                         disabled={selectionCount === 0 || isExporting}
                         title={isExporting ? '匯出中...' : '匯出 Excel BOM'}
