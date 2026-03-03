@@ -1,10 +1,18 @@
+// ========================================
+// 專案新增/編輯對話框 (ProjectDialog)
+// 使用 shadcn Input 和 Button 統一風格
+// ========================================
+
 import { useState, useEffect } from 'react'
 import Dialog from './Dialog'
-import { X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { AlertCircle } from 'lucide-react'
 
 /**
- * 專案編輯對話框
- * 
+ * 專案編輯對話框。
+ *
  * @param {Object} props
  * @param {boolean} props.isOpen - 是否開啟
  * @param {Function} props.onClose - 關閉回呼
@@ -18,6 +26,7 @@ function ProjectDialog({ isOpen, onClose, mode = 'create', initialData, onSave }
     const [error, setError] = useState('')
     const [isSaving, setIsSaving] = useState(false)
 
+    // 開啟時重置表單
     useEffect(() => {
         if (isOpen) {
             setProjectCode(initialData?.project_code || '')
@@ -26,22 +35,32 @@ function ProjectDialog({ isOpen, onClose, mode = 'create', initialData, onSave }
         }
     }, [isOpen, initialData, mode])
 
+    /**
+     * 處理儲存，驗證後呼叫 onSave 回呼。
+     */
     const handleSave = async () => {
         if (!projectCode.trim()) {
             setError('請輸入專案代碼')
             return
         }
-
         setIsSaving(true)
         setError('')
         try {
             await onSave(projectCode.trim(), description.trim())
-            // onClose is handled by parent usually, but we can verify success there.
         } catch (err) {
             setError(err.message || '儲存失敗')
         } finally {
             setIsSaving(false)
         }
+    }
+
+    /**
+     * 按下 Enter 時觸發儲存。
+     *
+     * @param {KeyboardEvent} e
+     */
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) handleSave()
     }
 
     return (
@@ -51,75 +70,63 @@ function ProjectDialog({ isOpen, onClose, mode = 'create', initialData, onSave }
             title={mode === 'create' ? '新增專案' : '編輯專案'}
             className="max-w-md"
         >
-            <div className="space-y-4">
-                {/* Project Code */}
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                        專案代碼 {mode === 'create' && <span className="text-red-500">*</span>}
-                    </label>
-                    <input
+            <div className="space-y-3">
+                {/* 專案代碼 */}
+                <div className="space-y-1">
+                    <Label htmlFor="project-code" className="text-xs">
+                        專案代碼 {mode === 'create' && <span className="text-destructive">*</span>}
+                    </Label>
+                    <Input
+                        id="project-code"
                         type="text"
                         value={projectCode}
                         onChange={(e) => setProjectCode(e.target.value.toUpperCase())}
+                        onKeyDown={handleKeyDown}
                         placeholder="例：TANGLED"
-                        className="w-full px-3 py-2 text-sm
-                            bg-white dark:bg-surface-900
-                            border border-slate-300 dark:border-slate-600
-                            rounded-lg text-slate-800 dark:text-slate-200
-                            focus:outline-none focus:ring-2 focus:ring-primary-500
-                            placeholder:text-slate-400"
+                        className="h-8 text-xs"
                         autoFocus={mode === 'create'}
                     />
                     {mode === 'edit' && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                            注意：修改專案代碼可能會影響關聯資料的識別 (視實作而定)。
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                            注意：修改專案代碼可能會影響關聯資料的識別。
                         </p>
                     )}
                 </div>
 
-                {/* Description */}
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                        描述
-                    </label>
+                {/* 描述 */}
+                <div className="space-y-1">
+                    <Label htmlFor="project-desc" className="text-xs">描述</Label>
                     <textarea
+                        id="project-desc"
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         placeholder="專案描述（選填）"
                         rows={3}
-                        className="w-full px-3 py-2 text-sm
-                            bg-white dark:bg-surface-900
-                            border border-slate-300 dark:border-slate-600
-                            rounded-lg text-slate-800 dark:text-slate-200
-                            focus:outline-none focus:ring-2 focus:ring-primary-500
-                            resize-none placeholder:text-slate-400"
+                        className="w-full px-3 py-1.5 text-xs selectable
+                            bg-background border border-input rounded-md
+                            text-foreground placeholder:text-muted-foreground
+                            focus:outline-none focus:ring-1 focus:ring-ring
+                            resize-none transition-colors"
                         autoFocus={mode === 'edit'}
                     />
                 </div>
 
-                {/* Error */}
+                {/* 錯誤訊息 */}
                 {error && (
-                    <div className="text-sm text-red-500 flex items-center gap-1">
-                        <X size={14} />
+                    <div className="flex items-center gap-1.5 text-xs text-destructive">
+                        <AlertCircle size={13} />
                         {error}
                     </div>
                 )}
 
-                {/* Buttons */}
-                <div className="flex justify-end gap-2 pt-2">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-surface-700 rounded-lg transition-colors"
-                    >
+                {/* 操作按鈕 */}
+                <div className="flex justify-end gap-2 pt-1">
+                    <Button variant="outline" size="sm" onClick={onClose}>
                         取消
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                        {isSaving ? '儲存中...' : <>{mode === 'create' ? '建立' : '儲存'}</>}
-                    </button>
+                    </Button>
+                    <Button size="sm" onClick={handleSave} disabled={isSaving}>
+                        {isSaving ? '儲存中...' : (mode === 'create' ? '建立' : '儲存')}
+                    </Button>
                 </div>
             </div>
         </Dialog>

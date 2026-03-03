@@ -5,70 +5,85 @@
     /* ========================================
      * Morandi Green Palette (Sage/Muted Green)
      * 風格：自然、放鬆、療癒
-     * 使用自定義色階模擬莫蘭迪綠質感
      * ======================================== */
-    "--color-primary-50": "#f0fdf9",   /* Custom Sage-50 */
-    "--color-primary-100": "#ccfbf1",  /* Custom Sage-100 */
-    "--color-primary-200": "#99f6e4",  /* Custom Sage-200 */
-    "--color-primary-300": "#5eead4",  /* Custom Sage-300 */
-    "--color-primary-400": "#2dd4bf",  /* Custom Sage-400 */
-    "--color-primary-500": "#14b8a6",  /* Teal-500 (Base) - Revised below for Morandi feel */
-    "--color-primary-600": "#0d9488",  /* Teal-600 */
-    "--color-primary-700": "#0f766e",  /* Teal-700 */
-    "--color-primary-800": "#115e59",  /* Teal-800 */
-    "--color-primary-900": "#134e4a",  /* Teal-900 */
-
-    /* Override with Morandi Tones for Key Elements */
-    /* Sage Green Hexes: */
-    /* 50: #f4f7f5 */
-    /* 100: #e3e8e5 */
-    /* 200: #c5d1cc */
-    /* 500: #7a9e9f (Muted Teal/Sage) */
-    
     "--color-surface-50": "#f4f7f5",
     "--color-surface-100": "#e3e8e5",
     "--color-surface-200": "#c5d1cc",
     "--color-surface-700": "#4a6364",
-    "--color-surface-800": "#2f3e46", /* Deep Jungle Green */
+    "--color-surface-800": "#2f3e46",
     "--color-surface-900": "#1c2529",
     "--color-surface-950": "#0e1315",
 
-    /* ========================================
-     * Mode Specific
-     * ======================================== */
-    
     /* Light Mode */
     "light": {
-      "--bom-header-bg": "#e3e8e5",        /* Custom Sage-100: Soft green-gray */
-      "--bom-header-text": "#4a6364",      /* Deep Sage Text */
-      
-      "--bom-row-main-odd": "#ffffff",     /* White */
-      "--bom-row-main-even": "#f4f7f5",    /* Custom Sage-50: Very subtle green tint */
-      
-      "--bom-row-second-odd": "#fcfdfc",   /* Almost white */
-      "--bom-row-second-even": "#f4f7f5",  /* Custom Sage-50 */
-      
-      "--bom-row-hover": "#c5d1cc",        /* Custom Sage-200: Visible green interaction */
-      
-      "--bom-text-main": "#2f3e46",        /* Deep Green-Gray */
-      "--bom-text-second": "#7a9e9f"       /* Muted Teal */
+      /* === Shadcn 語義化變數 (Light) === */
+      "--background": "150 10% 99%",
+      "--foreground": "185 21% 23%",
+      "--card": "0 0% 100%",
+      "--card-foreground": "185 21% 23%",
+      "--popover": "0 0% 100%",
+      "--popover-foreground": "185 21% 23%",
+      "--primary": "177 28% 37%",
+      "--primary-foreground": "150 10% 97%",
+      "--secondary": "150 9% 91%",
+      "--secondary-foreground": "185 21% 23%",
+      "--muted": "150 9% 91%",
+      "--muted-foreground": "160 8% 46%",
+      "--accent": "150 9% 88%",
+      "--accent-foreground": "185 21% 23%",
+      "--destructive": "0 84% 60%",
+      "--destructive-foreground": "0 0% 100%",
+      "--border": "150 7% 88%",
+      "--input": "150 7% 88%",
+      "--ring": "177 28% 37%",
+      "--radius": "0.4rem",
+
+      /* === BOM Table 專用變數 === */
+      "--bom-header-bg": "#e3e8e5",
+      "--bom-header-text": "#4a6364",
+      "--bom-row-main-odd": "#ffffff",
+      "--bom-row-main-even": "#f4f7f5",
+      "--bom-row-second-odd": "#fcfdfc",
+      "--bom-row-second-even": "#f4f7f5",
+      "--bom-row-hover": "#c5d1cc",
+      "--bom-text-main": "#2f3e46",
+      "--bom-text-second": "#7a9e9f"
     },
 
     /* Dark Mode */
     "dark": {
-      "--bom-header-bg": "#2f3e46",        /* Deep Jungle Green */
-      "--bom-header-text": "#c5d1cc",      /* Sage-200 */
-      
-      "--bom-row-main-odd": "#0e1315",     /* Deepest Green-Black */
-      "--bom-row-main-even": "#1c2529",    /* Dark Green-Gray Zebra */
-      
-      "--bom-row-second-odd": "#0e1315",   /* Deepest Green-Black */
-      "--bom-row-second-even": "#1c2529",  /* Dark Green-Gray */
-      
-      "--bom-row-hover": "#4a6364",        /* Mid-tone Sage */
-      
-      "--bom-text-main": "#f4f7f5",        /* Sage-50 */
-      "--bom-text-second": "#7a9e9f"       /* Muted Teal */
+      /* === Shadcn 語義化變數 (Dark) === */
+      "--background": "185 15% 7%",
+      "--foreground": "150 10% 90%",
+      "--card": "185 15% 10%",
+      "--card-foreground": "150 10% 90%",
+      "--popover": "185 15% 10%",
+      "--popover-foreground": "150 10% 90%",
+      "--primary": "177 25% 52%",
+      "--primary-foreground": "185 15% 7%",
+      "--secondary": "185 12% 16%",
+      "--secondary-foreground": "150 10% 90%",
+      "--muted": "185 12% 16%",
+      "--muted-foreground": "165 8% 57%",
+      "--accent": "185 12% 20%",
+      "--accent-foreground": "150 10% 90%",
+      "--destructive": "0 62% 40%",
+      "--destructive-foreground": "0 0% 100%",
+      "--border": "185 12% 18%",
+      "--input": "185 12% 18%",
+      "--ring": "177 25% 52%",
+      "--radius": "0.4rem",
+
+      /* === BOM Table 專用變數 === */
+      "--bom-header-bg": "#2f3e46",
+      "--bom-header-text": "#c5d1cc",
+      "--bom-row-main-odd": "#0e1315",
+      "--bom-row-main-even": "#1c2529",
+      "--bom-row-second-odd": "#0e1315",
+      "--bom-row-second-even": "#1c2529",
+      "--bom-row-hover": "#4a6364",
+      "--bom-text-main": "#f4f7f5",
+      "--bom-text-second": "#7a9e9f"
     }
   }
 }

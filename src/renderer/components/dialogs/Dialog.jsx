@@ -1,79 +1,60 @@
-import { X } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+// ========================================
+// 通用對話框包裝元件 (Dialog)
+// 包裝 shadcn Dialog 元件，保留原有 API 以利向後相容
+// ========================================
 
-// ========================================
-// 通用對話框元件 (Dialog)
-// 提供 Modal 基礎外觀與行為
-// ========================================
+import {
+    Dialog as ShadDialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog'
 
 /**
- * 
+ * 通用對話框元件（向後相容包裝）。
+ *
+ * 保留原有的 isOpen/onClose/title/children API，
+ * 內部使用 shadcn Dialog 實作，自動支援 Dark/Light 主題。
+ *
  * @param {Object} props
  * @param {boolean} props.isOpen - 是否開啟
  * @param {Function} props.onClose - 關閉事件
  * @param {string} props.title - 標題
  * @param {React.ReactNode} props.children - 內容
- * @param {string} props.className - 自訂樣式
- * @param {boolean} [props.modal=true] - 是否為強制對話框 (true: 點背景不關閉, false: 點背景關閉)
+ * @param {string} [props.className] - 自訂 DialogContent 樣式
+ * @param {boolean} [props.modal=true] - 是否為強制對話框（false: 允許點背景關閉）
+ * @returns {JSX.Element}
  */
 function Dialog({ isOpen, onClose, title, children, className = '', modal = true }) {
-    const dialogRef = useRef(null)
-
-    // 點擊 Backdrop 關閉
-    const handleBackdropClick = (e) => {
-        if (e.target === e.currentTarget) {
-            if (!modal) {
-                onClose()
-            } else {
-                // Optional: Shake animation or visual cue?
-                // For now, just do nothing.
-                // Maybe focus the dialog?
-                dialogRef.current?.focus()
-            }
-        }
-    }
-
-    // 按 ESC 關閉
-    useEffect(() => {
-        const handleEsc = (e) => {
-            if (e.key === 'Escape' && isOpen) {
-                onClose()
-            }
-        }
-        window.addEventListener('keydown', handleEsc)
-        return () => window.removeEventListener('keydown', handleEsc)
-    }, [isOpen, onClose])
-
-    if (!isOpen) return null
-
     return (
-        <div 
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in"
-            onClick={handleBackdropClick}
+        <ShadDialog
+            open={isOpen}
+            onOpenChange={(open) => {
+                // 當 dialog 被關閉時（shadcn 內建的 ESC / 背景點擊）
+                if (!open) onClose()
+            }}
+            // modal=false 時允許與背景互動（shadcn Dialog 預設 modal=true）
         >
-            <div 
-                ref={dialogRef}
-                className={`bg-white dark:bg-surface-800 rounded-xl shadow-xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh] animate-scale-in ${className}`}
+            <DialogContent
+                className={`max-h-[85vh] flex flex-col gap-0 p-0 ${className}`}
+                // 消除 Radix UI 的 Missing Description 警告
+                aria-describedby={undefined}
+                // 當 modal=true 時禁止點背景關閉
+                onInteractOutside={(e) => {
+                    if (modal) e.preventDefault()
+                }}
             >
-                {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-700">
-                    <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
-                        {title}
-                    </h3>
-                    <button 
-                        onClick={onClose}
-                        className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
-                    >
-                        <X size={20} />
-                    </button>
-                </div>
+                {/* 標題列 */}
+                <DialogHeader className="px-4 py-3 border-b border-border shrink-0">
+                    <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
+                </DialogHeader>
 
-                {/* Content */}
-                <div className="p-6 overflow-y-auto">
+                {/* 內容區（可捲動） */}
+                <div className="overflow-y-auto p-4 flex-1">
                     {children}
                 </div>
-            </div>
-        </div>
+            </DialogContent>
+        </ShadDialog>
     )
 }
 

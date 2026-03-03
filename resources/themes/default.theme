@@ -5,18 +5,10 @@
     /* ========================================
      * 基礎色盤 (Base Palette)
      * 定義 Light/Dark 模式共用的色階
+     * 此處保留 Tailwind 色階供直接使用
      * ======================================== */
-    "--color-primary-50": "#eff6ff",
-    "--color-primary-100": "#dbeafe",
-    "--color-primary-200": "#bfdbfe",
-    "--color-primary-300": "#93c5fd",
-    "--color-primary-400": "#60a5fa",
-    "--color-primary-500": "#3b82f6",
-    "--color-primary-600": "#2563eb",
-    "--color-primary-700": "#1d4ed8",
-    "--color-primary-800": "#1e40af",
-    "--color-primary-900": "#1e3a8a",
 
+    /* 表面色 — 用於卡片、面板背景 */
     "--color-surface-50": "#f8fafc",
     "--color-surface-100": "#f1f5f9",
     "--color-surface-200": "#e2e8f0",
@@ -28,40 +20,79 @@
     /* ========================================
      * 模式專屬設定 (Mode Specific)
      * 針對 Light/Dark 模式分別定義語義化變數
+     * 同時包含 Shadcn 語義化變數 (--background, --primary 等)
      * ======================================== */
-    
+
     /* 淺色模式 (Light Mode) */
     "light": {
-      "--bom-header-bg": "#f1f5f9",        /* Slate-100: Clean header background */
-      "--bom-header-text": "#475569",      /* Slate-600: Darker text for readability */
-      
-      "--bom-row-main-odd": "#ffffff",     /* White */
-      "--bom-row-main-even": "#f8fafc",    /* Slate-50: Subtle zebra stripe */
-      
-      "--bom-row-second-odd": "#fcfcfc",   /* Very light gray for 2nd odd */
-      "--bom-row-second-even": "#f1f5f9",  /* Slate-100: Distinct 2nd even */
-      
-      "--bom-row-hover": "#eff6ff",        /* Primary-50: Clear hover state */
-      
-      "--bom-text-main": "#334155",        /* Slate-700 */
-      "--bom-text-second": "#64748b"       /* Slate-500: Lighter for 2nd source */
+      /* === Shadcn 語義化變數 (Light) === */
+      "--background": "0 0% 100%",
+      "--foreground": "222.2 84% 4.9%",
+      "--card": "0 0% 100%",
+      "--card-foreground": "222.2 84% 4.9%",
+      "--popover": "0 0% 100%",
+      "--popover-foreground": "222.2 84% 4.9%",
+      "--primary": "217 91% 60%",
+      "--primary-foreground": "210 40% 98%",
+      "--secondary": "210 40% 96.1%",
+      "--secondary-foreground": "222.2 47.4% 11.2%",
+      "--muted": "210 40% 96.1%",
+      "--muted-foreground": "215.4 16.3% 46.9%",
+      "--accent": "210 40% 96.1%",
+      "--accent-foreground": "222.2 47.4% 11.2%",
+      "--destructive": "0 84.2% 60.2%",
+      "--destructive-foreground": "210 40% 98%",
+      "--border": "214.3 31.8% 91.4%",
+      "--input": "214.3 31.8% 91.4%",
+      "--ring": "217 91% 60%",
+      "--radius": "0.4rem",
+
+      /* === BOM Table 專用變數 === */
+      "--bom-header-bg": "#f1f5f9",
+      "--bom-header-text": "#475569",
+      "--bom-row-main-odd": "#ffffff",
+      "--bom-row-main-even": "#f8fafc",
+      "--bom-row-second-odd": "#fcfcfc",
+      "--bom-row-second-even": "#f1f5f9",
+      "--bom-row-hover": "#eff6ff",
+      "--bom-text-main": "#334155",
+      "--bom-text-second": "#64748b"
     },
 
     /* 深色模式 (Dark Mode) */
     "dark": {
-      "--bom-header-bg": "#1e293b",        /* Surface-800: Distinct header */
-      "--bom-header-text": "#94a3b8",      /* Slate-400 */
-      
-      "--bom-row-main-odd": "#0f172a",     /* Surface-900: Darker base */
-      "--bom-row-main-even": "#1e293b",    /* Surface-800: Lighter stripe */
-      
-      "--bom-row-second-odd": "#0f172a",   /* Same as main odd */
-      "--bom-row-second-even": "#1e293b",  /* Same as main even */
-      
-      "--bom-row-hover": "#172554",        /* Primary-950/Mixed: Subtle hover */
-      
-      "--bom-text-main": "#e2e8f0",        /* Slate-200 */
-      "--bom-text-second": "#94a3b8"       /* Slate-400 */
+      /* === Shadcn 語義化變數 (Dark) === */
+      "--background": "222.2 84% 4.9%",
+      "--foreground": "210 40% 98%",
+      "--card": "222.2 84% 4.9%",
+      "--card-foreground": "210 40% 98%",
+      "--popover": "222.2 84% 4.9%",
+      "--popover-foreground": "210 40% 98%",
+      "--primary": "217 91% 60%",
+      "--primary-foreground": "222.2 47.4% 11.2%",
+      "--secondary": "217.2 32.6% 17.5%",
+      "--secondary-foreground": "210 40% 98%",
+      "--muted": "217.2 32.6% 17.5%",
+      "--muted-foreground": "215 20.2% 65.1%",
+      "--accent": "217.2 32.6% 17.5%",
+      "--accent-foreground": "210 40% 98%",
+      "--destructive": "0 62.8% 30.6%",
+      "--destructive-foreground": "210 40% 98%",
+      "--border": "217.2 32.6% 17.5%",
+      "--input": "217.2 32.6% 17.5%",
+      "--ring": "217 91% 60%",
+      "--radius": "0.4rem",
+
+      /* === BOM Table 專用變數 === */
+      "--bom-header-bg": "#1e293b",
+      "--bom-header-text": "#94a3b8",
+      "--bom-row-main-odd": "#0f172a",
+      "--bom-row-main-even": "#1e293b",
+      "--bom-row-second-odd": "#0f172a",
+      "--bom-row-second-even": "#1e293b",
+      "--bom-row-hover": "#172554",
+      "--bom-text-main": "#e2e8f0",
+      "--bom-text-second": "#94a3b8"
     }
   }
 }

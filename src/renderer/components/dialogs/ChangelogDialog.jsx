@@ -34,11 +34,11 @@ function ChangelogDialog({ isOpen, onClose }) {
         <Dialog isOpen={isOpen} onClose={onClose} title="更新記錄" className="max-w-2xl" modal={false}>
             <div className="min-h-[300px]">
                 {loading ? (
-                    <div className="flex items-center justify-center h-full py-20 text-slate-400">
+                    <div className="flex items-center justify-center h-full py-20 text-muted-foreground text-sm">
                         載入中...
                     </div>
                 ) : error ? (
-                    <div className="flex items-center justify-center h-full py-20 text-red-500">
+                    <div className="flex items-center justify-center h-full py-20 text-destructive text-sm">
                         {error}
                     </div>
                 ) : (

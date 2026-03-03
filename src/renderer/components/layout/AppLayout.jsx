@@ -1,18 +1,22 @@
 // ========================================
 // 主佈局元件
-// 包含側邊導航列、頂部標題列、主內容區域、底部狀態列
-// 參考 Windows 11 Fluent Design 風格
+// 包含頂部標題列(含導航)、主內容區域、底部狀態列
+// 使用 shadcn UI 元件統一風格
 // ========================================
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Sun, Moon, Settings, FolderPlus, FileDown } from 'lucide-react'
 import useSettingsStore from '../../stores/useSettingsStore'
 import useSeriesStore from '../../stores/useSeriesStore'
 import useTaskStore from '../../stores/useTaskStore'
 import useProjectStore from '../../stores/useProjectStore'
-import { useEffect } from 'react'
 
-// Components
+// shadcn UI 元件
+import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+
+// 自訂元件
 import AppStatusLine from './AppStatusLine'
 import ProgressDialog from '../dialogs/ProgressDialog'
 import ToastContainer from './ToastContainer'
@@ -22,7 +26,7 @@ import ImportDialog from '../dialogs/ImportDialog'
 /**
  * 應用程式主佈局元件。
  *
- * 提供完整的桌面應用程式框架，包含左側導航、頂部標題、中央內容區與底部狀態列。
+ * 提供完整的桌面應用程式框架，包含頂部標題(含導航)、中央內容區與底部狀態列。
  * 全域動作（新增專案、匯入 BOM）統一放置於此，避免各頁面重複實作。
  *
  * @param {Object} props
@@ -43,7 +47,7 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
     // 全域「匯入 BOM」對話框狀態
     const [importDialogOpen, setImportDialogOpen] = useState(false)
 
-    // 從路徑取得檔案名稱
+    // 從路徑取得檔案名稱（不含副檔名）
     const seriesName = currentPath ? currentPath.split(/[\\/]/).pop()?.replace('.bomix', '') : null
 
     // 初始化設定
@@ -61,7 +65,7 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
         document.title = seriesName ? `BOMIX - ${seriesName}` : 'BOMIX'
     }, [seriesName])
 
-    // Theme effect
+    // 同步 dark class 至 html 根元素（供 tailwind dark: variant 使用）
     useEffect(() => {
         if (theme === 'dark') {
             document.documentElement.classList.add('dark')
@@ -97,127 +101,164 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
     }
 
     if (isLoading) {
-        return <div className="flex items-center justify-center h-screen">Loading...</div>
+        return (
+            <div className="flex items-center justify-center h-screen bg-background text-foreground">
+                <span className="text-sm text-muted-foreground">載入中...</span>
+            </div>
+        )
     }
 
     return (
-        <div className="flex flex-col h-screen overflow-hidden bg-white dark:bg-surface-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
-            {/* --- 頂部標題列 --- */}
-            <header className="flex items-center justify-between h-12 px-4
-        bg-white/80 dark:bg-surface-900/80 backdrop-blur-sm
-        border-b border-slate-200 dark:border-slate-800
-        shrink-0 z-10 app-drag-region">
-                <div className="flex items-center gap-1">
-                    {/* 功能導航 */}
-                    {pages.filter(p => p.id !== 'settings').map((page) => {
-                        const isActive = page.id === currentPage
-                        return (
-                            <button
-                                key={page.id}
-                                onClick={() => onNavigate(page.id)}
-                                className={`
-                                    p-2 rounded-lg transition-all duration-200 flex items-center gap-2
-                                    ${isActive
-                                        ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400 font-medium'
-                                        : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200'
-                                    }
-                                `}
-                                title={page.label}
-                            >
-                                {page.icon}
-                                <span className="text-sm">{page.label}</span>
-                            </button>
-                        )
-                    })}
-                </div>
+        // TooltipProvider 需包裹整個應用程式，讓所有 Tooltip 可正常運作
+        <TooltipProvider delayDuration={400}>
+            <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground transition-colors duration-200">
+                {/* --- 頂部標題列 --- */}
+                <header className="flex items-center justify-between h-10 px-2
+                    bg-background/95 backdrop-blur-sm
+                    border-b border-border
+                    shrink-0 z-10 app-drag-region">
 
-                <div className="flex items-center gap-1">
-                    {/* ========================================
-                        全域動作區：僅在系列開啟時顯示
-                    ======================================== */}
-                    {isSeriesOpen && (
-                        <>
-                            {/* 新增專案按鈕 */}
-                            <button
-                                onClick={() => setProjectDialogOpen(true)}
-                                className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
-                                title="新增專案"
-                            >
-                                <FolderPlus size={18} />
-                            </button>
+                    {/* 左側：功能導航 */}
+                    <div className="flex items-center gap-0.5">
+                        {pages.filter(p => p.id !== 'settings').map((page) => {
+                            const isActive = page.id === currentPage
+                            return (
+                                <Tooltip key={page.id}>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            variant={isActive ? 'secondary' : 'ghost'}
+                                            size="sm"
+                                            onClick={() => onNavigate(page.id)}
+                                            className={`h-7 px-2.5 text-xs gap-1.5 ${
+                                                isActive
+                                                    ? 'text-foreground font-medium'
+                                                    : 'text-muted-foreground'
+                                            }`}
+                                        >
+                                            {/* 導航圖標（縮小） */}
+                                            <span className="[&>svg]:size-3.5">{page.icon}</span>
+                                            <span>{page.label}</span>
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom" className="text-xs">
+                                        {page.label}
+                                    </TooltipContent>
+                                </Tooltip>
+                            )
+                        })}
+                    </div>
 
-                            {/* 匯入 BOM 按鈕 */}
-                            <button
-                                onClick={() => setImportDialogOpen(true)}
-                                className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
-                                title="匯入 Excel BOM"
-                            >
-                                <FileDown size={18} />
-                            </button>
+                    {/* 右側：全域動作與設定 */}
+                    <div className="flex items-center gap-0.5">
+                        {/* ========================================
+                            全域動作區：僅在系列開啟時顯示
+                        ======================================== */}
+                        {isSeriesOpen && (
+                            <>
+                                {/* 新增專案按鈕 */}
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => setProjectDialogOpen(true)}
+                                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                        >
+                                            <FolderPlus className="size-4" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom" className="text-xs">新增專案</TooltipContent>
+                                </Tooltip>
 
-                            {/* 分隔線 */}
-                            <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1" />
-                        </>
-                    )}
+                                {/* 匯入 BOM 按鈕 */}
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => setImportDialogOpen(true)}
+                                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                        >
+                                            <FileDown className="size-4" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom" className="text-xs">匯入 Excel BOM</TooltipContent>
+                                </Tooltip>
 
-                    {/* 主題切換 */}
-                    <button
-                        onClick={toggleTheme}
-                        className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-surface-800 text-slate-600 dark:text-slate-400 transition-colors"
-                        title={theme === 'dark' ? '切換至淺色模式' : '切換至深色模式'}
-                    >
-                        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-                    </button>
+                                {/* 分隔線 */}
+                                <Separator orientation="vertical" className="h-4 mx-1" />
+                            </>
+                        )}
 
-                    {/* 設定按鈕 */}
-                    <button
-                        onClick={() => onNavigate('settings')}
-                        className={`p-2 rounded-lg transition-all duration-200
-                            ${currentPage === 'settings'
-                                ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400'
-                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-surface-800'
-                            }`}
-                        title="設定"
-                    >
-                        <Settings size={18} />
-                    </button>
-                </div>
-            </header>
+                        {/* 主題切換（Light/Dark） */}
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={toggleTheme}
+                                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                >
+                                    {theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="text-xs">
+                                {theme === 'dark' ? '切換至淺色模式' : '切換至深色模式'}
+                            </TooltipContent>
+                        </Tooltip>
 
-            {/* --- 主體區域 --- */}
-            <main className="flex-1 overflow-hidden relative flex flex-col">
-               {children}
-            </main>
+                        {/* 設定按鈕 */}
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant={currentPage === 'settings' ? 'secondary' : 'ghost'}
+                                    size="icon"
+                                    onClick={() => onNavigate('settings')}
+                                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                >
+                                    <Settings className="size-4" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="text-xs">設定</TooltipContent>
+                        </Tooltip>
+                    </div>
+                </header>
 
-            {/* --- 底部狀態列 --- */}
-            <AppStatusLine />
+                {/* --- 主體區域 --- */}
+                <main className="flex-1 overflow-hidden relative flex flex-col">
+                    {children}
+                </main>
 
-            {/* Progress Dialog */}
-            <ProgressDialog />
+                {/* --- 底部狀態列 --- */}
+                <AppStatusLine />
 
-            {/* Global Toasts */}
-            <ToastContainer />
+                {/* 進度對話框 */}
+                <ProgressDialog />
 
-            {/* ========================================
-                全域對話框（與頁面無關，掛在頂層）
-            ======================================== */}
+                {/* 全域 Toast 通知 */}
+                <ToastContainer />
 
-            {/* 新增專案對話框 */}
-            <ProjectDialog
-                isOpen={projectDialogOpen}
-                onClose={() => setProjectDialogOpen(false)}
-                mode="create"
-                initialData={null}
-                onSave={handleProjectSave}
-            />
+                {/* ========================================
+                    全域對話框（掛在頂層，與頁面無關）
+                ======================================== */}
 
-            {/* 匯入 BOM 對話框 */}
-            <ImportDialog
-                isOpen={importDialogOpen}
-                onClose={() => setImportDialogOpen(false)}
-                onImport={handleImportSubmit}
-            />
-        </div>
+                {/* 新增專案對話框 */}
+                <ProjectDialog
+                    isOpen={projectDialogOpen}
+                    onClose={() => setProjectDialogOpen(false)}
+                    mode="create"
+                    initialData={null}
+                    onSave={handleProjectSave}
+                />
+
+                {/* 匯入 BOM 對話框 */}
+                <ImportDialog
+                    isOpen={importDialogOpen}
+                    onClose={() => setImportDialogOpen(false)}
+                    onImport={handleImportSubmit}
+                />
+            </div>
+        </TooltipProvider>
     )
 }
 

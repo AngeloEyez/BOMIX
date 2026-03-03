@@ -1,122 +1,142 @@
+// ========================================
+// 設定頁面 (SettingsPage)
+// 使用 shadcn Card, Switch, Select 統一風格
+// ========================================
+
 import { useState } from 'react'
 import { Info, FileText, Moon, Sun, Palette } from 'lucide-react'
 import useSettingsStore from '../stores/useSettingsStore'
 import AboutDialog from '../components/dialogs/AboutDialog'
 import ChangelogDialog from '../components/dialogs/ChangelogDialog'
+import { Card, CardContent } from '@/components/ui/card'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
+import { Button } from '@/components/ui/button'
 
+/**
+ * 設定頁面元件。
+ *
+ * 提供 Dark/Light 主題切換、配色風格選擇，
+ * 以及關於對話框與更新記錄的進入點。
+ *
+ * @returns {JSX.Element}
+ */
 function SettingsPage() {
     const { theme, toggleTheme, activeThemeId, availableThemes, setThemeId } = useSettingsStore()
     const [isAboutOpen, setIsAboutOpen] = useState(false)
     const [isChangelogOpen, setIsChangelogOpen] = useState(false)
 
     return (
-        <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
+        <div className="max-w-xl mx-auto py-6 px-4 space-y-6 animate-fade-in">
+            {/* 頁面標題 */}
             <div>
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">設定</h2>
-                <p className="text-slate-500 dark:text-slate-400">
-                    管理應用程式偏好設定與查看資訊。
-                </p>
+                <h2 className="text-base font-semibold text-foreground">設定</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">管理應用程式偏好設定與查看資訊。</p>
             </div>
 
-            <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
-                    一般
-                </h3>
-                
-                <div className="bg-white dark:bg-surface-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
-                    {/* 主題設定 */}
-                    <div className="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-surface-700/50 transition-colors">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
-                                {theme === 'light' ? <Sun size={20} /> : <Moon size={20} />}
+            {/* ==================== 一般設定 ==================== */}
+            <section className="space-y-2">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">一般</h3>
+
+                <Card>
+                    <CardContent className="p-0 divide-y divide-border">
+                        {/* Dark/Light 模式切換 */}
+                        <div className="flex items-center justify-between px-4 py-3">
+                            <div className="flex items-center gap-3">
+                                <div className="p-1.5 bg-primary/10 text-primary rounded-md">
+                                    {theme === 'light' ? <Sun size={16} /> : <Moon size={16} />}
+                                </div>
+                                <div>
+                                    <Label className="text-sm font-medium cursor-pointer" htmlFor="theme-switch">
+                                        深色模式
+                                    </Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        目前：{theme === 'dark' ? '深色' : '淺色'}
+                                    </p>
+                                </div>
                             </div>
-                            <div>
-                                <h4 className="font-medium text-slate-900 dark:text-slate-100">外觀主題</h4>
-                                <p className="text-sm text-slate-500 dark:text-slate-400">
-                                    目前設定：{theme === 'light' ? '淺色模式' : '深色模式'}
-                                </p>
-                            </div>
+                            {/* Switch 元件：checked 對應 dark 模式 */}
+                            <Switch
+                                id="theme-switch"
+                                checked={theme === 'dark'}
+                                onCheckedChange={toggleTheme}
+                            />
                         </div>
-                        <button 
-                            onClick={toggleTheme}
-                            className="px-4 py-2 text-sm font-medium text-primary-600 bg-primary-50 hover:bg-primary-100 dark:text-primary-400 dark:bg-primary-900/30 dark:hover:bg-primary-900/50 rounded-lg transition-colors"
+
+                        {/* 配色風格選擇 */}
+                        <div className="flex items-center justify-between px-4 py-3">
+                            <div className="flex items-center gap-3">
+                                <div className="p-1.5 bg-pink-500/10 text-pink-500 rounded-md">
+                                    <Palette size={16} />
+                                </div>
+                                <div>
+                                    <Label className="text-sm font-medium">配色風格</Label>
+                                    <p className="text-xs text-muted-foreground">選擇應用程式的色彩主題</p>
+                                </div>
+                            </div>
+                            <Select value={activeThemeId} onValueChange={setThemeId}>
+                                <SelectTrigger className="h-8 w-[160px] text-xs">
+                                    <SelectValue placeholder="選擇主題" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {availableThemes.map(t => (
+                                        <SelectItem key={t.id} value={t.id} className="text-xs">
+                                            {t.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </CardContent>
+                </Card>
+            </section>
+
+            {/* ==================== 關於 ==================== */}
+            <section className="space-y-2">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">關於</h3>
+
+                <Card>
+                    <CardContent className="p-0 divide-y divide-border">
+                        {/* 更新記錄 */}
+                        <Button
+                            variant="ghost"
+                            onClick={() => setIsChangelogOpen(true)}
+                            className="w-full h-auto px-4 py-3 justify-start rounded-none"
                         >
-                            切換
-                        </button>
-                    </div>
+                            <div className="flex items-center gap-3">
+                                <div className="p-1.5 bg-emerald-500/10 text-emerald-500 rounded-md">
+                                    <FileText size={16} />
+                                </div>
+                                <div className="text-left">
+                                    <p className="text-sm font-medium text-foreground">更新記錄</p>
+                                    <p className="text-xs text-muted-foreground">查看版本變更內容</p>
+                                </div>
+                            </div>
+                        </Button>
 
-                    {/* 主題配色 */}
-                    <div className="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-surface-700/50 transition-colors border-t border-slate-100 dark:border-slate-700">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 rounded-lg">
-                                <Palette size={20} />
-                            </div>
-                            <div>
-                                <h4 className="font-medium text-slate-900 dark:text-slate-100">配色風格</h4>
-                                <p className="text-sm text-slate-500 dark:text-slate-400">
-                                    選擇應用程式的色彩主題
-                                </p>
-                            </div>
-                        </div>
-                        <select
-                            value={activeThemeId}
-                            onChange={(e) => setThemeId(e.target.value)}
-                            className="px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-surface-700 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        {/* 關於本軟體 */}
+                        <Button
+                            variant="ghost"
+                            onClick={() => setIsAboutOpen(true)}
+                            className="w-full h-auto px-4 py-3 justify-start rounded-none"
                         >
-                            {availableThemes.map(t => (
-                                <option key={t.id} value={t.id}>
-                                    {t.name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
-                    關於
-                </h3>
-
-                <div className="bg-white dark:bg-surface-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden divide-y divide-slate-100 dark:divide-slate-700">
-                    {/* 更新記錄 */}
-                    <button 
-                        onClick={() => setIsChangelogOpen(true)}
-                        className="w-full flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-surface-700/50 transition-colors text-left"
-                    >
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg">
-                                <FileText size={20} />
+                            <div className="flex items-center gap-3">
+                                <div className="p-1.5 bg-violet-500/10 text-violet-500 rounded-md">
+                                    <Info size={16} />
+                                </div>
+                                <div className="text-left">
+                                    <p className="text-sm font-medium text-foreground">關於 BOMIX</p>
+                                    <p className="text-xs text-muted-foreground">版本資訊與授權</p>
+                                </div>
                             </div>
-                            <div>
-                                <h4 className="font-medium text-slate-900 dark:text-slate-100">更新記錄</h4>
-                                <p className="text-sm text-slate-500 dark:text-slate-400">
-                                    查看版本變更內容
-                                </p>
-                            </div>
-                        </div>
-                    </button>
+                        </Button>
+                    </CardContent>
+                </Card>
+            </section>
 
-                    {/* 關於本軟體 */}
-                    <button 
-                        onClick={() => setIsAboutOpen(true)}
-                        className="w-full flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-surface-700/50 transition-colors text-left"
-                    >
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg">
-                                <Info size={20} />
-                            </div>
-                            <div>
-                                <h4 className="font-medium text-slate-900 dark:text-slate-100">關於 BOMIX</h4>
-                                <p className="text-sm text-slate-500 dark:text-slate-400">
-                                    版本資訊與授權
-                                </p>
-                            </div>
-                        </div>
-                    </button>
-                </div>
-            </div>
-
+            {/* 對話框 */}
             <AboutDialog isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
             <ChangelogDialog isOpen={isChangelogOpen} onClose={() => setIsChangelogOpen(false)} />
         </div>

@@ -60,26 +60,26 @@ function AppStatusLine() {
     }
 
     return (
-        <footer className="flex items-center justify-between h-8 px-4
-            bg-gray-100 dark:bg-surface-900 border-t border-gray-300 dark:border-slate-700
-            text-xs text-slate-500 dark:text-slate-400 select-none shrink-0"
+        <footer className="flex items-center justify-between h-7 px-4
+            bg-muted border-t border-border
+            text-xs text-muted-foreground select-none shrink-0"
         >
             {/* Left: Database Status (Fixed Width) */}
             <div className="flex items-center gap-3 w-64 shrink-0">
-                 {/* 連線狀態指示 */}
-                 <span className="flex items-center gap-1">
-                    <span className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                 {/* 連線狀態指示點 */}
+                 <span className="flex items-center gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
                         isOpen
                             ? isDbBusy
                                 ? 'bg-emerald-400 animate-ping'  // 忙碌時閃爍
                                 : 'bg-emerald-500'               // 連線時恆亮
-                            : 'bg-slate-300 dark:bg-slate-600'   // 未連線
+                            : 'bg-border'                        // 未連線（使用語義化變數）
                     }`} />
                     {isOpen ? (isDbBusy ? '存取中...' : '已連線') : '未連線'}
                 </span>
                 {/* 資料庫路徑 */}
                 {isOpen && currentPath && (
-                    <span className="text-slate-400 dark:text-slate-500 truncate font-mono" title={currentPath}>
+                    <span className="text-muted-foreground/60 truncate font-mono" title={currentPath}>
                         {currentPath}
                     </span>
                 )}
@@ -87,8 +87,8 @@ function AppStatusLine() {
 
             {/* Middle: 任務排程狀態面板（永遠顯示，可點擊） */}
             <div className="flex-1 flex justify-start items-center px-4 overflow-hidden">
-                <div 
-                    className="flex items-center space-x-3 cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-800 px-3 py-0.5 rounded transition-colors max-w-full"
+                <div
+                    className="flex items-center space-x-2 cursor-pointer hover:bg-accent px-2 py-0.5 rounded transition-colors max-w-full"
                     onClick={() => toggleDialog(true)}
                     title="點擊查看任務排程詳情"
                 >
@@ -98,20 +98,20 @@ function AppStatusLine() {
                             {(() => {
                                 const indicator = getStatusIndicator(activeSession.status)
                                 return (
-                                    <div className={`w-2 h-2 rounded-full shrink-0 ${indicator.animate} ${indicator.color}`} />
+                                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${indicator.animate} ${indicator.color}`} />
                                 )
                             })()}
-                            
+
                             {/* 任務名稱 */}
-                            <span className="font-medium text-gray-700 dark:text-gray-300 truncate max-w-[150px]">
+                            <span className="font-medium text-foreground truncate max-w-[150px]">
                                 {activeSession.title}
                             </span>
 
                             {/* 進度條（RUNNING 時顯示） */}
                             {activeSession.status === 'RUNNING' && (
-                                <div className="w-20 h-1.5 bg-gray-300 dark:bg-slate-700 rounded-full overflow-hidden shrink-0">
-                                    <div 
-                                        className="h-full bg-blue-500 transition-all duration-300"
+                                <div className="w-20 h-1.5 bg-border rounded-full overflow-hidden shrink-0">
+                                    <div
+                                        className="h-full bg-primary transition-all duration-300"
                                         style={{ width: `${activeSession.progress}%` }}
                                     />
                                 </div>
@@ -119,19 +119,19 @@ function AppStatusLine() {
 
                             {/* 進度百分比（RUNNING 時顯示） */}
                             {activeSession.status === 'RUNNING' && (
-                                <span className="text-gray-500 dark:text-slate-400 shrink-0 w-8 text-right">
+                                <span className="text-muted-foreground shrink-0 w-8 text-right">
                                     {activeSession.progress}%
                                 </span>
                             )}
 
                             {/* 最後一條 log */}
-                            <span className="text-gray-400 dark:text-slate-500 truncate max-w-[250px]">
+                            <span className="text-muted-foreground/70 truncate max-w-[250px]">
                                 {lastLog || ''}
                             </span>
 
                             {/* 排隊數（有等待任務時顯示） */}
                             {queueLength > 0 && (
-                                <span className="text-amber-500 dark:text-amber-400 shrink-0 font-medium">
+                                <span className="text-amber-500 shrink-0 font-medium">
                                     ({queueLength} 排隊)
                                 </span>
                             )}
@@ -139,8 +139,8 @@ function AppStatusLine() {
                     ) : (
                         // 無任務時顯示 idle
                         <>
-                            <span className="text-gray-400 dark:text-slate-600">💤</span>
-                            <span className="text-gray-400 dark:text-slate-600 italic">idle</span>
+                            <span className="text-muted-foreground/50">💤</span>
+                            <span className="text-muted-foreground/50 italic">idle</span>
                         </>
                     )}
                 </div>
