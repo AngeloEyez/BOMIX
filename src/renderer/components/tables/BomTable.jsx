@@ -210,11 +210,12 @@ function BomTable(props) {
                 _key: key,
                 _hasSecondSources: hasSecondSources,
                 _isExpanded: isExpanded,
+                _isLastInGroup: !hasSecondSources || !isExpanded,
             })
             
             // 2nd Source 行
             if (hasSecondSources && isExpanded) {
-                mainItem.second_sources.forEach((ss) => {
+                mainItem.second_sources.forEach((ss, idx) => {
                     rows.push({
                         ...ss,
                         location: '',
@@ -229,6 +230,8 @@ function BomTable(props) {
                         remark: '',
                         // Needed for Matrix selection to identify row correctly
                         bom_revision_id: ss.bom_revision_id || mainItem.bom_revision_id,
+                        parent_bom_ids: mainItem.bom_ids,
+                        _isLastInGroup: idx === mainItem.second_sources.length - 1,
                     })
                 })
             }
@@ -453,7 +456,8 @@ function BomTable(props) {
                             id: `model_${model.id}`,
                             meta: { 
                                 isComplete, 
-                                isFirstOfGroup: idx === 0 // 標記是否為專案分組的第一欄
+                                isFirstOfGroup: idx === 0, // 標記是否為專案分組的第一欄
+                                isMatrixCell: true
                             },
                             header: () => {
                                 return (
@@ -489,10 +493,12 @@ function BomTable(props) {
                             // We need `bom_ids` array in the row data!
 
                             // Assuming backend updates `executeView` to include `bom_ids` array.
-                            const existsInBom = r.bom_ids?.includes(model.bom_revision_id);
+                            // 如果是 second source, 則依據 parent_bom_ids 來判斷該專案是否有用到此主料
+                            const targetBomIds = r._rowType === 'second' ? r.parent_bom_ids : r.bom_ids;
+                            const existsInBom = targetBomIds?.includes(model.bom_revision_id);
 
-                            if (!existsInBom && r.bom_ids) {
-                                return <div className="h-full w-full bg-slate-100 dark:bg-slate-800/50" title="此專案無此物料" />;
+                            if (!existsInBom && targetBomIds) {
+                                return <div className="h-full w-full min-h-[30px] bg-slate-100 dark:bg-slate-800/50" title="此專案無此物料" />;
                             }
 
                             // Selection check
@@ -504,10 +510,21 @@ function BomTable(props) {
                             const isImplicit = isSelected && selection.is_implicit;
                             const isExplicit = isSelected && !selection.is_implicit;
                             const isGroupComplete = !!selection;
-                            const showWarning = !isGroupComplete && r._rowType === 'main';
+                            const showWarning = !isGroupComplete;
+
+                            let warningClass = '';
+                            if (showWarning) {
+                                warningClass = 'bg-amber-50 dark:bg-amber-900/20 box-border border-x-2 border-amber-300 dark:border-amber-600';
+                                if (r._rowType === 'main') {
+                                    warningClass += ' border-t-2';
+                                }
+                                if (r._isLastInGroup) {
+                                    warningClass += ' border-b-2';
+                                }
+                            }
 
                             return (
-                                <div className={`flex items-center justify-center h-full w-full ${showWarning ? 'bg-amber-50 dark:bg-amber-900/20 box-border border-2 border-amber-300 dark:border-amber-600' : ''}`}>
+                                <div className={`flex items-center justify-center h-full w-full min-h-[30px] ${warningClass}`}>
                                     <input
                                         type="checkbox"
                                         checked={!!isSelected}
@@ -705,7 +722,7 @@ function BomTable(props) {
                                             return (
                                                 <td
                                                     key={cell.id}
-                                                    className={`py-1 px-2
+                                                    className={`${cellMeta?.isMatrixCell ? 'p-0 h-full' : 'py-1 px-2'}
                                                         ${isSecond ? 'italic' : ''}
                                                         ${hasLeftDivider ? 'border-l-2 border-slate-200 dark:border-slate-700' : ''}
                                                         whitespace-nowrap overflow-hidden`}
