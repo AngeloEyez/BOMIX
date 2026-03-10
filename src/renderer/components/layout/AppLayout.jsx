@@ -182,7 +182,7 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
 
                     {/* 左側：功能導航 */}
                     <div className="flex items-center gap-0.5">
-                        {pages.filter(p => p.id !== 'settings').map((page) => {
+                        {pages.filter(p => p.id !== 'settings' && p.id !== 'about').map((page) => {
                             const isActive = page.id === currentPage
                             return (
                                 <Tooltip key={page.id}>
@@ -311,7 +311,7 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
                 </main>
 
                 {/* --- 底部狀態列 --- */}
-                <AppStatusLine />
+                <AppStatusLine onNavigate={onNavigate} />
 
                 {/* 進度對話框 */}
                 <ProgressDialog />

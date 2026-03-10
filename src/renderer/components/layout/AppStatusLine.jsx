@@ -11,8 +11,11 @@ import useAppStore from '../../stores/useAppStore'
  * 左側：資料庫連線狀態、路徑
  * 中間：任務排程狀態面板（永遠顯示，idle / 任務名稱 + 進度 + 最後 log + 排隊數）
  * 右側：應用程式版本
+ * 
+ * @param {Object} props
+ * @param {Function} props.onNavigate - 路由跳轉方法，用於點擊版本號跳轉至關於頁面
  */
-function AppStatusLine() {
+function AppStatusLine({ onNavigate }) {
     const [version, setVersion] = useState('')
     const { isOpen, currentPath } = useSeriesStore()
     const { isDbBusy } = useAppStore()
@@ -147,7 +150,11 @@ function AppStatusLine() {
             </div>
 
             {/* Right: Version info */}
-            <div className="text-right shrink-0">
+            <div 
+                className="text-right shrink-0 cursor-pointer hover:bg-accent hover:text-foreground px-2 py-0.5 rounded transition-colors"
+                onClick={() => onNavigate && onNavigate('about')}
+                title="點擊查看關於與更新紀錄"
+            >
                 <span>v{version}</span>
             </div>
         </footer>

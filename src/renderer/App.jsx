@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import BomPage from './pages/BomPage'
 import ComparePage from './pages/ComparePage'
 import SettingsPage from './pages/SettingsPage'
+import AboutPage from './pages/AboutPage'
 import useBomStore from './stores/useBomStore'
 
 // ========================================
@@ -20,6 +21,7 @@ const PAGES = [
     { id: 'bigbom', label: 'BigBOM', icon: <Database size={18} />, component: BomPage }, // Placeholder
     { id: 'compare', label: 'Compare', icon: <ArrowRightLeft size={18} />, component: ComparePage },
     { id: 'settings', label: '設定', icon: <Settings size={18} />, component: SettingsPage }, // Handled in layout
+    { id: 'about', label: '關於', icon: null, component: AboutPage }, // Hidden from main nav
 ]
 
 /**
