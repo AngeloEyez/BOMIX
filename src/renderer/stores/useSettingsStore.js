@@ -1,18 +1,25 @@
 import { create } from 'zustand'
+import { getDefaults, getPersistKeys } from '../config/settingsConfig'
 
 // ========================================
 // 設定狀態管理 (Zustand)
 // 管理應用程式全域設定，如主題、側邊欄等
+//
+// ⚠️ 設定的預設值與項目定義，請至 src/renderer/config/settingsConfig.js 修改
 // ========================================
 
+// 從 settingsConfig 取得所有設定的預設值（單一真實來源）
+const SETTING_DEFAULTS = getDefaults()
+
 const useSettingsStore = create((set, get) => ({
-    // --- 狀態 ---
-    theme: 'light', // 'light' | 'dark'
-    activeThemeId: 'default', // Current active theme ID
-    availableThemes: [], // List of available themes
+    // --- 狀態（設定初始值從 settingsConfig.js 統一管理）---
+    ...SETTING_DEFAULTS,
+
+    // 可用主題列表（動態從後端取得，不在 settingsConfig 中定義）
+    availableThemes: [],
     isLoading: true,
 
-    // 側邊欄設定
+    // 側邊欄設定（純 UI 狀態，不透過 settingsConfig 管理）
     bomSidebarWidth: 250,
     isBomSidebarCollapsed: false,
 
@@ -29,31 +36,26 @@ const useSettingsStore = create((set, get) => ({
             // 2. 從後端讀取使用者設定
             const result = await window.api.settings.get()
 
-            let targetTheme = 'light'
-            let targetThemeId = 'default'
-            let sidebarWidth = 250
-            let sidebarCollapsed = false
+            if (result.success && result.data) {
+                // 僅套用有在 settingsConfig 中定義的 key，避免未知欄位污染 Store
+                const persistKeys = getPersistKeys()
+                const loadedSettings = {}
+                for (const key of persistKeys) {
+                    if (result.data[key] !== undefined) {
+                        loadedSettings[key] = result.data[key]
+                    }
+                }
+                // 側邊欄設定（不在 settingsConfig 中的額外欄位）
+                if (result.data.bomSidebarWidth) loadedSettings.bomSidebarWidth = result.data.bomSidebarWidth
+                if (result.data.isBomSidebarCollapsed) loadedSettings.isBomSidebarCollapsed = result.data.isBomSidebarCollapsed
 
-            if (result.success) {
-                if (result.data.theme) targetTheme = result.data.theme
-                if (result.data.themeId) targetThemeId = result.data.themeId
-                if (result.data.bomSidebarWidth) sidebarWidth = result.data.bomSidebarWidth
-                if (result.data.isBomSidebarCollapsed) sidebarCollapsed = result.data.isBomSidebarCollapsed
+                set(loadedSettings)
             }
 
-            // 3. 套用設定
-            set({
-                theme: targetTheme,
-                activeThemeId: targetThemeId,
-                bomSidebarWidth: sidebarWidth,
-                isBomSidebarCollapsed: sidebarCollapsed
-            })
-
-            // 套用 Light/Dark 模式
-            get().toggleDarkMode(targetTheme === 'dark')
-
-            // 套用主題配色
-            await get().applyTheme(targetThemeId)
+            // 3. 套用主題效果
+            const { theme, activeThemeId } = get()
+            get().toggleDarkMode(theme === 'dark')
+            await get().applyTheme(activeThemeId)
 
         } catch (error) {
             console.error('初始化設定失敗:', error)
@@ -75,10 +77,8 @@ const useSettingsStore = create((set, get) => ({
         set({ theme: newTheme })
         get().toggleDarkMode(newTheme === 'dark')
 
-        // Re-apply theme variables for the new mode
+        // 重新套用色彩主題變數
         await get().applyTheme(get().activeThemeId)
-
-        // 儲存至後端
         await get().saveSettings()
     },
 
@@ -89,35 +89,55 @@ const useSettingsStore = create((set, get) => ({
         await get().saveSettings()
     },
 
-    // 更新並儲存其他設定 (如側邊欄)
+    // 更新並儲存通用設定（如側邊欄寬度）
     updateSettings: async (newSettings) => {
-        // Update local state
         set(newSettings)
-        // Persist
-        // We use settings property for persistence in saveSettings?
-        // Wait, saveSettings reads top-level props: theme, activeThemeId, bomSidebarWidth, isBomSidebarCollapsed.
-        // And updateSettings spreads `newSettings` into store.
-        // So if newSettings contains `bomSidebarWidth`, it updates store, then saveSettings reads it.
-        // This is correct.
         await get().saveSettings()
     },
 
-    // 儲存設定至後端 (Centralized Save)
+    /**
+     * 還原所有設定至 settingsConfig.js 中定義的預設值。
+     * 會立即更新 Store 並重新套用主題效果，最後持久化儲存。
+     */
+    resetToDefaults: async () => {
+        const defaults = getDefaults()
+        set(defaults)
+
+        // 重新套用預設主題效果
+        get().toggleDarkMode(defaults.theme === 'dark')
+        await get().applyTheme(defaults.activeThemeId)
+        await get().saveSettings()
+    },
+
+    // 儲存設定至後端（自動根據 settingsConfig 中 persist:true 的欄位）
     saveSettings: async () => {
         try {
-            const { theme, activeThemeId, bomSidebarWidth, isBomSidebarCollapsed } = get()
-            await window.api.settings.save({
-                theme,
-                themeId: activeThemeId,
-                bomSidebarWidth,
-                isBomSidebarCollapsed
-            })
+            const state = get()
+            const persistKeys = getPersistKeys()
+
+            // 從 Store 取出所有需持久化的設定值
+            const payload = persistKeys.reduce((acc, key) => {
+                acc[key] = state[key]
+                return acc
+            }, {})
+
+            // 加入不在 settingsConfig 的側邊欄設定
+            payload.bomSidebarWidth = state.bomSidebarWidth
+            payload.isBomSidebarCollapsed = state.isBomSidebarCollapsed
+
+            // 後端 API 使用 themeId 作為 activeThemeId 的鍵名
+            if (payload.activeThemeId !== undefined) {
+                payload.themeId = payload.activeThemeId
+                delete payload.activeThemeId
+            }
+
+            await window.api.settings.save(payload)
         } catch (error) {
             console.error('儲存設定失敗:', error)
         }
     },
 
-    // 內部：切換 DOM class
+    // 內部：切換 DOM class 以套用 dark mode
     toggleDarkMode: (isDark) => {
         const root = window.document.documentElement
         if (isDark) {
