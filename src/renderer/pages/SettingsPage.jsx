@@ -11,7 +11,6 @@ import { SETTINGS_CONFIG, buildSettingsTree } from '../config/settingsConfig'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -203,7 +202,7 @@ function SettingsPage() {
                 <ResizablePanelGroup direction="horizontal" className="h-full items-stretch">
 
                     {/* ========== 左側目錄（動態生成） ========== */}
-                    <ResizablePanel defaultSize="25%" minSize="20%" maxSize="40%" className="bg-muted/10 flex flex-col overflow-hidden">
+                    <ResizablePanel defaultSize="18%" minSize="13%" maxSize="40%" className="bg-muted/10 flex flex-col overflow-hidden">
                         <div className="flex-1 overflow-y-auto py-4 pr-3 pl-2">
                             <div className="space-y-1">
                                 {SETTINGS_TREE.map((category) => {
@@ -246,13 +245,26 @@ function SettingsPage() {
                     <ResizableHandle withHandle className="hover:bg-primary/50 transition-colors" />
 
                     {/* ========== 右側設定內容（動態渲染） ========== */}
-                    <ResizablePanel defaultSize="75%" className="bg-background flex flex-col overflow-hidden">
-                        <div ref={rightScrollRef} className="flex-1 overflow-y-auto px-8 py-6">
+                    <ResizablePanel className="bg-background flex flex-col overflow-hidden">
+                        <div ref={rightScrollRef} className="flex-1 overflow-y-auto">
                             <div className="max-w-3xl mx-auto pb-20">
-                                {SETTINGS_TREE.map((category, catIndex) => (
-                                    <div key={category.id}>
-                                        {catIndex > 0 && <Separator className="my-10" />}
+                                {SETTINGS_TREE.map((category) => (
+                                    <div key={category.id} className="mb-2">
 
+                                        {/* ---- 大分類標題列（吸附在頂部，仿 VS Code 分組分隔線）---- */}
+                                        <div className="sticky top-0 z-10 px-2 pt-4 pb-1 bg-background/95 backdrop-blur-sm border-b border-border/60">
+                                            <div className="flex items-center gap-2">
+                                                {(() => {
+                                                    const Icon = category.icon
+                                                    return <Icon size={14} className="text-muted-foreground shrink-0" />
+                                                })()}
+                                                <span className="text-xl font-semibold text-muted-foreground uppercase tracking-widest">
+                                                    {category.title}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* ---- 子分類列表 ---- */}
                                         {category.items.map((subCat, subIndex) => {
                                             // 找出此子分類下的所有設定項目
                                             const itemSettings = SETTINGS_CONFIG.filter(
@@ -262,27 +274,23 @@ function SettingsPage() {
                                                 <section
                                                     key={subCat.id}
                                                     ref={el => sectionRefs.current[subCat.id] = el}
-                                                    className={`scroll-mt-6 ${subIndex > 0 ? 'mt-10' : ''}`}
                                                 >
-                                                    {/* 子分類標題 */}
-                                                    <div className="mb-5">
-                                                        <h3 className="text-base font-semibold text-foreground">
+                                                    {/* 子分類標題（吸附在大分類標題下方）*/}
+                                                    <div className={`sticky top-9 z-[9] px-4 py-2 bg-background/90 backdrop-blur-sm border-b border-border/40 ${subIndex > 0 ? 'border-t border-border/30' : ''}`}>
+                                                        <h3 className="text-lg font-semibold text-muted-foreground">
                                                             {subCat.title}
                                                         </h3>
-                                                        <p className="text-xs text-muted-foreground mt-0.5">
-                                                            {category.title} &rsaquo; {subCat.title}
-                                                        </p>
                                                     </div>
 
                                                     {/* 設定項目列表 */}
-                                                    <div className="space-y-6">
+                                                    <div className="px-8 py-5 space-y-6">
                                                         {itemSettings.map(cfg => (
                                                             <div key={cfg.key} className="flex items-start justify-between gap-8 max-w-2xl">
                                                                 <div className="flex flex-col gap-1 flex-1 min-w-0">
                                                                     <Label className="text-sm font-normal cursor-pointer">
                                                                         {cfg.title}
                                                                     </Label>
-                                                                    <p className="text-xs text-muted-foreground">
+                                                                    <p className="text-xs text-muted-foreground leading-relaxed">
                                                                         {cfg.description}
                                                                     </p>
                                                                 </div>
@@ -313,3 +321,4 @@ function SettingsPage() {
 }
 
 export default SettingsPage
+
