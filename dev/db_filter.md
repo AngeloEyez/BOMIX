@@ -24,19 +24,16 @@
 
 ### 2.1 觸發階段 (Frontend)
 - 在 `useBomStore.toggleRevisionSelection` 中，會將選取的 IDs 存入 `selectedRevisionIds`。如果超過 1 個，`bomMode` 切換至 **BIGBOM**。
-- `useBomStore.selectView` 或 `fetchData` 會呼叫 `window.api.bom.getView(idsArray, currentViewId)`。
+- `useBomStore.selectView` 或 `fetchData` 會從 View 定義取得 filters 陣列，結合 CCL checkbox 狀態，呼叫 `window.api.bom.query(idsArray, finalFilters, {})`。
 
-### 2.2 撈取與過濾階段 (Backend - `bom.service.executeView`)
-- **取得定義:** 根據 `viewId` (如 `SMD`, `ALL`)，從 `bom-factory.service` 中取得**過濾定義 (View Definition)**，決定哪些 `type` 或 `bom_status` 予以保留。
+### 2.2 撈取與過濾階段 (Backend - `bom.service.queryBomData`)
+- **接收 filters 陣列:** 直接接收前端傳來的 filters 陣列（格式詳見 `dev/FILTER_SPEC.md`），不再依賴 viewId 查表。
 - **資料庫查詢:**
   - 呼叫 `partsRepo.findByBomRevisions(ids)` 執行 `SELECT * FROM parts WHERE bom_revision_id IN (...)` 撈取**所有**對應的零件。
-  - 呼叫 `secondSourceRepo.findByBomRevision(id)` 撈取替代料 (Second Sources)。
+  - 逐一呼叫 `secondSourceRepo.findByBomRevision(id)` 撈取替代料 (Second Sources)。
 - **JavaScript 過濾 (Filter):**
-  - **Type Filter:** 如果視圖限制 `types` (例如 SMD 僅包含 `"SMD"`)，則不在名單內的零件被剔除。
-  - **Status Filter:** 根據專案模式 (NPI 或 MP) 與視圖定義過濾 `bom_status`。
-    - **ACTIVE:** 保留一般有效料。例如 NPI 模式保留 `['I', 'P']`。
-    - **INACTIVE:** 保留刪除料。例如 NPI 模式保留 `['X', 'M']`。
-  - **CCL Filter:** 如果設定 `filter.ccl`，則剔除不符的零件。
+  - 遍歷 filters 陣列，每個條件獨立套用（AND 關係）。
+  - 支援的 operator：`eq`（等於）、`neq`（不等於）、`in`（包含）、`notIn`（不包含）、`statusLogic`（依 BOM mode 決定允許的 status）。
 
 ### 2.3 分組與聚合 (Aggregation)
 為了將多個相同料號的打件位置 (Location) 顯示為同一列：
@@ -67,7 +64,8 @@ Matrix 模式需要兩份資料：
 - **取得 Models:** 從資料庫取得這些 BOM 關聯的 Matrix Models (`matrix_models` 表)。
 - **取得 explicit selections:** 從資料庫取得所有明確被使用者點擊選擇的紀錄 (`matrix_selections` 表)。
 - **取得 Union BOM View:**
-  - 呼叫 `bomService.executeView(ids, { filter: { statusLogic: 'ACTIVE', ccl: 'Y' } })` 取得所有版本的 Active CCL 零件。
+  - 呼叫 `bomService.queryBomData(ids, matrixFilters, {})` 取得所有版本的 Active CCL 零件。
+  - `matrixFilters = [{ field: 'bom_status', operator: 'statusLogic', value: 'ACTIVE' }, { field: 'ccl', operator: 'eq', value: 'Y' }]`
 - **計算隱式選擇 (Implicit Selections):**
   - 不必所有零件都需使用者手動選擇。
   - 系統遍歷上述 Union BOM 的每一個零件群組 (Main Item)。
@@ -89,7 +87,9 @@ Matrix 模式需要兩份資料：
 | 項目 | 一般 BOM / BigBOM (單/多選) | Matrix 模式 |
 | :--- | :--- | :--- |
 | **主要處理層** | `bom.service.js` | `bom.service.js` + `matrix.service.js` |
-| **BOM撈取範圍**| 取決於視圖 (ALL/SMD/PTH 等條件) | 限定為 Active 狀態且 `CCL="Y"` |
+| **BOM撈取函式**| `queryBomData(ids, filters, options)` | `queryBomData(ids, matrixFilters, {})` |
+| **BOM撈取範圍**| 取決於前端傳入的 filters 陣列 | 限定為 Active 狀態且 `CCL="Y"` |
+| **CCL 過濾方式** | 前端 CCL Checkbox 狀態決定，由 Store 追加 filter | 後端固定追加 ccl=Y filter |
 | **回傳結構** | `Array<AggregatedItem>` | 獨立分為 `bomView` (陣列) 與 `matrixData` (包含 Models, Selections, Summary) |
 | **聚合分組鍵** | `supplier` + `supplier_pn` | 同左 (藉由呼叫 executeView) |
 | **隱式處理** | 無 | 系統自動針對無替代料的零件進行隱式選擇 (Implicit Selection) |

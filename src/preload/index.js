@@ -48,6 +48,9 @@ const api = {
     // TODO: Phase 4 — BOM 管理 API
     bom: {
         getRevisions: (projectId) => ipcRenderer.invoke('bom:getRevisions', projectId),
+        // 通用 BOM 資料查詢（新 API，格式詳見 dev/FILTER_SPEC.md）
+        query: (bomIds, filters, options) => ipcRenderer.invoke('bom:query', bomIds, filters, options),
+        // @deprecated 前端請改用 bom.query，此方法保留供向下相容
         getView: (bomRevisionId, viewId) => ipcRenderer.invoke('bom:getView', bomRevisionId, viewId),
         updateMainItem: (bomRevisionId, originalKey, updates) => ipcRenderer.invoke('bom:updateMainItem', bomRevisionId, originalKey, updates),
         deleteMainItem: (bomRevisionId, key) => ipcRenderer.invoke('bom:deleteMainItem', bomRevisionId, key),

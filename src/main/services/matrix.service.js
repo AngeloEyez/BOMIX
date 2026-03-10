@@ -148,9 +148,13 @@ export function getMatrixData(bomRevisionIdOrIds) {
     // 2. 取得 Explicit Selections (Multi-BOM)
     const explicitSelections = matrixSelectionRepo.findByBomRevisionIds(ids);
 
-    // 3. 取得 BOM View (ACTIVE parts + Union) 用於計算 Implicit Selection
-    const viewDef = { filter: { statusLogic: 'ACTIVE', ccl: 'Y' } };
-    const bomItems = bomService.executeView(ids, viewDef);
+    // 3. 取得 BOM View (ACTIVE + CCL=Y) 用於計算 Implicit Selection
+    // 使用通用查詢 API，以 filters 陣列明確指定條件（格式詳見 dev/FILTER_SPEC.md）
+    const matrixFilters = [
+        { field: 'bom_status', operator: 'statusLogic', value: 'ACTIVE' },
+        { field: 'ccl', operator: 'eq', value: 'Y' }
+    ];
+    const bomItems = bomService.queryBomData(ids, matrixFilters, {});
 
     // 4. 計算 Implicit Selections 與 統計資料
     const effectiveSelections = [...explicitSelections];

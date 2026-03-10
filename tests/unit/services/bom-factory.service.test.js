@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     getViewDefinition,
+    getViewFilters,
     getExportDefinition,
     VIEW_IDS,
     EXPORT_IDS
@@ -8,40 +9,64 @@ import {
 
 describe('BOM Factory Service', () => {
     describe('getViewDefinition', () => {
-        it('should return correct definition for ALL view', () => {
+        it('should return correct definition for ALL view (filters array format)', () => {
             const view = getViewDefinition(VIEW_IDS.ALL);
-            expect(view).toEqual({
-                id: VIEW_IDS.ALL,
-                filter: { statusLogic: 'ACTIVE' }
-            });
+            expect(view.id).toBe(VIEW_IDS.ALL);
+            expect(view.filters).toBeDefined();
+            expect(view.filters).toBeInstanceOf(Array);
+            // ALL view: 僅有 statusLogic ACTIVE
+            expect(view.filters).toEqual([
+                { field: 'bom_status', operator: 'statusLogic', value: 'ACTIVE' }
+            ]);
         });
 
-        it('should return correct definition for SMD view', () => {
+        it('should return correct definition for SMD view (filters array format)', () => {
             const view = getViewDefinition(VIEW_IDS.SMD);
-            expect(view).toEqual({
-                id: VIEW_IDS.SMD,
-                filter: { types: ['SMD'], statusLogic: 'ACTIVE' }
-            });
+            expect(view.id).toBe(VIEW_IDS.SMD);
+            expect(view.filters).toBeDefined();
+            expect(view.filters).toContainEqual({ field: 'type', operator: 'in', value: ['SMD'] });
+            expect(view.filters).toContainEqual({ field: 'bom_status', operator: 'statusLogic', value: 'ACTIVE' });
         });
 
         it('should return correct definition for NI view', () => {
             const view = getViewDefinition(VIEW_IDS.NI);
-            expect(view).toEqual({
-                id: VIEW_IDS.NI,
-                filter: { statusLogic: 'INACTIVE' }
-            });
+            expect(view.id).toBe(VIEW_IDS.NI);
+            expect(view.filters).toContainEqual({ field: 'bom_status', operator: 'statusLogic', value: 'INACTIVE' });
         });
 
         it('should return correct definition for PROTO view', () => {
             const view = getViewDefinition(VIEW_IDS.PROTO);
-            expect(view).toEqual({
-                id: VIEW_IDS.PROTO,
-                filter: { bom_statuses: ['P'], statusLogic: 'SPECIFIC' }
-            });
+            expect(view.id).toBe(VIEW_IDS.PROTO);
+            expect(view.filters).toContainEqual({ field: 'bom_status', operator: 'statusLogic', value: 'SPECIFIC' });
+            expect(view.filters).toContainEqual({ field: 'bom_status', operator: 'in', value: ['P'] });
+        });
+
+        it('should return correct definition for CCL view', () => {
+            const view = getViewDefinition(VIEW_IDS.CCL);
+            expect(view.id).toBe(VIEW_IDS.CCL);
+            expect(view.filters).toContainEqual({ field: 'ccl', operator: 'eq', value: 'Y' });
+            expect(view.filters).toContainEqual({ field: 'bom_status', operator: 'statusLogic', value: 'ACTIVE' });
         });
 
         it('should throw error for unknown view ID', () => {
             expect(() => getViewDefinition('unknown_view')).toThrow('Unknown View ID: unknown_view');
+        });
+    });
+
+    describe('getViewFilters', () => {
+        it('should return filters array for ALL view', () => {
+            const filters = getViewFilters(VIEW_IDS.ALL);
+            expect(filters).toBeInstanceOf(Array);
+            expect(filters.length).toBeGreaterThan(0);
+        });
+
+        it('should return filters array for SMD view containing type filter', () => {
+            const filters = getViewFilters(VIEW_IDS.SMD);
+            expect(filters).toContainEqual({ field: 'type', operator: 'in', value: ['SMD'] });
+        });
+
+        it('should throw error for unknown view ID', () => {
+            expect(() => getViewFilters('unknown_view')).toThrow('Unknown View ID: unknown_view');
         });
     });
 
@@ -51,7 +76,7 @@ describe('BOM Factory Service', () => {
             expect(def.id).toBe(EXPORT_IDS.EBOM);
             expect(def.sheets).toHaveLength(8);
             expect(def.sheets[0].targetSheetName).toBe('ALL');
-            expect(def.sheets[0].templateFile).toBe('ebom.xlsx'); // Now per sheet
+            expect(def.sheets[0].templateFile).toBe('ebom.xlsx');
             expect(def.sheets[1].targetSheetName).toBe('SMD');
             expect(def.sheets[1].templateFile).toBe('ebom.xlsx');
         });

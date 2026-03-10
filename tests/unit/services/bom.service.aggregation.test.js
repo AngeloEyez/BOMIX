@@ -39,7 +39,7 @@ describe('BOM Service Aggregation Logic', () => {
 
         // Setup Mocks
         bomRevisionRepo.findById.mockReturnValue({ id: 1, mode: 'NPI' });
-        partsRepo.findByBomRevision.mockReturnValue(mockParts);
+        partsRepo.findByBomRevisions.mockReturnValue(mockParts);
         secondSourceRepo.findByBomRevision.mockReturnValue([]);
 
         // Execute View

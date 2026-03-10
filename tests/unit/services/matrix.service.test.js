@@ -93,7 +93,7 @@ describe('Matrix Service', () => {
                     bom_revision_id: 1
                 }
             ];
-            bomService.executeView.mockReturnValue(bomItems);
+            bomService.queryBomData.mockReturnValue(bomItems);
 
             const result = matrixService.getMatrixData(bomRevisionId);
 
@@ -124,7 +124,7 @@ describe('Matrix Service', () => {
                 { id: 999, supplier: 'S1', supplier_pn: 'P1', second_sources: [], bom_ids: [1], bom_revision_id: 1 }, // Implicit
                 { id: 888, supplier: 'S2', supplier_pn: 'P2', second_sources: [{}], bom_ids: [1], bom_revision_id: 1 } // Explicitly selected
             ];
-            bomService.executeView.mockReturnValue(bomItems);
+            bomService.queryBomData.mockReturnValue(bomItems);
 
             const result = matrixService.getMatrixData(bomRevisionId);
 
@@ -142,7 +142,7 @@ describe('Matrix Service', () => {
              const bomItems = [
                 { id: 888, supplier: 'S2', supplier_pn: 'P2', second_sources: [{}], bom_ids: [1], bom_revision_id: 1 } // Needs selection, none provided
             ];
-            bomService.executeView.mockReturnValue(bomItems);
+            bomService.queryBomData.mockReturnValue(bomItems);
 
             const result = matrixService.getMatrixData(bomRevisionId);
 

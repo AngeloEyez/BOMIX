@@ -49,7 +49,8 @@ function BomPage() {
         deleteBom, exportExcel,
         clearError, reset,
         currentViewId, selectView, 
-        bomMode 
+        bomMode,
+        cclFilter, setCclFilter
     } = useBomStore()
 
     // 檢查是否有匯出任務正在執行
@@ -123,11 +124,6 @@ function BomPage() {
     // 關鍵字過濾邏輯
     const filteredBom = useMemo(() => {
         let data = bomView
-
-        // Matrix Mode 僅顯示 CCL=Y
-        if (bomMode === 'MATRIX' && Array.isArray(data)) {
-            data = data.filter(item => item.ccl === 'Y')
-        }
 
         if (!Array.isArray(data) || !searchTerm || !searchTerm.trim()) return data || []
 
@@ -339,6 +335,39 @@ function BomPage() {
                             <Settings size={15} />
                         </Button>
                     )}
+
+                    {/* CCL Filter Checkbox */}
+                    {/* Matrix Mode / CCL View: 強制勾選且 disable（不變更 store 狀態） */}
+                    {/* 其他 BOM Mode: 可切換，勾選狀態保存於 store 並在跨頁面/View 切換後保留 */}
+                    {selectionCount > 0 && (() => {
+                        const isForced = bomMode === 'MATRIX' || currentViewId === 'ccl_view'
+                        const isChecked = isForced || cclFilter
+
+                        return (
+                            <label
+                                className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded border transition-colors select-none
+                                    ${
+                                        isForced
+                                            ? 'bg-primary/10 text-primary border-primary/30 cursor-not-allowed opacity-70'
+                                            : isChecked
+                                                ? 'bg-primary/10 text-primary border-primary/30 cursor-pointer hover:bg-primary/15'
+                                                : 'text-muted-foreground border-border cursor-pointer hover:text-foreground hover:bg-muted'
+                                    }`}
+                                title={isForced ? 'CCL Filter 在此模式下強制啟用' : '切換 CCL Filter'}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    disabled={isForced}
+                                    onChange={(e) => {
+                                        if (!isForced) setCclFilter(e.target.checked)
+                                    }}
+                                    className="h-3 w-3 accent-primary"
+                                />
+                                <span className="font-medium">CCL</span>
+                            </label>
+                        )
+                    })()}
 
                     {/* 搜尋框 (Search) */}
                     {selectionCount > 0 && (

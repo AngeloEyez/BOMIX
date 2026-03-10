@@ -27,6 +27,11 @@ const useBomStore = create((set, get) => ({
     bomView: [],
     /** 視圖資料快取 { [viewId]: data[] } */
     viewCache: {},
+    /**
+     * CCL Filter 狀態（使用者切換，跨 View 和頁面保留）
+     * true 表示勾選，將向後端加入 ccl=Y 的 filter 條件
+     */
+    cclFilter: false,
 
     /**
      * 設定 BOM 模式
@@ -36,32 +41,46 @@ const useBomStore = create((set, get) => ({
 
     /**
      * 切換視圖
+     * 根據 View 的預設 filters 與目前的 cclFilter 狀態組裝完整條件陣列。
      * @param {string} viewId
+     * @param {Object} [viewsMap] - View 定義對照表（若不傳入則從 BomPage 的 views state 取得）
      */
-    selectView: async (viewId) => {
-        const { selectedRevisionIds } = get()
+    selectView: async (viewId, viewsMap = null) => {
+        const { selectedRevisionIds, cclFilter } = get()
         if (selectedRevisionIds.size === 0) return
 
-        // Update ID immediately for UI
+        // 立即更新 UI
         set({ currentViewId: viewId })
 
-        // Check Cache (Cache key logic needs to include revision IDs hash?)
-        // For simplicity, disable cache for multi-BOM or clear cache on selection change.
-        // Let's rely on fetch for now to ensure correctness with dynamic IDs.
-
-        // Fetch from Backend
         set({ isLoading: true, error: null })
         const { setDbBusy } = useAppStore.getState()
         setDbBusy(true)
 
         try {
             const idsArray = Array.from(selectedRevisionIds)
-            const result = await window.api.bom.getView(idsArray, viewId)
+
+            // 從 View 定義取得預設 filters
+            // viewsMap 如果未傳入則透過 IPC 即時取得
+            let viewDef = viewsMap ? viewsMap[Object.keys(viewsMap).find(k => viewsMap[k].id === viewId)] : null
+            let baseFilters = viewDef?.filters || []
+
+            // 如果視圖未在 viewsMap 中找到，透過 API 取得 filters
+            if (baseFilters.length === 0) {
+                const viewsResult = await window.api.bom.getViews()
+                if (viewsResult.success) {
+                    const viewsObj = viewsResult.data
+                    const foundView = Object.values(viewsObj).find(v => v.id === viewId)
+                    baseFilters = foundView?.filters || []
+                }
+            }
+
+            // 組裝最終 filters：View 預設 + CCL checkbox 額外條件
+            const extraFilters = cclFilter ? [{ field: 'ccl', operator: 'eq', value: 'Y' }] : []
+            const finalFilters = [...baseFilters, ...extraFilters]
+
+            const result = await window.api.bom.query(idsArray, finalFilters, {})
             if (result.success) {
-                set({
-                    bomView: result.data,
-                    isLoading: false
-                })
+                set({ bomView: result.data, isLoading: false })
             } else {
                 set({ error: result.error, isLoading: false })
             }
@@ -148,10 +167,11 @@ const useBomStore = create((set, get) => ({
     },
 
     /**
-     * 根據當前選擇與模式，抓取對應資料
+     * 根據當前選擇與模式，抄取對應資料。
+     * 組裝當前 View 的預設 filters 及額外的 CCL filter，透過 bom:query 查詢後端。
      */
     fetchData: async () => {
-        const { selectedRevisionIds, currentViewId } = get()
+        const { selectedRevisionIds, currentViewId, cclFilter } = get()
         if (selectedRevisionIds.size === 0) {
             set({ bomView: [] })
             return
@@ -164,21 +184,21 @@ const useBomStore = create((set, get) => ({
         try {
             const idsArray = Array.from(selectedRevisionIds)
 
-            // 如果是 Matrix 模式，資料由 useMatrixStore 負責 (但這裡是 BOM View store...)
-            // 根據需求 "MATRIX 模式支援一到多個BOM, 即時更新table內的資料"
-            // MatrixTable 需要 Matrix Data (Models + Selections) AND BOM Rows (Parts).
-            // `matrix.service.getMatrixData` returns { models, selections, summary } but relies on BOM View for parts implicitly?
-            // Actually `getMatrixData` implementation calls `executeView` internally for summary calculation,
-            // BUT it does NOT return the BOM rows directly in `data` structure (it returns models, selections, summary).
-            // Frontend MatrixTable needs the rows to render!
-            // Currently MatrixTable takes `data={filteredBom}` which comes from `useBomStore.bomView`.
-            // So YES, we MUST fetch BOM View here even for Matrix Mode.
+            // 取得當前 View 的預設 filters
+            // MatrixTable 所需的 BOM rows 也透過此處取得
+            const viewsResult = await window.api.bom.getViews()
+            let baseFilters = []
+            if (viewsResult.success) {
+                const viewsObj = viewsResult.data
+                const foundView = Object.values(viewsObj).find(v => v.id === currentViewId)
+                baseFilters = foundView?.filters || []
+            }
 
-            // For Matrix Mode, we usually want 'ALL' view or specific logic?
-            // User: "當 state=MATRIX的時候... 移植目前MatrixTable.jsx中selection欄位的作法"
-            // So we fetch standard view here.
+            // 組裝最終 filters：View 預設 + CCL checkbox 額外條件
+            const extraFilters = cclFilter ? [{ field: 'ccl', operator: 'eq', value: 'Y' }] : []
+            const finalFilters = [...baseFilters, ...extraFilters]
 
-            const result = await window.api.bom.getView(idsArray, currentViewId)
+            const result = await window.api.bom.query(idsArray, finalFilters, {})
             if (result.success) {
                 set({ bomView: result.data, isLoading: false })
             } else {
@@ -189,6 +209,16 @@ const useBomStore = create((set, get) => ({
         } finally {
             setDbBusy(false)
         }
+    },
+
+    /**
+     * 設定 CCL Filter 狀態，並重新載入 BOM 資料。
+     *
+     * @param {boolean} enabled - true 表示套用 ccl=Y filter
+     */
+    setCclFilter: async (enabled) => {
+        set({ cclFilter: enabled })
+        await get().fetchData()
     },
 
     /**
@@ -345,6 +375,7 @@ const useBomStore = create((set, get) => ({
             bomView: [],
             currentViewId: 'all_view',
             viewCache: {},
+            cclFilter: false,
             isLoading: false,
             error: null,
         })

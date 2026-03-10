@@ -9,6 +9,213 @@ import secondSourceRepo from '../database/repositories/second-source.repo.js';
 import bomRevisionRepo from '../database/repositories/bom-revision.repo.js';
 import dbManager from '../database/connection.js';
 
+// ========================================
+// 內部輔助函式
+// ========================================
+
+/**
+ * 將舊版 viewDefinition 物件轉換為 filters 陣列格式。
+ *
+ * 此函式為內部轉換工具，供 executeView 薄包裝層使用。
+ * 格式說明詳見 dev/FILTER_SPEC.md。
+ *
+ * @param {Object} viewDefinition - 舊版 View 定義物件（已含 filter 或 filters 屬性）
+ * @returns {Array<Object>} Filter 陣列
+ */
+function convertViewDefToFilters(viewDefinition) {
+    // 若已是新格式（含 filters 陣列），直接回傳
+    if (viewDefinition.filters) {
+        return viewDefinition.filters;
+    }
+
+    // 向下相容：將舊格式 filter 物件轉換為 filters 陣列
+    const filters = [];
+    const f = viewDefinition.filter || {};
+
+    if (f.statusLogic) {
+        filters.push({ field: 'bom_status', operator: 'statusLogic', value: f.statusLogic });
+    }
+    if (f.bom_statuses && f.bom_statuses.length > 0) {
+        filters.push({ field: 'bom_status', operator: 'in', value: f.bom_statuses });
+    }
+    if (f.types && f.types.length > 0) {
+        filters.push({ field: 'type', operator: 'in', value: f.types });
+    }
+    if (f.ccl) {
+        filters.push({ field: 'ccl', operator: 'eq', value: f.ccl });
+    }
+    return filters;
+}
+
+/**
+ * 套用單一 Filter 條件。
+ *
+ * @param {Object} part - 零件資料
+ * @param {Object} filter - Filter 條件
+ * @param {string} mode - BOM 版本模式（'NPI' | 'MP'）
+ * @returns {boolean} 是否通過此條件
+ */
+function applyFilter(part, filter, mode) {
+    const { field, operator, value } = filter;
+
+    switch (operator) {
+        case 'eq':
+            return part[field] === value;
+
+        case 'neq':
+            return part[field] !== value;
+
+        case 'in':
+            return Array.isArray(value) && value.includes(part[field]);
+
+        case 'notIn':
+            return Array.isArray(value) && !value.includes(part[field]);
+
+        case 'statusLogic': {
+            // 特殊邏輯：依 BOM mode 決定允許的 bom_status
+            let allowedStatuses = [];
+            if (value === 'ACTIVE') {
+                allowedStatuses = mode === 'MP' ? ['I', 'M'] : ['I', 'P'];
+            } else if (value === 'INACTIVE') {
+                allowedStatuses = mode === 'MP' ? ['X', 'P'] : ['X', 'M'];
+            }
+            // SPECIFIC 模式：搭配同陣列中的 'in' filter 使用，此 filter 本身不過濾
+            if (value === 'SPECIFIC') return true;
+            return allowedStatuses.includes(part.bom_status);
+        }
+
+        default:
+            // 未知 operator 視為通過（不過濾）
+            return true;
+    }
+}
+
+// ========================================
+// 核心查詢函式
+// ========================================
+
+/**
+ * 通用 BOM 資料查詢與聚合。
+ *
+ * 接收 BOM ID 陣列、Filter 條件陣列與選項物件，執行過濾與 In-Memory 聚合，
+ * 回傳聚合後的 Main Item 列表（含關聯 Second Sources）。
+ *
+ * Filter 陣列格式與 Operator 說明詳見 dev/FILTER_SPEC.md。
+ *
+ * @param {number[]} bomIds - BOM 版本 ID 陣列（支援多 BOM Union 查詢）
+ * @param {Array<Object>} [filters=[]] - Filter 條件陣列
+ * @param {Object} [options={}] - 選項參數（預留，暫未實作功能）
+ * @returns {Array<Object>} 聚合後的 BOM 列表
+ */
+export function queryBomData(bomIds, filters = [], options = {}) {
+    if (!Array.isArray(bomIds) || bomIds.length === 0) return [];
+
+    // 1. 取得 BOM Revision（以第一個的 Mode 為準）
+    const firstRevision = bomRevisionRepo.findById(bomIds[0]);
+    if (!firstRevision) {
+        throw new Error(`找不到 ID 為 ${bomIds[0]} 的 BOM 版本`);
+    }
+    const mode = firstRevision.mode || 'NPI';
+
+    // 2. 撈取所有 BOM 的零件與替代料
+    let parts = partsRepo.findByBomRevisions(bomIds);
+    let secondSources = [];
+    for (const id of bomIds) {
+        secondSources = secondSources.concat(secondSourceRepo.findByBomRevision(id));
+    }
+
+    // 3. 套用 filters 過濾零件（多個條件為 AND 關係）
+    const filteredParts = parts.filter(part =>
+        filters.every(filter => applyFilter(part, filter, mode))
+    );
+
+    // 4. 分組與聚合 (Group by supplier + supplier_pn)
+    const groupedMap = new Map();
+
+    for (const part of filteredParts) {
+        const key = `${part.supplier}|${part.supplier_pn}`;
+
+        if (!groupedMap.has(key)) {
+            groupedMap.set(key, {
+                id: part.id,
+                bom_revision_id: part.bom_revision_id,
+                bom_ids: new Set([part.bom_revision_id]),
+                supplier: part.supplier,
+                supplier_pn: part.supplier_pn,
+                type: part.type,
+                hhpn: part.hhpn,
+                description: part.description,
+                bom_status: part.bom_status,
+                ccl: part.ccl,
+                remark: part.remark,
+                item: part.item,
+                locations: [],
+                quantity: 0
+            });
+        }
+
+        const group = groupedMap.get(key);
+        group.bom_ids.add(part.bom_revision_id);
+        group.locations.push(part.location);
+        group.quantity += 1;
+
+        // 保留最小 item 作為排序基準
+        if (part.item && (!group.item || part.item < group.item)) {
+            group.item = part.item;
+        }
+    }
+
+    // 5. 轉換為陣列並完成聚合
+    const mainItems = Array.from(groupedMap.values()).map(group => {
+        group.locations.sort((a, b) =>
+            a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+        );
+        return {
+            ...group,
+            bom_ids: Array.from(group.bom_ids),
+            locations: group.locations.join(',')
+        };
+    });
+
+    // 依 item 排序
+    mainItems.sort((a, b) => {
+        if (a.item === null) return 1;
+        if (b.item === null) return -1;
+        return a.item - b.item;
+    });
+
+    // 6. 關聯 Second Sources
+    const ssMap = new Map();
+    for (const ss of secondSources) {
+        const key = `${ss.main_supplier}|${ss.main_supplier_pn}`;
+        if (!ssMap.has(key)) ssMap.set(key, []);
+        ssMap.get(key).push(ss);
+    }
+
+    return mainItems.map(item => ({
+        ...item,
+        second_sources: ssMap.get(`${item.supplier}|${item.supplier_pn}`) || []
+    }));
+}
+
+/**
+ * 執行 BOM View (In-Memory Aggregation)
+ * 支援單一 ID 或 IDs 陣列 (Union View)
+ *
+ * @deprecated 此函式為向下相容層，供 export.service.js 等後端內部模組使用。
+ *             前端請改用 IPC 通道 `bom:query` → `queryBomData`。
+ *             當所有後端呼叫者遷移完畢後可評估移除。
+ *
+ * @param {number|Array<number>} bomRevisionIdOrIds
+ * @param {Object} viewDefinition - View 定義物件（支援新 filters 陣列格式與舊 filter 物件格式）
+ * @returns {Array<Object>} 聚合後的 BOM 列表
+ */
+export function executeView(bomRevisionIdOrIds, viewDefinition) {
+    const ids = Array.isArray(bomRevisionIdOrIds) ? bomRevisionIdOrIds : [bomRevisionIdOrIds];
+    const filters = convertViewDefToFilters(viewDefinition);
+    return queryBomData(ids, filters, {});
+}
+
 /**
  * 取得 BOM 原始資料 (包含 Parts 與 Second Sources)
  * @param {number} bomRevisionId
@@ -18,157 +225,6 @@ export function getBomData(bomRevisionId) {
     const parts = partsRepo.findByBomRevision(bomRevisionId);
     const secondSources = secondSourceRepo.findByBomRevision(bomRevisionId);
     return { parts, secondSources };
-}
-
-/**
- * 執行 BOM View (In-Memory Aggregation)
- * 支援單一 ID 或 IDs 陣列 (Union View)
- *
- * @param {number|Array<number>} bomRevisionIdOrIds
- * @param {Object} viewDefinition - 從 bom-factory 取得的 View 定義
- * @returns {Array<Object>} 聚合後的 BOM 列表
- */
-export function executeView(bomRevisionIdOrIds, viewDefinition) {
-    let ids = Array.isArray(bomRevisionIdOrIds) ? bomRevisionIdOrIds : [bomRevisionIdOrIds];
-    if (ids.length === 0) return [];
-
-    // 1. 取得 BOM Revisions (確認 Mode - 優先使用第一個 BOM 的 Mode 或統一 Mode)
-    // 假設 Union View 的 Mode 必須一致，或以第一個為主
-    const firstRevision = bomRevisionRepo.findById(ids[0]);
-    if (!firstRevision) {
-        throw new Error(`找不到 ID 為 ${ids[0]} 的 BOM 版本`);
-    }
-    const mode = firstRevision.mode || 'NPI';
-
-    // 2. 取得原始資料 (Multi-BOM)
-    let parts = partsRepo.findByBomRevisions(ids);
-    // secondSourceRepo also needs multi-id support or fetch iteratively
-    // Currently secondSourceRepo doesn't have `findByBomRevisions`.
-    // Let's iterate for SS or add repo method. Iterating is fine for now as SS count is usually low relative to parts.
-    // Or better, update secondSourceRepo later. For now, fetch all SS for these IDs.
-    // Wait, secondSourceRepo.findByBomRevision returns *all* SS for that BOM.
-    let secondSources = [];
-    for (const id of ids) {
-        secondSources = secondSources.concat(secondSourceRepo.findByBomRevision(id));
-    }
-
-    // 3. 準備 Filter 邏輯
-    const filter = viewDefinition.filter;
-
-    // 定義狀態集合
-    let allowedStatuses = [];
-    if (filter.statusLogic === 'ACTIVE') {
-        allowedStatuses = mode === 'MP' ? ['I', 'M'] : ['I', 'P'];
-    } else if (filter.statusLogic === 'INACTIVE') {
-        allowedStatuses = mode === 'MP' ? ['X', 'P'] : ['X', 'M'];
-    } else if (filter.statusLogic === 'SPECIFIC') {
-        allowedStatuses = filter.bom_statuses || [];
-    }
-
-    // 4. 過濾零件
-    const filteredParts = parts.filter(part => {
-        // Type Filter
-        if (filter.types && filter.types.length > 0) {
-            if (!filter.types.includes(part.type)) return false;
-        }
-
-        // Status Filter
-        if (filter.statusLogic !== 'IGNORE') {
-            if (!allowedStatuses.includes(part.bom_status)) return false;
-        }
-
-        // CCL Filter
-        if (filter.ccl && part.ccl !== filter.ccl) {
-            return false;
-        }
-
-        return true;
-    });
-
-    // 5. 分組與聚合 (Group by supplier + supplier_pn + type)
-    const groupedMap = new Map();
-
-    for (const part of filteredParts) {
-        // Key logic must match `partsRepo.getAggregatedBom`
-        // Key: supplier|supplier_pn
-        const key = `${part.supplier}|${part.supplier_pn}`;
-
-        if (!groupedMap.has(key)) {
-            groupedMap.set(key, {
-                // Main Item Representative Fields
-                id: part.id, // Representative ID (Main Source ID)
-                bom_revision_id: part.bom_revision_id,
-                bom_ids: new Set([part.bom_revision_id]), // Track which BOMs have this part
-                supplier: part.supplier,
-                supplier_pn: part.supplier_pn,
-                type: part.type,
-                hhpn: part.hhpn,
-                description: part.description,
-                bom_status: part.bom_status, 
-                ccl: part.ccl,
-                remark: part.remark,
-                item: part.item,
-
-                // Aggregation Fields
-                locations: [],
-                quantity: 0
-            });
-        }
-
-        const group = groupedMap.get(key);
-        group.bom_ids.add(part.bom_revision_id); // Add BOM ID to set
-        group.locations.push(part.location);
-        group.quantity += 1;
-
-        // Update Min Item
-        if (part.item && (!group.item || part.item < group.item)) {
-            group.item = part.item;
-        }
-    }
-
-    // Convert Map to Array and Finalize Aggregation
-    const mainItems = Array.from(groupedMap.values()).map(group => {
-        // Sort Locations
-        // Simple sort for now. Ideally should be alphanumeric sort (R1, R2, R10...)
-        group.locations.sort((a, b) => {
-             // Try to parse number from string if possible for better sort
-             return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-        });
-
-        return {
-            ...group,
-            bom_ids: Array.from(group.bom_ids), // Convert Set to Array
-            locations: group.locations.join(',')
-        };
-    });
-
-    // Sort Main Items by Item Number (to match Repo behavior)
-    mainItems.sort((a, b) => {
-        if (a.item === null) return 1;
-        if (b.item === null) return -1;
-        return a.item - b.item;
-    });
-
-    // 6. 關聯 Second Sources
-    // Optimization: Build Index for Second Sources
-    // SS Key: main_supplier|main_supplier_pn
-    const ssMap = new Map();
-    for (const ss of secondSources) {
-        const key = `${ss.main_supplier}|${ss.main_supplier_pn}`;
-        if (!ssMap.has(key)) {
-            ssMap.set(key, []);
-        }
-        ssMap.get(key).push(ss);
-    }
-
-    // Attach
-    return mainItems.map(item => {
-        const key = `${item.supplier}|${item.supplier_pn}`;
-        return {
-            ...item,
-            second_sources: ssMap.get(key) || []
-        };
-    });
 }
 
 /**
@@ -343,6 +399,7 @@ export function updateBomRevision(id, updates) {
 }
 
 export default {
+    queryBomData,
     getBomData,
     executeView,
     getBomView,

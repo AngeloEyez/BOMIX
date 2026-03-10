@@ -4,39 +4,67 @@
  * @module services/bom-factory
  */
 
+/**
+ * BOM View 定義集合。
+ *
+ * 每個 View 包含：
+ *   - id: 唯一識別碼（供前端 IPC 呼叫使用）
+ *   - filters: Filter 陣列（格式詳見 dev/FILTER_SPEC.md）
+ */
 export const VIEWS = {
     ALL: {
         id: 'all_view',
-        filter: { statusLogic: 'ACTIVE' }
+        filters: [
+            { field: 'bom_status', operator: 'statusLogic', value: 'ACTIVE' }
+        ]
     },
     SMD: {
         id: 'smd_view',
-        filter: { types: ['SMD'], statusLogic: 'ACTIVE' }
+        filters: [
+            { field: 'type', operator: 'in', value: ['SMD'] },
+            { field: 'bom_status', operator: 'statusLogic', value: 'ACTIVE' }
+        ]
     },
     PTH: {
         id: 'pth_view',
-        filter: { types: ['PTH'], statusLogic: 'ACTIVE' }
+        filters: [
+            { field: 'type', operator: 'in', value: ['PTH'] },
+            { field: 'bom_status', operator: 'statusLogic', value: 'ACTIVE' }
+        ]
     },
     BOTTOM: {
         id: 'bottom_view',
-        filter: { types: ['BOTTOM'], statusLogic: 'ACTIVE' }
+        filters: [
+            { field: 'type', operator: 'in', value: ['BOTTOM'] },
+            { field: 'bom_status', operator: 'statusLogic', value: 'ACTIVE' }
+        ]
     },
     NI: {
         id: 'ni_view',
-        filter: { bom_statuses: ['X'], statusLogic: 'SPECIFIC' }
-        //filter: { statusLogic: 'INACTIVE' }
+        filters: [
+            { field: 'bom_status', operator: 'statusLogic', value: 'INACTIVE' }
+        ]
     },
     PROTO: {
         id: 'proto_view',
-        filter: { bom_statuses: ['P'], statusLogic: 'SPECIFIC' }
+        filters: [
+            { field: 'bom_status', operator: 'statusLogic', value: 'SPECIFIC' },
+            { field: 'bom_status', operator: 'in', value: ['P'] }
+        ]
     },
     MP: {
         id: 'mp_view',
-        filter: { bom_statuses: ['M'], statusLogic: 'SPECIFIC' }
+        filters: [
+            { field: 'bom_status', operator: 'statusLogic', value: 'SPECIFIC' },
+            { field: 'bom_status', operator: 'in', value: ['M'] }
+        ]
     },
     CCL: {
         id: 'ccl_view',
-        filter: { ccl: 'Y', statusLogic: 'ACTIVE' }
+        filters: [
+            { field: 'ccl', operator: 'eq', value: 'Y' },
+            { field: 'bom_status', operator: 'statusLogic', value: 'ACTIVE' }
+        ]
     }
 };
 
@@ -75,7 +103,7 @@ const EXPORTS = {
 /**
  * 取得 View 定義
  * @param {string} viewId
- * @returns {Object} View 定義物件
+ * @returns {Object} View 定義物件（含 filters 陣列）
  */
 export function getViewDefinition(viewId) {
     const view = ID_TO_VIEW_MAP[viewId];
@@ -83,6 +111,20 @@ export function getViewDefinition(viewId) {
         throw new Error(`Unknown View ID: ${viewId}`);
     }
     return view;
+}
+
+/**
+ * 取得 View 的 Filter 陣列
+ *
+ * 供前端透過 IPC 查詢特定 View 對應的 filters（格式詳見 dev/FILTER_SPEC.md）。
+ *
+ * @param {string} viewId - View ID（例如 'all_view'、'smd_view'）
+ * @returns {Array<Object>} Filter 陣列
+ * @throws {Error} 若 viewId 不存在
+ */
+export function getViewFilters(viewId) {
+    const view = getViewDefinition(viewId);
+    return view.filters;
 }
 
 /**
@@ -103,5 +145,6 @@ export default {
     VIEW_IDS,
     EXPORT_IDS,
     getViewDefinition,
+    getViewFilters,
     getExportDefinition
 };
