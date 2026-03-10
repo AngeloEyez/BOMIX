@@ -361,6 +361,8 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 ---
 
 ## 7. UI 設計規格
+採用 SHADCN UI 框架，VSCODE 緊湊布局風格。
+善用 SHADCN MCP.
 
 ### 7.1 設計風格
 

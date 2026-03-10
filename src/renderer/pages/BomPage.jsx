@@ -9,6 +9,9 @@ import useBomStore from '../stores/useBomStore'
 import useTaskStore from '../stores/useTaskStore'
 import useToastStore from '../stores/useToastStore'
 import useMatrixStore from '../stores/useMatrixStore'
+import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Separator } from "@/components/ui/separator"
 import BomTable from '../components/tables/BomTable'
 import BomSidebar from '../components/layout/BomSidebar'
 import ConfirmDialog from '../components/dialogs/ConfirmDialog'
@@ -355,14 +358,13 @@ function BomPage() {
                                     }`}
                                 title={isForced ? 'CCL Filter 在此模式下強制啟用' : '切換 CCL Filter'}
                             >
-                                <input
-                                    type="checkbox"
+                                <Checkbox
                                     checked={isChecked}
                                     disabled={isForced}
-                                    onChange={(e) => {
-                                        if (!isForced) setCclFilter(e.target.checked)
+                                    onCheckedChange={(checked) => {
+                                        if (!isForced) setCclFilter(checked)
                                     }}
-                                    className="h-3 w-3 accent-primary"
+                                    className="data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground border-primary/50"
                                 />
                                 <span className="font-medium">CCL</span>
                             </label>
