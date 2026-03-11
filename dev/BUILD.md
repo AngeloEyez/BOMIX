@@ -57,7 +57,7 @@ npm run lint
 
 ## 注意事項
 
-1. **better-sqlite3 原生模組**：首次安裝時需要編譯原生模組，確保系統已有 C/C++ 建置工具（`npm install --global windows-build-tools` 或 Visual Studio Build Tools）
+1. **better-sqlite3 原生模組**：首次安裝時需要編譯原生模組，使用 `npm rebuild better-sqlite3` `npx electron-builder install-app-deps` rebuild
 2. **靜態資源**：`CHANGELOG.md` 會作為 `extraResources` 包含在打包產物中
 3. **圖標**：應用程式圖標放置在 `resources/icon.ico`
 4. **編譯產物**：`out/`（編譯中間產物）和 `dist/`（最終打包）已加入 `.gitignore`
