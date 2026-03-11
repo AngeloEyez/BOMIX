@@ -4,7 +4,7 @@
 // 目錄結構與設定項目從 settingsConfig.js 動態生成，無需手動維護 SETTINGS_TREE
 // ========================================
 
-import { useState, useRef } from 'react'
+import React, { useState, useRef } from 'react'
 import { ChevronRight, RotateCcw } from 'lucide-react'
 import useSettingsStore from '../stores/useSettingsStore'
 import { SETTINGS_CONFIG, buildSettingsTree } from '../config/settingsConfig'
@@ -117,6 +117,15 @@ function SettingsPage() {
     // 各設定區塊的 DOM ref
     const sectionRefs = useRef({})
 
+    // 從 localStorage 讀取設定頁面側邊欄初始佈局
+    const defaultLayout = React.useMemo(() => {
+        try {
+            const saved = window.localStorage.getItem('settings-layout')
+            if (saved) return JSON.parse(saved)
+        } catch(e) { /* ignore */ }
+        return undefined
+    }, [])
+
     const toggleCategory = (catId) => {
         setOpenCategories(prev => ({ ...prev, [catId]: !prev[catId] }))
     }
@@ -198,11 +207,18 @@ function SettingsPage() {
             </div>
 
             <div className="flex-1 overflow-hidden">
-                {/* react-resizable-panels v4：size 需傳百分比字串 */}
-                <ResizablePanelGroup direction="horizontal" className="h-full items-stretch">
+                {/* react-resizable-panels v4：持久化佈局與 size 需傳百分比字串 */}
+                <ResizablePanelGroup 
+                    direction="horizontal" 
+                    className="h-full items-stretch"
+                    defaultLayout={defaultLayout}
+                    onLayoutChanged={(sizes) => {
+                        window.localStorage.setItem('settings-layout', JSON.stringify(sizes));
+                    }}
+                >
 
                     {/* ========== 左側目錄（動態生成） ========== */}
-                    <ResizablePanel defaultSize="18%" minSize="13%" maxSize="40%" className="bg-muted/10 flex flex-col overflow-hidden">
+                    <ResizablePanel id="settings-sidebar" defaultSize="18%" minSize="13%" maxSize="40%" className="bg-muted/10 flex flex-col overflow-hidden">
                         <div className="flex-1 overflow-y-auto py-4 pr-3 pl-2">
                             <div className="space-y-1">
                                 {SETTINGS_TREE.map((category) => {
@@ -245,7 +261,7 @@ function SettingsPage() {
                     <ResizableHandle withHandle className="hover:bg-primary/50 transition-colors" />
 
                     {/* ========== 右側設定內容（動態渲染） ========== */}
-                    <ResizablePanel className="bg-background flex flex-col overflow-hidden">
+                    <ResizablePanel id="settings-main" defaultSize="82%" className="bg-background flex flex-col overflow-hidden">
                         <div ref={rightScrollRef} className="flex-1 overflow-y-auto">
                             <div className="max-w-3xl mx-auto pb-20">
                                 {SETTINGS_TREE.map((category) => (

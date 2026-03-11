@@ -17,6 +17,11 @@ import BomSidebar from '../components/layout/BomSidebar'
 import ConfirmDialog from '../components/dialogs/ConfirmDialog'
 import MatrixModelDialog from '../components/dialogs/MatrixModelDialog'
 import { Button } from '@/components/ui/button'
+import {
+    ResizablePanelGroup,
+    ResizablePanel,
+    ResizableHandle
+} from '@/components/ui/resizable'
 
 // ========================================
 // BOM 檢視頁面
@@ -69,6 +74,15 @@ function BomPage() {
     const [deleteTarget, setDeleteTarget] = useState(null)
     // Matrix Model 管理對話框
     const [isMatrixModelDialogOpen, setIsMatrixModelDialogOpen] = useState(false)
+
+    // 從 localStorage 讀取側邊欄初始佈局
+    const defaultLayout = useMemo(() => {
+        try {
+            const saved = window.localStorage.getItem('bom-layout')
+            if (saved) return JSON.parse(saved)
+        } catch(e) { /* ignore */ }
+        return undefined // 若無存檔則回傳 undefined，讓元件使用個別的 defaultSize
+    }, [])
 
     // 視圖狀態 (Definitions)
     const [views, setViews] = useState({})
@@ -289,11 +303,39 @@ function BomPage() {
     // ========================================
     return (
         <div className="flex h-full animate-fade-in">
-            {/* 側邊欄 */}
-            <BomSidebar />
+            {/* ========================================
+                可拖曳調整寬度的左右分隔面板
+                - 左側：BomSidebar（可收合）
+                - 右側：工具列 + BOM 表格
+                當左側 size < 5% 時自動收合至 collapsedSize=0.7%
+             ======================================== */}
+            <ResizablePanelGroup 
+                direction="horizontal" 
+                className="h-full" 
+                defaultLayout={defaultLayout}
+                onLayoutChanged={(sizes) => {
+                    window.localStorage.setItem('bom-layout', JSON.stringify(sizes));
+                }}
+            >
+                {/* 左側側邊欄面板：可收合，最小顯示寬度 5%，收合後 0.7% */}
+                <ResizablePanel
+                    id="sidebar"
+                    defaultSize="12%"
+                    minSize="5%"
+                    collapsible={true}
+                    collapsedSize="0.7%"
+                    className="min-w-0"
+                >
+                    <BomSidebar />
 
-            {/* 主要內容區 */}
-            <div className="flex-1 flex flex-col min-w-0 p-3 gap-2">
+                </ResizablePanel>
+
+                {/* 可拖曳的分隔把手，withHandle 顯示中央握把圖示 */}
+                <ResizableHandle withHandle />
+
+                {/* 右側主要內容面板 */}
+                <ResizablePanel id="main" defaultSize="88%" minSize="75%">
+                <div className="flex flex-1 flex-col h-full min-w-0 p-3 gap-2">
                 {/* 工具列 */}
                 <div className="flex items-center gap-2 flex-wrap bg-background p-2 rounded-lg shadow-sm border border-border">
 
@@ -511,7 +553,9 @@ function BomPage() {
                         </div>
                     )}
                 </div>
-            </div>
+                </div>
+                </ResizablePanel>
+            </ResizablePanelGroup>
 
             {/* Matrix Model 管理對話框 */}
             {/* Use first selected ID for model management? Or disable for multi-select? */}

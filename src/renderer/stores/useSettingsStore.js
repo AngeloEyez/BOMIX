@@ -21,7 +21,6 @@ const useSettingsStore = create((set, get) => ({
 
     // 側邊欄設定（純 UI 狀態，不透過 settingsConfig 管理）
     bomSidebarWidth: 250,
-    isBomSidebarCollapsed: false,
 
     // 初始化設定：從後端讀取
     initSettings: async () => {
@@ -47,7 +46,6 @@ const useSettingsStore = create((set, get) => ({
                 }
                 // 側邊欄設定（不在 settingsConfig 中的額外欄位）
                 if (result.data.bomSidebarWidth) loadedSettings.bomSidebarWidth = result.data.bomSidebarWidth
-                if (result.data.isBomSidebarCollapsed) loadedSettings.isBomSidebarCollapsed = result.data.isBomSidebarCollapsed
 
                 set(loadedSettings)
             }
@@ -123,7 +121,6 @@ const useSettingsStore = create((set, get) => ({
 
             // 加入不在 settingsConfig 的側邊欄設定
             payload.bomSidebarWidth = state.bomSidebarWidth
-            payload.isBomSidebarCollapsed = state.isBomSidebarCollapsed
 
             // 後端 API 使用 themeId 作為 activeThemeId 的鍵名
             if (payload.activeThemeId !== undefined) {
