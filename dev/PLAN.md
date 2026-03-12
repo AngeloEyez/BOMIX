@@ -4,10 +4,9 @@
 
 ## 開發策略
 
-採用 **前後端分離、循序開發** 策略：
-- **Jules (Backend/Frontend)** 負責後端與 Matrix 模組的全端開發
-- **Antigravity (Frontend)** 負責其他 UI 整合
-- 透過明確的 Phase 切分，讓兩位 Agent 的職責更清晰
+採用 **全棧負責、循序開發** 策略：
+- 每一項功能的開發者必須負責其垂直整合（從資料庫到 UI）。
+- 透過明確的 Phase 切分，確保功能的完整性與穩定性。
 
 ---
 
@@ -45,8 +44,8 @@
   - [x] `components/dialogs/AboutDialog.jsx`
   - [x] `components/dialogs/ChangelogDialog.jsx`
 
-### Phase 2：主行程資料層 (Jules) ⭐ 已完成
-**負責人：Jules**
+### Phase 2：主行程資料層 ⭐ 已完成
+建立資料庫架構與 Repository Pattern，不含 IPC 與 UI 整合。
 建立資料庫架構與 Repository Pattern，不含 IPC 與 UI 整合。
 
 - [x] `src/main/database/connection.js` — SQLite 連線管理
@@ -58,8 +57,8 @@
 - [x] `src/main/database/repositories/second-source.repo.js`
 - [x] 單元測試 (Repositories)
 
-### Phase 3：系列與專案管理 - 後端 (Jules) ⭐ 已完成
-**負責人：Jules**
+### Phase 3：系列與專案管理 - 後端 ⭐ 已完成
+實作核心業務邏輯並開放 API。
 實作核心業務邏輯並開放 API。
 
 - [x] `src/main/services/series.service.js`
@@ -70,8 +69,8 @@
 - [x] 撰寫 API 文件 (`dev/modules/`)
 - [x] 單元測試 (Services)
 
-### Phase 4：系列與專案管理 - 前端 (Antigravity) ⭐ 已完成
-**負責人：Antigravity**
+### Phase 4：系列與專案管理 - 前端 ⭐ 已完成
+整合 Phase 3 開放的 API，完成 UI 功能。
 整合 Phase 3 開放的 API，完成 UI 功能。
 
 - [x] `stores/useSeriesStore.js`
@@ -81,8 +80,8 @@
 - [x] 整合測試
 - [x] **儀表板 (Dashboard) 整合**：合併首頁與專案管理，實作樹狀視圖
 
-### Phase 5：BOM 管理與 Excel 整合 - 後端 (Jules) ⭐ 已完成
-**負責人：Jules**
+### Phase 5：BOM 管理與 Excel 整合 - 後端 ⭐ 已完成
+BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 
 - [x] `src/main/services/bom.service.js` (含 Mode 判斷邏輯)
@@ -94,8 +93,8 @@ BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 - [x] 撰寫 API 文件 (`dev/modules/`)
 - [x] 單元測試 (含 Excel 範本與匯出格式驗證)
 
-### Phase 6：BOM 管理與 Excel 整合 - 前端 (Antigravity) ⭐ 已完成
-**負責人：Antigravity**
+### Phase 6：BOM 管理與 Excel 整合 - 前端 ⭐ 已完成
+整合 BOM 表格與 Excel 匯入匯出功能。
 整合 BOM 表格與 Excel 匯入匯出功能。
 
 - [x] `stores/useBomStore.js`
@@ -110,8 +109,8 @@ BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
   - [x] 側邊欄 UI 改善（全部展開/收合切換按鈕）
 
 
-### Phase 7：Matrix BOM 功能 (Jules) ⭐ 進行中
-**負責人：Jules** (涵蓋前後端)
+### Phase 7：Matrix BOM 功能 ⭐ 進行中
+實作多 Model 選擇、勾選與狀態顯示（涵蓋垂直整合開發）。
 實作多 Model 選擇、勾選與狀態顯示。
 
 - [ ] **文件與架構**
@@ -132,8 +131,8 @@ BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
   - [ ] 更新 `src/renderer/pages/BomPage.jsx` (整合 Matrix View)
   - [ ] 更新 `src/renderer/pages/DashboardPage.jsx` (整合 Tag 與燈號)
 
-### Phase 8：版本比較 - 後端 (Jules)
-**負責人：Jules**
+### Phase 8：版本比較 - 後端
+實作 BOM 版本差異比對演算法。
 實作 BOM 版本差異比對演算法。
 
 - [ ] `src/main/services/compare.service.js`
@@ -142,8 +141,8 @@ BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 - [ ] 撰寫 API 文件 (`dev/modules/`)
 - [ ] 單元測試 (演算法驗證)
 
-### Phase 9：版本比較 - 前端 (Antigravity)
-**負責人：Antigravity**
+### Phase 9：版本比較 - 前端
+呈現比對結果。
 呈現比對結果。
 
 - [ ] `stores/useCompareStore.js`
