@@ -3,7 +3,7 @@ import Dialog from './Dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, X, GripVertical } from 'lucide-react';
-import { SortableList, SortableItem, SortableDragHandle } from '@/components/ui/sortable';
+import { Sortable, SortableContent, SortableItem, SortableItemHandle } from '@/components/ui/sortable';
 
 const DEFAULT_PHASE_ORDER = [
     'RFI',
@@ -115,37 +115,39 @@ function PhaseOrderDialog({ isOpen, onClose, currentPhaseOrder, onSave, required
                 )}
 
                 <div className="bg-muted/30 border border-border rounded-lg p-2 max-h-[40vh] overflow-y-auto">
-                    <SortableList
+                    <Sortable
                         value={items}
                         onValueChange={handleSortEnd}
-                        className="space-y-2"
+                        getItemValue={(item) => item.id}
                     >
-                        {items.map((item) => (
-                            <SortableItem key={item.id} value={item.id} asChild>
-                                <div className="flex items-center gap-2 bg-background border border-border p-1.5 rounded-md shadow-sm group">
-                                    <SortableDragHandle asChild>
-                                        <Button variant="ghost" size="icon" className="h-6 w-6 cursor-grab text-muted-foreground">
-                                            <GripVertical size={14} />
+                        <SortableContent className="space-y-2">
+                            {items.map((item) => (
+                                <SortableItem key={item.id} value={item.id} asChild>
+                                    <div className="flex items-center gap-2 bg-background border border-border p-1.5 rounded-md shadow-sm group">
+                                        <SortableItemHandle asChild>
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 cursor-grab text-muted-foreground">
+                                                <GripVertical size={14} />
+                                            </Button>
+                                        </SortableItemHandle>
+                                        <Input
+                                            value={item.value}
+                                            onChange={(e) => handleItemChange(item.id, e.target.value)}
+                                            className="h-7 text-xs flex-1 border-transparent focus-visible:ring-1 bg-transparent"
+                                            placeholder="例如: EVT, DVT"
+                                        />
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive"
+                                            onClick={() => handleRemoveItem(item.id)}
+                                        >
+                                            <X size={14} />
                                         </Button>
-                                    </SortableDragHandle>
-                                    <Input
-                                        value={item.value}
-                                        onChange={(e) => handleItemChange(item.id, e.target.value)}
-                                        className="h-7 text-xs flex-1 border-transparent focus-visible:ring-1 bg-transparent"
-                                        placeholder="例如: EVT, DVT"
-                                    />
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive"
-                                        onClick={() => handleRemoveItem(item.id)}
-                                    >
-                                        <X size={14} />
-                                    </Button>
-                                </div>
-                            </SortableItem>
-                        ))}
-                    </SortableList>
+                                    </div>
+                                </SortableItem>
+                            ))}
+                        </SortableContent>
+                    </Sortable>
                 </div>
 
                 <div className="flex items-center gap-2">
