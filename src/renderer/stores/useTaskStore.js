@@ -3,6 +3,12 @@ import { create } from 'zustand'
 // 最大任務保留數量
 export const MAX_TASKS = 30
 
+/** 系統通知 Session 的固定 ID */
+export const SYSTEM_LOG_SESSION_ID = 'system-logs'
+
+/** 系統通知 Session 最多保留的日誌條數 */
+export const MAX_SYSTEM_LOGS = 100
+
 /**
  * Task Store
  *
@@ -27,6 +33,12 @@ const useTaskStore = create((set, get) => ({
     ipcInitialized: false,
     /** @type {number} 佇列中等待的任務數 */
     queueLength: 0,
+    /**
+     * 全域最新一條日誌（任務日誌或系統通知皆會更新）。
+     * 供 AppStatusLine 快速讀取，無需掃描所有 sessions。
+     * @type {{ message: string, level: string, timestamp: string } | null}
+     */
+    lastGlobalLog: null,
 
     // --- 任務完成 Callback 註冊 ---
     /** @type {Map<string, Set<Function>>} 任務完成時的 callback (依 type 分類) */
@@ -111,6 +123,50 @@ const useTaskStore = create((set, get) => ({
     },
 
     /**
+     * 新增一條系統通知日誌（非任務型日誌，如 UI 操作結果）。
+     *
+     * 所有訊息會累積在固定 ID 為 `system-logs` 的 Session 中，
+     * 總數超過 MAX_SYSTEM_LOGS 時，自動移除最舊的那一筆。
+     * 同時更新 `lastGlobalLog` 供狀態列即時顯示。
+     *
+     * @param {string} message - 日誌訊息
+     * @param {'info'|'warn'|'error'|'success'} [level='info'] - 日誌等級
+     */
+    addSystemLog: (message, level = 'info') => {
+        const now = new Date().toISOString()
+        const newLog = { message, level, timestamp: now }
+
+        set((state) => {
+            const newSessions = new Map(state.sessions)
+
+            // 取得或建立「系統通知」Session
+            const existing = newSessions.get(SYSTEM_LOG_SESSION_ID)
+            const prevLogs = existing?.logs ?? []
+
+            // 超過上限時移除最舊的
+            const trimmed = prevLogs.length >= MAX_SYSTEM_LOGS
+                ? prevLogs.slice(prevLogs.length - MAX_SYSTEM_LOGS + 1)
+                : prevLogs
+
+            newSessions.set(SYSTEM_LOG_SESSION_ID, {
+                id: SYSTEM_LOG_SESSION_ID,
+                title: '系統通知',
+                status: 'SYSTEM',
+                progress: 0,
+                message,
+                logs: [...trimmed, newLog],
+                createdAt: existing?.createdAt ?? now,
+                updatedAt: now,
+            })
+
+            return {
+                sessions: newSessions,
+                lastGlobalLog: newLog,
+            }
+        })
+    },
+
+    /**
      * 取消排隊中的任務
      * @param {string} taskId - 任務 ID
      */
@@ -192,10 +248,18 @@ const useTaskStore = create((set, get) => ({
                     }
                 }
 
+                // 更新全域最新日誌（取目前任務最後一條 log）
+                let newLastGlobalLog = state.lastGlobalLog
+                const updatedSession = newSessions.get(task.id)
+                if (updatedSession?.logs?.length > 0) {
+                    newLastGlobalLog = updatedSession.logs[updatedSession.logs.length - 1]
+                }
+
                 return {
                     sessions: newSessions,
                     activeSessionId: newActiveId,
-                    queueLength: queueLen
+                    queueLength: queueLen,
+                    lastGlobalLog: newLastGlobalLog,
                 }
             })
         }

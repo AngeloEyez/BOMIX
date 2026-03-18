@@ -1,6 +1,6 @@
 # BOMIX 系統架構設計
 
-> 版本：1.1.0 | 最後更新：2026-02-13
+> 版本：1.2.0 | 最後更新：2026-03-18
 
 ## 架構概覽
 
@@ -119,3 +119,30 @@ IPC Handlers → Services → Repositories → SQLite
 - 應用程式設定（視窗大小、主題偏好、最近開啟的檔案等）存於使用者目錄
 - 使用 JSON 格式儲存
 - 設定檔路徑：`%APPDATA%/BOMIX/settings.json`
+
+## 日誌系統
+
+BOMIX 的日誌系統由 `useTaskStore`（Zustand）集中管理，分為兩種來源，統一顯示於底部狀態列與進度對話框。
+
+### 雙來源設計
+
+| 來源 | 寫入方式 | 說明 |
+|------|----------|------|
+| **Task Log** | 後端透過 IPC `task:update` 推送 | 與後端任務排程一對一綁定 |
+| **System Log** | 前端主動呼叫 `addSystemLog()` | 記錄 UI 操作結果（如 Toast 同步來源） |
+
+### 關鍵設計
+
+- `lastGlobalLog`：`useTaskStore` 中的單一欄位，無論哪個來源寫入日誌皆會更新，讓底部狀態列**無需掃描所有 sessions** 即可即時反映最新訊息
+- `system-logs` Session：固定 ID 的特殊 Session，儲存所有系統通知，上限為 `MAX_SYSTEM_LOGS = 100` 條（超過自動移除最舊的）
+- 底部狀態列過濾 `status === 'SYSTEM'` 的 Session，避免系統通知佔據主任務顯示區
+
+### 相關檔案
+
+| 檔案 | 說明 |
+|------|------|
+| `src/renderer/stores/useTaskStore.js` | 日誌 Store（`addSystemLog`、`lastGlobalLog`） |
+| `src/renderer/components/layout/AppStatusLine.jsx` | 底部狀態列，顯示最新日誌 |
+| `src/renderer/components/dialogs/ProgressDialog.jsx` | 進度對話框，顯示完整歷史 |
+
+詳細 API 說明請參閱 [LOG_SYSTEM.md](LOG_SYSTEM.md)

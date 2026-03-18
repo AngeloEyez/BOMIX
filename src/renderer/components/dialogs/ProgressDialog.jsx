@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import useTaskStore, { MAX_TASKS } from '../../stores/useTaskStore'
+import useTaskStore, { MAX_TASKS, SYSTEM_LOG_SESSION_ID } from '../../stores/useTaskStore'
 
 /**
  * 詳細進度對話框
@@ -27,6 +27,10 @@ function ProgressDialog() {
     if (!isDialogOpen) return null
 
     const sessionList = Array.from(sessions.values()).sort((a, b) => {
+        // 系統通知固定置頂
+        if (a.id === SYSTEM_LOG_SESSION_ID) return -1
+        if (b.id === SYSTEM_LOG_SESSION_ID) return 1
+
         if (sortBy === 'startTime') {
             return new Date(b.createdAt) - new Date(a.createdAt)
         } else {
@@ -186,7 +190,9 @@ function StatusBadge({ status }) {
         RUNNING: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
         COMPLETED: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
         FAILED: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
-        CANCELLED: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+        CANCELLED: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
+        // 系統通知 Session 專用樣式
+        SYSTEM: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
     }
     return (
         <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${colors[status] || colors.PENDING}`}>
