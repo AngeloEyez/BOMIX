@@ -165,3 +165,6 @@ body {
   }
 }
 
+@layer utilities {
+  .text-2xs { @apply text-[0.725rem]; }
+}

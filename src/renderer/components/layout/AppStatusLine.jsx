@@ -78,7 +78,7 @@ function AppStatusLine({ onNavigate }) {
                                 : 'bg-emerald-500'               // 連線時恆亮
                             : 'bg-border'                        // 未連線（使用語義化變數）
                     }`} />
-                    {isOpen ? (isDbBusy ? '存取中...' : '已連線') : '未連線'}
+                                        <span className="text-2xs whitespace-nowrap">{isOpen ? (isDbBusy ? '存取中...' : '已連線') : '未連線'}</span>
                 </span>
                 {/* 資料庫路徑 */}
                 {isOpen && currentPath && (
