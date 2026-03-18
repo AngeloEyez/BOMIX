@@ -142,7 +142,24 @@ const useSeriesStore = create((set, get) => ({
      */
     updateDescription: async (description) => {
         try {
-            const result = await window.api.series.updateMeta(description)
+            const result = await window.api.series.updateMeta({ description })
+            if (result.success) {
+                set({ currentSeries: result.data })
+            }
+            return result
+        } catch (error) {
+            return { success: false, error: error.message }
+        }
+    },
+
+    /**
+     * 更新目前系列的 phase_order。
+     *
+     * @param {string[]} orderArray - 新的順序陣列
+     */
+    updatePhaseOrder: async (orderArray) => {
+        try {
+            const result = await window.api.series.updateMeta({ phase_order: JSON.stringify(orderArray) })
             if (result.success) {
                 set({ currentSeries: result.data })
             }

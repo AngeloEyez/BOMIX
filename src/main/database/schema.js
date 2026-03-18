@@ -12,6 +12,7 @@ const CREATE_SERIES_META = `
 CREATE TABLE IF NOT EXISTS series_meta (
     id INTEGER PRIMARY KEY DEFAULT 1,
     description TEXT,
+    phase_order TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -212,6 +213,14 @@ function migrateSchema(db) {
         console.log('[Schema] 正在遷移: 建立 Matrix BOM 相關資料表');
         db.exec(CREATE_MATRIX_MODELS);
         db.exec(CREATE_MATRIX_SELECTIONS);
+    }
+
+    // 4. Phase Order
+    const seriesMetaInfo = db.pragma('table_info(series_meta)');
+    const seriesMetaColumns = new Set(seriesMetaInfo.map(col => col.name));
+    if (!seriesMetaColumns.has('phase_order')) {
+        console.log('[Schema] 正在遷移: 新增 phase_order 欄位至 series_meta');
+        db.exec("ALTER TABLE series_meta ADD COLUMN phase_order TEXT");
     }
 }
 

@@ -398,6 +398,39 @@ export function updateBomRevision(id, updates) {
     return updated;
 }
 
+/**
+ * 取得上一版 BOM 版本 ID
+ * @param {number} bomRevisionId - 目前 BOM 版本 ID
+ * @returns {number|null} 上一版 BOM 版本 ID (若無則回傳 null)
+ */
+export function getLastBomRevisionId(bomRevisionId) {
+    const currentBom = bomRevisionRepo.findById(bomRevisionId);
+    if (!currentBom) {
+        throw new Error(`找不到 ID 為 ${bomRevisionId} 的 BOM 版本`);
+    }
+
+    const projectId = currentBom.project_id;
+    // bomRevisionRepo.findByProject returns BOMs sorted by phase_order
+    const sortedBoms = bomRevisionRepo.findByProject(projectId);
+
+    // Find the index of the current BOM
+    const currentIndex = sortedBoms.findIndex(bom => bom.id === bomRevisionId);
+
+    // If it is the first one, or not found, return null
+    // Since sortedBoms is sorted by precedence (ascending in code conceptually, but let's check sorter)
+    // Actually, smaller index = higher precedence/newer or older?
+    // User requested: "SI-0.2的前一版是 DB1-0.2"
+    // sortBoms sorts DB1 before SI. So DB1 index < SI index.
+    // This means chronological order (older -> newer).
+    // So the previous version is at currentIndex - 1.
+
+    if (currentIndex > 0) {
+        return sortedBoms[currentIndex - 1].id;
+    }
+
+    return null;
+}
+
 export default {
     queryBomData,
     getBomData,
@@ -409,5 +442,6 @@ export default {
     updateSecondSource,
     deleteSecondSource,
     deleteBom,
-    updateBomRevision
+    updateBomRevision,
+    getLastBomRevisionId
 };

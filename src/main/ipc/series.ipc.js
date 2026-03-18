@@ -42,8 +42,8 @@ export function registerSeriesIpc(ipcMain) {
         return seriesService.getSeriesMeta();
     }));
 
-    ipcMain.handle('series:updateMeta', withErrorHandling((description) => {
-        return seriesService.updateSeriesMeta(description);
+    ipcMain.handle('series:updateMeta', withErrorHandling((data) => {
+        return seriesService.updateSeriesMeta(data);
     }));
 
     ipcMain.handle('series:rename', withErrorHandling((newName) => {

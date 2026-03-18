@@ -64,19 +64,28 @@ function create(data) {
   );
 }
 
+import { getPhaseOrderArray, sortBoms } from '../../utils/phase-sorter.js';
+import seriesRepo from './series.repo.js';
+
 /**
- * 取得專案的所有 BOM 版本
+ * 取得專案的所有 BOM 版本，並依據 phase order 進行排序
  * @param {number} projectId - 專案 ID
- * @returns {Array<Object>} BOM 版本列表，依 Phase 和 Version 排序
+ * @returns {Array<Object>} BOM 版本列表，依自訂 Phase、數字、版本、後綴排序
  */
 function findByProject(projectId) {
   const db = dbManager.getDb();
   const stmt = db.prepare(`
     SELECT * FROM bom_revisions
     WHERE project_id = ?
-    ORDER BY phase_name ASC, version DESC
   `);
-  return stmt.all(projectId);
+  const boms = stmt.all(projectId);
+
+  // 取得自訂排序
+  const meta = seriesRepo.getMeta();
+  const orderArray = getPhaseOrderArray(meta?.phase_order);
+
+  // 進行排序
+  return sortBoms(boms, orderArray);
 }
 
 /**

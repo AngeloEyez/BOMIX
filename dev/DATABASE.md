@@ -37,6 +37,7 @@ erDiagram
     series_meta {
         INTEGER id PK
         TEXT description
+        TEXT phase_order
         DATETIME created_at
         DATETIME updated_at
     }
@@ -118,6 +119,7 @@ erDiagram
 |------|------|------|------|
 | id | INTEGER | PK, DEFAULT 1 | 主鍵（固定為 1，僅一筆紀錄） |
 | description | TEXT | | 系列描述 |
+| phase_order | TEXT | | 自訂的 Phase 排序清單 (JSON array 格式) |
 | created_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | 系列建立時間 |
 | updated_at | DATETIME | DEFAULT CURRENT_TIMESTAMP | 最後修改時間 |
 

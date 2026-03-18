@@ -71,7 +71,7 @@ describe('Excel Import/Export Verification', () => {
         expect(fs.existsSync(templatePath)).toBe(true);
 
         // 1. Import
-        const result = importService.importBom(templatePath, 101, 'SI', '0.3');
+        const result = importService.importBom('101', 'SI', '0.3', 'BOM', templatePath);
 
         expect(result.success).toBe(true);
         expect(bomRevisionRepo.create).toHaveBeenCalled();

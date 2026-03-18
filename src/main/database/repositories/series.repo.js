@@ -20,21 +20,36 @@ function getMeta() {
  * 更新系列元資料
  * @param {Object} data - 更新資料
  * @param {string} [data.description] - 系列描述
+ * @param {string} [data.phase_order] - JSON string of phase order
  * @returns {Object} 更新後的系列資訊
  */
 function updateMeta(data) {
   const db = dbManager.getDb();
-  const { description } = data;
 
-  const stmt = db.prepare(`
+  const fields = [];
+  const values = [];
+
+  if (data.description !== undefined) {
+    fields.push("description = ?");
+    values.push(data.description);
+  }
+  if (data.phase_order !== undefined) {
+    fields.push("phase_order = ?");
+    values.push(data.phase_order);
+  }
+
+  if (fields.length === 0) return getMeta();
+
+  const sql = `
     UPDATE series_meta
-    SET description = COALESCE(?, description),
+    SET ${fields.join(', ')},
         updated_at = CURRENT_TIMESTAMP
     WHERE id = 1
     RETURNING *
-  `);
+  `;
 
-  return stmt.get(description);
+  const stmt = db.prepare(sql);
+  return stmt.get(...values);
 }
 
 /**
