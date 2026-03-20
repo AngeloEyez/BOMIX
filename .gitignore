@@ -17,6 +17,8 @@ dist/
 Thumbs.db
 *.sw?
 *.log
+*.bomix-shm
+*.bomix-wal
 npm-debug.log*
 
 # --- 環境變數 ---
