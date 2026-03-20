@@ -83,7 +83,7 @@ describe('Import Service Logic - NPI/MP Mode & Status Updates', () => {
         });
         xlsx.readFile.mockReturnValue(workbook);
 
-        importBom('test.xls', 1, 'DB', '0.1');
+        importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
 
         expect(partsRepo.createMany).toHaveBeenCalled();
         const insertedParts = partsRepo.createMany.mock.calls[0][0];
@@ -106,7 +106,7 @@ describe('Import Service Logic - NPI/MP Mode & Status Updates', () => {
         });
         xlsx.readFile.mockReturnValue(workbook);
 
-        importBom('test.xls', 1, 'DB', '0.1');
+        importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
 
         const insertedParts = partsRepo.createMany.mock.calls[0][0];
         const c1Parts = insertedParts.filter(p => p.location === 'C1');
@@ -123,7 +123,7 @@ describe('Import Service Logic - NPI/MP Mode & Status Updates', () => {
         });
         xlsx.readFile.mockReturnValue(workbook);
 
-        importBom('test.xls', 1, 'DB', '0.1');
+        importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
 
         const insertedParts = partsRepo.createMany.mock.calls[0][0];
         
@@ -144,7 +144,7 @@ describe('Import Service Logic - NPI/MP Mode & Status Updates', () => {
         });
         xlsx.readFile.mockReturnValue(workbook);
 
-        importBom('test.xls', 1, 'DB', '0.1');
+        importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
         
         // Check Mode
         expect(bomRevisionRepo.create).toHaveBeenCalledWith(expect.objectContaining({ mode: 'MP' }));
@@ -169,7 +169,7 @@ describe('Import Service Logic - NPI/MP Mode & Status Updates', () => {
         });
         xlsx.readFile.mockReturnValue(workbook);
 
-        importBom('test.xls', 1, 'DB', '0.1');
+        importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
 
         const insertedParts = partsRepo.createMany.mock.calls[0][0];
         const c1Parts = insertedParts.filter(p => p.location === 'C1');
@@ -185,7 +185,7 @@ describe('Import Service Logic - NPI/MP Mode & Status Updates', () => {
         });
         xlsx.readFile.mockReturnValue(workbook);
 
-        importBom('test.xls', 1, 'DB', '0.1');
+        importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
         
         const insertedParts = partsRepo.createMany.mock.calls[0][0];
 

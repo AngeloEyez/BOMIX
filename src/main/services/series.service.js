@@ -90,19 +90,22 @@ export function getSeriesMeta() {
 }
 
 /**
- * 更新目前系列的描述
+ * 更新目前系列的描述或其他 Meta 資訊
  *
- * @param {string} description - 新的描述
+ * @param {Object|string} data - 新的描述或更新物件 { description, phase_order }
  * @returns {Object} 更新後的系列資訊
  * @throws {Error} 若更新失敗
  */
-export function updateSeriesMeta(description) {
-    if (description === undefined || description === null) {
-        throw new Error('必須提供描述內容');
+export function updateSeriesMeta(data) {
+    if (data === undefined || data === null) {
+        throw new Error('必須提供更新內容');
     }
 
     try {
-        const updated = seriesRepo.updateMeta({ description });
+        // 向下相容，如果傳入的是字串，則視為 description
+        const updateData = typeof data === 'string' ? { description: data } : data;
+
+        const updated = seriesRepo.updateMeta(updateData);
         updated.bomCount = seriesRepo.getBomCount(); // 保持資料結構一致
         return updated;
     } catch (error) {

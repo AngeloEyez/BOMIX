@@ -36,6 +36,15 @@ export function registerExcelIpc(ipcMain) {
     };
 
     // ========================================
+    // 分析 Excel 檔案以取得預期的 MetaData (Phase 等)
+    // ========================================
+    ipcMain.handle('excel:analyzeFiles', withErrorHandling(async (filePaths) => {
+        const paths = Array.isArray(filePaths) ? filePaths : [filePaths];
+        const { validFiles, errors } = await importBatchService.analyzeFiles(paths);
+        return { validFiles, errors };
+    }));
+
+    // ========================================
     // 匯入 Excel — 透過 TaskManager 排程
     // 支援傳入多檔案路徑陣列，轉交 BatchImportService 排序與排程
     // ========================================

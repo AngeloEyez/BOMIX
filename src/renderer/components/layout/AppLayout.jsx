@@ -23,6 +23,7 @@ import ProgressDialog from '../dialogs/ProgressDialog'
 import ToastContainer from './ToastContainer'
 import ProjectDialog from '../dialogs/ProjectDialog'
 import ImportDialog from '../dialogs/ImportDialog'
+import PhaseOrderDialog from '../dialogs/PhaseOrderDialog'
 
 /**
  * 應用程式主佈局元件。
@@ -41,6 +42,7 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
     const { loadSettings, isLoading, theme, toggleTheme } = useSettingsStore()
     const { currentPath, isOpen: isSeriesOpen } = useSeriesStore()
     const initTaskListeners = useTaskStore(state => state.initListeners)
+    const addSystemLog = useTaskStore(state => state.addSystemLog)
     const { createProject } = useProjectStore()
 
     // 全域「新增專案」對話框狀態
@@ -49,11 +51,14 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
     const [importDialogOpen, setImportDialogOpen] = useState(false)
     // 全域拖曳狀態
     const [isDragOver, setIsDragOver] = useState(false)
+    // Phase 驗證用的狀態
+    const [phaseDialog, setPhaseDialog] = useState({ isOpen: false, requiredPhase: '', pendingPaths: [] })
 
     const addToast = useToastStore(state => state.addToast)
 
     // 從路徑取得檔案名稱（不含副檔名）
     const seriesName = currentPath ? currentPath.split(/[\\/]/).pop()?.replace('.bomix', '') : null
+    const currentSeries = useSeriesStore(state => state.currentSeries)
 
     // 初始化設定
     useEffect(() => {
@@ -92,17 +97,99 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
 
     /**
      * 處理匯入 BOM 送出。
+     * 在送出前驗證 Phase 是否在定義中，若無則開啟 PhaseOrderDialog。
      *
      * @param {string[]} filePaths - 選取的檔案路徑
      * @returns {Promise<{success: boolean, error?: string}>}
      */
     const handleImportSubmit = async (filePaths) => {
+        // 先解析這些檔案的 MetaData
+        const analysis = await window.api.excel.analyzeFiles(filePaths)
+        if (!analysis.success) {
+            return { success: false, error: analysis.error }
+        }
+
+        const validFiles = analysis.data.validFiles
+        if (validFiles.length === 0) {
+            return { success: false, error: '沒有合法且包含有效 Phase 的 BOM 檔案可供匯入' }
+        }
+
+        // 檢查 Phase 是否在 currentPhaseOrder 中
+        let phaseOrderStr = currentSeries?.phase_order;
+        let orderArray = [
+            'RFI', 'RFP', 'RFQ, RFx', 'DB, EVT', 'SI, DVT', 'PV, PVT', 'TLD, PRD', 'MVB, MP'
+        ];
+        if (phaseOrderStr) {
+            try {
+                const parsed = JSON.parse(phaseOrderStr);
+                if (Array.isArray(parsed) && parsed.length > 0) orderArray = parsed;
+            } catch (e) {
+               // ignore
+            }
+        }
+
+        // 找出第一個不符合的 Phase
+        let missingPhase = null;
+        for (const file of validFiles) {
+            const phaseName = file.phase;
+            if (!phaseName) continue;
+
+            // 解析出 base phase (e.g., DB1 -> DB)
+            const match = phaseName.match(/^([A-Za-z]+)(\d*)$/);
+            const basePhase = match ? match[1].toUpperCase() : phaseName.toUpperCase();
+
+            // 檢查是否存在於 orderArray 中
+            const exists = orderArray.some(def => {
+                const parts = def.split(',').map(s => s.trim().toUpperCase());
+                return parts.includes(basePhase);
+            });
+
+            if (!exists) {
+                missingPhase = basePhase; // 使用 base phase 讓 user 加
+                break;
+            }
+        }
+
+        if (missingPhase) {
+            setPhaseDialog({ isOpen: true, requiredPhase: missingPhase, pendingPaths: filePaths });
+            addSystemLog(`發現未定義的 Phase: ${missingPhase}`, 'error')
+            return { success: false, error: `發現未定義的 Phase: ${missingPhase}` }; // Let the ImportDialog stay open or handle this
+        }
+
+        // 如果全部檢查通過，進行實際的匯入排程
         const result = await window.api.excel.import(filePaths)
         if (result.success) {
+            addSystemLog('已送出匯入任務，請於進度視窗追蹤狀態', 'info')
             setImportDialogOpen(false)
             return { success: true }
         }
+        addSystemLog(`匯入排程失敗：${result.error}`, 'error')
         return { success: false, error: result.error }
+    }
+
+    const handleSavePhaseOrder = async (orderArray) => {
+        const result = await useSeriesStore.getState().updatePhaseOrder(orderArray);
+        if (result.success) {
+            setPhaseDialog(prev => ({ ...prev, isOpen: false }));
+            // 如果有 pendingPaths，則自動重試匯入
+            if (phaseDialog.pendingPaths.length > 0) {
+                const retryResult = await handleImportSubmit(phaseDialog.pendingPaths);
+                if (retryResult.success) {
+                    addSystemLog('Phase 新增成功，已自動開始匯入', 'success')
+                    addToast('Phase 新增成功，已自動開始匯入', 'success');
+                } else if (retryResult.error && retryResult.error.includes('發現未定義的 Phase')) {
+                    // It means there was ANOTHER missing phase, handleImportSubmit already opened the dialog again.
+                    addSystemLog('發現另一個未定義的 Phase，請繼續新增', 'warn')
+                    addToast('發現另一個未定義的 Phase，請繼續新增', 'warning');
+                } else {
+                    addSystemLog(`自動匯入失敗：${retryResult.error}`, 'error')
+                    addToast(`自動匯入失敗：${retryResult.error}`, 'error');
+                }
+            }
+        } else {
+            addSystemLog(`儲存 Phase 排序失敗：${result.error}`, 'error')
+            addToast(`儲存 Phase 排序失敗：${result.error}`, 'error');
+        }
     }
 
     // ========================================
@@ -337,6 +424,14 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
                     isOpen={importDialogOpen}
                     onClose={() => setImportDialogOpen(false)}
                     onImport={handleImportSubmit}
+                />
+
+                <PhaseOrderDialog
+                    isOpen={phaseDialog.isOpen}
+                    onClose={() => setPhaseDialog(prev => ({ ...prev, isOpen: false }))}
+                    currentPhaseOrder={currentSeries?.phase_order}
+                    onSave={handleSavePhaseOrder}
+                    requiredPhase={phaseDialog.requiredPhase}
                 />
             </div>
         </TooltipProvider>

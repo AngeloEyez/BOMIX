@@ -32,7 +32,7 @@ const api = {
         create: (path, description) => ipcRenderer.invoke('series:create', path, description),
         open: (path) => ipcRenderer.invoke('series:open', path),
         getMeta: () => ipcRenderer.invoke('series:getMeta'),
-        updateMeta: (desc) => ipcRenderer.invoke('series:updateMeta', desc),
+        updateMeta: (data) => ipcRenderer.invoke('series:updateMeta', data),
         rename: (newName) => ipcRenderer.invoke('series:rename', newName),
     },
 
@@ -59,10 +59,12 @@ const api = {
         deleteSecondSource: (id) => ipcRenderer.invoke('bom:deleteSecondSource', id),
         delete: (bomRevisionId) => ipcRenderer.invoke('bom:delete', bomRevisionId),
         getViews: () => ipcRenderer.invoke('bom:get-views'),
+        getLastBomRevisionId: (bomRevisionId) => ipcRenderer.invoke('bom:getLastBomRevisionId', bomRevisionId),
     },
 
     // TODO: Phase 5 — Excel 匯入匯出 API
     excel: {
+        analyzeFiles: (filePaths) => ipcRenderer.invoke('excel:analyzeFiles', filePaths),
         import: (filePath, projectId, phaseName, version) => ipcRenderer.invoke('excel:import', filePath, projectId, phaseName, version),
         export: (bomRevisionId, outputFilePath) => ipcRenderer.invoke('excel:export', bomRevisionId, outputFilePath),
     },

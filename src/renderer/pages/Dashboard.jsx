@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
     FolderPlus, FolderOpen, Clock, X, Database, ChevronRight,
-    Pencil, FileText, Trash2, AlertCircle
+    Pencil, FileText, Trash2, AlertCircle, SlidersHorizontal
 } from 'lucide-react'
 import useSeriesStore from '../stores/useSeriesStore'
 import useProjectStore from '../stores/useProjectStore'
@@ -12,6 +12,7 @@ import Dialog from '../components/dialogs/Dialog'
 import ProjectDialog from '../components/dialogs/ProjectDialog'
 import BomMetaDialog from '../components/dialogs/BomMetaDialog'
 import ConfirmDialog from '../components/dialogs/ConfirmDialog'
+import PhaseOrderDialog from '../components/dialogs/PhaseOrderDialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -50,6 +51,9 @@ function Dashboard({ onNavigate }) {
     const [isRenameOpen, setIsRenameOpen] = useState(false)
     const [renameValue, setRenameValue] = useState('')
     const [renameError, setRenameError] = useState('')
+
+    // Phase Order Edit
+    const [isPhaseOrderOpen, setIsPhaseOrderOpen] = useState(false)
 
     // Project Dialog (Create/Edit)
     const [projectDialog, setProjectDialog] = useState({ isOpen: false, mode: 'create', data: null })
@@ -180,6 +184,17 @@ function Dashboard({ onNavigate }) {
         const result = await renameSeries(renameValue.trim())
         if (result.success) setIsRenameOpen(false)
         else setRenameError(result.error)
+    }
+
+    const handleSavePhaseOrder = async (orderArray) => {
+        const result = await useSeriesStore.getState().updatePhaseOrder(orderArray);
+        if (result.success) {
+            setIsPhaseOrderOpen(false);
+            // Refresh BOMs so they sort properly based on new phase order
+            loadProjects();
+        } else {
+            addToast(`儲存 Phase 排序失敗：${result.error}`, 'error');
+        }
     }
 
     // --- Handlers: Project ---
@@ -398,9 +413,14 @@ function Dashboard({ onNavigate }) {
                         )}
                     </div>
                 </div>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleSeriesClose} title="關閉系列">
-                    <X size={16} />
-                </Button>
+                <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => setIsPhaseOrderOpen(true)} title="設定 Phase 排序">
+                        <SlidersHorizontal size={15} />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleSeriesClose} title="關閉系列">
+                        <X size={16} />
+                    </Button>
+                </div>
             </div>
 
             {/* 2. Content Area: Tree View */}
@@ -507,6 +527,13 @@ function Dashboard({ onNavigate }) {
                     </div>
                 </div>
             </Dialog>
+
+            <PhaseOrderDialog
+                isOpen={isPhaseOrderOpen}
+                onClose={() => setIsPhaseOrderOpen(false)}
+                currentPhaseOrder={currentSeries?.phase_order}
+                onSave={handleSavePhaseOrder}
+            />
 
             <ProjectDialog
                 isOpen={projectDialog.isOpen}

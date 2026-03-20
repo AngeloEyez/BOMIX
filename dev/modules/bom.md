@@ -135,3 +135,11 @@ Filter 格式詳見 [`dev/FILTER_SPEC.md`](file:///d:/coding/BOMIX/dev/FILTER_SP
 - **回傳** `{ success: true, data: { id, ...updatedFields } }`
 - **錯誤** `{ success: false, error: '錯誤訊息' }`
 
+## `window.api.bom.getLastBomRevisionId(bomRevisionId)`
+取得在目前專案內，排序位於給定 BOM 版本「前一版」的 BOM ID。
+排序邏輯依照定義的 Phase 順序、Phase 數字、Version 字串、以及 Suffix。
+
+- **參數**
+  - `bomRevisionId` (number) — 目前的 BOM 版本 ID
+- **回傳** `{ success: true, data: number | null }` (若為第一版則回傳 null)
+- **錯誤** `{ success: false, error: '錯誤訊息' }`

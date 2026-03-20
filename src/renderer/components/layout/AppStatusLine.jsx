@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react'
-import useTaskStore from '../../stores/useTaskStore'
+import useTaskStore, { SYSTEM_LOG_SESSION_ID } from '../../stores/useTaskStore'
 import useSeriesStore from '../../stores/useSeriesStore'
 import useAppStore from '../../stores/useAppStore'
 
@@ -10,6 +10,7 @@ import useAppStore from '../../stores/useAppStore'
  * 整合原有的 StatusBar 功能與任務排程進度顯示。
  * 左側：資料庫連線狀態、路徑
  * 中間：任務排程狀態面板（永遠顯示，idle / 任務名稱 + 進度 + 最後 log + 排隊數）
+ *        → 狀態列的日誌文字優先顯示 lastGlobalLog（包含系統通知）
  * 右側：應用程式版本
  * 
  * @param {Object} props
@@ -34,10 +35,12 @@ function AppStatusLine({ onNavigate }) {
     const sessions = useTaskStore(state => state.sessions)
     const queueLength = useTaskStore(state => state.queueLength)
     const toggleDialog = useTaskStore(state => state.toggleDialog)
+    // 全域最新日誌訊息（任務日誌或系統通知皆會更新此值）
+    const lastGlobalLog = useTaskStore(state => state.lastGlobalLog)
     
-    // 找出最近更新的活躍任務（優先顯示 RUNNING，其次 QUEUED）
+    // 找出最近更新的活躍任務（優先顯示 RUNNING，其次 QUEUED，忽略 SYSTEM 類型）
     const activeSession = (() => {
-        const allSessions = Array.from(sessions.values())
+        const allSessions = Array.from(sessions.values()).filter(s => s.status !== 'SYSTEM')
         // 優先找 RUNNING 中的任務
         const running = allSessions.find(s => s.status === 'RUNNING')
         if (running) return running
@@ -45,10 +48,11 @@ function AppStatusLine({ onNavigate }) {
         return allSessions.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0]
     })()
 
-    // 取得最後一條 log 訊息
-    const lastLog = activeSession?.logs?.length > 0
-        ? activeSession.logs[activeSession.logs.length - 1]?.message
-        : activeSession?.message
+    // 狀態列日誌：優先顯示全域最新日誌（含系統通知）；無任何日誌時退而顯示任務 message
+    const lastLog = lastGlobalLog?.message
+        ?? (activeSession?.logs?.length > 0
+            ? activeSession.logs[activeSession.logs.length - 1]?.message
+            : activeSession?.message)
 
     // 狀態顏色與圖示對應
     const getStatusIndicator = (status) => {

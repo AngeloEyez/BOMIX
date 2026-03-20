@@ -98,4 +98,9 @@ export function registerBomIpc(ipcMain) {
     ipcMain.handle('bom:updateRevision', withErrorHandling((id, updates) => {
         return bomService.updateBomRevision(id, updates);
     }));
+
+    // 取得上一版 BOM 版本 ID
+    ipcMain.handle('bom:getLastBomRevisionId', withErrorHandling((bomRevisionId) => {
+        return bomService.getLastBomRevisionId(bomRevisionId);
+    }));
 }
