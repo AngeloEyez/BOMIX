@@ -1,3 +1,7 @@
+/**
+ * @vitest-environment jsdom
+ */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import useBomStore from '../../../src/renderer/stores/useBomStore.js';
 import useSettingsStore from '../../../src/renderer/stores/useSettingsStore.js';
@@ -23,7 +27,8 @@ global.window = {
             save: vi.fn().mockResolvedValue({ success: true }),
         },
         bom: {
-            getView: vi.fn().mockResolvedValue({ success: true, data: [] }),
+            query: vi.fn().mockResolvedValue({ success: true, data: [] }),
+            getViews: vi.fn().mockResolvedValue({ success: true, data: [] }),
             getRevisions: vi.fn().mockResolvedValue({ success: true, data: [] }),
         },
         theme: {
@@ -35,6 +40,7 @@ global.window = {
 
 describe('Integration: Stores & UI Logic', () => {
     beforeEach(() => {
+        useSettingsStore.setState({ bomSidebarWidth: 250 });
         vi.clearAllMocks();
         // Reset stores
         useBomStore.setState({
@@ -66,7 +72,7 @@ describe('Integration: Stores & UI Logic', () => {
             expect(state.bomMode).toBe('BOM'); // Default single selection mode
 
             // Should trigger fetch
-            expect(window.api.bom.getView).toHaveBeenCalled();
+            expect(window.api.bom.query).toHaveBeenCalled();
         });
 
         it('should handle multi-selection and switch to BIGBOM mode if not Matrix', async () => {

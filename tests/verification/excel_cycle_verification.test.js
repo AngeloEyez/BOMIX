@@ -64,6 +64,9 @@ describe('Excel Import/Export Verification', () => {
 
         bomRevisionRepo.findById.mockImplementation((id) => capturedRevision);
         projectRepo.findById.mockReturnValue({ project_code: 'TANGLED' });
+        projectRepo.findByCode.mockReturnValue({ id: 101, project_code: 'TANGLED' });
+        projectRepo.create.mockReturnValue({ id: 101, project_code: 'TANGLED' });
+        bomRevisionRepo.findByProject.mockReturnValue([]);
     });
 
     it('should correctly import the template file and export it back', async () => {
@@ -71,7 +74,8 @@ describe('Excel Import/Export Verification', () => {
         expect(fs.existsSync(templatePath)).toBe(true);
 
         // 1. Import
-        const result = importService.importBom('101', 'SI', '0.3', 'BOM', templatePath);
+        const result = await importService.importBom('TANGLED', 'SI', '0.3', 'BOM', templatePath);
+        console.log('IMPORT RESULT:', result);
 
         expect(result.success).toBe(true);
         expect(bomRevisionRepo.create).toHaveBeenCalled();
@@ -113,8 +117,9 @@ describe('Excel Import/Export Verification', () => {
         bomService.executeView.mockReturnValue(subsetBomView);
 
         // 3. Export
-        const exportResult = await exportService.exportBom(1, outputPath);
-        expect(exportResult.success).toBe(true);
+        const ctx = { taskId: "test-task", updateProgress: vi.fn(), log: vi.fn(), yield: async () => {} };
+        const exportResult = await exportService.runExport(ctx, 1, outputPath);
+        expect(exportResult.filePath).toBeDefined();
         expect(fs.existsSync(outputPath)).toBe(true);
         console.log(`Exported file created at: ${outputPath}`);
 

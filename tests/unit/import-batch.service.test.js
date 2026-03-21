@@ -54,7 +54,7 @@ describe('import-batch.service 測試', () => {
 
     describe('parseImportFilename 檔名解析測試', () => {
         it('應該成功解析合法的 BOM 檔名', () => {
-            const result = parseImportFilename('C:\\TEMP\\ProjectX_EZBOM_EVT_0.1_BOM_20241008.xlsx')
+            const result = parseImportFilename('ProjectX_EZBOM_EVT_0.1_BOM_20241008.xlsx')
             expect(result).not.toBeNull()
             expect(result.projectName).toBe('ProjectX')
             expect(result.phase).toBe('EVT')
