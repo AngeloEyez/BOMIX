@@ -1,13 +1,12 @@
 # BOMIX 開發計畫
 
-> 版本：1.1.0 | 最後更新：2026-02-13
+> 版本：1.2.0 | 最後更新：2026-02-13
 
 ## 開發策略
 
-採用 **前後端分離、循序開發** 策略：
-- **Jules (Backend)** 先行開發 API 與資料邏輯
-- **Antigravity (Frontend)** 接續整合 UI
-- 透過明確的 Phase 切分，讓兩位 Agent 的職責更清晰
+採用 **全棧負責、循序開發** 策略：
+- 每一項功能的開發者必須負責其垂直整合（從資料庫到 UI）。
+- 透過明確的 Phase 切分，確保功能的完整性與穩定性。
 
 ---
 
@@ -40,72 +39,100 @@
   - [x] `pages/BomPage.jsx` — BOM 檢視（佔位）
   - [x] `pages/ComparePage.jsx` — 版本比較（佔位）
   - [x] `pages/SettingsPage.jsx` — 設定
-- [ ] **UI 收尾**
-  - [ ] Dark/Light 模式切換邏輯
-  - [ ] `components/dialogs/AboutDialog.jsx`
-  - [ ] `components/dialogs/ChangelogDialog.jsx`
+- [x] **UI 收尾**
+  - [x] Dark/Light 模式切換邏輯
+  - [x] `components/dialogs/AboutDialog.jsx`
+  - [x] `components/dialogs/ChangelogDialog.jsx`
 
-### Phase 2：主行程資料層 (Jules)
-**負責人：Jules**
+### Phase 2：主行程資料層 ⭐ 已完成
+建立資料庫架構與 Repository Pattern，不含 IPC 與 UI 整合。
 建立資料庫架構與 Repository Pattern，不含 IPC 與 UI 整合。
 
-- [ ] `src/main/database/connection.js` — SQLite 連線管理
-- [ ] `src/main/database/schema.js` — 建表 SQL (Schema 定義)
-- [ ] `src/main/database/repositories/series.repo.js`
-- [ ] `src/main/database/repositories/project.repo.js`
-- [ ] `src/main/database/repositories/bom-revision.repo.js`
-- [ ] `src/main/database/repositories/parts.repo.js`
-- [ ] `src/main/database/repositories/second-source.repo.js`
-- [ ] 單元測試 (Repositories)
+- [x] `src/main/database/connection.js` — SQLite 連線管理
+- [x] `src/main/database/schema.js` — 建表 SQL (Schema 定義)
+- [x] `src/main/database/repositories/series.repo.js`
+- [x] `src/main/database/repositories/project.repo.js`
+- [x] `src/main/database/repositories/bom-revision.repo.js`
+- [x] `src/main/database/repositories/parts.repo.js`
+- [x] `src/main/database/repositories/second-source.repo.js`
+- [x] 單元測試 (Repositories)
 
-### Phase 3：系列與專案管理 - 後端 (Jules)
-**負責人：Jules**
+### Phase 3：系列與專案管理 - 後端 ⭐ 已完成
+實作核心業務邏輯並開放 API。
 實作核心業務邏輯並開放 API。
 
-- [ ] `src/main/services/series.service.js`
-- [ ] `src/main/services/project.service.js`
-- [ ] `src/main/ipc/series.ipc.js`
-- [ ] `src/main/ipc/project.ipc.js`
-- [ ] 更新 `src/preload/index.js`
-- [ ] 撰寫 API 文件 (`dev/modules/`)
-- [ ] 單元測試 (Services)
+- [x] `src/main/services/series.service.js`
+- [x] `src/main/services/project.service.js`
+- [x] `src/main/ipc/series.ipc.js`
+- [x] `src/main/ipc/project.ipc.js`
+- [x] 更新 `src/preload/index.js`
+- [x] 撰寫 API 文件 (`dev/modules/`)
+- [x] 單元測試 (Services)
 
-### Phase 4：系列與專案管理 - 前端 (Antigravity)
-**負責人：Antigravity**
+### Phase 4：系列與專案管理 - 前端 ⭐ 已完成
+整合 Phase 3 開放的 API，完成 UI 功能。
 整合 Phase 3 開放的 API，完成 UI 功能。
 
-- [ ] `stores/useSeriesStore.js`
-- [ ] `stores/useProjectStore.js`
-- [ ] 更新 `pages/HomePage.jsx` (建立/開啟系列)
-- [ ] 更新 `pages/ProjectPage.jsx` (專案 CRUD、版本列表)
-- [ ] 整合測試
+- [x] `stores/useSeriesStore.js`
+- [x] `stores/useProjectStore.js`
+- [x] 更新 `pages/HomePage.jsx` (建立/開啟系列) -> 整合至 Dashboard
+- [x] 更新 `pages/ProjectPage.jsx` (專案 CRUD、版本列表) -> 整合至 Dashboard
+- [x] 整合測試
+- [x] **儀表板 (Dashboard) 整合**：合併首頁與專案管理，實作樹狀視圖
 
-### Phase 5：BOM 管理與 Excel 整合 - 後端 (Jules)
-**負責人：Jules**
+### Phase 5：BOM 管理與 Excel 整合 - 後端 ⭐ 已完成
+BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 
-- [ ] `src/main/services/bom.service.js` (含 Mode 判斷邏輯)
-- [ ] `src/main/services/import.service.js`
-- [ ] `src/main/services/export.service.js` (實作完整 Excel 匯出規格)
-- [ ] `src/main/ipc/bom.ipc.js`
-- [ ] `src/main/ipc/excel.ipc.js`
-- [ ] 更新 `src/preload/index.js`
-- [ ] 撰寫 API 文件 (`dev/modules/`)
-- [ ] 單元測試 (含 Excel 範本與匯出格式驗證)
+- [x] `src/main/services/bom.service.js` (含 Mode 判斷邏輯)
+- [x] `src/main/services/import.service.js`
+- [x] `src/main/services/export.service.js` (實作完整 Excel 匯出規格)
+- [x] `src/main/ipc/bom.ipc.js`
+- [x] `src/main/ipc/excel.ipc.js`
+- [x] 更新 `src/preload/index.js`
+- [x] 撰寫 API 文件 (`dev/modules/`)
+- [x] 單元測試 (含 Excel 範本與匯出格式驗證)
 
-### Phase 6：BOM 管理與 Excel 整合 - 前端 (Antigravity)
-**負責人：Antigravity**
+### Phase 6：BOM 管理與 Excel 整合 - 前端 ⭐ 已完成
+整合 BOM 表格與 Excel 匯入匯出功能。
 整合 BOM 表格與 Excel 匯入匯出功能。
 
-- [ ] `stores/useBomStore.js`
-- [ ] `components/tables/BomTable.jsx` (TanStack Table 實作)
-- [ ] 更新 `pages/BomPage.jsx`
-- [ ] `components/dialogs/ImportDialog.jsx`
-- [ ] 拖曳匯入功能實作
-- [ ] 整合測試
+- [x] `stores/useBomStore.js`
+- [x] `components/tables/BomTable.jsx` (TanStack Table 實作)
+- [x] 更新 `pages/BomPage.jsx`
+- [x] `components/dialogs/ImportDialog.jsx`
+- [x] 拖曳匯入功能實作
+- [x] 整合測試
+- [x] **UI 持久化與刷新優化**：
+  - [x] 實作 `IMPORT_BOM` 回調機制，匯入後 UI 自動更新
+  - [x] 整合 `useProjectStore.allBoms` 全域快取，解決新專案匯入不更新問題
+  - [x] 側邊欄 UI 改善（全部展開/收合切換按鈕）
 
-### Phase 7：版本比較 - 後端 (Jules)
-**負責人：Jules**
+
+### Phase 7：Matrix BOM 功能 ⭐ 進行中
+實作多 Model 選擇、勾選與狀態顯示（涵蓋垂直整合開發）。
+實作多 Model 選擇、勾選與狀態顯示。
+
+- [ ] **文件與架構**
+  - [x] 更新 `dev/SPEC.md`, `dev/DATABASE.md`, `dev/PLAN.md`, `dev/ARCHITECTURE.md`
+- [ ] **後端實作**
+  - [ ] 修改 `src/main/database/schema.js` (新增 Matrix Tables)
+  - [ ] `src/main/database/repositories/matrix-model.repo.js`
+  - [ ] `src/main/database/repositories/matrix-selection.repo.js`
+  - [ ] `src/main/services/matrix.service.js` (含 Implicit Selection 邏輯)
+  - [ ] `src/main/ipc/matrix.ipc.js`
+  - [ ] 更新 `src/preload/index.js`
+  - [ ] API 文件 `dev/modules/matrix.md`
+  - [ ] 單元測試 `tests/unit/matrix.service.test.js`
+- [ ] **前端實作**
+  - [ ] `src/renderer/stores/useMatrixStore.js`
+  - [ ] `src/renderer/components/dialogs/MatrixModelDialog.jsx`
+  - [ ] `src/renderer/components/tables/MatrixTable.jsx`
+  - [ ] 更新 `src/renderer/pages/BomPage.jsx` (整合 Matrix View)
+  - [ ] 更新 `src/renderer/pages/DashboardPage.jsx` (整合 Tag 與燈號)
+
+### Phase 8：版本比較 - 後端
+實作 BOM 版本差異比對演算法。
 實作 BOM 版本差異比對演算法。
 
 - [ ] `src/main/services/compare.service.js`
@@ -114,15 +141,15 @@ BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 - [ ] 撰寫 API 文件 (`dev/modules/`)
 - [ ] 單元測試 (演算法驗證)
 
-### Phase 8：版本比較 - 前端 (Antigravity)
-**負責人：Antigravity**
+### Phase 9：版本比較 - 前端
+呈現比對結果。
 呈現比對結果。
 
 - [ ] `stores/useCompareStore.js`
 - [ ] 更新 `pages/ComparePage.jsx` (差異視覺化呈現)
 - [ ] 整合測試
 
-### Phase 9：打包與發佈
+### Phase 10：打包與發佈
 最終打包、E2E 測試與文件完善。
 
 - [ ] electron-builder 完整打包測試

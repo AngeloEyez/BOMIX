@@ -1,6 +1,6 @@
 # BOMIX 系統架構設計
 
-> 版本：1.0.0 | 最後更新：2026-02-13
+> 版本：1.2.0 | 最後更新：2026-03-18
 
 ## 架構概覽
 
@@ -29,9 +29,16 @@ React Component → Zustand Store → window.api.xxx()
 ```
 
 ```
-Excel 檔案 → importService → bomService → partsRepo → SQLite
-SQLite → partsRepo → bomService → exportService → Excel 檔案
+React Component → Zustand Store → window.api.xxx()
+→ IPC invoke → Main Process Handler → Service → Repository → SQLite
+→ 回傳結果 → IPC reply → Store 更新 → React re-render
+```
+
+```
+Excel 檔案 → excel.ipc → taskManager.enqueue() → importService (非阻塞) → SQLite
+SQLite → bomService → exportService → taskManager.enqueue() → Excel 檔案
 SQLite → partsRepo → compareService → 差異報告 → React UI
+SQLite → matrixService → Matrix Data (含 Selection) → React UI
 ```
 
 ## UI 架構
@@ -45,14 +52,15 @@ App
 │   ├── Content Area                    ← 頁面動態切換
 │   │   ├── HomePage                    ← 首頁（歡迎畫面）
 │   │   ├── ProjectPage                 ← 專案管理
-│   │   ├── BomPage                     ← BOM 檢視/編輯
+│   │   ├── BomPage                     ← BOM 檢視/編輯/Matrix
 │   │   ├── ComparePage                 ← 版本比較
 │   │   └── SettingsPage                ← 設定
 │   └── StatusBar                       ← 底部狀態列
 └── Dialogs (components/dialogs/)
     ├── AboutDialog                     ← 關於對話框
     ├── ChangelogDialog                 ← 更新記錄
-    └── ImportDialog                    ← 匯入對話框
+    ├── ImportDialog                    ← 匯入對話框
+    └── MatrixModelDialog               ← Matrix Model 管理
 ```
 
 ### 導航機制
@@ -76,7 +84,7 @@ App
 ### IPC 通道命名規範
 ```
 {模組}:{動作}
-例：series:create, project:list, bom:getMainItems, excel:import
+例：series:create, project:list, bom:getMainItems, matrix:getData
 ```
 
 ### 模組依賴方向
@@ -93,9 +101,10 @@ IPC Handlers → Services → Repositories → SQLite
 
 ## 資料庫設計概要
 
-- 5 個資料表：`series_meta` + `projects` → `bom_revisions` → `parts` + `second_sources`
+- 7 個資料表：`series_meta`, `projects`, `bom_revisions`, `parts`, `second_sources`, `matrix_models`, `matrix_selections`
 - 零件原子化儲存（一個 location = 一行紀錄）
 - BOM Main Item 為查詢聚合視圖（`GROUP BY supplier, supplier_pn, type`）
+- Matrix Selection 使用 `group_key` 與 BOM Main Item 關聯
 - 詳見 [DATABASE.md](DATABASE.md)
 
 ## 資料庫連線策略
@@ -111,12 +120,29 @@ IPC Handlers → Services → Repositories → SQLite
 - 使用 JSON 格式儲存
 - 設定檔路徑：`%APPDATA%/BOMIX/settings.json`
 
-## 協作分工
+## 日誌系統
 
-| 層級 | 負責 Agent | 說明 |
-|------|-----------|------|
-| `src/main/` | **Jules** | 主行程、IPC、Services、Database |
-| `src/preload/` | 雙方 | API 橋接（需同步更新） |
-| `src/renderer/` | **Antigravity** | React UI、元件、頁面、樣式 |
+BOMIX 的日誌系統由 `useTaskStore`（Zustand）集中管理，分為兩種來源，統一顯示於底部狀態列與進度對話框。
 
-> 詳見 [COLLABORATION.md](COLLABORATION.md)
+### 雙來源設計
+
+| 來源 | 寫入方式 | 說明 |
+|------|----------|------|
+| **Task Log** | 後端透過 IPC `task:update` 推送 | 與後端任務排程一對一綁定 |
+| **System Log** | 前端主動呼叫 `addSystemLog()` | 記錄 UI 操作結果（如 Toast 同步來源） |
+
+### 關鍵設計
+
+- `lastGlobalLog`：`useTaskStore` 中的單一欄位，無論哪個來源寫入日誌皆會更新，讓底部狀態列**無需掃描所有 sessions** 即可即時反映最新訊息
+- `system-logs` Session：固定 ID 的特殊 Session，儲存所有系統通知，上限為 `MAX_SYSTEM_LOGS = 100` 條（超過自動移除最舊的）
+- 底部狀態列過濾 `status === 'SYSTEM'` 的 Session，避免系統通知佔據主任務顯示區
+
+### 相關檔案
+
+| 檔案 | 說明 |
+|------|------|
+| `src/renderer/stores/useTaskStore.js` | 日誌 Store（`addSystemLog`、`lastGlobalLog`） |
+| `src/renderer/components/layout/AppStatusLine.jsx` | 底部狀態列，顯示最新日誌 |
+| `src/renderer/components/dialogs/ProgressDialog.jsx` | 進度對話框，顯示完整歷史 |
+
+詳細 API 說明請參閱 [LOG_SYSTEM.md](LOG_SYSTEM.md)

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 // ========================================
@@ -16,24 +16,105 @@ import { electronAPI } from '@electron-toolkit/preload'
 const api = {
     // --- 應用程式資訊 ---
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
+    getVersions: () => process.versions,
+    
+    app: {
+        getChangelog: () => ipcRenderer.invoke('app:getChangelog'),
+    },
+
+    settings: {
+        get: () => ipcRenderer.invoke('settings:get'),
+        save: (settings) => ipcRenderer.invoke('settings:save', settings),
+    },
 
     // TODO: Phase 2 — 系列管理 API
-    // series: {
-    //   create: (path, description) => ipcRenderer.invoke('series:create', path, description),
-    //   open: (path) => ipcRenderer.invoke('series:open', path),
-    //   close: () => ipcRenderer.invoke('series:close'),
-    //   getInfo: () => ipcRenderer.invoke('series:getInfo'),
-    //   updateDescription: (desc) => ipcRenderer.invoke('series:updateDescription', desc),
-    // },
+    series: {
+        create: (path, description) => ipcRenderer.invoke('series:create', path, description),
+        open: (path) => ipcRenderer.invoke('series:open', path),
+        getMeta: () => ipcRenderer.invoke('series:getMeta'),
+        updateMeta: (data) => ipcRenderer.invoke('series:updateMeta', data),
+        rename: (newName) => ipcRenderer.invoke('series:rename', newName),
+    },
 
     // TODO: Phase 3 — 專案管理 API
-    // project: { ... },
+    project: {
+        create: (projectCode, description) => ipcRenderer.invoke('project:create', projectCode, description),
+        getAll: () => ipcRenderer.invoke('project:getAll'),
+        getById: (id) => ipcRenderer.invoke('project:getById', id),
+        update: (id, description) => ipcRenderer.invoke('project:update', id, description),
+        delete: (id) => ipcRenderer.invoke('project:delete', id),
+    },
 
     // TODO: Phase 4 — BOM 管理 API
-    // bom: { ... },
+    bom: {
+        getRevisions: (projectId) => ipcRenderer.invoke('bom:getRevisions', projectId),
+        // 通用 BOM 資料查詢（新 API，格式詳見 dev/FILTER_SPEC.md）
+        query: (bomIds, filters, options) => ipcRenderer.invoke('bom:query', bomIds, filters, options),
+        // @deprecated 前端請改用 bom.query，此方法保留供向下相容
+        getView: (bomRevisionId, viewId) => ipcRenderer.invoke('bom:getView', bomRevisionId, viewId),
+        updateMainItem: (bomRevisionId, originalKey, updates) => ipcRenderer.invoke('bom:updateMainItem', bomRevisionId, originalKey, updates),
+        deleteMainItem: (bomRevisionId, key) => ipcRenderer.invoke('bom:deleteMainItem', bomRevisionId, key),
+        addSecondSource: (data) => ipcRenderer.invoke('bom:addSecondSource', data),
+        updateSecondSource: (id, data) => ipcRenderer.invoke('bom:updateSecondSource', id, data),
+        deleteSecondSource: (id) => ipcRenderer.invoke('bom:deleteSecondSource', id),
+        delete: (bomRevisionId) => ipcRenderer.invoke('bom:delete', bomRevisionId),
+        getViews: () => ipcRenderer.invoke('bom:get-views'),
+        getLastBomRevisionId: (bomRevisionId) => ipcRenderer.invoke('bom:getLastBomRevisionId', bomRevisionId),
+    },
 
     // TODO: Phase 5 — Excel 匯入匯出 API
-    // excel: { ... },
+    excel: {
+        analyzeFiles: (filePaths) => ipcRenderer.invoke('excel:analyzeFiles', filePaths),
+        import: (filePath, projectId, phaseName, version) => ipcRenderer.invoke('excel:import', filePath, projectId, phaseName, version),
+        export: (bomRevisionId, outputFilePath) => ipcRenderer.invoke('excel:export', bomRevisionId, outputFilePath),
+    },
+
+    // Phase 7: Matrix BOM API
+    matrix: {
+        createModels: (bomRevisionId, models) => ipcRenderer.invoke('matrix:createModels', bomRevisionId, models),
+        listModels: (bomRevisionId) => ipcRenderer.invoke('matrix:listModels', bomRevisionId),
+        updateModel: (id, updates) => ipcRenderer.invoke('matrix:updateModel', id, updates),
+        deleteModel: (id) => ipcRenderer.invoke('matrix:deleteModel', id),
+        saveSelection: (selectionData) => ipcRenderer.invoke('matrix:saveSelection', selectionData),
+        deleteSelection: (matrixModelId, groupKey) => ipcRenderer.invoke('matrix:deleteSelection', matrixModelId, groupKey),
+        getData: (bomRevisionId) => ipcRenderer.invoke('matrix:getData', bomRevisionId),
+        getSummary: (bomRevisionId) => ipcRenderer.invoke('matrix:getSummary', bomRevisionId),
+    },
+
+    // 任務排程管理器 API
+    task: {
+        get: (taskId) => ipcRenderer.invoke('task:get', taskId),
+        cancel: (taskId) => ipcRenderer.invoke('task:cancel', taskId),
+        remove: (taskId) => ipcRenderer.invoke('task:remove', taskId),
+        getQueueStatus: () => ipcRenderer.invoke('task:getQueueStatus'),
+        onUpdate: (callback) => {
+            const subscription = (_event, data) => callback(data);
+            ipcRenderer.on('task:update', subscription);
+            return () => ipcRenderer.removeListener('task:update', subscription);
+        },
+        onCompleted: (callback) => {
+            const subscription = (_event, data) => callback(data);
+            ipcRenderer.on('task:completed', subscription);
+            return () => ipcRenderer.removeListener('task:completed', subscription);
+        },
+    },
+
+    // --- 檔案對話框 ---
+    dialog: {
+        showOpen: (options) => ipcRenderer.invoke('dialog:showOpen', options),
+        showSave: (options) => ipcRenderer.invoke('dialog:showSave', options),
+    },
+
+    // --- 工具 ---
+    utils: {
+        getPathForFile: (file) => webUtils.getPathForFile(file),
+    },
+
+    // --- 主題系統 ---
+    theme: {
+        getList: () => ipcRenderer.invoke('theme:get-list'),
+        getAttributes: (themeId) => ipcRenderer.invoke('theme:get-attributes', themeId),
+    },
 }
 
 // 在 contextBridge 可用時，安全暴露 API

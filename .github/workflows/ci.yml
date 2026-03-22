@@ -17,12 +17,16 @@ on:
       - "src/**/*.js"
       - "src/**/*.jsx"
       - "package.json"
+      - "!tests/**"
+      - "!agent-workspace/**"
   pull_request:
     branches: [main]
     paths:
       - "src/**/*.js"
       - "src/**/*.jsx"
       - "package.json"
+      - "!tests/**"
+      - "!agent-workspace/**"
 
 jobs:
   # ========================================

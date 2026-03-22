@@ -10,7 +10,7 @@ import pluginReactHooks from 'eslint-plugin-react-hooks'
 export default [
     // 全域忽略
     {
-        ignores: ['out/**', 'dist/**', 'node_modules/**']
+        ignores: ['out/**', 'dist/**', 'node_modules/**', 'tests/**', 'agent-workspace/**']
     },
 
     // JavaScript 基礎規則
@@ -58,7 +58,7 @@ export default [
     // 通用規則
     {
         rules: {
-            'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+            'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
             'no-console': 'off', // Electron 開發經常需要 console
         },
     },

@@ -1,0 +1,19 @@
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90mZ:/Programming/BOMIX[39m
+
+ [32m??[39m tests/unit/import-batch.service.test.js[2m > [22mimport-batch.service 皜祈岫[2m > [22mparseImportFilename 瑼?閫??皜祈岫[2m > [22m?府??閫??????BOM 瑼?[32m 1[2mms[22m[39m
+ [32m??[39m tests/unit/import-batch.service.test.js[2m > [22mimport-batch.service 皜祈岫[2m > [22mparseImportFilename 瑼?閫??皜祈岫[2m > [22m?府??閫??????MatrixBOM 瑼? (憭批?撖怎摰?[32m 0[2mms[22m[39m
+ [32m??[39m tests/unit/import-batch.service.test.js[2m > [22mimport-batch.service 皜祈岫[2m > [22mparseImportFilename 瑼?閫??皜祈岫[2m > [22m?府??銝泵?撘?瑼?[32m 0[2mms[22m[39m
+ [32m??[39m tests/unit/import-batch.service.test.js[2m > [22mimport-batch.service 皜祈岫[2m > [22manalyzeFiles ?寞活??皜祈岫[2m > [22m?府?蕪??Excel 瑼????撘???[32m 0[2mms[22m[39m
+ [32m??[39m tests/unit/import-batch.service.test.js[2m > [22mimport-batch.service 皜祈岫[2m > [22manalyzeFiles ?寞活??皜祈岫[2m > [22m??閬?嚗???銝??BOM ??[32m 0[2mms[22m[39m
+ [31m?[39m tests/unit/import-batch.service.test.js[2m > [22mimport-batch.service 皜祈岫[2m > [22manalyzeFiles ?寞活??皜祈岫[2m > [22m??MatrixBOM ?蜓 BOM 銝?祆甈∩漲銝鞈?摨急?嚗?閰脫??方府 MatrixBOM[32m 2[2mms[22m[39m
+[31m   ??Cannot read properties of undefined (reading 'mockReturnValue')[39m
+ [31m?[39m tests/unit/import-batch.service.test.js[2m > [22mimport-batch.service 皜祈岫[2m > [22manalyzeFiles ?寞活??皜祈岫[2m > [22m??MatrixBOM ?蜓 BOM ?刻??澈????嚗?閰脣?閮勗??[32m 0[2mms[22m[39m
+[31m   ??Cannot read properties of undefined (reading 'mockReturnValue')[39m
+ [32m??[39m tests/unit/import-batch.service.test.js[2m > [22mimport-batch.service 皜祈岫[2m > [22menqueueBatchImport 雿?撱箇?皜祈岫[2m > [22m?府撠泵??隞嗥?瑼?銝 TaskManager[32m 0[2mms[22m[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m6 passed[39m[22m[90m (8)[39m
+[2m   Start at [22m 13:16:13
+[2m   Duration [22m 2.32s[2m (transform 394ms, setup 0ms, import 915ms, tests 5ms, environment 0ms)[22m
+

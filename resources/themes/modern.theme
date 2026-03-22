@@ -1,0 +1,85 @@
+{
+  "name": "Modern Dark",
+  "author": "System",
+  "colors": {
+    /* ========================================
+     * Modern Dark 色盤 — 現代深色系
+     * ======================================== */
+
+    "--color-surface-50": "#f8f9fa",
+    "--color-surface-100": "#f1f3f5",
+    "--color-surface-200": "#e9ecef",
+    "--color-surface-700": "#343a40",
+    "--color-surface-800": "#212529",
+    "--color-surface-900": "#141a21",
+    "--color-surface-950": "#0a0d11",
+
+    "light": {
+      /* === Shadcn 語義化變數 (Light) === */
+      "--background": "0 0% 99%",
+      "--foreground": "220 20% 12%",
+      "--card": "0 0% 100%",
+      "--card-foreground": "220 20% 12%",
+      "--popover": "0 0% 100%",
+      "--popover-foreground": "220 20% 12%",
+      "--primary": "256 65% 55%",
+      "--primary-foreground": "0 0% 100%",
+      "--secondary": "220 14% 95%",
+      "--secondary-foreground": "220 20% 12%",
+      "--muted": "220 14% 95%",
+      "--muted-foreground": "220 10% 46%",
+      "--accent": "256 65% 96%",
+      "--accent-foreground": "256 65% 35%",
+      "--destructive": "0 84% 60%",
+      "--destructive-foreground": "0 0% 100%",
+      "--border": "220 13% 91%",
+      "--input": "220 13% 91%",
+      "--ring": "256 65% 55%",
+      "--radius": "0.5rem",
+
+      "--bom-header-bg": "#f1f3f5",
+      "--bom-header-text": "#495057",
+      "--bom-row-main-odd": "#ffffff",
+      "--bom-row-main-even": "#f8f9fa",
+      "--bom-row-second-odd": "#fcfcfc",
+      "--bom-row-second-even": "#f1f3f5",
+      "--bom-row-hover": "#ede9fd",
+      "--bom-text-main": "#343a40",
+      "--bom-text-second": "#6c757d"
+    },
+
+    "dark": {
+      /* === Shadcn 語義化變數 (Dark) === */
+      "--background": "220 20% 9%",
+      "--foreground": "210 20% 92%",
+      "--card": "220 20% 12%",
+      "--card-foreground": "210 20% 92%",
+      "--popover": "220 20% 12%",
+      "--popover-foreground": "210 20% 92%",
+      "--primary": "256 65% 65%",
+      "--primary-foreground": "0 0% 100%",
+      "--secondary": "220 15% 18%",
+      "--secondary-foreground": "210 20% 92%",
+      "--muted": "220 15% 18%",
+      "--muted-foreground": "215 15% 57%",
+      "--accent": "220 15% 22%",
+      "--accent-foreground": "210 20% 92%",
+      "--destructive": "0 62% 40%",
+      "--destructive-foreground": "0 0% 100%",
+      "--border": "220 15% 20%",
+      "--input": "220 15% 20%",
+      "--ring": "256 65% 65%",
+      "--radius": "0.5rem",
+
+      "--bom-header-bg": "#212529",
+      "--bom-header-text": "#adb5bd",
+      "--bom-row-main-odd": "#141a21",
+      "--bom-row-main-even": "#1c2128",
+      "--bom-row-second-odd": "#141a21",
+      "--bom-row-second-even": "#1c2128",
+      "--bom-row-hover": "#2d2555",
+      "--bom-text-main": "#e9ecef",
+      "--bom-text-second": "#adb5bd"
+    }
+  }
+}

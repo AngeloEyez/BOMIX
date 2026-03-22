@@ -1,6 +1,6 @@
 # BOMIX 軟體規格書
 
-> 版本：1.0.0 | 最後更新：2026-02-13
+> 版本：1.1.0 | 最後更新：2026-02-13
 
 ## 1. 系統概述
 
@@ -10,6 +10,7 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 - 管理多專案、多 Phase、多版本的 BOM 資料
 - 追蹤 BOM 版本間的變化
 - 支援 Excel 匯入/匯出
+- **支援 Matrix BOM 管理 (多 Model 選擇)**
 - 提供圖形化操作介面
 
 ---
@@ -41,7 +42,8 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 | **M** | MP Only，僅量產上件，驗證階段不上件 |
 
 ### 2.2 BOM Main Item（檢視用）
-- 相同 **Supplier + Supplier PN + Type** 的零件合併為一個 BOM Main Item
+- 相同 **Supplier + Supplier PN** 的零件合併為一個 BOM Main Item
+- **Type** 不再作為合併條件（即相同供應商與料號的零件，即使製程不同，也視為同一 Main Item）
 - 位置編號以逗號分隔合併,中間無空格（例：`C1,C2,C3,C5`）
 - 數量由位置編號的數量自動計算
 - **此為 UI 呈現的聚合視圖**，資料庫中以原子化儲存（一個 location = 一筆紀錄）
@@ -69,14 +71,13 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 ├── series_meta             ← 系列設定與資訊
 ├── 專案 A（Project）
 │   ├── DB 0.1              ← bom_revision（phase_name + version）
+│   │   └── Matrix Models   ← Matrix 定義依附於 BOM Revision 下
+│   │       ├── Model A
+│   │       ├── Model B
+│   │       └── SKU 1
 │   ├── DB 0.2
-│   ├── SI 0.1
-│   ├── PV 0.1
-│   └── MVB 0.1
-└── 專案 B（Project）
-    ├── EVT 0.1             ← Phase 名稱可自訂
-    ├── DVT 0.1
-    └── PVT 0.1
+│   └── ...
+└── ...
 ```
 
 ### 3.1 Phase 類型
@@ -102,30 +103,65 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 ### 4.2 BOM 管理
 - 以**表格**方式呈現 BOM（使用 TanStack Table）
 - 檢視選定的 BOM，以**聚合視圖**方式根據篩選規則顯示：
-  - 以 Main Source 為主體，顯示 HHPN、Description、Supplier、Supplier PN、Qty、Location、CCL、Remark 等欄位
-  - Main Source 下方帶入 2nd Source 列表
-  - UI 設計須讓人**容易區分** Main Source 和 2nd Source（例如：縮排、顏色差異、圖標）
-- 能夠在表格上**直接編輯**零件資訊（包含 Main Source 和 2nd Source）
-- 能夠**新增或刪除** 2nd Source
+  - 支援**多種 BOM 視圖 (View)** 切換，邏輯由後端統一管理：
+    - **ALL**：顯示所有 Active 零件 (排除不需上件項目 `X`)。
+    - **SMD**：僅顯示製程為 `SMD` 的 Active 零件。
+    - **PTH**：僅顯示製程為 `PTH` 的 Active 零件。
+    - **BOTTOM**：僅顯示製程為 `BOTTOM` 的 Active 零件。
+  - 以 Main Source 為主體，顯示 HHPN、Description、Supplier、Supplier PN、Qty、Location、CCL、Remark 等欄位。
+  - Main Source 顯示「**Main**」標記，其下方帶入 2nd Source 列表 (無標記)。
+  - UI 設計須讓人**容易區分** Main Source 和 2nd Source（例如：縮排、顏色差異、圖標、Main 粗體）。
+- **表格排序功能**：
+  - 支援點擊表頭對 **Main Item** 進行排序 (如 HHPN、Description 等)。
+  - **分組保持**：排序僅影響 Main Item 的順序，其附屬的 2nd Source 會**永遠緊隨**其 Main Item，不受排序影響。
+- 能夠在表格上**直接編輯**零件資訊（包含 Main Source 和 2nd Source）。
+- 能夠**新增或刪除** 2nd Source。
 
-### 4.3 Excel 匯入/匯出
+### 4.3 Matrix BOM 功能 (Phase 7 新增)
+
+#### 4.3.1 核心概念
+- 針對物料群組 (Main + 2nd sources) 中的每個物料做驗證時，需按照 Matrix BOM。
+- 分為 A, B, C 等數個 Model (數量不定)。
+- 每個 Model 讓 User 勾選群組中某個物料 (Main 或 2nd Source)。
+- Matrix 資訊依附於特定版本的 BOM。
+
+#### 4.3.2 Model 管理
+- 在 BOM 頁面或儀表板中，可開啟 Matrix Model 管理對話框。
+- 可新增、編輯名稱、刪除 Model。
+- 預設建立 3 個 Model：A, B, C。
+- **刪除保護**：若 Model 已有勾選資料，刪除前須經過使用者確認。
+
+#### 4.3.3 Matrix 選擇視圖
+- 呈現方式：在 BOM 表格右側動態增加欄位，每欄代表一個 Model。
+- **Checkbox 選擇**：在每個 Model 欄位中，針對每個 Main Item 群組 (Main + 2nd Sources)，只能勾選其中一個物料。
+- **即時儲存**：勾選或取消勾選時，立即寫入資料庫 (`matrix_selections`)。
+- **自動勾選 (Implicit Selection)**：若某群組只有 Main Source (無 2nd Source)，系統視為已自動選中 Main，使用者無需手動勾選，但 UI 上應清楚顯示為已選中狀態。
+
+#### 4.3.4 狀態與燈號
+- **Matrix Tag**：當 BOM 存在 Matrix 定義 (Model > 0 且有任一 Selection) 時，在儀表板顯示 "Matrix" Tag。
+- **燈號顏色**：
+  - **綠燈 (Safe)**：所有 Model 的所有群組皆已完成勾選 (含自動勾選)。
+  - **黃/紅燈 (Warning)**：任一 Model 尚有未完成勾選的群組。
+- **警示 UI**：在 Matrix 表格表頭顯示各 Model 的完成狀態燈號；未完成的儲存格顯示警告框線。
+
+### 4.4 Excel 匯入/匯出
 
 #### 匯入
 - 支援讀取 `.xls` 與 `.xlsx` 格式
 - 支援**拖曳開啟**檔案，同時支援點擊按鈕選擇檔案
-- 匯入邏輯詳見 [4.3.1 Excel BOM 匯入規則](#431-excel-bom-匯入規則)
+- 匯入邏輯詳見 [4.4.1 Excel BOM 匯入規則](#441-excel-bom-匯入規則)
 
 #### 匯出
 - 僅支援寫入 `.xlsx` 格式
-- 匯出邏輯詳見 [4.3.2 Excel BOM 匯出規則](#432-excel-bom-匯出規則)
+- 匯出邏輯詳見 [4.4.2 Excel BOM 匯出規則](#442-excel-bom-匯出規則)
 
-### 4.4 版本比較
+### 4.5 版本比較 (待開發)
 - 比較同一專案不同版本的 BOM
 - 標示新增、刪除、修改的項目
 
 ---
 
-### 4.3.1 Excel BOM 匯入規則
+### 4.4.1 Excel BOM 匯入規則
 
 #### 表頭解析（bom_revisions 資料）
 
@@ -187,7 +223,30 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 
 - 工作表名稱對應 `bom_status`（NI→X, PROTO→P, MP→M）
 - `type` 留空
-- **覆蓋規則**：這三個頁面的零件 `location` 可能與 SMD/PTH/BOTTOM 中的零件重複，若有重複（同一 location），以**最新取得的 `bom_status` 覆蓋**，`type` 不覆蓋; 若無重複，則新增一筆零件紀錄。
+
+**覆蓋與新增規則：**
+
+系統需先依據零件分佈判斷 Mode (NPI / MP)，再依據下列規則處理狀態頁面的零件：
+
+1.  **NI 頁面**：
+    -   若零件已存在於 Phase 1 (SMD/PTH/BOTTOM)，**新增**一筆 `bom_status=X` 的紀錄（不覆蓋原紀錄）。
+    -   若零件不存在，則新增一筆 `bom_status=X` 的紀錄。
+
+2.  **PROTO 頁面**：
+    -   若 Mode = **NPI**：
+        -   若零件已存在於 Phase 1，**覆蓋**原紀錄的 `bom_status` 為 `P`。
+        -   若零件不存在，則新增一筆 `bom_status=P` 的紀錄。
+    -   若 Mode = **MP**：
+        -   若零件已存在於 Phase 1，**新增**一筆 `bom_status=P` 的紀錄（保留原紀錄，例如 `I`）。
+        -   若零件不存在，則新增一筆 `bom_status=P` 的紀錄。
+
+3.  **MP 頁面**：
+    -   若 Mode = **MP**：
+        -   若零件已存在於 Phase 1，**覆蓋**原紀錄的 `bom_status` 為 `M`。
+        -   若零件不存在，則新增一筆 `bom_status=M` 的紀錄。
+    -   若 Mode = **NPI**：
+        -   若零件已存在於 Phase 1，**新增**一筆 `bom_status=M` 的紀錄（保留原紀錄，例如 `I`）。
+        -   若零件不存在，則新增一筆 `bom_status=M` 的紀錄。
 
 #### NPI / MP 模式判斷邏輯 (Mode Determination)
 
@@ -201,7 +260,7 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 
 ---
 
-### 4.3.2 Excel BOM 匯出規則
+### 4.4.2 Excel BOM 匯出規則
 
 #### 支援格式
 - 匯出格式為 `.xlsx`。
@@ -277,6 +336,8 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 | `bom_revisions` | BOM 版本（合併 Phase + Version，含 schematic/PCB 版本等） |
 | `parts` | 原子化零件紀錄（一個 location 一行） |
 | `second_sources` | 替代料（透過邏輯鍵關聯零件群組） |
+| `matrix_models` | Matrix 專案定義 |
+| `matrix_selections` | Matrix 勾選紀錄 |
 
 > 詳細 Schema 定義請參考 [DATABASE.md](DATABASE.md)
 
@@ -300,6 +361,8 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 ---
 
 ## 7. UI 設計規格
+採用 SHADCN UI 框架，VSCODE 緊湊布局風格。
+善用 SHADCN MCP.
 
 ### 7.1 設計風格
 
@@ -332,54 +395,42 @@ BOMIX 是一個桌面應用程式，用於管理與追蹤電子 BOM（Bill of Ma
 
 ```
 ┌──────────────────────────────────────────────────┐
-│  標題列：BOMIX - [系列名稱]     [🌙/☀️] [≡]    │
-├────────┬─────────────────────────────────────────┤
-│        │                                         │
-│  導航  │            主內容區域                    │
-│  列    │                                         │
-│        │  ┌─────────────────────────────────┐    │
-│  🏠    │  │                                 │    │
-│  首頁  │  │    對應頁面內容                  │    │
-│        │  │    （專案管理/BOM/比較...）       │    │
-│  📁    │  │                                 │    │
-│  專案  │  │                                 │    │
-│        │  └─────────────────────────────────┘    │
-│  📊    │                                         │
-│  BOM   │                                         │
-│        │                                         │
-│  🔄    │                                         │
-│  比較  │                                         │
-│        │                                         │
-│  ⚙️    │                                         │
-│  設定  │                                         │
-│        │                                         │
-├────────┴─────────────────────────────────────────┤
-│  狀態列：[連線狀態] [目前開啟的系列路徑] [版本]   │
+│  標題列：BOMIX - [系列名稱]  [🏠/📊/🔄/⚙️] [🌙/☀️] │
+├──────────────────────────────────────────────────┤
+│                                                  │
+│            主內容區域                            │
+│                                                  │
+│  ┌─────────────────────────────────┐             │
+│  │                                 │             │
+│  │    儀表板 / BOM / 比較 / 設定    │             │
+│  │                                 │             │
+│  └─────────────────────────────────┘             │
+│                                                  │
 └──────────────────────────────────────────────────┘
 ```
 
-#### 導航列（Sidebar）
-- 固定於左側，寬度約 72px
-- 圖標 + 標籤文字
-- 頁面項目：首頁、專案管理、BOM 檢視、版本比較、設定
+#### 標題列與導航
+- **頂部導航**：導航圖標整合於視窗標題列左側或中間。
+- **頁面項目**：儀表板 (Dashboard)、BOM 檢視、版本比較、設定。
+- **視窗標題**：動態顯示「BOMIX - [系列名稱]」。
 
 #### 主內容區域
-- 根據導航列選擇動態切換頁面元件
-- 支援頁面間的 CSS 過渡動畫
+- 根據導航選擇動態切換頁面元件。
+- 支援頁面間的淡入淡出動畫。
 
-#### 狀態列
-- 顯示目前連線的系列資料庫路徑
-- 顯示應用程式版本號
-- 顯示操作狀態提示（如「匯入完成」）
+### 7.4 儀表板 (Dashboard)
 
-### 7.4 首頁（歡迎頁面）
-
-- 顯示應用程式名稱與版本
-- **快速操作**：
-  - 建立新系列
-  - 開啟現有系列（支援拖曳 `.bomix` 檔案）
-  - 最近開啟的系列列表
-- **系列資訊卡片**：開啟系列後，顯示系列描述、專案數量、最後修改時間
+- **未開啟系列時**：
+  - 顯示歡迎畫面與快速操作（建立/開啟系列）。
+  -顯示最近開啟的系列列表。
+- **開啟系列後**：
+  - **系列資訊**：顯示名稱、描述（可編輯）。
+  - **樹狀視圖**：階層式顯示 `系列 -> 專案 -> BOM`。
+  - **編輯功能**：
+    - 專案：編輯代碼與描述。
+    - BOM：編輯屬性 (Mode, Date, Suffix, Desc) 與 **Matrix Model 設定**。
+  - **Matrix 狀態**：顯示 Matrix Tag 與健康度燈號。
+  - **導航**：點擊 BOM 版本直接跳轉至 BOM 功能頁面。
 
 ### 7.5 About 對話框
 

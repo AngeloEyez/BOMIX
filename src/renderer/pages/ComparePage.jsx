@@ -12,7 +12,7 @@
  */
 function ComparePage() {
     return (
-        <div className="flex flex-col items-center justify-center h-full gap-4 text-slate-400 dark:text-slate-500">
+        <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
             <span className="text-5xl">🔄</span>
             <h2 className="text-xl font-semibold">版本比較</h2>
             <p className="text-sm">此功能將在 Phase 6 實作</p>

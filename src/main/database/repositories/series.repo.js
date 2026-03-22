@@ -1,0 +1,80 @@
+/**
+ * @file src/main/database/repositories/series.repo.js
+ * @description 系列元資料 (Series Meta) 資料存取層
+ * @module database/repositories/series
+ */
+
+import dbManager from '../connection.js';
+
+/**
+ * 取得系列元資料
+ * @returns {Object|undefined} 系列資訊物件 (含 id, description, created_at, updated_at)
+ */
+function getMeta() {
+  const db = dbManager.getDb();
+  const stmt = db.prepare('SELECT * FROM series_meta WHERE id = 1');
+  return stmt.get();
+}
+
+/**
+ * 更新系列元資料
+ * @param {Object} data - 更新資料
+ * @param {string} [data.description] - 系列描述
+ * @param {string} [data.phase_order] - JSON string of phase order
+ * @returns {Object} 更新後的系列資訊
+ */
+function updateMeta(data) {
+  const db = dbManager.getDb();
+
+  const fields = [];
+  const values = [];
+
+  if (data.description !== undefined) {
+    fields.push("description = ?");
+    values.push(data.description);
+  }
+  if (data.phase_order !== undefined) {
+    fields.push("phase_order = ?");
+    values.push(data.phase_order);
+  }
+
+  if (fields.length === 0) return getMeta();
+
+  const sql = `
+    UPDATE series_meta
+    SET ${fields.join(', ')},
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = 1
+    RETURNING *
+  `;
+
+  const stmt = db.prepare(sql);
+  return stmt.get(...values);
+}
+
+/**
+ * 初始化系列元資料 (通常由 Schema 建立時自動處理，此為備用)
+ */
+function initMeta() {
+  const db = dbManager.getDb();
+  const stmt = db.prepare('INSERT OR IGNORE INTO series_meta (id, description) VALUES (1, ?)');
+  stmt.run('Default Series');
+}
+
+/**
+ * 取得 BOM 版本總數
+ * @returns {number} BOM 版本數量
+ */
+function getBomCount() {
+  const db = dbManager.getDb();
+  const stmt = db.prepare('SELECT COUNT(*) as count FROM bom_revisions');
+  const result = stmt.get();
+  return result ? result.count : 0;
+}
+
+export default {
+  getMeta,
+  updateMeta,
+  initMeta,
+  getBomCount
+};

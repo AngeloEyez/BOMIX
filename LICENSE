@@ -1,21 +1,21 @@
-MIT License
+# BOMIX 軟體授權協議 (Software License Agreement)
 
-Copyright (c) 2026 BOMIX Team
+本軟體受版權法保護。本授權協議 (以下簡稱「本協議」) 規定您使用 BOMIX (以下簡稱「本軟體」) 的條件。
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+## 1. 授權狀態
+本軟體並非開源軟體。作者 (即版權所有者) 保留本軟體及其原始碼、二進位檔案的所有權利。
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+## 2. 使用限制
+除法律另有規定或作者另行書面授權外，您**不得**：
+- **商業用途**：嚴禁將本軟體用於任何商業目的、商業軟體套件或商業服務。
+- **修改與再製**：嚴禁修改、翻譯、改編本軟體，或基於本軟體製作衍生作品。
+- **再分發與傳遞**：嚴禁以任何形式分享、散佈、出租、再授權或傳遞本軟體的二進位檔案 (Bin file) 或執行檔給第三方。
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+## 3. 無擔保聲明
+本軟體按「現狀」提供，作者不提供任何明示或暗示的擔保。作者亦不對因使用本軟體產生的任何損失負責。
+
+## 4. 終止
+如果您違反本協議的任何條款，本授權將自動終止。
+
+---
+© 2026 BOMIX Team. All rights reserved.
