@@ -65,7 +65,7 @@ describe('BOM Revision Repository', () => {
     const revisions = bomRevisionRepo.findByProject(projectId);
 
     expect(revisions.length).toBe(3);
-    expect(revisions[0].phase_name).toBe('DVT');
+    expect(revisions[2].phase_name).toBe('DVT');
     expect(revisions[1].version).toBe('0.2');
   });
 

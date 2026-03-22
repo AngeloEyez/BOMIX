@@ -4,7 +4,7 @@ import progressService, { TASK_STATUS } from '../../src/main/services/progress.s
 
 describe('ProgressService', () => {
     it('should create a task with PENDING status', () => {
-        const taskId = progressService.createTask('TEST_TASK', { foo: 'bar' });
+        const taskId = progressService.createTask('TEST_TASK', { metadata: { foo: 'bar' } });
         const task = progressService.getTask(taskId);
 
         expect(task).toBeDefined();

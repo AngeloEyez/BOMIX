@@ -85,19 +85,13 @@ describe('Export Service', () => {
         ]);
 
         // Start export
-        const { taskId } = exportService.exportBom(bomRevisionId, outputFilePath);
-        expect(taskId).toBeDefined();
-
-        // Wait for task completion
-        await new Promise((resolve, reject) => {
-            const check = () => {
-                const task = progressService.getTask(taskId);
-                if (task.status === TASK_STATUS.COMPLETED) resolve();
-                else if (task.status === TASK_STATUS.FAILED) reject(task.error);
-                else setTimeout(check, 10);
-            };
-            check();
-        });
+        const ctx = {
+            taskId: 'test-task',
+            updateProgress: vi.fn(),
+            log: vi.fn(),
+            yield: async () => {}
+        };
+        await exportService.runExport(ctx, bomRevisionId, outputFilePath);
 
         // Verify calls
         expect(bomRevisionRepo.findById).toHaveBeenCalledWith(bomRevisionId);

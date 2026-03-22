@@ -70,20 +70,22 @@ describe('Import Service Logic - NPI/MP Mode & Status Updates', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         bomRevisionRepo.create.mockReturnValue({ id: 999 });
+        bomRevisionRepo.findByProject.mockReturnValue([]);
         projectRepo.findById.mockReturnValue({ project_code: 'TEST' });
+        projectRepo.findByCode.mockReturnValue({ id: 1, project_code: 'TEST' });
         // Default mock implementation
         partsRepo.createMany.mockImplementation(() => {});
         secondSourceRepo.createMany.mockImplementation(() => {});
     });
 
-    it('should handle NI sheet: Always ADD status X', () => {
+    it('should handle NI sheet: Always ADD status X', async () => {
         const workbook = createMockWorkbook({
             SMD: [{ loc: 'C1', item: 1 }],
             NI: [{ loc: 'C1', item: 1 }, { loc: 'C2', item: 2 }]
         });
         xlsx.readFile.mockReturnValue(workbook);
 
-        importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
+        await importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
 
         expect(partsRepo.createMany).toHaveBeenCalled();
         const insertedParts = partsRepo.createMany.mock.calls[0][0];
@@ -99,14 +101,14 @@ describe('Import Service Logic - NPI/MP Mode & Status Updates', () => {
         expect(c2Parts[0].bom_status).toBe('X');
     });
 
-    it('should handle NPI Mode: PROTO updates existing status P', () => {
+    it('should handle NPI Mode: PROTO updates existing status P', async () => {
         const workbook = createMockWorkbook({
             SMD: [{ loc: 'C1' }],
             PROTO: [{ loc: 'C1' }]
         });
         xlsx.readFile.mockReturnValue(workbook);
 
-        importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
+        await importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
 
         const insertedParts = partsRepo.createMany.mock.calls[0][0];
         const c1Parts = insertedParts.filter(p => p.location === 'C1');
@@ -116,14 +118,14 @@ describe('Import Service Logic - NPI/MP Mode & Status Updates', () => {
         expect(c1Parts[0].type).toBe('SMD');
     });
 
-    it('should handle NPI Mode: PROTO adds new status P', () => {
+    it('should handle NPI Mode: PROTO adds new status P', async () => {
         const workbook = createMockWorkbook({
             SMD: [{ loc: 'C1' }],
             PROTO: [{ loc: 'C1' }, { loc: 'C2' }]
         });
         xlsx.readFile.mockReturnValue(workbook);
 
-        importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
+        await importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
 
         const insertedParts = partsRepo.createMany.mock.calls[0][0];
         
@@ -136,7 +138,7 @@ describe('Import Service Logic - NPI/MP Mode & Status Updates', () => {
         expect(c2Parts[0].bom_status).toBe('P');
     });
 
-    it('should handle MP Mode: PROTO adds new status P (not overwrite)', () => {
+    it('should handle MP Mode: PROTO adds new status P (not overwrite)', async () => {
         const workbook = createMockWorkbook({
             SMD: [{ loc: 'C1' }], // Removed C2 to avoid Proto overlap triggering NPI
             MP: [{ loc: 'C1' }], 
@@ -144,7 +146,7 @@ describe('Import Service Logic - NPI/MP Mode & Status Updates', () => {
         });
         xlsx.readFile.mockReturnValue(workbook);
 
-        importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
+        await importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
         
         // Check Mode
         expect(bomRevisionRepo.create).toHaveBeenCalledWith(expect.objectContaining({ mode: 'MP' }));
@@ -162,14 +164,14 @@ describe('Import Service Logic - NPI/MP Mode & Status Updates', () => {
         expect(c2Parts[0].bom_status).toBe('P');
     });
 
-    it('should handle MP Mode: MP updates existing status M', () => {
+    it('should handle MP Mode: MP updates existing status M', async () => {
         const workbook = createMockWorkbook({
             SMD: [{ loc: 'C1' }],
             MP: [{ loc: 'C1' }]
         });
         xlsx.readFile.mockReturnValue(workbook);
 
-        importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
+        await importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
 
         const insertedParts = partsRepo.createMany.mock.calls[0][0];
         const c1Parts = insertedParts.filter(p => p.location === 'C1');
@@ -177,7 +179,7 @@ describe('Import Service Logic - NPI/MP Mode & Status Updates', () => {
         expect(c1Parts[0].bom_status).toBe('M');
     });
 
-    it('should handle NPI Mode: MP adds new status M (not overwrite)', () => {
+    it('should handle NPI Mode: MP adds new status M (not overwrite)', async () => {
         const workbook = createMockWorkbook({
             SMD: [{ loc: 'C1' }, { loc: 'C2' }],
             PROTO: [{ loc: 'C1' }],
@@ -185,7 +187,7 @@ describe('Import Service Logic - NPI/MP Mode & Status Updates', () => {
         });
         xlsx.readFile.mockReturnValue(workbook);
 
-        importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
+        await importBom('test.xls', 'DB', '0.1', 'BOM', 'test.xls');
         
         const insertedParts = partsRepo.createMany.mock.calls[0][0];
 
