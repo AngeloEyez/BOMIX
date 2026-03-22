@@ -46,6 +46,7 @@ function PhaseOrderDialog({ isOpen, onClose, currentPhaseOrder, onSave, required
             }
 
             // 轉換為 SortableList 需要的格式 { id, value }
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setItems(initialOrder.map((val, index) => ({
                 id: `phase-${index}-${Date.now()}`,
                 value: val
@@ -110,7 +111,7 @@ function PhaseOrderDialog({ isOpen, onClose, currentPhaseOrder, onSave, required
 
                 {requiredPhase && (
                     <div className="bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-500 p-2 text-xs rounded-md border border-amber-200 dark:border-amber-900">
-                        匯入的 BOM 包含未知的 Phase <strong>"{requiredPhase}"</strong>，請將它新增到下方的排序清單中。
+                        匯入的 BOM 包含未知的 Phase <strong>&quot;{requiredPhase}&quot;</strong>，請將它新增到下方的排序清單中。
                     </div>
                 )}
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import {
     FileSpreadsheet, Download,
     FolderOpen, ChevronDown, X, RotateCcw, Settings
@@ -9,9 +9,7 @@ import useBomStore from '../stores/useBomStore'
 import useTaskStore from '../stores/useTaskStore'
 import useToastStore from '../stores/useToastStore'
 import useMatrixStore from '../stores/useMatrixStore'
-import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Separator } from "@/components/ui/separator"
 import BomTable from '../components/tables/BomTable'
 import BomSidebar from '../components/layout/BomSidebar'
 import ConfirmDialog from '../components/dialogs/ConfirmDialog'
@@ -80,7 +78,7 @@ function BomPage() {
         try {
             const saved = window.localStorage.getItem('bom-layout')
             if (saved) return JSON.parse(saved)
-        } catch(e) { /* ignore */ }
+            } catch(_e) { /* ignore */ }
         return undefined // 若無存檔則回傳 undefined，讓元件使用個別的 defaultSize
     }, [])
 
@@ -163,7 +161,7 @@ function BomPage() {
             }
             return false
         })
-    }, [bomView, searchTerm, searchFields, bomMode])
+    }, [bomView, searchTerm, searchFields])
 
 
     // 開啟系列後載入專案列表
@@ -235,19 +233,6 @@ function BomPage() {
         }
     }
 
-    // ========================================
-    // 未開啟系列 — 提示畫面
-    // ========================================
-    if (!isOpen) {
-        return (
-            <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground animate-fade-in">
-                <FolderOpen size={40} className="text-border" />
-                <h2 className="text-lg font-semibold">尚未開啟系列</h2>
-                <p className="text-sm">請先從首頁建立或開啟系列資料庫，再檢視 BOM。</p>
-            </div>
-        )
-    }
-
     // 取得當前選取 BOM 的所屬專案名稱
     const selectedProjectCode = useMemo(() => {
         // 優先從 selectedRevision 取得 project_id，若無則使用 store 的 selectedProjectId
@@ -271,6 +256,19 @@ function BomPage() {
         })
         return pIds.size
     }, [selectedRevisionIds, allBoms])
+
+    // ========================================
+    // 未開啟系列 — 提示畫面
+    // ========================================
+    if (!isOpen) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground animate-fade-in">
+                <FolderOpen size={40} className="text-border" />
+                <h2 className="text-lg font-semibold">尚未開啟系列</h2>
+                <p className="text-sm">請先從首頁建立或開啟系列資料庫，再檢視 BOM。</p>
+            </div>
+        )
+    }
 
     // 計算目前選取的版本顯示名稱 (Multi-select handling?)
     const selectionCount = selectedRevisionIds.size;

@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react'
-import useTaskStore, { SYSTEM_LOG_SESSION_ID } from '../../stores/useTaskStore'
+import useTaskStore from '../../stores/useTaskStore'
 import useSeriesStore from '../../stores/useSeriesStore'
 import useAppStore from '../../stores/useAppStore'
 

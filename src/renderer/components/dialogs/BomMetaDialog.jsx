@@ -8,7 +8,7 @@ import Dialog from './Dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Check, X, FileText, Calendar, Clock, AlertCircle } from 'lucide-react'
+import { Check, FileText, Calendar, Clock, AlertCircle } from 'lucide-react'
 
 /**
  * BOM 屬性編輯對話框。

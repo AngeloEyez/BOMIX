@@ -7,7 +7,6 @@
  * @module ipc/excel
  */
 
-import importService from '../services/import.service.js';
 import importBatchService from '../services/import-batch.service.js';
 import { runExport } from '../services/export.service.js';
 import taskManager from '../services/task-manager.service.js';
