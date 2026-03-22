@@ -102,7 +102,7 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
      * @param {string[]} filePaths - 選取的檔案路徑
      * @returns {Promise<{success: boolean, error?: string}>}
      */
-    const handleImportSubmit = async (filePaths) => {
+    const handleImportSubmit = useCallback(async (filePaths) => {
         // 先解析這些檔案的 MetaData
         const analysis = await window.api.excel.analyzeFiles(filePaths)
         if (!analysis.success) {
@@ -123,7 +123,7 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
             try {
                 const parsed = JSON.parse(phaseOrderStr);
                 if (Array.isArray(parsed) && parsed.length > 0) orderArray = parsed;
-            } catch (e) {
+            } catch (_e) {
                // ignore
             }
         }
@@ -165,7 +165,7 @@ function AppLayout({ pages, currentPage, onNavigate, children }) {
         }
         addSystemLog(`匯入排程失敗：${result.error}`, 'error')
         return { success: false, error: result.error }
-    }
+    }, [currentSeries?.phase_order, addSystemLog]);
 
     const handleSavePhaseOrder = async (orderArray) => {
         const result = await useSeriesStore.getState().updatePhaseOrder(orderArray);

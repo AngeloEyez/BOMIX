@@ -107,7 +107,7 @@ function applyFilter(part, filter, mode) {
  * @param {Object} [options={}] - 選項參數（預留，暫未實作功能）
  * @returns {Array<Object>} 聚合後的 BOM 列表
  */
-export function queryBomData(bomIds, filters = [], options = {}) {
+export function queryBomData(bomIds, filters = [], _options = {}) {
     if (!Array.isArray(bomIds) || bomIds.length === 0) return [];
 
     // 1. 取得 BOM Revision（以第一個的 Mode 為準）

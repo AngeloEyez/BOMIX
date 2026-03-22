@@ -122,7 +122,7 @@ function SettingsPage() {
         try {
             const saved = window.localStorage.getItem('settings-layout')
             if (saved) return JSON.parse(saved)
-        } catch(e) { /* ignore */ }
+        } catch(_e) { /* ignore */ }
         return undefined
     }, [])
 

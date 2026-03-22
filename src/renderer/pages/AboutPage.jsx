@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Package, Github } from 'lucide-react'
+import { Package } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import ReactMarkdown from 'react-markdown'
 
@@ -41,7 +41,7 @@ function AboutPage() {
 
         // 取得更新紀錄
         if (window.api?.app?.getChangelog) {
-            // eslint-disable-next-line react-hooks/exhaustive-deps
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setChangelogLoading(true)
             setChangelogError(null)
             window.api.app.getChangelog()

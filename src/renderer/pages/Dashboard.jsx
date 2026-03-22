@@ -199,7 +199,7 @@ function Dashboard({ onNavigate }) {
 
     // --- Handlers: Project ---
 
-    const handleCreateProject = () => {
+    const _handleCreateProject = () => {
         setProjectDialog({ isOpen: true, mode: 'create', data: null })
     }
 
@@ -347,7 +347,7 @@ function Dashboard({ onNavigate }) {
                         <Card>
                             <CardContent className="p-0 divide-y divide-border">
                                 {recentFiles.map((filePath) => {
-                                    const name = filePath.split(/[\/\\]/).pop()?.replace('.bomix', '') || filePath
+                                    const name = filePath.split(/[/\\]/).pop()?.replace('.bomix', '') || filePath
                                     return (
                                         <div key={filePath} className="flex items-center justify-between px-3 py-2 hover:bg-muted/50 transition-colors group">
                                             <button onClick={() => handleSeriesOpen(filePath)} className="flex-1 flex items-center gap-2 text-left min-w-0">
@@ -377,7 +377,7 @@ function Dashboard({ onNavigate }) {
     // ========================================
     // B. Dashboard (已開啟系列)
     // ========================================
-    const displayName = currentPath?.split(/[\/\\]/).pop().replace('.bomix', '') || '未命名系列'
+    const displayName = currentPath?.split(/[/\\]/).pop().replace('.bomix', '') || '未命名系列'
 
     return (
         <div className="flex flex-col h-full animate-fade-in bg-muted/30">

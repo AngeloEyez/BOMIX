@@ -106,16 +106,20 @@ function Sortable(props) {
     return value.map((item) => getItemValue(item));
   }, [value, getItemValue]);
 
+  const onDragStartProp = sortableProps.onDragStart;
+  const onDragEndProp = sortableProps.onDragEnd;
+  const onDragCancelProp = sortableProps.onDragCancel;
+
   const onDragStart = React.useCallback((event) => {
-    sortableProps.onDragStart?.(event);
+    onDragStartProp?.(event);
 
     if (event.activatorEvent.defaultPrevented) return;
 
     setActiveId(event.active.id);
-  }, [sortableProps.onDragStart]);
+  }, [onDragStartProp]);
 
   const onDragEnd = React.useCallback((event) => {
-    sortableProps.onDragEnd?.(event);
+    onDragEndProp?.(event);
 
     if (event.activatorEvent.defaultPrevented) return;
 
@@ -131,15 +135,15 @@ function Sortable(props) {
       }
     }
     setActiveId(null);
-  }, [value, onValueChange, onMove, getItemValue, sortableProps.onDragEnd]);
+  }, [value, onValueChange, onMove, getItemValue, onDragEndProp]);
 
   const onDragCancel = React.useCallback((event) => {
-    sortableProps.onDragCancel?.(event);
+    onDragCancelProp?.(event);
 
     if (event.activatorEvent.defaultPrevented) return;
 
     setActiveId(null);
-  }, [sortableProps.onDragCancel]);
+  }, [onDragCancelProp]);
 
   const announcements = React.useMemo(() => ({
     onDragStart({ active }) {
