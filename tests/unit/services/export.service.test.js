@@ -102,16 +102,16 @@ describe('Export Service', () => {
         // Verify saveWorkbook called with temp path
         expect(saveWorkbook).toHaveBeenCalledWith(
             mockTargetWb,
-            expect.stringMatching(/\/tmp\/bom_export_.*\.xlsx/)
+            expect.stringMatching(/[\\\/]tmp[\\\/]bom_export_.*\.xlsx/)
         );
 
         // Verify copyFile and unlink called (instead of rename)
         expect(fs.copyFile).toHaveBeenCalledWith(
-            expect.stringMatching(/\/tmp\/bom_export_.*\.xlsx/),
+            expect.stringMatching(/[\\\/]tmp[\\\/]bom_export_.*\.xlsx/),
             outputFilePath
         );
         expect(fs.unlink).toHaveBeenCalledWith(
-            expect.stringMatching(/\/tmp\/bom_export_.*\.xlsx/)
+            expect.stringMatching(/[\\\/]tmp[\\\/]bom_export_.*\.xlsx/)
         );
     });
 });

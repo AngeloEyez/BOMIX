@@ -10,13 +10,19 @@ import partsRepo from '../../src/main/database/repositories/parts.repo.js';
 import secondSourceRepo from '../../src/main/database/repositories/second-source.repo.js';
 import projectRepo from '../../src/main/database/repositories/project.repo.js';
 
+import os from 'os';
+
 // Mock Electron
-vi.mock('electron', () => ({
-    app: {
-        isPackaged: false,
-        getPath: vi.fn().mockReturnValue('/tmp')
-    }
-}));
+vi.mock('electron', async (importOriginal) => {
+    // Need to use dynamic import or require inside to avoid hoisting issues
+    const osModule = await import('os');
+    return {
+        app: {
+            isPackaged: false,
+            getPath: vi.fn().mockReturnValue(osModule.tmpdir())
+        }
+    };
+});
 
 // Mock DB Repositories
 vi.mock('../../src/main/database/repositories/bom-revision.repo.js');
