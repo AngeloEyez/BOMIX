@@ -66,7 +66,7 @@
 - [x] `src/main/ipc/series.ipc.js`
 - [x] `src/main/ipc/project.ipc.js`
 - [x] 更新 `src/preload/index.js`
-- [x] 撰寫 API 文件 (`dev/modules/`)
+- [x] 撰寫 API 文件 (`dev/apiDoc/`)
 - [x] 單元測試 (Services)
 
 ### Phase 4：系列與專案管理 - 前端 ⭐ 已完成
@@ -90,7 +90,7 @@ BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 - [x] `src/main/ipc/bom.ipc.js`
 - [x] `src/main/ipc/excel.ipc.js`
 - [x] 更新 `src/preload/index.js`
-- [x] 撰寫 API 文件 (`dev/modules/`)
+- [x] 撰寫 API 文件 (`dev/apiDoc/`)
 - [x] 單元測試 (含 Excel 範本與匯出格式驗證)
 
 ### Phase 6：BOM 管理與 Excel 整合 - 前端 ⭐ 已完成
@@ -122,7 +122,7 @@ BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
   - [ ] `src/main/services/matrix.service.js` (含 Implicit Selection 邏輯)
   - [ ] `src/main/ipc/matrix.ipc.js`
   - [ ] 更新 `src/preload/index.js`
-  - [ ] API 文件 `dev/modules/matrix.md`
+  - [ ] API 文件 `dev/apiDoc/matrix.md`
   - [ ] 單元測試 `tests/unit/matrix.service.test.js`
 - [ ] **前端實作**
   - [ ] `src/renderer/stores/useMatrixStore.js`
@@ -138,7 +138,7 @@ BOM 核心邏輯、聚合視圖計算、Excel 解析與匯出。
 - [ ] `src/main/services/compare.service.js`
 - [ ] `src/main/ipc/compare.ipc.js`
 - [ ] 更新 `src/preload/index.js`
-- [ ] 撰寫 API 文件 (`dev/modules/`)
+- [ ] 撰寫 API 文件 (`dev/apiDoc/`)
 - [ ] 單元測試 (演算法驗證)
 
 ### Phase 9：版本比較 - 前端

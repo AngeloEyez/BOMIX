@@ -115,7 +115,7 @@ function MyComponent() {
 }
 ```
 
-詳細 Store API 請參考 [`dev/modules/settings.md`](./modules/settings.md)。
+詳細 Store API 請參考 [`dev/apiDoc/settings.md`](./modules/settings.md)。
 
 ---
 

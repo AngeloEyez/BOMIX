@@ -22,7 +22,7 @@ src/
 為確保後續開發者（包括其他 Agent）能無縫接手，每項功能開發必須包含：
 1.  **完整實作**：包含資料庫 Schema 變更、Service 邏輯、IPC 通道、以及 UI 呈現。
 2.  **技術文件化**：同步更新 `dev/` 目錄下的相關文件（如 `ARCHITECTURE.md`, `DATABASE.md` 等）。
-3.  **API 註冊**：在 `src/preload/index.js` 暴露 API 並在 `dev/modules/` 撰寫說明。
+3.  **API 註冊**：在 `src/preload/index.js` 暴露 API 並在 `dev/apiDoc/` 撰寫說明。
 4.  **自動化測試**：隨附單元測試與（若涉及 UI）整合測試。
 
 | 區域 | 負責事項 |
@@ -48,21 +48,26 @@ src/
 ```
 
 ### API 說明文件 (強制)
-所有新增或修改的 API 必須記錄於 `dev/modules/{模組名}.md`：
+所有新增或修改的 API 必須記錄於 `dev/apiDoc/{模組名}.md`：
+- **API 查詢指南**：如果要使用特定 API，請到 `dev/apiDoc/` 目錄查詢。
 - API 方法名稱與參數 (含型別)
 - 回傳值格式 (JSON 結構)
 - 錯誤處理機制
 - 呼叫範例
+
+### 模組架構說明文件
+所有關於特定頁面或模組架構的說明文件（例如：BomPage 架構、BOM 視圖定義、過濾器規格等）皆記錄於 `dev/codeStructure/` 資料夾中。
 
 ## 工作流程
 
 ### 功能開發標準流程
 1.  **需求分析**：閱讀 `dev/SPEC.md` 與相關技術文件。
 2.  **設計變更**：若涉及架構或資料庫，先更新 `dev/ARCHITECTURE.md` 或 `dev/DATABASE.md`。
+    - **架構變更同步原則**：每次變更程式碼架構（包含但不限於 Component 結構調整、狀態管理邏輯），必須同步掃瞄並更新 `dev/` 中的所有相關文件（例如 `dev/codeStructure/` 下的說明文件）。
 3.  **垂直實作**：
     - 實作資料庫與業務邏輯。
     - 建立 IPC 通道並暴露至 Preload。
-    - 撰寫/更新 `dev/modules/` API 文件。
+    - 撰寫/更新 `dev/apiDoc/` API 文件。
     - 實作前端 Store 與 UI。
 4.  **驗證**：運行測試並手動確認功能完整性。
 5.  **文件收尾**：更新 `dev/lessonlearned.md` 記錄遇到的問題與解決方案。

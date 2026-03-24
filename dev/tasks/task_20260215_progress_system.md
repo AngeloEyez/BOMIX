@@ -85,7 +85,7 @@
 ---
 
 ## 5. 文件產出
-**檔案位置**: `dev/modules/progress-system.md`
+**檔案位置**: `dev/apiDoc/progress-system.md`
 
 請撰寫一份 Markdown 文件，供前端開發者參考：
 - 說明 IPC 通道名稱與參數格式。
