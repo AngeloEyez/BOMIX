@@ -11,25 +11,26 @@
 
 ---
 
-## 標準開發階段 (Phases)
+## 標準開發流程
 
 開發者應遵循以下階段執行任務：
 
 ### 第一階段：需求與技術分析
 **目標**：確保對現有架構與新需求有完整理解。
-- 閱讀 `dev/PLAN.md` 確認當前進度。
-- 閱讀 `dev/SPEC.md` 了解功能與 UI 規格。
 - 閱讀 `dev/ARCHITECTURE.md` 了解系統結構。
 - 閱讀 `dev/COLLABORATION.md` 確保遵守協作規範。
+- 閱讀 `dev/PLAN.md` 確認當前進度。
+- 閱讀 `dev/SPEC.md` 了解功能與 UI 規格。
 
 ### 第二階段：垂直功能實作
 **目標**：完成功能的端到端開發。
+檢查分析以下層面，評估需要調整與實作的範圍：
 1.  **資料層**：更新 `src/main/database/` 中的 Schema 與 Repository。
 2.  **業務層**：實作 `src/main/services/` 邏輯。
 3.  **通訊層**：
     - 在 `src/main/ipc/` 實作 Handler。
     - 在 `src/preload/index.js` 暴露 API。
-4.  **UI 層**：實作 React 元件、Zustand Store 與 Tailwind 樣式。
+4.  **UI 層**：實作 React 元件、Zustand Store 與 Tailwind + Shadcn UI 樣式。
 
 ### 第三階段：文件化與驗證
 **目標**：留下清晰的開發紀錄並驗證結果。
@@ -47,9 +48,11 @@
 ```markdown
 @Agent
 請按順序閱讀以下文件以確保理解現狀：
-- dev/PLAN.md
-- dev/COLLABORATION.md
 - dev/AGENT_GUIDE.md
+- dev/COLLABORATION.md
+- dev/ARCHITECTURE.md
+- dev/SPEC.md
+- dev/PLAN.md
 
 任務目標：實作 [功能名稱] 的垂直整合。
 
