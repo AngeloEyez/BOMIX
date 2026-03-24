@@ -29,7 +29,7 @@
 3.  **通訊層**：
     - 在 `src/main/ipc/` 實作 Handler。
     - 在 `src/preload/index.js` 暴露 API。
-4.  **UI 層**：實作 React 元件、Zustand Store 與 Tailwind 樣式。
+4.  **UI 層**：實作 React 元件、Zustand Store 與 Tailwind + Shadcn UI 樣式。
 
 ### 第三階段：文件化與驗證
 **目標**：留下清晰的開發紀錄並驗證結果。
