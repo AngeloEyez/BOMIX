@@ -5,7 +5,6 @@
 ## 📋 目錄
 
 - [技術選型](#技術選型)
-  (已合併至技術選型)
 - [資料結構設計](#資料結構設計)
 - [效能優化建議](#效能優化建議)
 - [實作範例](#實作範例)
@@ -49,18 +48,6 @@ GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o bomix
 # 一鍵編譯所有平台
 make all
 ```
-
-### go.mod 建議版本
-
-```go
-require (
-    gorm.io/gorm v1.25.9
-    gorm.io/driver/sqlite v1.5.4  // 已封裝 modernc
-    modernc.org/sqlite v1.38.0
-)
-```
-
-
 
 ### go.mod 建議版本
 
@@ -345,27 +332,12 @@ func GetMatrixCompletionStatus(db *gorm.DB, revisionID string) (map[string]float
 
 ---
 
-## 跨平台編譯指令
-
-```bash
-# Linux → Windows
-GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o bomix.exe
-
-# Linux → macOS
-GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o bomix
-
-# 一鍵編譯所有平台
-make all  # 預設腳本
-```
-
----
-
 ## 總結
 
 | 項目 | 推薦方案 |
 |------|---------|
 | **資料庫** | SQLite（單一 `.bomix` 檔案） |
-| **驅動** | modernc.org/sqlite 或 glebarez/sqlite |
+| **驅動** | modernc.org/sqlite（純 Go，無需 CGO） |
 | **ORM** | GORM（開發效率優先） |
 | **Location 儲存** | 逗號分隔字串（簡化查詢） |
 | **Second Source** | JSON 欄位或主鍵關聯 |
