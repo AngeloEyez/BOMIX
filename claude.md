@@ -11,32 +11,70 @@
 BOMIX utilizes a nested mono-repo-like structure. All files MUST be placed strictly according to the workspace directory structure shown below based on their specific purpose. If there is any uncertainty about where a file belongs, you MUST ask the user for clarification before creating or placing it. All development documents, global test scripts, and agent workspaces are placed parallel to the core source application folder (`bomix-app`).
 
 ```text
-BOMIX/                     # Root workspace (Open Claude Code here)
-├── CLAUDE.md              # Global guidelines (This file)
-├── roadmap.md             # Project roadmap & progress checklist
-├── docs/                  # Development documentation, API specs, and diagrams
-├── scripts/               # Global automation and environment helper scripts
-└── bomix-app/             # Clean Wails v3 source directory (Initialized here)
-    ├── wails.json         # Wails configuration
-    ├── main.go            # Wails entry point
-    ├── template/          # Folder for Excel templates (for output generation)
-    │   └── template.xlsx  # Source Excel template file(s)
-    ├── backend/           # Pure Go Backend Core
-    │   ├── excel/         # Excel parsing & writing logic
-    │   │   ├── reader.go
-    │   │   └── reader_test.go
-    │   ├── processor/     # Data calculation & precise aggregation logic
-    │   │   ├── logic.go
-    │   │   └── logic_test.go
-    │   ├── types/         # Domain shared models & interfaces
-    │   ├── app.go         # Wails main bridge & lifecycle
-    │   └── app_test.go
-    └── frontend/          # Vue 3 Frontend App
-        ├── src/           # Components, Views, and Assets
-        ├── tests/         # Vitest unit tests
+BOMIX/                         # Root workspace (Open Claude Code here)
+├── CLAUDE.md                  # Global guidelines (This file)
+├── roadmap.md                 # Project roadmap & progress checklist
+├── docs/                      # Development documentation, API specs, and diagrams
+│   ├── product-spec.md        # Product specifications
+│   └── ...
+├── scripts/                   # Global automation and environment helper scripts
+└── bomix-app/                 # Clean Wails v3 source directory (Initialized here)
+    ├── main.go                # Wails entry point
+    ├── wails.json             # Wails configuration
+    ├── go.mod                 # Go module definitions
+    ├── template/              # Folder for Excel templates (for output generation)
+    │   ├── bigmatrix.xlsx     # BigMatrix export template
+    │   └── matrix.xlsx        # Matrix export template
+    ├── backend/               # Pure Go Backend Core
+    │   ├── app.go             # Wails main bridge & lifecycle
+    │   ├── config/            # Configuration system
+    │   │   ├── config.go      # Configuration loading/merging logic
+    │   │   └── defaults.go    # All default values
+    │   ├── db/                # Database layer
+    │   │   ├── connection.go  # SQLite connection management
+    │   │   ├── models.go      # GORM Model definitions
+    │   │   ├── series.go      # Series data operations
+    │   │   ├── project.go     # Project data operations
+    │   │   ├── revision.go    # BOM Revision data operations
+    │   │   ├── part.go        # Part data operations
+    │   │   └── matrix.go      # Matrix data operations
+    │   ├── excel/             # Excel processing module
+    │   │   ├── detector.go    # BOM format auto-detection
+    │   │   ├── reader.go      # Excel import main logic (interfaces)
+    │   │   ├── reader_ebom.go     # EBOM format reader
+    │   │   ├── reader_bigmatrix.go# BigMatrix format reader
+    │   │   ├── reader_matrix.go   # Matrix format reader
+    │   │   ├── writer.go      # Excel export main logic (interfaces)
+    │   │   ├── writer_bigmatrix.go# BigMatrix format writer
+    │   │   ├── writer_matrix.go   # Matrix format writer
+    │   │   └── template.go    # go:embed template management
+    │   ├── processor/         # Data calculation & precise aggregation logic
+    │   │   ├── aggregator.go  # Data aggregation logic (Main/2nd merge)
+    │   │   └── filter.go      # View filtering logic
+    │   ├── task/              # Async task system
+    │   │   ├── manager.go     # Task manager
+    │   │   ├── task.go        # Task definition and status
+    │   │   └── callback.go    # Callback mechanism
+    │   ├── logger/            # Logging system
+    │   │   ├── logger.go      # Structured logging (based on slog)
+    │   │   └── buffer.go      # Log buffer (for UI reading)
+    │   └── types/             # Domain shared models & interfaces
+    │       ├── domain.go      # Domain type definitions
+    │       ├── errors.go      # Custom error types
+    │       └── interfaces.go  # Core interface definitions
+    └── frontend/              # Vue 3 Frontend App
+        ├── index.html
         ├── package.json
-        └── vite.config.ts
-
+        ├── vite.config.ts
+        └── src/
+            ├── main.ts
+            ├── App.vue
+            ├── router/        # Vue Router
+            ├── stores/        # Pinia state management
+            ├── components/    # Common components
+            ├── views/         # Page components
+            └── services/      # Wails bindings calling
+                └── api.ts
 ```
 
 ### File Placement & Naming Conventions:
