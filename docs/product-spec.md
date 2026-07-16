@@ -471,7 +471,9 @@ func Detect(file *excelize.File) BOMFormat {
 
 1. **選擇格式與來源**：使用者選擇匯出格式（BigMatrix 或 Matrix），並勾選一個或多個要匯出的 BOM Revisions。
    - **Model 匯出原則**：不論是 BigMatrix 還是 Matrix，匯出時均會取該 BOM 表中**最大的 Model 數量全部匯出**，而非只匯出單一 Model。
-   - **BigMatrix Model 數量調整**：若選擇 BigMatrix 匯出，介面需提供選項供使用者調整（增減）每個 BOM 表所要匯出的 Model 數量。預設值為該 BOM 已存在的最長 Model 數量。若使用者將數量調大（例如：原本只有 3 個 Model，選擇匯出 4 個），則第 4 個 Model 會按照範本格式繪製，但其內容格留空。
+   - **BigMatrix Model 數量調整**：
+     1. 若選擇 BigMatrix 匯出，介面需提供選項供使用者調整（增減）每個 BOM 表所要匯出的 Model 數量。預設值為該 BOM 已存在的最長 Model 數量。若使用者將數量調大（例如：原本只有 3 個 Model，選擇匯出 4 個），則第 4 個 Model 會按照範本格式繪製，但其內容格留空。
+     2. 介面提供一個可輸入description的欄位, 選填。匯出的BigMatrix的 description欄位會填入使用者輸入的description。
 2. **啟動非同步任務與處理策略**：
    - **BigMatrix 格式**：系統僅會啟動**一個**非同步任務。該任務會自資料庫讀取所有被勾選的 BOM Revisions 資料，並將它們**整合合併**匯出至單一 BigMatrix Excel 報表中。
    - **Matrix 格式**：系統會為每個勾選 the BOM Revision **分別啟動獨立的非同步任務**，各別讀取資料並依 Template 輸出為多個單一專案的 Matrix Excel 檔案。
@@ -593,7 +595,7 @@ BigMatrix BOM 的 sheet, 固定讀取 `BigMatrix` sheet.
 
 | 儲存格 | 欄位 | 解析規則 | 範例 |
 |--------|------|----------|------|
-| B3 | project_count | 取 `"Products: "` 後方數字 | `Products: 4` → 4 |
+| B3 | bom_count | 取 `"BOMs: "` 後方數字 | `BOMs: 4` → 4 |
 | B4 | description | 取 `"Description: "` 後方文字 | `Description: MBD,Tangled,...` |
 | E4 | date | 取 `"Date: "` 後方文字 | `Date: 2026-01-15` → `2026-01-15` |
 
@@ -661,70 +663,107 @@ BigMatrix 格式的工作表中，自 **H 欄** 開始向右排列了多份 BOM 
      - `SelectedSupplier` / `SelectedSupplierPn`：當前被選中這列的物料之 Supplier 與 Supplier PN。
      - `IsAutoSelected`：設定為 `false`。
 
-#### 7.2.4 偵測規則
+#### 7.2.4 BigMatrix 匯入規則:
 
-<!-- TODO: 待補充 Detector 使用的偵測條件 -->
+BigMatrix 匯入時不建立新的物料, 僅更新資料庫中每份BOM的matrix 勾選狀態以及 每個model的qty, 若有增減model數量, 則同步於database中調整。
 
 ### 7.3 Matrix 匯入規則
 
-<!-- TODO: 待補充 -->
-
-> [!IMPORTANT]
-> 此區塊待使用者提供 Matrix 範例檔案與格式說明後補充。
-
-#### 7.3.1 表頭解析
-
-| 儲存格 | 欄位 | 解析規則 |
-|--------|------|----------|
-| <!-- TODO --> | <!-- TODO --> | <!-- TODO --> |
-
-#### 7.3.2 Sheet 結構
-
-<!-- TODO: 待補充 -->
-
-#### 7.3.3 零件與 Model 資料解析
-
-<!-- TODO: 待補充 -->
-
-#### 7.3.4 偵測規則
-
-<!-- TODO: 待補充 -->
+place holder, 暫時不支援 Matrix BOM 匯入, 但在程式碼中保留 placeholder 以便後續擴充
 
 ---
 
 ## 8. Excel 匯出規範
 
-### 8.1 BigMatrix 匯出規則
+### 通用匯出格式定義
 
-> [!IMPORTANT]
-> 此區塊待使用者提供 BigMatrix Template 與格式定義後補充。
+- **物料群組底色交替**：為容易區分不同物料群組，物料群組之間的儲存格底色採用兩種顏色交互出現。
+- **底色定義**：底色 1 和底色 2 定義於設定檔中，預設底色 1 為白色，底色 2 為淡米黃。
+
+### 8.1 BigMatrix 匯出規則
 
 #### 8.1.1 Template 檔案
 
 - 路徑：`template/bigmatrix.xlsx`
 - 嵌入方式：`//go:embed`
 
-#### 8.1.2 輸出 Sheet 清單
+#### 8.1.2 輸出 Sheet 結構
 
-<!-- TODO: 待補充 -->
+- 固定輸出至名為 **`BigMatrix`** 的 Sheet。
 
-#### 8.1.3 欄位對應
+#### 8.1.3 表頭寫入
 
-<!-- TODO: 待補充 -->
+| 儲存格 | 寫入內容 | 範例 |
+|--------|----------|------|
+| B3 | `"BOMs: "` + 匯出的 BOM 數量 | `BOMs: 4` |
+| B4 | `"Description: "` + 匯出的專案描述文字 | `Description: MBD,Tangled,...` |
+| E4 | `"Date: "` + 匯出日期 | `Date: 2026-01-15` |
 
-#### 8.1.4 匯出參數
+
+#### 8.1.4 橫向多 BOM 與 Model 欄位寫入
+
+自 **H 欄** 開始，依序向右寫入每份 BOM 的 Model 欄位：
+
+1. **每份 BOM 的表頭資訊**（以起始欄 `X` 表示）：
+   - `X2`：寫入 `project_code`（專案代碼）
+   - `X3`：寫入 `revision_id`（格式為 `Phase-Version`，例如 `PV-0.3`）
+   - `X4` 起向右：依序寫入各 Model 名稱（`A`, `B`, `C`...）
+   - `X5` 起向右：依序寫入各 Model 的打件數量 (qty)
+
+2. **欄位跨度計算**：
+   - 第一份 BOM 起始於 H 欄，佔用的欄數 = 該 BOM 的 Model 數量。
+   - 下一份 BOM 的起始欄 = 上一份 BOM 起始欄 + 該 BOM 的 Model 數量。
+   - 依序排列直到所有 BOM 寫入完成。
+
+#### 8.1.5 零件資料寫入
+
+從 **Row 6** 開始往下逐行寫入零件資料。
+
+##### 8.1.5.1 零件基本欄位
+
+| Excel 欄 | 資料庫欄位 | 說明 |
+|----------|-----------|------|
+| A | `item` | 項目編號 |
+| B | `hhpn` | 公司內部料號 |
+| C | `description` | 零件描述 |
+| D | `supplier` | 供應商名稱 |
+| E | `supplier_pn` | 供應商料號 |
+| F | `qty` | 打件數量 |
+| G | `location` | 零件位置編號（逗號分隔） |
+
+因為物料列表是多份BOM聚合的結果, qty與location以第一份BOM的資料為主,若第一份BOM無此物料, 往後尋找下一個BOM直到找到對應物料的資料。
+
+##### 8.1.5.2 Main Source / 2nd Source 排列
+
+- **Main Source** 行：`item` 與 `location` 欄位皆填入值。
+- **2nd Source** 行：`item` 與 `location` 欄位留空，緊接在其所屬的 Main Source 行之後。
+
+##### 8.1.5.3 Model 選擇狀態寫入（H 欄往右，對應 7.2.3.3）
+
+- 依據 `8.1.4` 計算出的每份 BOM 欄位範圍與 Model 對應關係，定位至正確的儲存格。
+- 若該 Model 對該物料存在 `MatrixSelection` 記錄（即被勾選），寫入 **`"V"`**。
+- 若未被勾選，儲存格留空。
+- 若該物料在對應的BOM中完全不存在, 則將該儲存格背景填滿灰色
+- 若該物料群組只有main source, 無2nd source, 則相對應的model 位置自動寫入 "V"
+
+#### 8.1.6 零件排序規則
+
+按照資料庫原始順序（維持匯入時的順序）。
+
+#### 8.1.7 匯出參數
 
 ```go
 // BigMatrixExportParams BigMatrix 匯出參數
 type BigMatrixExportParams struct {
-    RevisionID  string   // BOM Revision ID
-    // TODO: 待補充其他必要參數
+    RevisionIDs []string // 欲匯出的 BOM Revision ID 列表（需透過 RevisionID 關聯查詢所屬的 project_code）
+    Description string   // 使用者在介面上輸入的選填 Description
 }
 ```
 
-#### 8.1.5 樣式規範
+#### 8.1.8 樣式規範
 
-<!-- TODO: 待補充（字型、邊框、底色、欄寬等） -->
+- **物料群組樣式**：物料群組按照「通用匯出格式定義」的樣式規範處理（底色交替）。
+- **BOM 表分隔線**：在執行 `8.1.4` 橫向多 BOM 與 Model 欄位寫入時，每一個 BOM 表之間的垂直框線需加粗，以區分不同的 BOM 版本。
 
 ### 8.2 Matrix 匯出規則
 
