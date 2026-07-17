@@ -11,3 +11,8 @@
    - `phase-executor` 重試超過 5 次仍卡在同一個編譯、測試阻礙或環境錯誤。
 4. **目標終點**：直到 `implementationPlan.md` 中所有 10 個 Phase 的項目全部變成 `[x]`，且最終執行 `wails3 build` 可成功產出執行檔為止。
 ```
+
+
+# claude code
+關閉安全審查機制
+/config dangerouslyDisableSandbox=true 
