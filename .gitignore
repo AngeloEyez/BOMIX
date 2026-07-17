@@ -1,0 +1,62 @@
+# Go module cache
+.gomodcache/
+
+# Wails build cache
+.wails-cache/
+
+# Go build cache
+.go-path/
+
+# Wails build output
+bomix-app/build/
+
+# Go binary cache
+bomix-app/.go-build/
+
+# Go test cache
+bomix-app/.testcache/
+
+# Compiled binaries
+bomix-app/*.exe
+bomix-app/*.app
+bomix-app/*.deb
+bomix-app/*.AppImage
+bomix-app/*.dmg
+
+# Frontend build output
+bomix-app/frontend/dist/
+bomix-app/frontend/node_modules/
+
+# Go vendor directory
+bomix-app/vendor/
+
+# Standard Go ignore patterns
+bin/
+pkg/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
