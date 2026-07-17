@@ -81,16 +81,16 @@ cd bomix-app && go test ./backend/logger/... -v -count=1
 
 ### 任務
 
-- `[ ]` 實作 `backend/config/defaults.go`
+- [x] 實作 `backend/config/defaults.go`
   - 定義所有設定項目的 struct（`Config`、`ImportConfig`、`LoggerConfig`、`RecentFilesConfig`）
   - 定義 `DefaultConfig` 變數（所有預設值，見 product-spec 5.3.3）
   - 包含新增的設定項：`AutoOpenLastFile`（預設 false）、`LastOpenedFile`（預設空）、`AutoImportPreviousMatrix`（預設 false）
-- `[ ]` 實作 `backend/config/config.go`
+- [x] 實作 `backend/config/config.go`
   - `Load(path string) (*Config, error)`：讀取 TOML 檔案並合併至預設值
   - `Save(path string, cfg *Config) error`：僅寫入與 `DefaultConfig` 不同的項目（差異寫入）
   - `GetConfigPath() string`：回傳 `%APPDATA%/BOMIX/config.toml`
   - 若檔案不存在，不建立檔案，直接回傳 `DefaultConfig`
-- `[ ]` 撰寫單元測試 `backend/config/config_test.go`
+- [x] 撰寫單元測試 `backend/config/config_test.go`
   - 測試無檔案時 Load 回傳 DefaultConfig
   - 測試部分覆蓋（僅寫入 `theme = "dark"` 的 TOML，Load 後 theme 為 dark，其餘為預設值）
   - 測試 Save 的差異寫入（修改一個欄位後 Save，確認 TOML 僅包含該欄位）
