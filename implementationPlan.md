@@ -115,16 +115,16 @@ cd bomix-app && go test ./backend/config/... -v -count=1
 
 ### 任務
 
-- `[ ]` 實作 `backend/types/domain.go`
+- [x] 實作 `backend/types/domain.go`
   - 定義 `BOMFormat`（EBOM / BigMatrix / Matrix / Unknown）
   - 定義 `TaskType`（Import / Export / Analysis）
   - 定義 `TaskStatus`（Created / Queued / Running / Completed / Failed / Cancelled）
   - 定義 `ExportOptions` struct（見 product-spec 6.5.3）
   - 定義 `ImportResult` struct（見 product-spec 10.1.5）
   - 定義 DTO：`AggregatedPart`、`SecondSourceDTO`、`BOMSummary`（見 product-spec 4.7）
-- `[ ]` 實作 `backend/types/errors.go`
+- [x] 實作 `backend/types/errors.go`
   - 定義所有 Sentinel Error（見 product-spec 10.3）
-- `[ ]` 實作 `backend/types/interfaces.go`
+- [x] 實作 `backend/types/interfaces.go`
   - 定義 `ExcelReader` 介面
   - 定義 `ExcelWriter` 介面
 
