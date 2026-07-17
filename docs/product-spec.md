@@ -502,10 +502,16 @@ var DefaultConfig = Config{
 | 開啟 Series | 選擇既有 `.bomx` 檔案開啟 |
 | 關閉 Series | 釋放資料庫連線 |
 | 最近開啟 | 記錄並顯示最近開啟的 `.bomx` 檔案列表 |
+| 自動開啟 | 啟動應用程式時，若設定允許，則自動開啟上一次的 `.bomx` 檔案 |
 
 #### 6.1.2 自動初始化
 
 開啟或建立 `.bomx` 檔案時，自動執行 GORM AutoMigrate 建立/更新資料表結構。在初始化完成之前，所以讀取、匯入、匯出等動作都會等待。
+
+#### 6.1.3 自動開啟機制
+
+- **記錄路徑**：在每次成功開啟 `.bomx` 資料檔案的時候，系統會將該資料檔的完整路徑記錄到設定檔中的 `lastOpenedFile` 欄位。
+- **啟動檢查**：應用程式啟動時，若設定檔中的 `autoOpenLastFile` 選項為 `true`（預設為 `false`），則系統會讀取 `lastOpenedFile` 的路徑並自動開啟該資料檔。若該檔案不存在或路徑為空，則停留在初始畫面。
 
 ### 6.2 專案管理（Wave 1 簡化版）
 
@@ -816,6 +822,15 @@ Main Source 的 `location` 欄位以 `","` 分隔，逐一存入 `parts` 表。
   Model A → P1, Model B → 空, Model C → P3 ✅
 ```
 
+#### 7.1.8 自動帶入上一版 Matrix 勾選功能
+
+為減少使用者重複勾選的負擔，系統提供「EBOM 匯入時自動帶入上一版 Matrix 勾選」的功能：
+
+- 此功能透過設定檔（`config.toml`）中 `[import]` 區塊的 `autoImportPreviousMatrix` 參數控制（預設可為 `false`）。
+- **觸發時機與條件**：若 `autoImportPreviousMatrix` 為 `true`，且在匯入 EBOM 時，發現該專案 (Project) 與該階段 (Phase) 下已有其他版本的 BOM 存在。
+- **搜尋規則**：系統會自動尋找「版本號最接近且小於當前匯入版本」的 BOM Revision 作為來源（例如目前匯入 `0.5`，則往前尋找最大的小於 `0.5` 的版本，如 `0.4`）。
+- **執行操作**：找到來源 BOM 後，系統會在 EBOM 匯入與 Merge 處理完成後，呼叫 **7.4 匯入 MatrixSelection 功能模組**，將來源 BOM 的 Matrix 勾選資料匯入至當前的目標 BOM 中。
+
 ### 7.2 BigMatrix 匯入規則
 
 #### 7.2.1 Sheet 結構
@@ -903,6 +918,17 @@ BigMatrix 格式的工作表中，自 **H 欄** 開始向右排列了多份 BOM 
 
 - **暫不支援 (Placeholder)**：Wave 1 階段暫不支援 Matrix BOM 的匯入，但在程式碼架構中保留對應的 placeholder 以便後續擴充。
 - **處理規則**：若 Detector 判定為 Matrix 格式，系統應將其視為「不支援的格式」，加入排除清單中並直接 **Bypass**，並於流程最後的彈窗與日誌中提示「暫不支援 Matrix 匯入」（詳見 6.3.2 批次匯入流程）。
+
+### 7.4 匯入 MatrixSelection 功能模組
+
+此為一內部功能模組，負責將特定「來源 BOM (Source BOM)」的 Matrix 勾選狀態 (MatrixSelection) 複製並匯入至「目標 BOM (Target BOM)」。該模組的匯入原則如下：
+
+1. **依群組對應**：系統以物料群組的主料作為識別基準（即相同的 `MainSupplier` + `MainSupplierPn`），將來源 BOM 的勾選狀態對應到目標 BOM。
+2. **對應 Model 匯入**：針對找到的相同物料群組，若目標 BOM 中存在與來源 BOM 同名（如 `Model A`、`Model B`）的 Model，則將該 Model 的勾選項目（不論是主料或替代料）直接套用。
+3. **略過與忽略情境**：
+   - 若目標 BOM 中**沒有該物料群組**，則忽略不匯入。
+   - 若目標 BOM 中**沒有該 Model**，則該 Model 的勾選狀態被忽略。
+   - 若目標 BOM 中該群組內**不存在被勾選的那顆具體物料 (例如某些 2nd Source 已被刪除)**，則該勾選會失效並被忽略。
 
 ---
 
@@ -1651,15 +1677,26 @@ db.Exec("CREATE INDEX IF NOT EXISTS idx_part_sort ON parts(revision_id, sort_ord
 db.Exec("CREATE INDEX IF NOT EXISTS idx_2nd_sort ON second_sources(revision_id, main_supplier, main_supplier_pn, sort_order)")
 ```
 
-### C. 設定檔範例（config.toml）
+### C. 設定檔工作機制與範例（config.toml）
+
+**工作機制：**
+1. **預設值優先**：若使用者沒有特別更改或調整設定，則系統**不會**將該項目寫入設定檔，而是直接使用程式內部的預設值。
+2. **差異寫入**：如果使用者調整了設定，系統僅會將「經過調整的項目（與預設值不同的項目）」寫入至 `config.toml` 設定檔中，而不是將所有項目全部寫出。
+3. **設定檔優先級**：當讀取設定時，`config.toml` 檔案內的設定值優先級高於程式內部預設值。
+
+**設定項目參考清單：**
+以下列出系統中所有的設定項目及其預設值。請注意，實際建立的 `config.toml` 中可能僅存在被修改過的部分項目。
 
 ```toml
 # 一般設定
 language = "zh-TW"
 theme = "dark"
+autoOpenLastFile = false # 啟動時自動開啟上一次的資料檔
+lastOpenedFile = ""      # 記錄上一次開啟的資料檔完整路徑
 
 [import]
 confirmOverwrite = false
+autoImportPreviousMatrix = false # 是否在 EBOM 匯入時自動尋找上一版並帶入 Matrix 勾選
 
 [logger]
 level = "INFO"
