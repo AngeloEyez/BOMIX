@@ -13,7 +13,7 @@ BOMIX utilizes a nested mono-repo-like structure. All files MUST be placed stric
 ```text
 BOMIX/                         # Root workspace (Open Claude Code here)
 ├── CLAUDE.md                  # Global guidelines (This file)
-├── roadmap.md                 # Project roadmap & progress checklist
+├── implementationPlan.md      # Implementation plan & progress checklist
 ├── docs/                      # Development documentation, API specs, and diagrams
 │   ├── product-spec.md        # Product specifications
 │   └── ...

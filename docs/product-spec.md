@@ -490,6 +490,7 @@ func Detect(file *excelize.File) BOMFormat {
 type ExportOptions struct {
     Format              BOMFormat      // BigMatrix / Matrix
     RevisionIDs         []string       // 需匯出的 BOM Revision ID 列表（支援多選）
+    Description         string         // 使用者輸入的描述文字（選填，僅適用於 BigMatrix）
     OutputPath          string         // 單一檔案的輸出路徑（單檔匯出時使用，如 BigMatrix）
     OutputDir           string         // 輸出的目標目錄（批次匯出多檔案時使用，如多選 Matrix）
     ModelCountOverrides map[string]int // 各 Revision ID 對應的 Model 匯出數量（僅適用於 BigMatrix，鍵為 RevisionID，值為自訂 Model 數量；未指定則預設使用資料庫中最大數量）
@@ -522,8 +523,10 @@ bom revision基本資料由 "SMD" sheet 的表頭取得。
 | B3 | project_code | 取 `"Product Code: "` 後方文字 | `Product Code: TANGLED` → `TANGLED` |
 | B4 | description | 取 `"Description: "` 後方文字 | `Description: MBD,Tangled,...` |
 | D3 | schematic_version | 取 `"Schematic Version: "` 後方文字 | `Schematic Version: 1.0` → `1.0` |
+| D4 | phase_name | 取 `"Phase: "` 後方文字 | `Phase: DB` → `DB` |
 | F3 | pcb_version | 取 `"PCB Version: "` 後方文字 | `PCB Version: 2.1` → `2.1` |
 | F4 | pca_pn | 取 `"PCA PN: "` 後方文字 | `PCA PN: ABC-123` → `ABC-123` |
+| H3 | version | 取 `"BOM Version: "` 後方文字 | `BOM Version: 0.1` → `0.1` |
 | H4 | date | 取 `"Date: "` 後方文字 | `Date: 2026-01-15` → `2026-01-15` |
 
 #### 7.1.2 零件資料解析
@@ -1114,9 +1117,16 @@ GetBOMSummary(revisionID string) (*BOMSummary, error)
 #### 10.1.5 Excel 匯入/匯出
 
 ```go
-ImportExcel(filePath string) (string, error)           // 回傳 taskID
-ImportExcelWithFormat(filePath string, format string) (string, error)
-ExportExcel(options ExportOptions) (string, error)     // 回傳 taskID
+// ImportResult 單一檔案匯入結果
+type ImportResult struct {
+    FilePath string   // 檔案路徑
+    TaskID   string   // 成功建立的 taskID（若 Skipped 為 true 則為空）
+    Error    string   // 錯誤訊息（如格式無法辨識）
+    Skipped  bool     // 是否因格式不明而跳過
+}
+
+ImportExcel(filePaths []string) ([]ImportResult, error)  // 批次匯入多檔，自動偵測格式
+ExportExcel(options ExportOptions) ([]string, error)     // 回傳 taskID 列表（BigMatrix 為單一元素，Matrix 多選時為多個）
 ```
 
 #### 10.1.6 任務管理
@@ -1140,6 +1150,17 @@ ClearLogs() error
 GetSettings() (*Config, error)
 UpdateSettings(settings map[string]interface{}) error
 ```
+
+#### 10.1.9 Matrix Model 查詢
+
+```go
+GetMatrixModels(revisionID string) ([]MatrixModel, error)
+GetMatrixSelections(revisionID string, modelID string) ([]MatrixSelection, error)
+```
+
+#### 10.1.10 檔案對話框
+
+> 使用 Wails v3 內建的 Dialog API（如 `OpenFileDialog`、`SaveFileDialog`、`OpenDirectoryDialog` 等）處理檔案選擇與儲存對話框，無需額外定義 Go 綁定方法。
 
 ### 10.2 事件定義
 
@@ -1184,13 +1205,16 @@ var (
 |------|----------|
 | **Detector** | 三種格式的正確辨識 |
 | **Reader (EBOM)** | 表頭解析、零件解析、Main/2nd 判斷、Mode 判斷 |
-| **Reader (BigMatrix)** | <!-- TODO --> |
-| **Reader (Matrix)** | <!-- TODO --> |
+| **Reader (BigMatrix)** | 表頭解析（bom_count, description, date）、橫向多 BOM 動態欄解析、Model 數量計算、零件 Main/2nd 判斷、Model 選擇狀態（V/v）解析、僅更新 Matrix 狀態不新增物料 |
+| **Reader (Matrix)** | Placeholder 驗證（確認回傳「不支援」錯誤訊息） |
 | **Aggregator** | 群組合併、Qty 計算、Location 合併 |
 | **Filter** | 各視圖的過濾正確性 |
 | **Writer (BigMatrix)** | Template 填入、樣式正確性 |
 | **Writer (Matrix)** | Template 填入、樣式正確性 |
 | **TaskManager** | 生命週期、取消、回呼 |
+| **DB (Series/Project)** | 建立、開啟、關閉、最近開啟列表、專案自動建立 |
+| **DB (Revision/Part)** | 建立、查詢、覆蓋匯入、唯一約束、原子化儲存 |
+| **DB (Matrix)** | Model 增減同步、Selection 互斥性驗證 |
 
 ### 11.3 測試命名規範
 
@@ -1207,6 +1231,14 @@ npm run test
 ---
 
 ## 12. 部署與建置
+
+### 12.0 環境前置條件
+
+| 工具 | 版本 | 安裝方式 |
+|------|------|----------|
+| **Go** | 1.21+ | https://go.dev/dl/ |
+| **Node.js** | 18+ | https://nodejs.org/ |
+| **Wails CLI** | v3 | `go install github.com/wailsapp/wails/v3/cmd/wails3@latest` |
 
 ### 12.1 開發環境
 
@@ -1252,8 +1284,8 @@ wails3 build -platform windows/amd64
 | **EBOM** | Engineering BOM，工程物料清單（標準多 Sheet 格式） |
 | **Main Source** | 主要供應商物料 |
 | **Second Source / 2nd Source** | 替代料 |
-| **BigMatrix** | 大型 Matrix BOM 格式（<!-- TODO: 待補充定義 -->） |
-| **Matrix** | Matrix BOM 格式（<!-- TODO: 待補充定義 -->） |
+| **BigMatrix** | 多專案聚合的 Matrix BOM 格式，在單一 Sheet 中橫向排列多份 BOM 的 Model 選擇狀態 |
+| **Matrix** | 單一專案的 Matrix BOM 格式，包含 SMD/PTH/BOTTOM 三個 Sheet，每個 Sheet 含該專案所有 Model 的選擇狀態 |
 | **Phase** | 開發階段（如 DB, DVT, PVT） |
 | **Series** | 系列，一個 `.bomx` 資料庫檔案代表一個系列 |
 | **NPI** | New Product Introduction，新產品導入 |
@@ -1313,7 +1345,7 @@ type BomRevision struct {
 type Part struct {
     ID              string    `gorm:"primaryKey"`
     RevisionID      string    `gorm:"index:idx_part_revision"`
-    Item            int       // Excel 項目編號
+    Item            string    // Excel 項目編號（字串型別，支援空值與非數字格式）
     Hhpn            string    `gorm:"index:idx_part_hhpn"`
     Supplier        string
     SupplierPn      string    `gorm:"index:idx_part_supplier_pn"`
@@ -1323,6 +1355,7 @@ type Part struct {
     BomStatus       string    `gorm:"default:I"` // I, X, P, M
     Ccl             string    `gorm:"default:N"`
     Remark          string
+    SortOrder       int       // 匯入時的排序順序，用於維持原始排列
     CreatedAt       time.Time
     Revision        BomRevision `gorm:"foreignKey:RevisionID"`
 }
@@ -1337,6 +1370,7 @@ type SecondSource struct {
     Supplier        string
     SupplierPn      string
     Description     string
+    SortOrder       int       // 匯入時的排序順序，用於維持原始排列
     CreatedAt       time.Time
     Revision        BomRevision `gorm:"foreignKey:RevisionID"`
 }
@@ -1361,6 +1395,7 @@ type MatrixSelection struct {
     SelectedSupplier   string // 被選中物料的 Supplier
     SelectedSupplierPn string // 被選中物料的 Supplier PN
     IsAutoSelected  bool      // 是否為自動選擇（只有 Main 無 2nd）
+    CreatedAt       time.Time
     UpdatedAt       time.Time
     Model           MatrixModel `gorm:"foreignKey:ModelID"`
 }
@@ -1376,6 +1411,8 @@ db.Exec("CREATE INDEX IF NOT EXISTS idx_part_group ON parts(revision_id, supplie
 db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_2nd_unique ON second_sources(revision_id, main_supplier, main_supplier_pn, supplier, supplier_pn)")
 db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_matrix_model_name ON matrix_models(revision_id, name)")
 db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_sel_unique ON matrix_selections(model_id, main_supplier, main_supplier_pn)")
+db.Exec("CREATE INDEX IF NOT EXISTS idx_part_sort ON parts(revision_id, sort_order)")
+db.Exec("CREATE INDEX IF NOT EXISTS idx_2nd_sort ON second_sources(revision_id, main_supplier, main_supplier_pn, sort_order)")
 ```
 
 ### C. 設定檔範例（config.toml）
