@@ -14,5 +14,14 @@
 
 
 # claude code
-關閉安全審查機制
-/config dangerouslyDisableSandbox=true 
+使用docker隔離
+
+## 刪除舊的容器與舊的映像檔
+```
+docker rm -f claude-sandbox
+docker rmi bomix-dev-env
+```
+
+## 用 root權限啟動
+可安裝系統層級資料
+`docker exec -u root -it claude-sandbox bash`
