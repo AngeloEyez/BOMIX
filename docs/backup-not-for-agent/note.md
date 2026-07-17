@@ -25,3 +25,6 @@ docker rmi bomix-dev-env
 ## 用 root權限啟動
 可安裝系統層級資料
 `docker exec -u root -it claude-sandbox bash`
+
+容器內啟動claude bypass permission:
+`claude --dangerously-skip-permissions`
