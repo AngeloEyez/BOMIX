@@ -148,10 +148,10 @@ cd bomix-app && go vet ./backend/types/...
 
 ### 任務
 
-- `[ ]` 實作 `backend/task/task.go`
+- [x] 實作 `backend/task/task.go`
   - 定義 `Task` struct（見 product-spec 5.1.2）
   - 定義 `TaskFunc` 類型（任務的可執行函數簽名，接收進度回呼）
-- `[ ]` 實作 `backend/task/manager.go`
+- [x] 實作 `backend/task/manager.go`
   - `NewTaskManager(logger, app)` 建構函數
   - `Submit(name, taskType, fn TaskFunc) string`：建立任務、啟動 goroutine 執行、回傳 TaskID
   - `Cancel(taskID) error`：透過 context 取消任務
@@ -159,10 +159,10 @@ cd bomix-app && go vet ./backend/types/...
   - `ListTasks() []Task`
   - 任務狀態變化時透過 Wails 事件推送：`task:progress`、`task:complete`、`task:failed`、`task:cancelled`
   - 所有狀態變更與日誌記錄到 Logger
-- `[ ]` 實作 `backend/task/callback.go`
+- [x] 實作 `backend/task/callback.go`
   - 定義事件常數（見 product-spec 5.1.4）
   - 定義事件 payload struct
-- `[ ]` 撰寫單元測試 `backend/task/manager_test.go`
+- [x] 撰寫單元測試 `backend/task/manager_test.go`
   - 測試提交任務 → 狀態從 Created 經 Running 到 Completed
   - 測試任務失敗 → 狀態變為 Failed，Error 欄位有值
   - 測試取消任務 → 狀態變為 Cancelled
