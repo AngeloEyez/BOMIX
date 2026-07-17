@@ -22,9 +22,11 @@ else
     # 拿掉 --rm，這樣退出後容器不會被刪除
     docker run -it \
       --name $CONTAINER_NAME \
+      --user $(id -u):$(id -g) \
       --network host \
+      -e HOME=/tmp \
       -v "$PWD:/project" \
-      -v "$HOME/.claude:/root/.claude" \
+      -v "$HOME/.claude:/tmp/.claude" \
       -w /project \
       $IMAGE_NAME bash
 fi
