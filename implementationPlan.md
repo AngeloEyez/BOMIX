@@ -46,18 +46,18 @@ cd bomix-app && wails3 dev                      # 開發伺服器啟動，視窗
 
 ### 任務
 
-- `[ ]` 實作 `backend/logger/logger.go`
+- [x] 實作 `backend/logger/logger.go`
   - 定義 `Logger` struct，封裝 `slog.Logger`
   - 支援 `Debug` / `Info` / `Warn` / `Error` 四個等級方法
   - 每次 log 呼叫同時寫入環形緩衝區並透過 Wails 事件 `log:new` 推送至前端
   - 提供 `GetLogs(level string, limit int) []LogEntry` 方法供前端拉取歷史日誌
   - 提供 `ClearLogs()` 方法
-- `[ ]` 實作 `backend/logger/buffer.go`
+- [x] 實作 `backend/logger/buffer.go`
   - 環形緩衝區（Ring Buffer），預設容量 500 條
   - `LogEntry` 結構：`{ID, Level, Message, Timestamp, Attrs map[string]string}`
   - 支援依等級過濾
   - 線程安全（`sync.RWMutex`）
-- `[ ]` 撰寫單元測試 `backend/logger/logger_test.go`
+- [x] 撰寫單元測試 `backend/logger/logger_test.go`
   - 測試寫入多條不同等級的日誌後，`GetLogs` 回傳正確
   - 測試環形緩衝區溢出行為（寫入超過 500 條後，最舊的被覆蓋）
   - 測試等級過濾
