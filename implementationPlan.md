@@ -188,34 +188,34 @@ cd bomix-app && go test ./backend/task/... -v -count=1
 
 ### 任務
 
-- `[ ]` 實作 `backend/db/models.go`
+- [x] 實作 `backend/db/models.go`
   - 定義所有 GORM Model（見 product-spec 附錄 B）：`Series`、`Project`、`BomRevision`、`Part`、`SecondSource`、`MatrixModel`、`MatrixSelection`
   - 包含所有 CASCADE 約束與子集合欄位
-- `[ ]` 實作 `backend/db/connection.go`
+- [x] 實作 `backend/db/connection.go`
   - `Open(filePath string) (*gorm.DB, error)`：開啟 .bomx 檔案，設定 WAL 模式、限制單一連線
   - `Close(db *gorm.DB) error`：正確關閉連線
   - `AutoMigrate(db *gorm.DB) error`：執行 GORM AutoMigrate + 建立所有複合索引（見 product-spec 附錄 B 資料庫索引）
   - 啟動 Single Writer goroutine（見 product-spec 3.3.3）
-- `[ ]` 實作 `backend/db/series.go`
+- [x] 實作 `backend/db/series.go`
   - `CreateSeries(db, name, description) (*Series, error)`
   - `GetSeriesInfo(db) (*Series, error)`
-- `[ ]` 實作 `backend/db/project.go`
+- [x] 實作 `backend/db/project.go`
   - `GetOrCreateProject(db, code, description) (*Project, error)`
   - `GetProjects(db, seriesID) ([]Project, error)`
   - `GetProject(db, id) (*Project, error)`
-- `[ ]` 實作 `backend/db/revision.go`
+- [x] 實作 `backend/db/revision.go`
   - `CreateRevision(db, revision) (*BomRevision, error)`
   - `GetRevision(db, id) (*BomRevision, error)`
   - `GetRevisions(db, projectID) ([]BomRevision, error)`
   - `FindRevision(db, projectID, phase, version) (*BomRevision, error)`
   - `UpdateRevision(db, revision) error`
   - `FindPreviousRevision(db, projectID, phase, currentVersion) (*BomRevision, error)`：搜尋同 project + phase 下版本號最接近且小於 currentVersion 的 Revision（見 product-spec 7.1.8）
-- `[ ]` 實作 `backend/db/part.go`
+- [x] 實作 `backend/db/part.go`
   - `CreatePartsInBatch(db, parts []Part) error`：批次寫入
   - `DeletePartsByRevision(db, revisionID) error`
   - `GetPartsByRevision(db, revisionID) ([]Part, error)`
   - `GetPartsByRevisionAndType(db, revisionID, type) ([]Part, error)`
-- `[ ]` 實作 `backend/db/matrix.go`
+- [x] 實作 `backend/db/matrix.go`
   - `CreateMatrixModel(db, model) error`
   - `GetMatrixModels(db, revisionID) ([]MatrixModel, error)`
   - `CreateMatrixSelections(db, selections []MatrixSelection) error`
@@ -223,7 +223,7 @@ cd bomix-app && go test ./backend/task/... -v -count=1
   - `GetMatrixSelections(db, revisionID, modelID) ([]MatrixSelection, error)`
   - SecondSource 相關：`GetSecondSourcesByRevision`、`CreateSecondSourcesInBatch`、`DeleteSecondSourcesByRevision`、`DeleteSecondSource`、`UpdateSecondSource`
   - MatrixSelection 清理：`DeleteInvalidSelections(db, revisionID, removedGroups, removedMaterials)`（見 product-spec 7.1.7 步驟 4）
-- `[ ]` 撰寫整合測試 `backend/db/db_test.go`（使用 SQLite in-memory）
+- [x] 撰寫整合測試 `backend/db/db_test.go`（使用 SQLite in-memory）
   - 測試 Open → AutoMigrate → 建立 Series → 建立 Project → 建立 Revision → 新增 Parts → 查詢
   - 測試唯一索引約束（重複 project code 應失敗）
   - 測試 CASCADE 刪除（刪除 Revision 後，Parts / SecondSources / MatrixModels / MatrixSelections 應一併消失）
