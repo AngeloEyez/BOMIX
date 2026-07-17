@@ -13,16 +13,16 @@
 
 ### 任務
 
-- `[ ]` 在 `bomix-app/` 下初始化 Wails v3 專案（使用 `wails3 init`，確認 `--help` 後選擇 Vue + Vite 模板）
-- `[ ]` 確認 `go.mod` 存在且模組名稱合理（如 `bomix-app`）
-- `[ ]` 確認 `frontend/` 內的 Vue 3 專案結構正確（`package.json`、`vite.config.ts`、`src/App.vue`）
-- `[ ]` 安裝前端核心依賴：`pnpm add primevue @primevue/themes primeicons vue-router pinia`
-- `[ ]` 安裝前端開發依賴：`pnpm add -D tailwindcss @tailwindcss/vite`（Tailwind CSS v4）
-- `[ ]` 設定 `vite.config.ts` 中的 Tailwind CSS v4 plugin
-- `[ ]` 在 `src/main.ts` 中初始化 PrimeVue（使用 Aura 主題）、Router、Pinia
-- `[ ]` 在 Go 後端安裝核心依賴：`go get gorm.io/gorm modernc.org/sqlite gorm.io/driver/sqlite github.com/xuri/excelize/v2 github.com/BurntSushi/toml github.com/google/uuid`
-- `[ ]` 建立 `claude.md` 中定義的完整目錄結構骨架（所有空 `.go` / `.ts` / `.vue` 檔案，內含 `package` 宣告或最小合法語法）
-- `[ ]` 建立空的 Excel 範本檔案佔位：`bomix-app/template/bigmatrix.xlsx`、`bomix-app/template/matrix.xlsx`
+- [x] 初始化 Wails v3 專案（使用 `wails3 init` 並確認選擇 vue+vite），注意確保目錄結構與 claude.md 中描述相同（僅有單層 bomix-app 目錄）
+- [x] 確認 `go.mod` 存在且模組名稱合理（如 `bomix-app`）
+- [x] 確認 `frontend/` 內的 Vue 3 專案結構正確（`package.json`、`vite.config.ts`、`src/App.vue`）
+- [x] 安裝前端核心依賴：`pnpm add primevue @primevue/themes primeicons vue-router pinia`
+- [x] 安裝前端開發依賴：`pnpm add -D tailwindcss @tailwindcss/vite`（Tailwind CSS v4）
+- [x] 設定 `vite.config.ts` 中的 Tailwind CSS v4 plugin
+- [x] 在 `src/main.ts` 中初始化 PrimeVue（使用 Aura 主題）、Router、Pinia
+- [x] 在 Go 後端安裝核心依賴：`go get gorm.io/gorm modernc.org/sqlite gorm.io/driver/sqlite github.com/xuri/excelize/v2 github.com/BurntSushi/toml github.com/google/uuid`
+- [x] 建立 `claude.md` 中定義的完整目錄結構骨架（所有空 `.go` / `.ts` / `.vue` 檔案，內含 `package` 宣告或最小合法語法）
+- [x] 建立空的 Excel 範本檔案佔位：`bomix-app/template/bigmatrix.xlsx`、`bomix-app/template/matrix.xlsx`
 
 ### 驗證
 
