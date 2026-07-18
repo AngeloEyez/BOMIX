@@ -249,41 +249,41 @@ cd bomix-app && go test ./backend/db/... -v -count=1
 
 ### 任務
 
-- `[ ]` 實作 Vue Router（`frontend/src/router/`）
+- [x] 實作 Vue Router（`frontend/src/router/`）
   - `/` → 歡迎頁（建立/開啟 .bomx）
   - `/workspace` → 工作區主頁（側邊欄 + 主內容 + 底部面板）
   - `/settings` → 設定頁
-- `[ ]` 實作 Pinia Store（`frontend/src/stores/`）
+- [x] 實作 Pinia Store（`frontend/src/stores/`）
   - `useAppStore`：管理 series 連線狀態（isOpen、seriesInfo）
   - `useTaskStore`：管理任務列表、監聽 `task:*` 事件
   - `useLogStore`：管理日誌列表、監聽 `log:new` 事件
   - `useProjectStore`：管理專案列表與當前選中的專案/版本
-- `[ ]` 實作主佈局 `App.vue`
+- [x] 實作主佈局 `App.vue`
   - 採用 PrimeVue `Splitter` 實作三區塊佈局（見 product-spec 9.2）
   - 側邊欄可拖曳調整寬度（最小 0、預設 20%、雙擊回復）
   - 底部面板可拖曳調整高度（最小單行、預設單行、雙擊回復）
-- `[ ]` 實作歡迎頁 `views/WelcomePage.vue`
+- [x] 實作歡迎頁 `views/WelcomePage.vue`
   - 建立新 Series 按鈕（呼叫 Wails SaveFileDialog → CreateSeries）
   - 開啟 Series 按鈕（呼叫 Wails OpenFileDialog → OpenSeries）
   - 最近開啟列表（呼叫 GetRecentSeries）
-- `[ ]` 實作工作區頁 `views/WorkspacePage.vue`
+- [x] 實作工作區頁 `views/WorkspacePage.vue`
   - 側邊欄：顯示專案列表（從 `useProjectStore` 讀取）
   - 主內容區：placeholder 文字（後續 Phase 填入 BOM 表格）
   - 頂部工具列：匯入按鈕、匯出按鈕（目前為 disabled placeholder）
-- `[ ]` 實作日誌/任務面板 `components/LogPanel.vue`
+- [x] 實作日誌/任務面板 `components/LogPanel.vue`
   - 從 `useLogStore` 讀取日誌列表渲染
   - 支援依等級過濾（Tabs：全部 / INFO / WARN / ERROR）
   - 任務日誌顯示：任務名稱、狀態 badge、進度條、最新訊息（即時更新）
   - 清除日誌按鈕
-- `[ ]` 實作設定頁 `views/SettingsPage.vue`
+- [x] 實作設定頁 `views/SettingsPage.vue`
   - 主題切換（Light / Dark / System）
   - 匯入設定：`confirmOverwrite`、`autoImportPreviousMatrix`
   - 自動開啟：`autoOpenLastFile`
   - 儲存按鈕 → 呼叫 `UpdateSettings`
-- `[ ]` 實作 Wails 綁定呼叫層 `frontend/src/services/api.ts`
+- [x] 實作 Wails 綁定呼叫層 `frontend/src/services/api.ts`
   - 封裝所有後端 API 呼叫方法（CreateSeries、OpenSeries、GetLogs 等）
   - 統一錯誤處理
-- `[ ]` 實作 `backend/app.go`（Wails 主綁定）
+- [x] 實作 `backend/app.go`（Wails 主綁定）
   - 初始化 Logger、Config、TaskManager
   - 綁定所有 API 方法（product-spec 10.1 的所有方法簽名）
   - 啟動時若 `autoOpenLastFile` 為 true，自動開啟上次的 .bomx
