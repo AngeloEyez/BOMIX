@@ -455,26 +455,26 @@ cd bomix-app && go test ./backend/excel/... -v -count=1
 
 ### 任務
 
-- `[ ]` 前端串接匯入流程
+- [x] 前端串接匯入流程
   - 工作區的匯入按鈕 → 開啟檔案對話框 → 呼叫 `ImportExcel` → 顯示任務進度 → 完成後刷新資料
   - 支援拖曳檔案到匯入區域
   - 匯入結果彈窗（被跳過的檔案）
-- `[ ]` 前端串接匯出流程
+- [x] 前端串接匯出流程
   - 工作區的匯出按鈕 → 匯出對話框（選擇格式、勾選 Revisions、設定 Model 數量）→ 呼叫 `ExportExcel`
   - BigMatrix：顯示 description 輸入欄位、Model 數量調整
   - Matrix：多選 Revision 時選擇輸出目錄
-- `[ ]` 前端串接 BOM 表格
+- [x] 前端串接 BOM 表格
   - 工作區主內容顯示 `BOMTable` 元件（PrimeVue DataTable）
   - 切換 View（ALL / SMD / PTH 等）
   - 展開列顯示 Second Source
-- `[ ]` 前端串接側邊欄
+- [x] 前端串接側邊欄
   - 專案列表 → 展開顯示 Revision 列表 → 點選載入 BOM 表格
-- `[ ]` 重複匯入確認彈窗
+- [x] 重複匯入確認彈窗
   - 若 `confirmOverwrite` 為 true，匯入重複 BOM 時顯示確認對話框
-- `[ ]` 撰寫端到端整合測試（Go 層級）
+- [x] 撰寫端到端整合測試（Go 層級）
   - 建立 in-memory DB → 匯入測試 EBOM xlsx → 查詢 Parts → 匯出 BigMatrix → 讀取匯出檔案驗證
   - 測試 EBOM 重新匯入 Merge 流程（含 MatrixSelection 保留驗證）
-- `[ ]` 最終驗證
+- [x] 最終驗證
   - `go build ./...` 零錯誤
   - `go test ./...` 全部 PASS
   - `pnpm run build` 零錯誤
