@@ -406,19 +406,19 @@ cd bomix-app && go test ./backend/processor/... -v -count=1
 
 ### 任務
 
-- `[ ]` 實作 `backend/excel/template.go`
+- [x] 實作 `backend/excel/template.go`
   - 使用 `//go:embed` 嵌入 `template/bigmatrix.xlsx` 與 `template/matrix.xlsx`
   - 提供 `LoadTemplate(format BOMFormat) (*excelize.File, error)` 方法
-- `[ ]` 實作 `backend/excel/writer.go`
+- [x] 實作 `backend/excel/writer.go`
   - 定義 `Writer` 介面
   - `ExportExcel(options ExportOptions) ([]string, error)` 總入口邏輯（見 product-spec 6.5.2）
-- `[ ]` 實作 `backend/excel/writer_bigmatrix.go`
+- [x] 實作 `backend/excel/writer_bigmatrix.go`
   - Tag 置換法填入表頭（見 product-spec 8.1.2）
   - 動態欄生成（橫向多 BOM + Model，見 product-spec 8.1.3）
   - 零件資料填入（見 product-spec 8.1.4）
   - 物料群組底色交替、公式寫入（見 product-spec 8.1.5）
   - 檔名自動命名（見 product-spec 8.1.7）
-- `[ ]` 實作 `backend/excel/writer_matrix.go`
+- [x] 實作 `backend/excel/writer_matrix.go`
   - Tag 置換法填入表頭（見 product-spec 8.2.2）
   - 動態 Model 欄生成（見 product-spec 8.2.3）
   - 零件資料填入（見 product-spec 8.2.4）
@@ -426,13 +426,13 @@ cd bomix-app && go test ./backend/processor/... -v -count=1
   - 公式寫入（見 product-spec 8.2.5.3 / 8.2.5.4）
   - 零件篩選（見 product-spec 8.2.6）
   - 檔名自動命名（見 product-spec 8.2.10）
-- `[ ]` 建立實際的 Excel 範本檔案
+- [x] 建立實際的 Excel 範本檔案
   - `template/bigmatrix.xlsx`：含 Tag 佔位標籤、原型列樣式
   - `template/matrix.xlsx`：含 Tag 佔位標籤、三個 Sheet（SMD / PTH / BOTTOM）、原型列樣式
-- `[ ]` 撰寫單元測試 `backend/excel/writer_bigmatrix_test.go`
+- [x] 撰寫單元測試 `backend/excel/writer_bigmatrix_test.go`
   - 測試 Tag 置換
   - 測試匯出後 xlsx 可被 excelize 正確讀取
-- `[ ]` 撰寫單元測試 `backend/excel/writer_matrix_test.go`
+- [x] 撰寫單元測試 `backend/excel/writer_matrix_test.go`
   - 測試 Tag 置換
   - 測試三 Sheet 均有資料
 
