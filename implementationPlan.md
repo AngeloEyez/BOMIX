@@ -372,19 +372,19 @@ cd bomix-app && go test ./backend/excel/... -v -count=1
 
 ### 任務
 
-- `[ ]` 實作 `backend/processor/aggregator.go`
+- [x] 實作 `backend/processor/aggregator.go`
   - `Aggregate(parts []Part, secondSources []SecondSource) []AggregatedPart`
   - 以 `(supplier, supplier_pn)` 為群組鍵合併
   - 合併 Location 為逗號分隔字串
   - Qty = Location 數量
   - 附加 SecondSources
-- `[ ]` 實作 `backend/processor/filter.go`
+- [x] 實作 `backend/processor/filter.go`
   - `FilterByView(parts []AggregatedPart, view string, mode string) []AggregatedPart`
   - 實作所有視圖過濾規則（見 product-spec 6.4.2）：ALL / SMD / PTH / BOTTOM / NI / PROTO / MP / CCL
-- `[ ]` 撰寫單元測試 `backend/processor/aggregator_test.go`
+- [x] 撰寫單元測試 `backend/processor/aggregator_test.go`
   - 測試同群組的 Location 合併與 Qty 計算
   - 測試 SecondSource 正確附加
-- `[ ]` 撰寫單元測試 `backend/processor/filter_test.go`
+- [x] 撰寫單元測試 `backend/processor/filter_test.go`
   - 依 product-spec 6.4.2 的 8 種視圖各寫一個測試 case
 
 ### 驗證
