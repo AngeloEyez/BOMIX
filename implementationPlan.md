@@ -317,12 +317,12 @@ cd bomix-app && wails3 dev                       # 手動驗證：
 
 ### 任務
 
-- `[ ]` 實作 `backend/excel/detector.go`
+- [x] 實作 `backend/excel/detector.go`
   - `Detect(file *excelize.File) BOMFormat`（見 product-spec 6.3.1 偵測規則對照表）
-- `[ ]` 實作 `backend/excel/reader.go`
+- [x] 實作 `backend/excel/reader.go`
   - 定義 `Reader` 介面
   - `ImportExcel(filePaths []string) ([]ImportResult, error)` 總入口邏輯（見 product-spec 6.3.2 流程）
-- `[ ]` 實作 `backend/excel/reader_ebom.go`
+- [x] 實作 `backend/excel/reader_ebom.go`
   - 表頭解析（見 product-spec 7.1.1）
   - 零件解析（見 product-spec 7.1.2）
   - Main Source / 2nd Source 判斷（見 product-spec 7.1.3）
@@ -331,23 +331,23 @@ cd bomix-app && wails3 dev                       # 手動驗證：
   - NPI / MP 模式判斷（見 product-spec 7.1.6）
   - Merge 演算法（見 product-spec 7.1.7 步驟 1~4）
   - 自動帶入上一版 Matrix 勾選（見 product-spec 7.1.8）
-- `[ ]` 實作 `backend/excel/reader_bigmatrix.go`
+- [x] 實作 `backend/excel/reader_bigmatrix.go`
   - 表頭解析（見 product-spec 7.2.2）
   - 橫向多 BOM + Model 動態列解析（見 product-spec 7.2.2.1）
   - 零件與 Model 資料解析（見 product-spec 7.2.3）
   - BigMatrix 匯入規則：僅更新 Matrix 勾選，清除舊的 MatrixSelections 後重新插入（見 product-spec 7.0.2 + 7.2.4）
-- `[ ]` 實作 `backend/excel/reader_matrix.go`
+- [x] 實作 `backend/excel/reader_matrix.go`
   - Placeholder：回傳 `ErrInvalidFormat`（暫不支援）
-- `[ ]` 實作 MatrixSelection 匯入功能模組（可放在 `backend/db/matrix.go` 或獨立檔案）
+- [x] 實作 MatrixSelection 匯入功能模組（可放在 `backend/db/matrix.go` 或獨立檔案）
   - `ImportMatrixSelections(db, sourceRevisionID, targetRevisionID) error`（見 product-spec 7.4）
-- `[ ]` 撰寫單元測試 `backend/excel/detector_test.go`
+- [x] 撰寫單元測試 `backend/excel/detector_test.go`
   - 建立三種格式的最小 mock xlsx 檔案並測試正確辨識
-- `[ ]` 撰寫單元測試 `backend/excel/reader_ebom_test.go`
+- [x] 撰寫單元測試 `backend/excel/reader_ebom_test.go`
   - 測試表頭解析
   - 測試 Main/2nd 判斷
   - 測試 NPI/MP 模式判斷
   - 測試 Merge 演算法（使用 product-spec 7.1.7 的 P1~P4 範例）
-- `[ ]` 撰寫單元測試 `backend/excel/reader_bigmatrix_test.go`
+- [x] 撰寫單元測試 `backend/excel/reader_bigmatrix_test.go`
   - 測試橫向多 BOM 解析
   - 測試 Model 勾選狀態解析
 
