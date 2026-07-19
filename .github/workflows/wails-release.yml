@@ -22,35 +22,29 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24' # 與 go.mod 相容的 Go 版本
+          go-version: '1.25' # 與 go.mod 一致 (go 1.25.0)
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22' # 與本地環境一致 (v22.23.1)
 
       # 💡 修正：前端目錄路徑改為 bomix-app/frontend
-      - name: Install Frontend Dependencies (Auto Detect)
-        shell: pwsh
+      - name: Install Frontend Dependencies
+        working-directory: bomix-app/frontend
         run: |
-          if (Test-Path "bomix-app/frontend/package.json") {
-              Write-Host "偵測到 bomix-app/frontend/package.json，正在預先安裝前端依賴..."
-              cd bomix-app/frontend
-              npm install
-              cd ../..
-          } else {
-              Write-Host "未在 bomix-app/frontend 找到 package.json，將交由 Wails 內建機制處理。"
-          }
+          Write-Host "正在安裝前端依賴..."
+          npm install --legacy-peer-deps
 
-      # 💡 修正：安裝 Wails CLI 前確保在正確目錄
+      # 💡 安裝 Wails v3 CLI (鎖定與 go.mod 相同的版本)
       - name: Install Wails v3 CLI
         working-directory: bomix-app
-        run: go install github.com/wailsapp/wails/v3/cmd/wails@v3.0.0-alpha2
+        run: go install github.com/wailsapp/wails/v3/cmd/wails@v3.0.0-alpha2.117
 
-      # 💡 修正：在 bomix-app 目錄下執行 build
+      # 💡 在 bomix-app 目錄下執行 build
       - name: Build Application
         working-directory: bomix-app
-        run: wails build -s
+        run: wails build
 
       - name: Package Windows Binary (ZIP)
         shell: pwsh
