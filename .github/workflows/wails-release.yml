@@ -1,0 +1,118 @@
+name: Wails v3 Windows Release Workflow
+
+on:
+  push:
+    branches:
+      - main
+      - v1
+    tags:
+      - 'v*' # 當打上 v 開頭的標籤時觸發
+
+jobs:
+  build-and-release:
+    name: Build & Release Windows App
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 務必設定為 0（完整拉取歷史紀錄），否則 Git 無法判斷 Tag 屬於哪個分支
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24' # 與 go.mod 相容的 Go 版本
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 💡 修正：前端目錄路徑改為 bomix-app/frontend
+      - name: Install Frontend Dependencies (Auto Detect)
+        shell: pwsh
+        run: |
+          if (Test-Path "bomix-app/frontend/package.json") {
+              Write-Host "偵測到 bomix-app/frontend/package.json，正在預先安裝前端依賴..."
+              cd bomix-app/frontend
+              npm install
+              cd ../..
+          } else {
+              Write-Host "未在 bomix-app/frontend 找到 package.json，將交由 Wails 內建機制處理。"
+          }
+
+      # 💡 修正：安裝 Wails CLI 前確保在正確目錄
+      - name: Install Wails v3 CLI
+        working-directory: bomix-app
+        run: go install github.com/wailsapp/wails/v3/cmd/wails@v3.0.0-alpha2
+
+      # 💡 修正：在 bomix-app 目錄下執行 build
+      - name: Build Application
+        working-directory: bomix-app
+        run: wails build -s
+
+      - name: Package Windows Binary (ZIP)
+        shell: pwsh
+        run: |
+          # 根據專案結構，輸出路徑為 bomix-app/bin/
+          if (Test-Path "bomix-app/bin") {
+              Compress-Archive -Path bomix-app/bin/* -DestinationPath wails-app-windows.zip
+          } elseif (Test-Path "build/bin") {
+              Compress-Archive -Path build/bin/* -DestinationPath wails-app-windows.zip
+          } else {
+              Write-Host "錯誤：未找到編譯輸出目錄"
+              exit 1
+          }
+
+      # ⭐ 核心邏輯：動態判斷正式版與 Beta 版
+      - name: Determine Release Variables
+        id: determine_env
+        shell: bash
+        run: |
+          # 先行抓取遠端分支資訊
+          git fetch origin main v1 --depth=1
+
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            # 情況 A：由 v* Tag 觸發
+            echo "RELEASE_TAG=${{ github.ref_name }}" >> $GITHUB_ENV
+
+            # 檢查當前 Tag 的 Commit 是否存在於 main 或 v1 分支的歷史紀錄中
+            if git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
+              # 如果在 main 分支上：判定為正式版
+              echo "RELEASE_NAME=Release ${{ github.ref_name }}" >> $GITHUB_ENV
+              echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+            elif git merge-base --is-ancestor HEAD origin/v1 2>/dev/null; then
+              # 如果在 v1 分支上：判定為 Beta 版
+              echo "RELEASE_NAME=Release ${{ github.ref_name }} (Beta)" >> $GITHUB_ENV
+              echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+            else
+              # 無法確認分支：預設為 Beta
+              echo "RELEASE_NAME=Release ${{ github.ref_name }} (Unknown)" >> $GITHUB_ENV
+              echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+            fi
+
+          elif [[ "${{ github.ref }}" == refs/heads/main ]]; then
+            # 情況 B：由 main 分支直接 push 觸發
+            echo "RELEASE_TAG=main-latest" >> $GITHUB_ENV
+            echo "RELEASE_NAME=Main 最新穩定版" >> $GITHUB_ENV
+            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+
+          elif [[ "${{ github.ref }}" == refs/heads/v1 ]]; then
+            # 情況 C：由 v1 分支直接 push 觸發
+            echo "RELEASE_TAG=v1-beta-latest" >> $GITHUB_ENV
+            echo "RELEASE_NAME=v1 分支 自動測試版 (Beta)" >> $GITHUB_ENV
+            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+          fi
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_NAME }}
+          prerelease: ${{ env.IS_PRERELEASE }}
+          overwrite: true
+          files: |
+            wails-app-windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
