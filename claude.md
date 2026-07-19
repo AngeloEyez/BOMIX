@@ -148,10 +148,41 @@ BOMIX/                         # Root workspace (Open Claude Code here)
 - **Single Binary Target**: The final output for production on Windows MUST be a single, standalone `.exe` file with NO external dependency folder structures.
 - **Embedded Assets**: All frontend static assets (Vite build output) and Excel templates inside `bomix-app/template/` must be compiled into the binary using Go's `//go:embed` directive.
 - **Output Directory**: The compiled executable MUST be placed in `bomix-app/bin/` directory.
-- **Wails v3 Build Command**: 
-  - Development: `wails3 dev` (runs local hot-reload server)
-  - Production Build: `wails3 build -platform windows/amd64` (produces the single executable in `bomix-app/bin/`)
-- **Cross-Compilation Command**: For cross-compiling from Linux to Windows:
+- **Wails v3 Build Command**: Wails v3 uses pure Go syscall on Windows, requiring NO CGO. This enables simple cross-compilation from any platform.
+
+  **Development:**
   ```bash
-  cd bomix-app && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o bin/BOMIX.exe .
+  cd bomix-app
+  wails dev
   ```
+
+  **Windows Production Build (on Windows):**
+  ```bash
+  cd bomix-app
+  wails build
+  ```
+  Output: `bomix-app/bin/BOMIX.exe` (~23MB, fully self-contained)
+
+  **Cross-Compilation from Linux/Mac to Windows:**
+  ```bash
+  cd bomix-app
+  CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o bin/BOMIX.exe .
+  ```
+
+  **Other Platforms:**
+  ```bash
+  # Linux
+  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/BOMIX
+
+  # macOS (Intel)
+  CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o bin/BOMIX
+
+  # macOS (Apple Silicon)
+  CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o bin/BOMIX
+  ```
+
+  **Key Benefits of Wails v3:**
+  - No MinGW/GCC required on Windows
+  - No Docker or complex CGO cross-compilation toolchain needed
+  - Pure Go cross-compilation with `CGO_ENABLED=0`
+  - Single static binary with all assets embedded
