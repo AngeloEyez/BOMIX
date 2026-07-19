@@ -31,8 +31,11 @@ bomix-app/frontend/node_modules/
 bomix-app/vendor/
 
 # Standard Go ignore patterns
-bin/
 pkg/
+
+# Wails build output (bomix-app specific)
+bomix-app/bin/
+bomix-app/.task/
 
 # OS generated files
 .DS_Store
@@ -60,3 +63,11 @@ logs/
 *.tmp
 *.temp
 .cache/
+
+# Wails mobile build generated files
+bomix-app/build/ios/xcode/overlay.json
+bomix-app/build/ios/xcode/gen/
+bomix-app/build/android/overlay.json
+bomix-app/build/android/gen/
+bomix-app/build/linux/appimage/build
+bomix-app/build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
