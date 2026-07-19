@@ -147,6 +147,11 @@ BOMIX/                         # Root workspace (Open Claude Code here)
 ## 12. Build & Compilation Rules
 - **Single Binary Target**: The final output for production on Windows MUST be a single, standalone `.exe` file with NO external dependency folder structures.
 - **Embedded Assets**: All frontend static assets (Vite build output) and Excel templates inside `bomix-app/template/` must be compiled into the binary using Go's `//go:embed` directive.
+- **Output Directory**: The compiled executable MUST be placed in `bomix-app/bin/` directory.
 - **Wails v3 Build Command**: 
   - Development: `wails3 dev` (runs local hot-reload server)
-  - Production Build: `wails3 build -platform windows/amd64` (produces the single executable)
+  - Production Build: `wails3 build -platform windows/amd64` (produces the single executable in `bomix-app/bin/`)
+- **Cross-Compilation Command**: For cross-compiling from Linux to Windows:
+  ```bash
+  cd bomix-app && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o bin/BOMIX.exe .
+  ```

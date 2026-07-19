@@ -478,20 +478,20 @@ cd bomix-app && go test ./backend/excel/... -v -count=1
   - `go build ./...` 零錯誤
   - `go test ./...` 全部 PASS
   - `pnpm run build` 零錯誤
-  - `wails3 build -platform windows/amd64` 產出 BOMIX.exe
+  - `wails3 build -platform windows/amd64` 產出 BOMIX.exe（輸出至 `bomix-app/bin/`）
 
 ### 驗證
 
 ```bash
 cd bomix-app && go test ./... -v -count=1        # 所有 Go 測試
 cd bomix-app/frontend && pnpm run build           # 前端建置
-cd bomix-app && wails3 build -platform windows/amd64  # 生產建置
+cd bomix-app && wails3 build -platform windows/amd64  # 生產建置（輸出至 bin/）
 ```
 
 ### 完成條件
 
 - `go test ./...` 全部 PASS，零失敗
-- `wails3 build` 成功產出 `build/bin/BOMIX.exe`
+- `wails3 build` 成功產出 `bomix-app/bin/BOMIX.exe`
 - 手動驗證完整流程：建立 .bomx → 匯入 EBOM → 檢視 BOM 表格 → 匯出 BigMatrix → 開啟匯出檔案確認
 
 ---

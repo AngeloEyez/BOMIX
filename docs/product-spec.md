@@ -1511,14 +1511,19 @@ wails3 dev
 
 ```bash
 # Windows 建置（單一 exe）
-wails3 build -platform windows/amd64
+cd bomix-app && wails3 build -platform windows/amd64
+```
+
+跨平台編譯（從 Linux 編譯 Windows 執行檔）：
+```bash
+cd bomix-app && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o bin/BOMIX.exe .
 ```
 
 ### 12.3 輸出產物
 
 | 項目 | 說明 |
 |------|------|
-| **輸出路徑** | `build/bin/BOMIX.exe` |
+| **輸出路徑** | `bomix-app/bin/BOMIX.exe` |
 | **嵌入資源** | 前端靜態資源 + Excel Template（`//go:embed`） |
 | **外部依賴** | 無（單一執行檔） |
 
