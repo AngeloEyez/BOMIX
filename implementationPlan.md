@@ -23,13 +23,14 @@
 - [x] 在 Go 後端安裝核心依賴：`go get gorm.io/gorm modernc.org/sqlite gorm.io/driver/sqlite github.com/xuri/excelize/v2 github.com/BurntSushi/toml github.com/google/uuid`
 - [x] 建立 `claude.md` 中定義的完整目錄結構骨架（所有空 `.go` / `.ts` / `.vue` 檔案，內含 `package` 宣告或最小合法語法）
 - [x] 建立空的 Excel 範本檔案佔位：`bomix-app/template/bigmatrix.xlsx`、`bomix-app/template/matrix.xlsx`
+- [x] **Wails v3 注意事項**：嚴格遵守 v3 API，切勿混用 v2 語法（見 product-spec.md Section 3.1 說明）
 
 ### 驗證
 
 ```bash
 cd bomix-app && go build ./...                  # Go 編譯通過
 cd bomix-app/frontend && pnpm run build         # 前端建置成功
-cd bomix-app && wails3 dev                      # 開發伺服器啟動，視窗顯示（手動確認後 Ctrl+C）
+cd bomix-app && wails dev                       # 開發伺服器啟動，視窗顯示（手動確認後 Ctrl+C）
 ```
 
 ### 完成條件
@@ -37,6 +38,39 @@ cd bomix-app && wails3 dev                      # 開發伺服器啟動，視窗
 - `go build ./...` 零錯誤
 - `pnpm run build` 零錯誤
 - 所有 `claude.md` Section 2 定義的目錄與檔案皆已建立
+- **Wails v3 純 Go 編譯驗證通過**（無 CGO 依賴）
+
+### Wails v3 建置指令參考
+
+**開發模式：**
+```bash
+cd bomix-app
+wails dev
+```
+
+**Windows 生產建置 (本機)：**
+```bash
+cd bomix-app
+wails build
+```
+
+**Windows 交叉編譯 (從 Mac/Linux，純 Go 無需 CGO)：**
+```bash
+cd bomix-app
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o bomix-app.exe .
+```
+
+**其他平台：**
+```bash
+# Linux
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build
+
+# macOS (Intel)
+CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build
+
+# macOS (Apple Silicon)
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build
+```
 
 ---
 

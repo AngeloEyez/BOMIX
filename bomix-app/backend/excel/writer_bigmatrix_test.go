@@ -1,0 +1,423 @@
+package excel
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"bomix-app/backend/types"
+	"github.com/xuri/excelize/v2"
+)
+
+func TestApplyTagReplacement(t *testing.T) {
+	// Create a temporary test file
+	f := excelize.NewFile()
+	defer f.Close()
+
+	// Set up test data
+	f.SetCellValue("Sheet1", "A1", "{{.Title}}")
+	f.SetCellValue("Sheet1", "A2", "{{.Author}}")
+	f.SetCellValue("Sheet1", "A3", "Static Text")
+	f.SetCellValue("Sheet1", "B1", "{{.Title}}")
+
+	tags := map[string]string{
+		"{{.Title}}":  "Test Document",
+		"{{.Author}}": "John Doe",
+	}
+
+	err := applyTagReplacement(f, tags)
+	if err != nil {
+		t.Fatalf("applyTagReplacement failed: %v", err)
+	}
+
+	// Verify replacements
+	title, err := f.GetCellValue("Sheet1", "A1")
+	if err != nil {
+		t.Fatalf("GetCellValue failed: %v", err)
+	}
+	if title != "Test Document" {
+		t.Errorf("Expected 'Test Document', got '%s'", title)
+	}
+
+	author, err := f.GetCellValue("Sheet1", "A2")
+	if err != nil {
+		t.Fatalf("GetCellValue failed: %v", err)
+	}
+	if author != "John Doe" {
+		t.Errorf("Expected 'John Doe', got '%s'", author)
+	}
+
+	// Verify static text unchanged
+	static, err := f.GetCellValue("Sheet1", "A3")
+	if err != nil {
+		t.Fatalf("GetCellValue failed: %v", err)
+	}
+	if static != "Static Text" {
+		t.Errorf("Expected 'Static Text', got '%s'", static)
+	}
+
+	// Verify tag replaced in multiple cells
+	titleB1, err := f.GetCellValue("Sheet1", "B1")
+	if err != nil {
+		t.Fatalf("GetCellValue failed: %v", err)
+	}
+	if titleB1 != "Test Document" {
+		t.Errorf("Expected 'Test Document' in B1, got '%s'", titleB1)
+	}
+}
+
+func TestGetColName(t *testing.T) {
+	tests := []struct {
+		index  int
+		expect string
+	}{
+		{0, "A"},
+		{1, "B"},
+		{2, "C"},
+		{7, "H"},
+		{9, "J"},
+		{10, "K"},
+		{25, "Z"},
+		{26, "AA"},
+		{27, "AB"},
+	}
+
+	for _, tt := range tests {
+		result := getColName(tt.index)
+		if result != tt.expect {
+			t.Errorf("getColName(%d) = %s, want %s", tt.index, result, tt.expect)
+		}
+	}
+}
+
+func TestColNameToIndex(t *testing.T) {
+	tests := []struct {
+		colName string
+		expect  int
+	}{
+		{"A", 0},
+		{"B", 1},
+		{"C", 2},
+		{"H", 7},
+		{"J", 9},
+		{"K", 10},
+		{"Z", 25},
+		{"AA", 26},
+		{"AB", 27},
+	}
+
+	for _, tt := range tests {
+		result := colNameToIndex(tt.colName)
+		if result != tt.expect {
+			t.Errorf("colNameToIndex(%s) = %d, want %d", tt.colName, result, tt.expect)
+		}
+	}
+}
+
+func TestGenerateBigMatrixFileName(t *testing.T) {
+	tests := []struct {
+		name       string
+		seriesName string
+		revisions  []RevisionData
+		date       string
+		expect     string
+	}{
+		{
+			name:       "All same phase and version",
+			seriesName: "FY27",
+			revisions: []RevisionData{
+				{Phase: "PV", Version: "0.3"},
+				{Phase: "PV", Version: "0.3"},
+			},
+			date:   "20260717",
+			expect: "FY27_BigMatrix_PV_0.3_20260717.xlsx",
+		},
+		{
+			name:       "Same phase, different versions",
+			seriesName: "FY27",
+			revisions: []RevisionData{
+				{Phase: "PV", Version: "0.3"},
+				{Phase: "PV", Version: "0.4"},
+			},
+			date:   "20260717",
+			expect: "FY27_BigMatrix_PV_20260717.xlsx",
+		},
+		{
+			name:       "Different phases",
+			seriesName: "FY27",
+			revisions: []RevisionData{
+				{Phase: "PV", Version: "0.3"},
+				{Phase: "EV", Version: "0.1"},
+			},
+			date:   "20260717",
+			expect: "FY27_BigMatrix_20260717.xlsx",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := generateBigMatrixFileName(tt.seriesName, tt.revisions, tt.date)
+			if result != tt.expect {
+				t.Errorf("generateBigMatrixFileName() = %s, want %s", result, tt.expect)
+			}
+		})
+	}
+}
+
+func TestFilterPartsByCriteria(t *testing.T) {
+	parts := []PartData{
+		{
+			Supplier:    "Samsung",
+			SupplierPn:  "CL05B104KO5NNNC",
+			CCL:         "Y",
+			BOMStatus:   "I",
+			Description: "Test Part 1",
+		},
+		{
+			Supplier:    "Murata",
+			SupplierPn:  "GRM155B81C105KE19D",
+			CCL:         "Y",
+			BOMStatus:   "P",
+			Description: "Test Part 2 (NPI)",
+		},
+		{
+			Supplier:    "Taiyo Yuden",
+			SupplierPn:  "UMK105B7105KV-F",
+			CCL:         "Y",
+			BOMStatus:   "M",
+			Description: "Test Part 3 (MP)",
+		},
+		{
+			Supplier:    "Yageo",
+			SupplierPn:  "CC0402KRX7R9BB104",
+			CCL:         "Y",
+			BOMStatus:   "X",
+			Description: "Test Part 4 (Not Installed)",
+		},
+		{
+			Supplier:    "Kemet",
+			SupplierPn:  "C0603C104K5RACTU",
+			CCL:         "N",
+			BOMStatus:   "I",
+			Description: "Test Part 5 (Not CCL)",
+		},
+	}
+
+	// Test NPI mode
+	npiFiltered := FilterPartsByCriteria(parts, "NPI")
+	if len(npiFiltered) != 2 {
+		t.Errorf("NPI filter: expected 2 parts, got %d", len(npiFiltered))
+	}
+	for _, p := range npiFiltered {
+		if p.BOMStatus != "I" && p.BOMStatus != "P" {
+			t.Errorf("NPI filter: part %s has invalid status %s", p.SupplierPn, p.BOMStatus)
+		}
+		if p.CCL != "Y" {
+			t.Errorf("NPI filter: part %s is not CCL", p.SupplierPn)
+		}
+	}
+
+	// Test MP mode
+	mpFiltered := FilterPartsByCriteria(parts, "MP")
+	if len(mpFiltered) != 2 {
+		t.Errorf("MP filter: expected 2 parts, got %d", len(mpFiltered))
+	}
+	for _, p := range mpFiltered {
+		if p.BOMStatus != "I" && p.BOMStatus != "M" {
+			t.Errorf("MP filter: part %s has invalid status %s", p.SupplierPn, p.BOMStatus)
+		}
+		if p.CCL != "Y" {
+			t.Errorf("MP filter: part %s is not CCL", p.SupplierPn)
+		}
+	}
+}
+
+func TestDeduplicateParts(t *testing.T) {
+	parts := []PartData{
+		{
+			Supplier:    "Samsung",
+			SupplierPn:  "CL05B104KO5NNNC",
+			Description: "Capacitor 10uF",
+			SecondSources: []SecondSourceData{
+				{Supplier: "Murata", SupplierPn: "GRM155B81C105KE19D"},
+			},
+		},
+		{
+			Supplier:    "Samsung",
+			SupplierPn:  "CL05B104KO5NNNC",
+			Description: "Capacitor 10uF (Duplicate)",
+			SecondSources: []SecondSourceData{
+				{Supplier: "Taiyo Yuden", SupplierPn: "UMK105B7105KV-F"},
+			},
+		},
+		{
+			Supplier:    "Murata",
+			SupplierPn:  "GRM155B71H104KA12D",
+			Description: "Capacitor 100nF",
+		},
+	}
+
+	result := deduplicateParts(parts)
+	if len(result) != 2 {
+		t.Errorf("deduplicateParts: expected 2 parts, got %d", len(result))
+	}
+}
+
+func TestMergeSecondSources(t *testing.T) {
+	parts := []PartData{
+		{
+			Supplier:    "Samsung",
+			SupplierPn:  "CL05B104KO5NNNC",
+			Description: "Capacitor 10uF",
+			SecondSources: []SecondSourceData{
+				{Supplier: "Murata", SupplierPn: "GRM155B81C105KE19D"},
+				{Supplier: "Taiyo Yuden", SupplierPn: "UMK105B7105KV-F"},
+			},
+		},
+		{
+			Supplier:    "Samsung",
+			SupplierPn:  "CL05B104KO5NNNC",
+			Description: "Capacitor 10uF (Same Group)",
+			SecondSources: []SecondSourceData{
+				{Supplier: "Yageo", SupplierPn: "CC0402KRX7R9BB104"},
+				{Supplier: "Murata", SupplierPn: "GRM155B81C105KE19D"}, // Duplicate
+			},
+		},
+	}
+
+	result := mergeSecondSources(parts)
+	if len(result) != 1 {
+		t.Errorf("mergeSecondSources: expected 1 part, got %d", len(result))
+	}
+
+	if len(result[0].SecondSources) != 3 {
+		t.Errorf("mergeSecondSources: expected 3 second sources, got %d", len(result[0].SecondSources))
+	}
+}
+
+func TestNormalizeLocationCount(t *testing.T) {
+	tests := []struct {
+		loc      string
+		expected int
+	}{
+		{"", 0},
+		{"R1", 1},
+		{"R1,C1,C2", 3},
+		{"C1,C2,C3,C4,C5,C6,C7,C8", 8},
+	}
+
+	for _, tt := range tests {
+		result := NormalizeLocationCount(tt.loc)
+		if result != tt.expected {
+			t.Errorf("NormalizeLocationCount(%q) = %d, want %d", tt.loc, result, tt.expected)
+		}
+	}
+}
+
+func TestExportBigMatrix_Integration(t *testing.T) {
+	// Create a temporary directory for output
+	tmpDir, err := os.MkdirTemp("", "bomix-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create writer
+	writer, err := NewWriter()
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	// Prepare test data
+	options := ExportOptions{
+		Format:    types.FormatBigMatrix,
+		OutputPath: filepath.Join(tmpDir, "test_bigmatrix.xlsx"),
+		Description: "Test BigMatrix Export",
+		PartData: []PartData{
+			{
+				Item:        "1",
+				HHPN:        "34065Y600-GRT-H",
+				Description: "CAP,22uF,+/-20%,X5R,6.3V,SMD0603",
+				Supplier:    "Samsung",
+				SupplierPn:  "CL05B104KO5NNNC",
+				Qty:         4,
+				Location:    "C1,C2,C3,C4",
+				Type:        "SMD",
+				BOMStatus:   "I",
+				CCL:         "Y",
+				Remark:      "",
+				SecondSources: []SecondSourceData{
+					{
+						HHPN:      "34065Y600-GRT-H",
+						Supplier:  "Murata",
+						SupplierPn: "GRM155B81C105KE19D",
+						Description: "CAP,10uF,+/-20%,X5R,6.3V,SMD0603",
+					},
+				},
+				Selections: map[string]string{
+					"A": "CL05B104KO5NNNC",
+					"B": "CL05B104KO5NNNC",
+				},
+			},
+			{
+				Item:        "2",
+				HHPN:        "34065Y601-GRT-H",
+				Description: "RES,10K,+/-1%,0603",
+				Supplier:    "Yageo",
+				SupplierPn:  "RC0603FR-0710KL",
+				Qty:         12,
+				Location:    "R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12",
+				Type:        "SMD",
+				BOMStatus:   "I",
+				CCL:         "Y",
+				Remark:      "",
+				Selections: map[string]string{
+					"A": "RC0603FR-0710KL",
+					"B": "RC0603FR-0710KL",
+				},
+			},
+		},
+	}
+
+	// Export
+	outputPaths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	if len(outputPaths) != 1 {
+		t.Errorf("Expected 1 output path, got %d", len(outputPaths))
+	}
+
+	// Verify the output file exists and is valid
+	outputPath := outputPaths[0]
+	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+		t.Fatalf("Output file does not exist: %s", outputPath)
+	}
+
+	// Try to open the file with excelize
+	f, err := excelize.OpenFile(outputPath)
+	if err != nil {
+		t.Fatalf("Failed to open exported file: %v", err)
+	}
+	defer f.Close()
+
+	// Verify sheet exists
+	sheets := f.GetSheetList()
+	if len(sheets) == 0 {
+		t.Fatal("Exported file has no sheets")
+	}
+
+	// Verify data was written
+	val, err := f.GetCellValue("BigMatrix", "A6")
+	if err != nil {
+		t.Fatalf("Failed to read cell A6: %v", err)
+	}
+	// A6 should be "Item" header or first item data
+	if !strings.Contains(val, "Item") && val != "1" {
+		t.Errorf("Unexpected value in A6: %s", val)
+	}
+
+	t.Logf("Successfully exported BigMatrix to: %s", outputPath)
+}
