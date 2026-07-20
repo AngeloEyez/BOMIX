@@ -44,7 +44,7 @@ jobs:
       # 💡 在 bomix-app 目錄下執行 build
       - name: Build Application
         working-directory: bomix-app
-        run: wails3 build
+        run: wails3 build GOOS=windows GOARCH=amd6
 
       - name: Package Windows Binary (ZIP)
         shell: pwsh
