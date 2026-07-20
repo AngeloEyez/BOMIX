@@ -39,12 +39,12 @@ jobs:
       # 💡 安裝 Wails v3 CLI (鎖定與 go.mod 相同的版本)
       - name: Install Wails v3 CLI
         working-directory: bomix-app
-        run: go install github.com/wailsapp/wails/v3/cmd/wails@v3.0.0-alpha2.117
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha2.117
 
       # 💡 在 bomix-app 目錄下執行 build
       - name: Build Application
         working-directory: bomix-app
-        run: wails build
+        run: wails3 build
 
       - name: Package Windows Binary (ZIP)
         shell: pwsh
