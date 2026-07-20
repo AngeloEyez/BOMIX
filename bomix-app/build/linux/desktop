@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=My Product
+Comment=A temp-project application
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/temp-project %u
+Terminal=false
+Type=Application
+Icon=temp-project
+Categories=Utility;
+StartupWMClass=temp-project
+
+ 
