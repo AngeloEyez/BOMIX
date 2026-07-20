@@ -101,28 +101,16 @@
         </div>
       </div>
 
-      <div class="action-buttons">
-        <Button
-          label="Save Settings"
-          icon="pi pi-check"
-          class="p-button-primary"
-          @click="handleSaveSettings"
-          :loading="isSaving"
-        />
-      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import InputNumber from 'primevue/inputnumber'
-import Button from 'primevue/button'
 import { GetSettings, UpdateSettings, type Settings } from '../services/api'
-
-const isSaving = ref(false)
 
 // Settings state
 const settings = ref<Settings>({
@@ -159,10 +147,6 @@ const logLevelOptions = [
   { label: 'Error', value: 'error' },
 ]
 
-onMounted(async () => {
-  await loadSettings()
-})
-
 async function loadSettings(): Promise<void> {
   try {
     const data = await GetSettings()
@@ -186,25 +170,37 @@ async function loadSettings(): Promise<void> {
   }
 }
 
-async function handleSaveSettings(): Promise<void> {
-  isSaving.value = true
-  try {
-    await UpdateSettings(settings.value)
-  } catch (error) {
-    console.error('Failed to save settings:', error)
-  } finally {
-    isSaving.value = false
-  }
-}
+// Auto-save logic
+let saveTimeout: any
+let isLoaded = false
+
+watch(settings, (newVal) => {
+  if (!isLoaded) return
+  if (saveTimeout) clearTimeout(saveTimeout)
+  saveTimeout = setTimeout(async () => {
+    try {
+      await UpdateSettings(newVal)
+    } catch (error) {
+      console.error('Failed to auto-save settings:', error)
+    }
+  }, 500) // 500ms debounce
+}, { deep: true })
+
+onMounted(async () => {
+  await loadSettings()
+  // Allow time for initial reactive trigger to settle before enabling auto-save
+  setTimeout(() => { isLoaded = true }, 100)
+})
 </script>
 
 <style scoped>
 .settings-page {
   display: flex;
   justify-content: center;
-  padding: 2rem;
+  padding: 1rem 2rem;
   background: var(--surface-ground);
-  min-height: 100%;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .settings-container {
@@ -213,59 +209,46 @@ async function handleSaveSettings(): Promise<void> {
 }
 
 .page-title {
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--text-color);
-  margin: 0 0 2rem;
-}
-
-.settings-section {
-  background: var(--surface-card);
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-
-.section-title {
-  font-size: 1.1rem;
+  font-size: 1.5rem;
   font-weight: 600;
   color: var(--text-color);
   margin: 0 0 1rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--surface-border);
+}
+
+.settings-section {
+  padding: 0.75rem 0;
+  margin-bottom: 0.5rem;
+}
+
+.section-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-color);
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .setting-item {
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding: 0.75rem 0;
-}
-
-.setting-item:not(:last-child) {
-  border-bottom: 1px solid var(--surface-border);
+  padding: 0.35rem 0;
 }
 
 .setting-label {
   flex: 1;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   color: var(--text-color);
 }
 
 .setting-input {
-  width: 200px;
+  width: 250px;
 }
 
 .setting-value {
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   color: var(--text-color-secondary);
   word-break: break-all;
-}
-
-.action-buttons {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 2rem;
 }
 </style>

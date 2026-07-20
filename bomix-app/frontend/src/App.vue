@@ -21,6 +21,14 @@
           title="Close Series"
         />
         <Button
+          icon="pi pi-home"
+          label="BOM"
+          text
+          severity="secondary"
+          @click="$router.push(appStore.isOpen ? '/workspace' : '/')"
+          title="Main View"
+        />
+        <Button
           icon="pi pi-cog"
           text
           severity="secondary"
@@ -31,10 +39,7 @@
     </header>
 
     <!-- Main Content with Splitter -->
-    <Splitter
-      class="main-splitter"
-      :style="{ height: `calc(100vh - ${headerHeight}px)` }"
-    >
+    <Splitter class="main-splitter">
       <!-- Sidebar Panel -->
       <SplitterPanel
         :size="sidebarWidth"
@@ -108,7 +113,7 @@ const logStore = useLogStore()
 const taskStore = useTaskStore()
 
 // Header height
-const headerHeight = 50
+const headerHeight = 40
 
 // Sidebar width management
 const sidebarWidth = ref(20) // Default 20%
@@ -285,8 +290,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 50px;
-  padding: 0 1rem;
+  height: 36px;
+  padding: 0 0.5rem;
   background: var(--surface-card);
   border-bottom: 1px solid var(--surface-border);
   flex-shrink: 0;
@@ -330,6 +335,20 @@ body {
 .main-splitter {
   flex: 1;
   overflow: hidden;
+  border: none;
+}
+
+:deep(.p-splitter-gutter) {
+  background-color: var(--surface-border) !important;
+  width: 4px !important;
+  transition: background-color 0.2s;
+  cursor: col-resize;
+  border-left: 1px solid var(--surface-hover);
+  border-right: 1px solid var(--surface-hover);
+}
+
+:deep(.p-splitter-gutter:hover) {
+  background-color: var(--primary-color) !important;
 }
 
 /* Sidebar */
@@ -341,7 +360,7 @@ body {
 }
 
 .sidebar-header {
-  padding: 1rem;
+  padding: 0.25rem 0.5rem;
   border-bottom: 1px solid var(--surface-border);
 }
 
@@ -356,7 +375,7 @@ body {
 .sidebar-content {
   flex: 1;
   overflow-y: auto;
-  padding: 0.5rem;
+  padding: 0.25rem;
 }
 
 /* Tree Node */
