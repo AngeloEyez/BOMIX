@@ -164,25 +164,19 @@ BOMIX/                         # Root workspace (Open Claude Code here)
   Output: `bomix-app/bin/BOMIX.exe` (~23MB, fully self-contained)
 
   **Cross-Compilation from Linux/Mac to Windows:**
+  若使用原生 `go build`，必須先打包前端資源並加上 `-ldflags="-H windowsgui -s -w"` 以隱藏終端機黑框：
+  ```bash
+  # 1. 建立前端靜態資源
+  cd bomix-app/frontend
+  npm install
+  npm run build
+  
+  # 2. 回到應用程式目錄，進行 Windows 跨平台編譯 (CGO Free)
+  cd ..
+  CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-H windowsgui -s -w" -o bin/BOMIX.exe .
+  ```
+  *(💡 推薦方式：直接使用 Wails CLI 進行跨平台編譯，它會自動處理前端打包與圖示綁定)*
   ```bash
   cd bomix-app
-  CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o bin/BOMIX.exe .
+  wails build -platform windows/amd64
   ```
-
-  **Other Platforms:**
-  ```bash
-  # Linux
-  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/BOMIX
-
-  # macOS (Intel)
-  CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o bin/BOMIX
-
-  # macOS (Apple Silicon)
-  CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o bin/BOMIX
-  ```
-
-  **Key Benefits of Wails v3:**
-  - No MinGW/GCC required on Windows
-  - No Docker or complex CGO cross-compilation toolchain needed
-  - Pure Go cross-compilation with `CGO_ENABLED=0`
-  - Single static binary with all assets embedded
