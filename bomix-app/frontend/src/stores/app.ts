@@ -77,12 +77,25 @@ export const useAppStore = defineStore('app', () => {
     error.value = null
   }
 
+  const currentTheme = ref('system')
+
+  function applyTheme(theme: string) {
+    currentTheme.value = theme
+    const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    if (isDark) {
+      document.documentElement.classList.add('app-dark')
+    } else {
+      document.documentElement.classList.remove('app-dark')
+    }
+  }
+
   return {
     // State
     isOpen,
     seriesInfo,
     isLoading,
     error,
+    currentTheme,
     // Getters
     isSeriesOpen,
     // Actions
@@ -90,5 +103,6 @@ export const useAppStore = defineStore('app', () => {
     createSeries,
     closeSeries,
     clearError,
+    applyTheme,
   }
 })

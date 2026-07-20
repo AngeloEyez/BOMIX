@@ -18,8 +18,7 @@
 }
 
 /* Dark mode support */
-@media (prefers-color-scheme: dark) {
-  :root {
+html.app-dark {
     /* Custom VS Code-like dark colors */
     --p-color-surface-0: #1e1e1e;
     --p-color-surface-50: #1e1e1e;
@@ -55,4 +54,3 @@
     --primary-color: var(--p-primary-500, #0e639c);
     --highlight-background: var(--p-color-highlight-bg, #094771);
   }
-}

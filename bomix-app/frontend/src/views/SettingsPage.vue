@@ -111,6 +111,9 @@ import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import InputNumber from 'primevue/inputnumber'
 import { GetSettings, UpdateSettings, type Settings } from '../services/api'
+import { useAppStore } from '../stores'
+
+const appStore = useAppStore()
 
 // Settings state
 const settings = ref<Settings>({
@@ -176,6 +179,10 @@ let isLoaded = false
 
 watch(settings, (newVal) => {
   if (!isLoaded) return
+
+  // Apply theme immediately on change
+  appStore.applyTheme(newVal.theme)
+
   if (saveTimeout) clearTimeout(saveTimeout)
   saveTimeout = setTimeout(async () => {
     try {

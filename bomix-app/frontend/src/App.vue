@@ -139,10 +139,27 @@ const projectTree = ref<TreeNode[]>([])
 const expandedKeys = ref<Record<string, boolean>>({})
 const selectionKeys = ref<Record<string, string>>({})
 
-onMounted(() => {
+import { GetSettings } from './services/api'
+
+onMounted(async () => {
   // Start listening to events
   logStore.startListening()
   taskStore.startListening()
+
+  // Load initial settings for theme
+  try {
+    const s = await GetSettings()
+    appStore.applyTheme(s.theme)
+  } catch (e) {
+    appStore.applyTheme('system')
+  }
+
+  // Listen to OS theme changes
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (appStore.currentTheme === 'system') {
+      appStore.applyTheme('system')
+    }
+  })
 
   // Load initial data if series is open
   if (appStore.isOpen) {
