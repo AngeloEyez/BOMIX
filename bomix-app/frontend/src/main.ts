@@ -6,7 +6,7 @@ import App from './App.vue'
 import './style.css'
 
 // Import @primeuix/themes presets
-import { Aura } from '@primeuix/themes'
+import Aura from '@primeuix/themes/aura'
 
 // Create router instance
 const router = createRouter({
