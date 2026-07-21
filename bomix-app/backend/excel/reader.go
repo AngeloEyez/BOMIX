@@ -2,10 +2,13 @@ package excel
 
 import (
 	"errors"
+	"fmt"
+
+	"bomix-app/backend/logger"
+	"bomix-app/backend/types"
 
 	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
-	"bomix-app/backend/types"
 )
 
 // Reader defines the interface for Excel import operations
@@ -16,15 +19,17 @@ type Reader interface {
 
 // ReaderImpl is the main Excel reader implementation
 type ReaderImpl struct {
-	db     *gorm.DB
+	db       *gorm.DB
 	detector *Detector
+	logger   *logger.Logger
 }
 
 // NewReader creates a new Excel reader
-func NewReader(db *gorm.DB) *ReaderImpl {
+func NewReader(db *gorm.DB, logger *logger.Logger) *ReaderImpl {
 	return &ReaderImpl{
 		db:       db,
 		detector: NewDetector(),
+		logger:   logger,
 	}
 }
 
@@ -64,6 +69,10 @@ func (r *ReaderImpl) importFile(path string) (types.ImportResult, error) {
 	}
 	result.Format = format
 
+	if r.logger != nil {
+		r.logger.Info(fmt.Sprintf("判斷是 %s BOM", format), "file", path)
+	}
+
 	// Process based on format
 	switch format {
 	case types.FormatEBOM:
@@ -89,6 +98,7 @@ func (r *ReaderImpl) importEBOM(f *excelize.File, path string) (types.ImportResu
 	ebomReader := &EBOMReader{
 		db:     r.db,
 		result: &result,
+		logger: r.logger,
 	}
 
 	err := ebomReader.Import(f)
@@ -106,6 +116,7 @@ func (r *ReaderImpl) importBigMatrix(f *excelize.File, path string) (types.Impor
 	bigMatrixReader := &BigMatrixReader{
 		db:     r.db,
 		result: &result,
+		logger: r.logger,
 	}
 
 	err := bigMatrixReader.Import(f)

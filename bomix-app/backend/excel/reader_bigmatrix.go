@@ -9,6 +9,7 @@ import (
 	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 	"bomix-app/backend/db"
+	"bomix-app/backend/logger"
 	"bomix-app/backend/types"
 )
 
@@ -16,6 +17,7 @@ import (
 type BigMatrixReader struct {
 	db     *gorm.DB
 	result *types.ImportResult
+	logger *logger.Logger
 }
 
 // Import imports a BigMatrix format file

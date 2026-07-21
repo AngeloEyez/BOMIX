@@ -9,6 +9,7 @@ import (
 	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 	"bomix-app/backend/db"
+	"bomix-app/backend/logger"
 	"bomix-app/backend/types"
 )
 
@@ -17,6 +18,7 @@ type EBOMReader struct {
 	db        *gorm.DB
 	result    *types.ImportResult
 	revisionID int64 // Will be set after creating/updating revision
+	logger    *logger.Logger
 }
 
 // Import imports an EBOM format file
@@ -482,6 +484,9 @@ func (r *EBOMReader) createOrUpdateRevision(projectCode, phase, version, descrip
 
 	if err == nil {
 		// Update existing revision
+		if r.logger != nil {
+			r.logger.Info("BOM 覆蓋: 更新現有版本", "project", projectCode, "phase", phase, "version", version)
+		}
 		existing.Description = description
 		existing.SchematicVersion = schematicVersion
 		existing.PCBVersion = pcbVersion
@@ -516,6 +521,10 @@ func (r *EBOMReader) createOrUpdateRevision(projectCode, phase, version, descrip
 
 	if err := r.db.Create(&revision).Error; err != nil {
 		return 0, err
+	}
+
+	if r.logger != nil {
+		r.logger.Info("BOM 新增: 建立全新版本", "project", projectCode, "phase", phase, "version", version)
 	}
 
 	return revision.ID, nil

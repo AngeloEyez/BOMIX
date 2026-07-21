@@ -113,6 +113,7 @@ func (a *App) CreateSeries(path, name, description string) error {
 	}
 
 	// Auto migrate
+	a.logger.Debug("建立資料表 (Debug)", "path", path)
 	if err := db.AutoMigrate(database); err != nil {
 		db.Close(database)
 		return fmt.Errorf("failed to auto migrate: %w", err)
@@ -374,7 +375,7 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 	}
 
 	// Create Excel reader
-	excelReader := excel.NewReader(dbConn)
+	excelReader := excel.NewReader(dbConn, a.logger)
 
 	results := make([]*ImportResult, 0, len(filePaths))
 
