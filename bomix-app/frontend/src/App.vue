@@ -82,15 +82,13 @@
       </SplitterPanel>
     </Splitter>
 
-    <!-- Bottom Log Panel -->
+    <!-- Bottom Log Panel：resize-handle 使用與 splitter gutter 相同的細線風格 -->
     <div class="bottom-panel" :style="{ height: `${bottomPanelHeight}px` }">
       <div
         class="resize-handle"
         @mousedown="startBottomResize"
         @dblclick="resetBottomHeight"
-      >
-        <i class="pi pi-bars"></i>
-      </div>
+      ></div>
       <LogPanel />
     </div>
   </div>
@@ -119,7 +117,7 @@ const headerHeight = 40
 const sidebarWidth = ref(20) // Default 20%
 
 // Bottom panel height
-const bottomPanelHeight = ref(200) // Default 200px
+const bottomPanelHeight = ref(window.innerHeight * 0.1) // Default 10%
 let isResizingBottom = false
 let startY = 0
 let startHeight = 0
@@ -232,8 +230,8 @@ function handleBottomResize(event: MouseEvent): void {
   if (!isResizingBottom) return
   const deltaY = event.clientY - startY
   const newHeight = startHeight - deltaY
-  // Minimum height is 30px, maximum is 50% of viewport
-  bottomPanelHeight.value = Math.max(30, Math.min(newHeight, window.innerHeight * 0.5))
+  // 最小高度 18px（單行 log 高度），最大 50% 視窗高度
+  bottomPanelHeight.value = Math.max(18, Math.min(newHeight, window.innerHeight * 0.5))
 }
 
 function stopBottomResize(): void {
@@ -243,7 +241,7 @@ function stopBottomResize(): void {
 }
 
 function resetBottomHeight(): void {
-  bottomPanelHeight.value = 200
+  bottomPanelHeight.value = window.innerHeight * 0.1
 }
 
 function onNodeSelect(node: any): void {
@@ -419,28 +417,25 @@ body {
 .bottom-panel {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--surface-border);
   background: var(--surface-card);
   flex-shrink: 0;
 }
 
+/*
+  resize-handle：與 PrimeVue .p-splitter-gutter 保持相同的視覺風格。
+  使用 4px 高的細線，hover 時高亮為 primary-color，雙擊重置高度。
+*/
 .resize-handle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 20px;
-  background: var(--surface-ground);
-  border-bottom: 1px solid var(--surface-border);
+  height: 4px;
+  background-color: var(--surface-border);
+  border-top: 1px solid var(--surface-hover);
+  border-bottom: 1px solid var(--surface-hover);
   cursor: ns-resize;
-  transition: background 0.2s;
+  flex-shrink: 0;
+  transition: background-color 0.2s;
 }
 
 .resize-handle:hover {
-  background: var(--surface-hover);
-}
-
-.resize-handle i {
-  font-size: 0.75rem;
-  color: var(--text-color-secondary);
+  background-color: var(--primary-color);
 }
 </style>

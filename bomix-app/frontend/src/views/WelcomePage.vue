@@ -1,82 +1,66 @@
 <template>
   <div class="welcome-page">
-    <div class="welcome-container">
-      <div class="logo-section">
-        <h1 class="title">BOMIX</h1>
+    <div class="vscode-welcome-container">
+      
+      <!-- 標題區域 -->
+      <div class="header-section">
+        <h1 class="main-title">BOMIX</h1>
         <p class="subtitle">BOM Management System</p>
       </div>
 
-      <div class="action-section">
-        <div class="file-selection-group">
-          <label class="field-label">選擇或開啟現有專案：</label>
-          <div class="file-input-row">
-            <InputText 
-              v-model="selectedFilePath" 
-              readonly 
-              placeholder="請選擇 .bomx 檔案..." 
-              class="path-input"
-            />
-            <Button
-              label="瀏覽..."
-              icon="pi pi-search"
-              severity="secondary"
-              @click="browseFile"
-            />
-            <Button
-              label="開啟"
-              icon="pi pi-folder-open"
-              :disabled="!selectedFilePath"
-              @click="openSelectedFile"
-            />
+      <div class="content-grid">
+        <!-- 左側：開始 (Start) -->
+        <div class="column start-column">
+          <h2 class="section-title">開始 (Start)</h2>
+          <ul class="action-list">
+            <li>
+              <a href="#" class="action-link" @click.prevent="handleCreateSeries">
+                <i class="pi pi-file-plus"></i>
+                <span>新增系列 (New Series...)</span>
+              </a>
+            </li>
+            <li>
+              <a href="#" class="action-link" @click.prevent="browseFile">
+                <i class="pi pi-folder-open"></i>
+                <span>開啟現有系列 (Open Series...)</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+
+        <!-- 右側：最近開啟 (Recent) -->
+        <div class="column recent-column">
+          <h2 class="section-title">最近開啟 (Recent)</h2>
+          <div v-if="recentFiles.length > 0" class="recent-list">
+            <a
+              href="#"
+              v-for="file in recentFiles"
+              :key="file.path"
+              class="recent-link"
+              @click.prevent="openRecentFile(file.path)"
+              :title="file.path"
+            >
+              <div class="recent-file-main">
+                <span class="file-name">{{ file.name }}</span>
+                <span class="file-date">{{ formatDate(file.lastOpened) }}</span>
+              </div>
+              <div class="file-path">{{ file.path }}</div>
+            </a>
           </div>
-        </div>
-
-        <div class="divider">
-          <span>或</span>
-        </div>
-
-        <div class="new-file-group">
-          <Button
-            label="新增檔案 (New...)"
-            icon="pi pi-plus"
-            severity="success"
-            class="action-button"
-            @click="handleCreateSeries"
-          />
-        </div>
-      </div>
-
-      <div v-if="recentFiles.length > 0" class="recent-section">
-        <h3 class="section-title">
-          <i class="pi pi-clock"></i>
-          最近開啟
-        </h3>
-        <div class="recent-list">
-          <div
-            v-for="file in recentFiles"
-            :key="file.path"
-            class="recent-item"
-            @click="openRecentFile(file.path)"
-          >
-            <i class="pi pi-file"></i>
-            <div class="file-info">
-              <span class="file-name">{{ file.name }}</span>
-              <span class="file-path">{{ file.path }}</span>
-            </div>
-            <span class="file-date">{{ formatDate(file.lastOpened) }}</span>
+          <div v-else class="no-recent">
+            目前沒有最近開啟的系列
           </div>
         </div>
       </div>
+
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import Button from 'primevue/button'
-import InputText from 'primevue/inputtext'
 import { useAppStore } from '../stores'
-import { OpenFileDialog, GetRecentSeries, CreateSeries as BackendCreateSeries } from '../services/api'
+import { OpenFileDialog, SaveFileDialog, GetRecentSeries, CreateSeries as BackendCreateSeries } from '../services/api'
 
 const appStore = useAppStore()
 
@@ -87,7 +71,6 @@ interface RecentFile {
 }
 
 const recentFiles = ref<RecentFile[]>([])
-const selectedFilePath = ref('')
 
 onMounted(async () => {
   await loadRecentFiles()
@@ -96,7 +79,8 @@ onMounted(async () => {
 async function loadRecentFiles(): Promise<void> {
   try {
     const files = await GetRecentSeries()
-    recentFiles.value = files
+    // 限制最多顯示 10 筆
+    recentFiles.value = files.slice(0, 10)
   } catch (error) {
     console.error('Failed to load recent files:', error)
   }
@@ -110,53 +94,49 @@ function formatDate(dateStr: string): string {
   }
 }
 
-async function browseFile(): Promise<void> {
-  try {
-    const path = await OpenFileDialog({
-      title: '選擇 BOMIX 檔案',
-      filters: [{ name: 'BOMIX Series', extensions: ['bomx'] }],
-      buttonLabel: '選取',
-    })
-
-    if (path) {
-      selectedFilePath.value = path
-    }
-  } catch (error) {
-    console.error('Failed to browse file:', error)
-  }
-}
-
-async function openSelectedFile(): Promise<void> {
-  if (selectedFilePath.value) {
-    try {
-      await appStore.openSeries(selectedFilePath.value)
-    } catch (error) {
-      console.error('Failed to open series:', error)
-    }
-  }
-}
-
+// 建立新系列
 async function handleCreateSeries(): Promise<void> {
   try {
-    const path = await OpenFileDialog({
-      title: '建立新 BOMIX 檔案',
+    const path = await SaveFileDialog({
+      title: '建立新系列 (選擇儲存位置)',
       filters: [{ name: 'BOMIX Series', extensions: ['bomx'] }],
       buttonLabel: '建立',
     })
 
     if (path) {
-      // Extract name from path
-      const name = path.split(/[\\/]/).pop()?.replace('.bomx', '') || 'Untitled'
-      await BackendCreateSeries(path, name, '')
+      let finalPath = path
+      if (!finalPath.toLowerCase().endsWith('.bomx')) {
+        finalPath += '.bomx'
+      }
 
-      // Open the newly created series
-      await appStore.openSeries(path)
+      const name = finalPath.split(/[\\/]/).pop()?.replace('.bomx', '') || 'Untitled'
+      
+      await BackendCreateSeries(finalPath, name, '')
+      await appStore.openSeries(finalPath)
     }
   } catch (error) {
     console.error('Failed to create series:', error)
   }
 }
 
+// 瀏覽開啟現有系列
+async function browseFile(): Promise<void> {
+  try {
+    const path = await OpenFileDialog({
+      title: '選擇 BOMIX 系列',
+      filters: [{ name: 'BOMIX Series', extensions: ['bomx'] }],
+      buttonLabel: '選取',
+    })
+
+    if (path) {
+      await appStore.openSeries(path)
+    }
+  } catch (error) {
+    console.error('Failed to browse file:', error)
+  }
+}
+
+// 點擊最近項目開啟
 async function openRecentFile(path: string): Promise<void> {
   try {
     await appStore.openSeries(path)
@@ -169,172 +149,145 @@ async function openRecentFile(path: string): Promise<void> {
 <style scoped>
 .welcome-page {
   display: flex;
-  justify-content: center;
-  align-items: center;
   height: 100%;
-  overflow-y: auto;
-  background: var(--surface-ground);
-  padding: 1.5rem;
-  color: var(--text-color);
-}
-
-.welcome-container {
-  text-align: center;
-  max-width: 500px;
   width: 100%;
-  background: var(--surface-card);
-  padding: 1.5rem 2rem;
-  border-radius: var(--p-radius-base);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-  border: 1px solid var(--surface-border);
+  overflow-y: auto;
+  background: var(--surface-card); /* VS Code typically uses the editor background */
+  color: var(--text-color);
+  padding: 4rem; /* generously spaced like VS Code */
 }
 
-.logo-section {
-  margin-bottom: 1.5rem;
+.vscode-welcome-container {
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
 }
 
-.title {
-  font-size: 2.25rem;
-  font-weight: 700;
-  color: var(--primary-color);
-  margin: 0;
-  letter-spacing: 0.05em;
+/* Header */
+.header-section {
+  margin-bottom: 3rem;
+}
+
+.main-title {
+  font-size: 2rem;
+  font-weight: 400;
+  color: var(--text-color);
+  margin: 0 0 0.25rem 0;
 }
 
 .subtitle {
-  font-size: 1rem;
+  font-size: 1.1rem;
+  font-weight: 300;
   color: var(--text-color-secondary);
-  margin: 0.25rem 0 0;
+  margin: 0;
 }
 
-.action-section {
+/* Grid Layout */
+.content-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4rem;
+}
+
+.column {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-  text-align: left;
-}
-
-.file-selection-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.field-label {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text-color-secondary);
-}
-
-.file-input-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.path-input {
-  flex: 1;
-}
-
-.divider {
-  display: flex;
-  align-items: center;
-  text-align: center;
-  color: var(--text-color-secondary);
-  font-size: 0.875rem;
-}
-
-.divider::before,
-.divider::after {
-  content: '';
-  flex: 1;
-  border-bottom: 1px solid var(--surface-border);
-}
-
-.divider span {
-  padding: 0 1rem;
-}
-
-.new-file-group {
-  display: flex;
-  justify-content: center;
-}
-
-.action-button {
-  width: 100%;
-}
-
-.recent-section {
-  text-align: left;
-  border-top: 1px solid var(--surface-border);
-  padding-top: 1rem;
 }
 
 .section-title {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text-color-secondary);
-  margin-bottom: 1rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  text-transform: uppercase;
+  font-size: 1.25rem;
+  font-weight: 400;
+  color: var(--text-color);
+  margin-bottom: 1.25rem;
 }
 
+/* Action Links (Start Column) */
+.action-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.action-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  color: var(--primary-color);
+  text-decoration: none;
+  font-size: 13px;
+  transition: opacity 0.15s;
+}
+
+.action-link:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.action-link i {
+  font-size: 1.1rem;
+}
+
+/* Recent List */
 .recent-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
 }
 
-.recent-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1rem;
-  background: var(--surface-ground);
-  border-radius: var(--p-radius-base);
-  cursor: pointer;
-  transition: background 0.2s;
-  border: 1px solid transparent;
-}
-
-.recent-item:hover {
-  background: var(--surface-hover);
-  border-color: var(--surface-border);
-}
-
-.recent-item i {
-  font-size: 1.25rem;
-  color: var(--primary-color);
-}
-
-.file-info {
-  flex: 1;
+.recent-link {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
-  overflow: hidden;
+  padding: 0.35rem 0.5rem;
+  margin-left: -0.5rem;
+  text-decoration: none;
+  border-radius: var(--p-radius-base);
+  transition: background-color 0.1s;
+}
+
+.recent-link:hover {
+  background-color: var(--surface-hover);
+}
+
+.recent-file-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.15rem;
 }
 
 .file-name {
-  color: var(--text-color);
+  color: var(--primary-color);
   font-weight: 500;
-  font-size: 0.9rem;
-}
-
-.file-path {
-  color: var(--text-color-secondary);
-  font-size: 0.75rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 13px;
 }
 
 .file-date {
   color: var(--text-color-secondary);
-  font-size: 0.75rem;
+  font-size: 11px;
+}
+
+.file-path {
+  color: var(--text-color-secondary);
+  font-size: 11px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl; /* Truncates the left side of long paths (keeps filename visible if very long) */
+  text-align: left; /* Keep text left aligned */
+}
+
+/* Reset direction so the text reads normally but truncates left */
+.file-path::after {
+  content: '\200E'; /* Left-to-Right Mark */
+}
+
+.no-recent {
+  color: var(--text-color-secondary);
+  font-style: italic;
+  font-size: 13px;
 }
 </style>
+
