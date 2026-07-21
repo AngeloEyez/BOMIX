@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -61,28 +62,42 @@ func (l *Logger) addLogEntry(level string, message string, attrs map[string]stri
 	l.emitEvent("log:new", entry)
 }
 
+// extractAttrs converts slog key-value pairs to a string map
+func extractAttrs(attrs ...any) map[string]string {
+	if len(attrs) == 0 {
+		return nil
+	}
+	m := make(map[string]string)
+	for i := 0; i < len(attrs)-1; i += 2 {
+		if k, ok := attrs[i].(string); ok {
+			m[k] = fmt.Sprintf("%v", attrs[i+1])
+		}
+	}
+	return m
+}
+
 // Debug logs a debug message
 func (l *Logger) Debug(msg string, attrs ...any) {
 	l.Logger.Debug(msg, attrs...)
-	l.addLogEntry("DEBUG", msg, nil)
+	l.addLogEntry("DEBUG", msg, extractAttrs(attrs...))
 }
 
 // Info logs an info message
 func (l *Logger) Info(msg string, attrs ...any) {
 	l.Logger.Info(msg, attrs...)
-	l.addLogEntry("INFO", msg, nil)
+	l.addLogEntry("INFO", msg, extractAttrs(attrs...))
 }
 
 // Warn logs a warning message
 func (l *Logger) Warn(msg string, attrs ...any) {
 	l.Logger.Warn(msg, attrs...)
-	l.addLogEntry("WARN", msg, nil)
+	l.addLogEntry("WARN", msg, extractAttrs(attrs...))
 }
 
 // Error logs an error message
 func (l *Logger) Error(msg string, attrs ...any) {
 	l.Logger.Error(msg, attrs...)
-	l.addLogEntry("ERROR", msg, nil)
+	l.addLogEntry("ERROR", msg, extractAttrs(attrs...))
 }
 
 // GetLogs returns log entries filtered by level

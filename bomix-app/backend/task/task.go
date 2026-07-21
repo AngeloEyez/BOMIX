@@ -74,7 +74,11 @@ func NewTaskManager(logger *logger.Logger, emitter EventEmitter) *TaskManager {
 // Returns the task ID
 func (tm *TaskManager) Submit(name, taskType string, fn TaskFunc) string {
 	taskID := uuid.New().String()
+	return tm.SubmitWithID(taskID, name, taskType, fn)
+}
 
+// SubmitWithID submits a new task with a specific ID
+func (tm *TaskManager) SubmitWithID(taskID, name, taskType string, fn TaskFunc) string {
 	task := &Task{
 		ID:        taskID,
 		Name:      name,

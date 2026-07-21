@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { GetSeriesInfo, CloseSeries } from '../services/api'
+import { GetSeriesInfo, CloseSeries, OpenSeries, CreateSeries } from '../services/api'
+import { useLogStore } from './log'
 
 export interface SeriesInfo {
   id: number
@@ -16,6 +17,8 @@ export const useAppStore = defineStore('app', () => {
   const isLoading = ref(false)
   const error = ref<string | null>(null)
 
+  const logStore = useLogStore()
+
   // Getters
   const isSeriesOpen = computed(() => isOpen.value)
 
@@ -23,8 +26,15 @@ export const useAppStore = defineStore('app', () => {
   async function openSeries(path: string): Promise<void> {
     isLoading.value = true
     error.value = null
+    logStore.addLogEntry('INFO', `準備開啟系列：${path}`)
     try {
-      const info = await GetSeriesInfo(path)
+      // 1. Call backend to open database
+      await OpenSeries(path)
+      // 2. Fetch series info
+      const info = await GetSeriesInfo()
+      if (!info) {
+        throw new Error('無法取得系列資訊')
+      }
       seriesInfo.value = {
         id: info.id,
         name: info.name,
@@ -32,9 +42,12 @@ export const useAppStore = defineStore('app', () => {
         path,
       }
       isOpen.value = true
+      logStore.addLogEntry('INFO', `成功開啟系列：${info.name}`)
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to open series'
+      const errMsg = err instanceof Error ? err.message : '開啟系列失敗'
+      error.value = errMsg
       isOpen.value = false
+      logStore.addLogEntry('ERROR', `開啟系列失敗：${errMsg}`)
       throw err
     } finally {
       isLoading.value = false
@@ -44,8 +57,9 @@ export const useAppStore = defineStore('app', () => {
   async function createSeries(path: string, name: string, description: string): Promise<void> {
     isLoading.value = true
     error.value = null
+    logStore.addLogEntry('INFO', `準備建立新系列：${name} 於 ${path}`)
     try {
-      // This will be implemented when CreateSeries API is ready
+      await CreateSeries(path, name, description)
       seriesInfo.value = {
         id: 0,
         name,
@@ -53,9 +67,12 @@ export const useAppStore = defineStore('app', () => {
         path,
       }
       isOpen.value = true
+      logStore.addLogEntry('INFO', `成功建立系列：${name}`)
     } catch (err) {
-      error.value = err instanceof Error ? err.message : 'Failed to create series'
+      const errMsg = err instanceof Error ? err.message : '建立系列失敗'
+      error.value = errMsg
       isOpen.value = false
+      logStore.addLogEntry('ERROR', `建立系列失敗：${errMsg}`)
       throw err
     } finally {
       isLoading.value = false
@@ -63,9 +80,13 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function closeSeries(): Promise<void> {
+    logStore.addLogEntry('INFO', '準備關閉系列')
     try {
       await CloseSeries()
+      logStore.addLogEntry('INFO', '成功關閉系列')
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : '關閉系列失敗'
+      logStore.addLogEntry('ERROR', `關閉系列發生錯誤：${errMsg}`)
       console.error('Failed to close series:', err)
     } finally {
       isOpen.value = false

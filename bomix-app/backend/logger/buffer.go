@@ -7,11 +7,11 @@ import (
 
 // LogEntry represents a single log entry
 type LogEntry struct {
-	ID        int64
-	Level     string
-	Message   string
-	Timestamp time.Time
-	Attrs     map[string]string
+	ID        int64             `json:"id"`
+	Level     string            `json:"level"`
+	Message   string            `json:"message"`
+	Timestamp time.Time         `json:"timestamp"`
+	Attrs     map[string]string `json:"attrs,omitempty"`
 }
 
 // Buffer is a thread-safe ring buffer for log entries

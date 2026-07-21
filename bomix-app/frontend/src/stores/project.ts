@@ -5,11 +5,20 @@ import { GetProjects, GetRevisions } from '../services/api'
 export interface Project {
   id: number
   seriesId: number
+  name?: string
   code: string
   description: string
   createdAt: string
   updatedAt: string
   revisions?: BomRevision[]
+}
+
+export interface TreeNode {
+  key: string
+  label: string
+  type: 'project' | 'revision'
+  data?: any
+  children?: TreeNode[]
 }
 
 export interface BomRevision {
@@ -51,6 +60,21 @@ export const useProjectStore = defineStore('project', () => {
     return null
   })
 
+  const projectTree = computed<TreeNode[]>(() => {
+    return projects.value.map(project => ({
+      key: `p_${project.id}`,
+      label: project.name || project.code || `Project ${project.id}`,
+      type: 'project',
+      data: project,
+      children: (project.revisions || []).map(rev => ({
+        key: `${rev.id}`,
+        label: `${rev.phase} ${rev.version}`,
+        type: 'revision',
+        data: rev
+      }))
+    }))
+  })
+
   // Actions
   async function loadProjects(seriesId: number): Promise<void> {
     isLoading.value = true
@@ -58,6 +82,11 @@ export const useProjectStore = defineStore('project', () => {
     try {
       const data = await GetProjects(seriesId)
       projects.value = data
+      
+      // Auto-load revisions for each project to populate the tree
+      for (const p of data) {
+        await loadRevisions(p.id)
+      }
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to load projects'
       throw err
@@ -115,6 +144,7 @@ export const useProjectStore = defineStore('project', () => {
     selectedProject,
     selectedRevision,
     currentBom,
+    projectTree,
     // Actions
     loadProjects,
     loadRevisions,

@@ -111,9 +111,11 @@ import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import InputNumber from 'primevue/inputnumber'
 import { GetSettings, UpdateSettings, type Settings } from '../services/api'
-import { useAppStore } from '../stores'
+import { useAppStore } from '../stores/app'
+import { useLogStore } from '../stores/log'
 
 const appStore = useAppStore()
+const logStore = useLogStore()
 
 // Settings state
 const settings = ref<Settings>({
@@ -168,6 +170,9 @@ async function loadSettings(): Promise<void> {
         recentFiles: data.recentFiles?.recentFiles ?? [],
       },
     }
+    
+    // 初始化同步至 logStore
+    logStore.globalLogLevel = settings.value.logger.level
   } catch (error) {
     console.error('Failed to load settings:', error)
   }
@@ -182,6 +187,9 @@ watch(settings, (newVal) => {
 
   // Apply theme immediately on change
   appStore.applyTheme(newVal.theme)
+  
+  // Apply log level instantly
+  logStore.globalLogLevel = newVal.logger.level
 
   if (saveTimeout) clearTimeout(saveTimeout)
   saveTimeout = setTimeout(async () => {

@@ -40,6 +40,11 @@ func NewApp(wailsApp *application.App, logger *logger.Logger, cfg *config.Config
 		cfg:     cfg,
 	}
 
+	// Set logger event callback
+	if logger != nil {
+		logger.SetEventCallback(app.EmitEvent)
+	}
+
 	// Create task manager with app as the event emitter
 	app.taskMgr = task.NewManager(logger, app)
 
@@ -361,33 +366,43 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 
 	for _, filePath := range filePaths {
 		taskID := uuid.New().String()
+		taskName := fmt.Sprintf("Import: %s", filepath.Base(filePath))
 
 		// Submit import task
-		taskID = a.taskMgr.Submit(
-			fmt.Sprintf("Import: %s", filepath.Base(filePath)),
+		a.taskMgr.SubmitWithID(
+			taskID,
+			taskName,
 			"Import",
 			func(ctx context.Context, progress func(float64, string)) error {
+				a.logger.Info("Starting import process...", "taskID", taskID, "name", taskName)
+
 				// Update progress
 				progress(0.1, "Detecting file format...")
+				a.logger.Info("Detecting file format...", "taskID", taskID)
 
 				// Open the file
 				f, err := excelize.OpenFile(filePath)
 				if err != nil {
+					a.logger.Error("Failed to open file", "taskID", taskID, "error", err.Error())
 					return fmt.Errorf("failed to open file: %w", err)
 				}
 				defer f.Close()
 
 				progress(0.3, "Importing data...")
+				a.logger.Info("Reading and parsing Excel data...", "taskID", taskID)
 
 				// Import the file
 				importResults, err := excelReader.ImportExcel([]string{filePath})
 				if err != nil {
+					a.logger.Error("Failed to import Excel data", "taskID", taskID, "error", err.Error())
 					return err
 				}
 
 				if len(importResults) > 0 {
 					result := importResults[0]
-					progress(0.9, fmt.Sprintf("Imported %d parts", result.PartsCount))
+					msg := fmt.Sprintf("Imported %d parts successfully", result.PartsCount)
+					progress(0.9, msg)
+					a.logger.Info(msg, "taskID", taskID)
 				}
 
 				progress(1.0, "Import completed")

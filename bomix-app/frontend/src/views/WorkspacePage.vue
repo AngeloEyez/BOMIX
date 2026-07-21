@@ -23,77 +23,53 @@
       </div>
     </div>
 
-    <!-- Main Content with Splitter -->
-    <Splitter
-      class="workspace-splitter"
-      :style="{ height: `calc(100% - ${toolbarHeight}px)` }"
-    >
-      <!-- Sidebar Panel -->
-      <SplitterPanel
-        :size="sidebarWidth"
-        :min-size="0"
-        @resize="onSidebarResize"
-        @dblclick="resetSidebarWidth"
-      >
-        <div class="sidebar">
-          <div class="sidebar-header">
-            <span class="sidebar-title">Projects</span>
+    <!-- Main Content Panel -->
+    <div class="main-content">
+      <BOMTable
+        v-if="projectStore.selectedRevision"
+        :revision-id="projectStore.selectedRevision?.id"
+      />
+      <div v-else class="placeholder-content">
+        <div class="dashboard-header">
+          <i class="pi pi-box"></i>
+          <h2>BOM Workspace</h2>
+        </div>
+        
+        <div v-if="projectStore.projects.length === 0" class="empty-state">
+          <p>No projects found in this series.</p>
+          <Button label="Import BOM" icon="pi pi-upload" @click="openImportDialog" class="p-button-outlined" />
+        </div>
+        
+        <div v-else class="dashboard-stats">
+          <div class="stat-cards">
+            <div class="stat-card">
+              <span class="stat-title">Projects</span>
+              <span class="stat-value">{{ projectStore.projects.length }}</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-title">Total Revisions</span>
+              <span class="stat-value">{{ totalRevisions }}</span>
+            </div>
           </div>
-          <div class="sidebar-content">
-            <Tree
-              :value="projectTree"
-              :expanded-keys="expandedKeys"
-              :selection-keys="selectionKeys"
-              selection-mode="single"
-              @node-select="onNodeSelect"
-              @node-toggle="onNodeToggle"
-            >
-              <template #node="slotProps">
-                <div class="tree-node">
-                  <span v-if="slotProps.node.type === 'project'" class="node-icon">
-                    <i class="pi pi-folder"></i>
-                  </span>
-                  <span v-if="slotProps.node.type === 'revision'" class="node-icon">
-                    <i class="pi pi-version"></i>
-                  </span>
-                  <span class="node-label">{{ slotProps.node.label }}</span>
+          
+          <div class="projects-list">
+            <h3>Latest Revisions</h3>
+            <div class="project-items">
+              <div v-for="p in projectStore.projects" :key="p.id" class="project-item">
+                <div class="project-info">
+                  <span class="project-code">{{ p.code || p.name || `Project ${p.id}` }}</span>
+                  <span class="project-desc" v-if="p.description">{{ p.description }}</span>
                 </div>
-              </template>
-            </Tree>
+                <div class="revision-info">
+                  <span class="latest-rev" v-if="getLatestRevision(p)">{{ getLatestRevision(p) }}</span>
+                  <span class="no-rev" v-else>No revisions</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </SplitterPanel>
-
-      <!-- Main Content Panel -->
-      <SplitterPanel :size="100 - sidebarWidth">
-        <div class="main-content">
-          <BOMTable
-            v-if="projectStore.selectedRevision"
-            :revision-id="projectStore.selectedRevision?.id"
-          />
-          <div v-else class="placeholder-content">
-            <i class="pi pi-box"></i>
-            <h2>BOM Workspace</h2>
-            <p>Select a project and revision from the sidebar to view BOM data.</p>
-          </div>
-        </div>
-      </SplitterPanel>
-    </Splitter>
-
-    <!-- Bottom Log Panel -->
-    <Splitter
-      class="bottom-splitter"
-      :style="{ height: `${bottomPanelHeight}px` }"
-      @resize="onBottomResize"
-      @dblclick="resetBottomHeight"
-    >
-      <SplitterPanel :size="100 - bottomPanelHeight" :min-size="50">
-        <!-- Empty panel above log panel -->
-      </SplitterPanel>
-      <SplitterPanel :size="bottomPanelHeight" :min-size="30">
-        <LogPanel />
-      </SplitterPanel>
-    </Splitter>
+      </div>
+    </div>
 
     <!-- Import Dialog -->
     <Dialog
@@ -288,10 +264,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import Splitter from 'primevue/splitter'
-import SplitterPanel from 'primevue/splitterpanel'
-import Tree from 'primevue/tree'
+import { ref, onMounted, computed } from 'vue'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import MultiSelect from 'primevue/multiselect'
@@ -299,8 +272,7 @@ import Select from 'primevue/select'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Checkbox from 'primevue/checkbox'
-import { useAppStore, useProjectStore } from '../stores'
-import LogPanel from '../components/LogPanel.vue'
+import { useAppStore, useProjectStore, useLogStore } from '../stores'
 import BOMTable from '../components/BOMTable.vue'
 import {
   ImportExcel,
@@ -310,19 +282,24 @@ import {
   type ImportResult as BackendImportResult,
   type ExportOptions
 } from '../services/api'
+import type { Project } from '../stores/project'
 
 const appStore = useAppStore()
 const projectStore = useProjectStore()
+const logStore = useLogStore()
 
-// Toolbar height
-const toolbarHeight = 50
+// Computed dashboard stats
+const totalRevisions = computed(() => {
+  return projectStore.projects.reduce((sum, p) => sum + (p.revisions?.length || 0), 0)
+})
 
-// Sidebar width management
-const sidebarWidth = ref(20) // Default 20%
-const sidebarWidthPx = ref(200) // Actual pixel width
-
-// Bottom panel height
-const bottomPanelHeight = ref(200) // Default 200px
+function getLatestRevision(project: Project): string | null {
+  if (!project.revisions || project.revisions.length === 0) return null
+  // Assuming the last one in the array is the latest, or sort by id
+  const sorted = [...project.revisions].sort((a, b) => b.id - a.id)
+  const latest = sorted[0]
+  return `${latest.phase} ${latest.version}`
+}
 
 // Import dialog
 const importDialogVisible = ref(false)
@@ -341,21 +318,6 @@ const exportModelCount = ref(1)
 const exportOutputPath = ref('')
 const allRevisions = ref<any[]>([])
 
-// Tree data
-interface TreeNode {
-  key: string
-  label: string
-  type: 'project' | 'revision'
-  data?: any
-  children?: TreeNode[]
-}
-
-const projectTree = ref<TreeNode[]>([])
-
-// Tree selection
-const expandedKeys = ref<Record<string, boolean>>({})
-const selectionKeys = ref<Record<string, string>>({})
-
 // Export format options
 const exportFormatOptions = [
   { label: 'BigMatrix', value: 'bigmatrix' },
@@ -363,83 +325,21 @@ const exportFormatOptions = [
 ]
 
 onMounted(() => {
-  // Load initial data if series is open
   if (appStore.isOpen) {
     loadProjects()
   }
 })
 
-// Watch for series open changes
-watch(() => appStore.isOpen, (isOpen) => {
-  if (isOpen) {
-    loadProjects()
-  } else {
-    projectTree.value = []
-  }
-})
-
 async function loadProjects(): Promise<void> {
   try {
-    // This will be implemented when we have the series ID
-    // For now, we'll use a placeholder
-    projectTree.value = [
-      {
-        key: '0',
-        label: 'Sample Project',
-        type: 'project',
-        children: [
-          {
-            key: '0-0',
-            label: 'PV 0.1',
-            type: 'revision',
-            data: { id: 1, phase: 'PV', version: '0.1' },
-          },
-          {
-            key: '0-1',
-            label: 'PV 0.2',
-            type: 'revision',
-            data: { id: 2, phase: 'PV', version: '0.2' },
-          },
-        ],
-      },
-    ]
-
-    // Populate allRevisions for export
     allRevisions.value = [
       { id: 1, label: 'PV 0.1', phase: 'PV', version: '0.1' },
       { id: 2, label: 'PV 0.2', phase: 'PV', version: '0.2' },
     ]
   } catch (error) {
-    console.error('Failed to load projects:', error)
+    const msg = error instanceof Error ? error.message : String(error)
+    logStore.addLogEntry('ERROR', `載入專案資料失敗：${msg}`)
   }
-}
-
-function onSidebarResize(event: any): void {
-  sidebarWidth.value = event.size || event
-}
-
-function resetSidebarWidth(): void {
-  sidebarWidth.value = 20
-}
-
-function onBottomResize(event: any): void {
-  bottomPanelHeight.value = event.size || event
-}
-
-function resetBottomHeight(): void {
-  bottomPanelHeight.value = 200
-}
-
-function onNodeSelect(node: any): void {
-  if (node.type === 'project') {
-    projectStore.selectProject(parseInt(node.key))
-  } else if (node.type === 'revision') {
-    projectStore.selectRevision(parseInt(node.key))
-  }
-}
-
-function onNodeToggle(_node: any): void {
-  // Tree handles this internally with expandedKeys
 }
 
 // Import functions
@@ -464,25 +364,30 @@ async function browseFiles(): Promise<void> {
     if (filePath) {
       importFilePath.value = filePath
       importFilePaths.value = [filePath]
+      logStore.addLogEntry('INFO', `已選取匯入檔案：${filePath}`)
     }
   } catch (error) {
-    console.error('Failed to browse files:', error)
+    const msg = error instanceof Error ? error.message : String(error)
+    logStore.addLogEntry('ERROR', `選取匯入檔案發生錯誤：${msg}`)
   }
 }
 
 async function executeImport(): Promise<void> {
+  logStore.addLogEntry('INFO', `開始執行匯入作業... 檔案數: ${importFilePaths.value.length}`)
   try {
     const results = await ImportExcel(importFilePaths.value)
     importResults.value = results
     importResultDialogVisible.value = true
     importDialogVisible.value = false
+    logStore.addLogEntry('INFO', `匯入作業完成，共處理 ${results.length} 筆結果`)
 
-    // Reload BOM data if a revision is selected
-    if (projectStore.selectedRevision) {
-      // Trigger reload
+    // 匯入後即時更新左側專案樹狀圖
+    if (appStore.seriesInfo?.id) {
+      await projectStore.loadProjects(appStore.seriesInfo.id)
     }
   } catch (error) {
-    console.error('Import failed:', error)
+    const msg = error instanceof Error ? error.message : String(error)
+    logStore.addLogEntry('ERROR', `匯入作業失敗：${msg}`)
   }
 }
 
@@ -503,13 +408,16 @@ async function browseOutputDir(): Promise<void> {
 
     if (dirPath) {
       exportOutputPath.value = dirPath
+      logStore.addLogEntry('INFO', `已選取匯出目錄：${dirPath}`)
     }
   } catch (error) {
-    console.error('Failed to browse directory:', error)
+    const msg = error instanceof Error ? error.message : String(error)
+    logStore.addLogEntry('ERROR', `選取匯出目錄發生錯誤：${msg}`)
   }
 }
 
 async function executeExport(): Promise<void> {
+  logStore.addLogEntry('INFO', `開始執行匯出作業...`)
   try {
     const options: ExportOptions = {
       format: exportFormat.value,
@@ -519,10 +427,12 @@ async function executeExport(): Promise<void> {
       outputDir: exportOutputPath.value
     }
 
-    await ExportExcel(options)
+    const exportedPaths = await ExportExcel(options)
     exportDialogVisible.value = false
+    logStore.addLogEntry('INFO', `匯出作業完成，共產生 ${exportedPaths?.length || 0} 個檔案`)
   } catch (error) {
-    console.error('Export failed:', error)
+    const msg = error instanceof Error ? error.message : String(error)
+    logStore.addLogEntry('ERROR', `匯出作業失敗：${msg}`)
   }
 }
 </script>
@@ -535,7 +445,6 @@ async function executeExport(): Promise<void> {
   overflow: hidden;
 }
 
-/* Top Toolbar */
 .top-toolbar {
   display: flex;
   justify-content: space-between;
@@ -562,87 +471,137 @@ async function executeExport(): Promise<void> {
   gap: 0.5rem;
 }
 
-/* Workspace Splitter */
-.workspace-splitter {
+.main-content {
   flex: 1;
-  overflow: hidden;
-}
-
-/* Sidebar */
-.sidebar {
-  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.sidebar-header {
-  padding: 1rem;
-  border-bottom: 1px solid var(--surface-border);
-}
-
-.sidebar-title {
-  font-weight: 600;
-  font-size: 0.875rem;
-  color: var(--text-color-secondary);
-  text-transform: uppercase;
-}
-
-.sidebar-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0.5rem;
-}
-
-/* Tree Node */
-.tree-node {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.25rem 0;
-}
-
-.node-icon {
-  color: var(--primary-color);
-  width: 1.25rem;
-  text-align: center;
-}
-
-.node-label {
-  flex: 1;
-}
-
-/* Main Content */
-.main-content {
-  height: 100%;
-  overflow: auto;
   background: var(--surface-ground);
 }
 
 .placeholder-content {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
   height: 100%;
+  padding: 2rem;
+  color: var(--text-color);
+  overflow-y: auto;
+}
+
+.dashboard-header {
   text-align: center;
+  margin-bottom: 2rem;
   color: var(--text-color-secondary);
 }
 
-.placeholder-content i {
-  font-size: 4rem;
+.dashboard-header i {
+  font-size: 3rem;
   margin-bottom: 1rem;
   color: var(--surface-border);
 }
 
-.placeholder-content h2 {
+.dashboard-header h2 {
   font-size: 1.5rem;
-  margin: 0 0 0.5rem;
+  margin: 0;
   color: var(--text-color);
 }
 
-.placeholder-content p {
-  margin: 0 0 0.5rem;
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 2rem;
+  color: var(--text-color-secondary);
+}
+
+.dashboard-stats {
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.stat-cards {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card {
+  flex: 1;
+  background: var(--surface-card);
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--surface-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stat-title {
+  color: var(--text-color-secondary);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.projects-list h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: var(--text-color-secondary);
+}
+
+.project-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.project-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface-card);
+  padding: 1rem;
+  border-radius: 6px;
+  border: 1px solid var(--surface-border);
+}
+
+.project-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.project-code {
+  font-weight: 600;
+}
+
+.project-desc {
+  font-size: 0.875rem;
+  color: var(--text-color-secondary);
+}
+
+.latest-rev {
+  background: var(--primary-color);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.no-rev {
+  color: var(--text-color-secondary);
+  font-size: 0.875rem;
+  font-style: italic;
 }
 
 /* Bottom Splitter */

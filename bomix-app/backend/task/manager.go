@@ -31,6 +31,12 @@ func (m *Manager) SubmitWithPriority(name, taskType string, priority int, fn Tas
 	return m.TaskManager.Submit(name, taskType, fn)
 }
 
+// SubmitWithIDAndPriority submits a task with a specific ID and priority
+func (m *Manager) SubmitWithIDAndPriority(taskID, name, taskType string, priority int, fn TaskFunc) string {
+	_ = priority
+	return m.TaskManager.SubmitWithID(taskID, name, taskType, fn)
+}
+
 // GetActiveTasks returns all active (running or queued) tasks
 func (m *Manager) GetActiveTasks() []*Task {
 	tasks := m.TaskManager.ListTasks()

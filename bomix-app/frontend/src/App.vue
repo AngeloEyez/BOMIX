@@ -53,7 +53,7 @@
           </div>
           <div class="sidebar-content">
             <Tree
-              :value="projectTree"
+              :value="projectStore.projectTree"
               :expanded-keys="expandedKeys"
               :selection-keys="selectionKeys"
               selection-mode="single"
@@ -69,6 +69,11 @@
                     <i class="pi pi-version"></i>
                   </span>
                   <span class="node-label">{{ slotProps.node.label }}</span>
+                </div>
+              </template>
+              <template #empty>
+                <div class="p-3 text-center text-color-secondary" style="font-size: 0.875rem;">
+                  No projects yet.<br>Import a BOM to start.
                 </div>
               </template>
             </Tree>
@@ -122,18 +127,6 @@ let isResizingBottom = false
 let startY = 0
 let startHeight = 0
 
-// Tree data
-interface TreeNode {
-  key: string
-  label: string
-  type: 'project' | 'revision'
-  data?: any
-  children?: TreeNode[]
-}
-
-const projectTree = ref<TreeNode[]>([])
-
-// Tree selection
 const expandedKeys = ref<Record<string, boolean>>({})
 const selectionKeys = ref<Record<string, string>>({})
 
@@ -144,10 +137,11 @@ onMounted(async () => {
   logStore.startListening()
   taskStore.startListening()
 
-  // Load initial settings for theme
+  // Load initial settings for theme and log level
   try {
     const s = await GetSettings()
     appStore.applyTheme(s.theme)
+    useLogStore().globalLogLevel = s.logger?.level || 'info'
   } catch (e) {
     appStore.applyTheme('system')
   }
@@ -174,38 +168,20 @@ watch(() => appStore.isOpen, (isOpen) => {
     loadProjects()
     router.push('/workspace')
   } else {
-    projectTree.value = []
+    projectStore.clearProjects()
     router.push('/')
   }
 })
 
 async function loadProjects(): Promise<void> {
-  // This will be implemented when we have the series ID
+  if (!appStore.seriesInfo?.id) return
+
   try {
-    // const projects = await GetProjects(seriesId)
-    // Build tree from projects
-    projectTree.value = [
-      {
-        key: '0',
-        label: 'Sample Project',
-        type: 'project',
-        children: [
-          {
-            key: '0-0',
-            label: 'PV 0.1',
-            type: 'revision',
-            data: { phase: 'PV', version: '0.1' },
-          },
-          {
-            key: '0-1',
-            label: 'PV 0.2',
-            type: 'revision',
-            data: { phase: 'PV', version: '0.2' },
-          },
-        ],
-      },
-    ]
+    // 載入專案列表 (包含 Revisions，並由 store 內部自動轉換為 tree)
+    await projectStore.loadProjects(appStore.seriesInfo.id)
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    useLogStore().addLogEntry('ERROR', `載入專案資料失敗：${msg}`)
     console.error('Failed to load projects:', error)
   }
 }

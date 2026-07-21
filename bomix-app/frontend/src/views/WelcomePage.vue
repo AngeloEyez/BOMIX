@@ -59,10 +59,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useAppStore } from '../stores'
-import { OpenFileDialog, SaveFileDialog, GetRecentSeries, CreateSeries as BackendCreateSeries } from '../services/api'
+import { useAppStore, useLogStore } from '../stores'
+import { OpenFileDialog, SaveFileDialog, GetRecentSeries } from '../services/api'
 
 const appStore = useAppStore()
+const logStore = useLogStore()
 
 interface RecentFile {
   path: string
@@ -111,10 +112,11 @@ async function handleCreateSeries(): Promise<void> {
 
       const name = finalPath.split(/[\\/]/).pop()?.replace('.bomx', '') || 'Untitled'
       
-      await BackendCreateSeries(finalPath, name, '')
-      await appStore.openSeries(finalPath)
+      await appStore.createSeries(finalPath, name, '')
     }
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    logStore.addLogEntry('ERROR', `建立系列對話框或程序發生錯誤：${msg}`)
     console.error('Failed to create series:', error)
   }
 }
@@ -132,6 +134,8 @@ async function browseFile(): Promise<void> {
       await appStore.openSeries(path)
     }
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    logStore.addLogEntry('ERROR', `選擇檔案發生錯誤：${msg}`)
     console.error('Failed to browse file:', error)
   }
 }
@@ -141,6 +145,8 @@ async function openRecentFile(path: string): Promise<void> {
   try {
     await appStore.openSeries(path)
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    logStore.addLogEntry('ERROR', `無法開啟最近使用的系列：${msg}`)
     console.error('Failed to open recent file:', error)
   }
 }
