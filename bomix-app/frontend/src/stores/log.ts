@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import { ListenToEvents, GetLogs } from '../services/api'
+import { ref, computed, reactive } from 'vue'
+import { ListenToEvents, GetLogs, LogFrontend } from '../services/api'
 
 export interface LogEntry {
   id?: string
@@ -57,7 +57,7 @@ export const useLogStore = defineStore('log', () => {
   )
 
   // 暫存已被追蹤的 task 索引，以便快速查找
-  const taskMap = new Map<string, LogEntry>()
+  const taskMap = reactive(new Map<string, LogEntry>())
 
   // Actions
   function addLog(entry: LogEntry): void {
@@ -90,15 +90,23 @@ export const useLogStore = defineStore('log', () => {
       tracker.message = entry.message
       tracker.timestamp = entry.timestamp
       
-      // 根據 Log 內容更新狀態 (判斷邏輯可依據後端字眼微調)
-      const msgLower = entry.message.toLowerCase()
-      if (entry.level === 'ERROR' || entry.attrs?.error) {
-        tracker.status = 'error'
-        tracker.level = 'ERROR' // 狀態錯誤時，提升 Tracker 的 Level
-      } else if (msgLower.includes('completed') || msgLower.includes('done') || msgLower.includes('success')) {
-        tracker.status = 'done'
-      } else if (msgLower.includes('start') || msgLower.includes('progress') || msgLower.includes('running')) {
-        tracker.status = 'running'
+      // 根據 Log 內容更新狀態 (優先使用後端傳來的 taskStatus)
+      if (entry.attrs?.taskStatus) {
+        tracker.status = entry.attrs.taskStatus.toLowerCase()
+        if (tracker.status === 'error' || tracker.status === 'failed') {
+          tracker.status = 'error'
+          tracker.level = 'ERROR'
+        }
+      } else {
+        const msgLower = entry.message.toLowerCase()
+        if (entry.level === 'ERROR' || entry.attrs?.error || msgLower.includes('失敗') || msgLower.includes('錯誤')) {
+          tracker.status = 'error'
+          tracker.level = 'ERROR' // 狀態錯誤時，提升 Tracker 的 Level
+        } else if (msgLower.includes('completed') || msgLower.includes('done') || msgLower.includes('success') || msgLower.includes('完成') || msgLower.includes('成功')) {
+          tracker.status = 'done'
+        } else if (msgLower.includes('start') || msgLower.includes('progress') || msgLower.includes('running') || msgLower.includes('開始') || msgLower.includes('進度') || msgLower.includes('正在')) {
+          tracker.status = 'running'
+        }
       }
       
       // 提升 Tracker 的 Level 若收到更嚴重的 log
@@ -144,12 +152,10 @@ export const useLogStore = defineStore('log', () => {
    * @param attrs 附加屬性 (若包含 taskID，則視為 task 日誌)
    */
   function addLogEntry(level: string, message: string, attrs?: Record<string, string>): void {
-    addLog({
-      level,
-      message,
-      timestamp: new Date().toISOString(),
-      attrs,
-    })
+    // 若有 attrs，我們可將其格式化後附在 message 後方，或者後端其實不支援 attrs？
+    // 注意：目前 backend LogFrontend 只吃 (level, message)。若需要 taskID 可以在這裡拼裝。
+    // 但因為純前端的 Log 都是一般 Log (不是 Task Tracker)，所以我們可以直接傳送文字即可。
+    LogFrontend(level, message)
   }
 
   function clearLogs(): void {

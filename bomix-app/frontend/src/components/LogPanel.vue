@@ -583,13 +583,14 @@ const filteredTaskHistory = computed(() => {
 /* Task Tracker Styles */
 .log-task-indicator {
   font-size: 9px;
-  padding: 0 4px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 0 3px;
   border-radius: 2px;
-  background-color: #2196f3; /* Literal blue color */
-  color: white;
+  color: #2196f3;
+  background-color: rgba(33,150,243,0.12);
   margin-right: 0.5rem;
   text-transform: uppercase;
-  font-weight: bold;
   line-height: 13px;
   height: 13px;
   display: flex;

@@ -361,6 +361,14 @@ export async function ClearLogs(): Promise<void> {
   }
 }
 
+export async function LogFrontend(level: string, message: string): Promise<void> {
+  try {
+    await App.LogFrontend(level, message)
+  } catch (error) {
+    console.error('Failed to send log to backend:', error)
+  }
+}
+
 // ==================== Settings ====================
 
 export async function GetSettings(): Promise<Settings> {

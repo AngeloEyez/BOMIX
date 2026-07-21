@@ -24,20 +24,20 @@ import (
 
 // App struct for Wails bindings
 type App struct {
-	app        *application.App
-	logger     *logger.Logger
-	cfg        *config.Config
-	taskMgr    *task.Manager
-	db         *gorm.DB
-	mu         sync.RWMutex
+	app     *application.App
+	logger  *logger.Logger
+	cfg     *config.Config
+	taskMgr *task.Manager
+	db      *gorm.DB
+	mu      sync.RWMutex
 }
 
 // NewApp creates a new App instance
 func NewApp(wailsApp *application.App, logger *logger.Logger, cfg *config.Config) *App {
 	app := &App{
-		app:     wailsApp,
-		logger:  logger,
-		cfg:     cfg,
+		app:    wailsApp,
+		logger: logger,
+		cfg:    cfg,
 	}
 
 	// Set logger event callback
@@ -75,11 +75,25 @@ func (a *App) GetVersion() string {
 	return "1.0.0"
 }
 
+// LogFrontend allows the frontend to send logs to the backend logger
+func (a *App) LogFrontend(level string, message string) {
+	switch level {
+	case "DEBUG":
+		a.logger.Debug(message)
+	case "WARN":
+		a.logger.Warn(message)
+	case "ERROR":
+		a.logger.Error(message)
+	default:
+		a.logger.Info(message)
+	}
+}
+
 // ==================== Series Management ====================
 
 // CreateSeries creates a new series at the specified path
 func (a *App) CreateSeries(path, name, description string) error {
-	a.logger.Info(fmt.Sprintf("Creating new series: %s", path))
+	a.logger.Debug(fmt.Sprintf("正在建立新系列: %s", path))
 
 	// Ensure directory exists
 	dir := filepath.Dir(path)
@@ -116,13 +130,13 @@ func (a *App) CreateSeries(path, name, description string) error {
 	a.db = database
 	a.mu.Unlock()
 
-	a.logger.Info(fmt.Sprintf("Created series: %s (ID: %d)", name, series.ID))
+	a.logger.Info(fmt.Sprintf("成功建立系列: %s (ID: %d)", name, series.ID))
 	return nil
 }
 
 // OpenSeries opens an existing series at the specified path
 func (a *App) OpenSeries(path string) error {
-	a.logger.Info(fmt.Sprintf("Opening series: %s", path))
+	a.logger.Debug(fmt.Sprintf("準備開啟系列: %s", path))
 
 	// Check if file exists
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -151,19 +165,19 @@ func (a *App) OpenSeries(path string) error {
 	// Update config with last opened file
 	a.cfg.LastOpenedFile = path
 	if err := config.Save(config.GetConfigPath(), a.cfg); err != nil {
-		a.logger.Warn(fmt.Sprintf("Failed to save config: %v", err))
+		a.logger.Warn(fmt.Sprintf("儲存設定失敗: %v", err))
 	}
 
 	// Add to recent files
 	a.addToRecentFiles(path)
 
-	a.logger.Info(fmt.Sprintf("Opened series: %s", path))
+	a.logger.Info(fmt.Sprintf("成功開啟系列: %s", path))
 	return nil
 }
 
 // CloseSeries closes the current series
 func (a *App) CloseSeries() error {
-	a.logger.Info("Closing series")
+	a.logger.Debug("正在關閉系列")
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -175,7 +189,7 @@ func (a *App) CloseSeries() error {
 		a.db = nil
 	}
 
-	a.logger.Info("Series closed")
+	a.logger.Info("系列已關閉")
 	return nil
 }
 
@@ -349,7 +363,7 @@ func (a *App) GetRevision(id int64) (*BomRevision, error) {
 
 // ImportExcel imports Excel files into the database
 func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
-	a.logger.Info(fmt.Sprintf("Importing %d Excel files", len(filePaths)))
+	a.logger.Debug(fmt.Sprintf("準備匯入 %d 個 Excel 檔案", len(filePaths)))
 
 	a.mu.RLock()
 	dbConn := a.db
@@ -374,47 +388,46 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 			taskName,
 			"Import",
 			func(ctx context.Context, progress func(float64, string)) error {
-				a.logger.Info("Starting import process...", "taskID", taskID, "name", taskName)
+				a.logger.Info("開始執行匯入作業...", "taskID", taskID, "name", taskName)
 
 				// Update progress
-				progress(0.1, "Detecting file format...")
-				a.logger.Info("Detecting file format...", "taskID", taskID)
+				a.logger.Info("正在偵測檔案格式...", "taskID", taskID)
 
 				// Open the file
 				f, err := excelize.OpenFile(filePath)
 				if err != nil {
-					a.logger.Error("Failed to open file", "taskID", taskID, "error", err.Error())
+					a.logger.Error("開啟檔案失敗", "taskID", taskID, "error", err.Error())
 					return fmt.Errorf("failed to open file: %w", err)
 				}
 				defer f.Close()
 
-				progress(0.3, "Importing data...")
-				a.logger.Info("Reading and parsing Excel data...", "taskID", taskID)
+				progress(0.3, "正在匯入資料...")
+				a.logger.Info("讀取並解析 Excel 資料...", "taskID", taskID)
 
 				// Import the file
 				importResults, err := excelReader.ImportExcel([]string{filePath})
 				if err != nil {
-					a.logger.Error("Failed to import Excel data", "taskID", taskID, "error", err.Error())
+					a.logger.Error("匯入 Excel 資料失敗", "taskID", taskID, "error", err.Error())
 					return err
 				}
 
 				if len(importResults) > 0 {
 					result := importResults[0]
-					msg := fmt.Sprintf("Imported %d parts successfully", result.PartsCount)
+					msg := fmt.Sprintf("成功匯入 %d 筆料件", result.PartsCount)
 					progress(0.9, msg)
 					a.logger.Info(msg, "taskID", taskID)
 				}
 
-				progress(1.0, "Import completed")
+				progress(1.0, "匯入作業完成")
 				return nil
 			},
 		)
 
 		results = append(results, &ImportResult{
-			FileName:  filepath.Base(filePath),
-			Status:    "queued",
-			Message:   "Task created",
-			TaskID:    taskID,
+			FileName: filepath.Base(filePath),
+			Status:   "queued",
+			Message:  "Task created",
+			TaskID:   taskID,
 		})
 	}
 
@@ -423,7 +436,7 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 
 // ExportExcel exports data from the database to Excel files
 func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
-	a.logger.Info("Exporting data to Excel")
+	a.logger.Debug("準備匯出資料至 Excel")
 
 	a.mu.RLock()
 	dbConn := a.db
@@ -474,7 +487,7 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 		},
 	)
 
-	a.logger.Info(fmt.Sprintf("Export task submitted: %s", taskID))
+	a.logger.Debug(fmt.Sprintf("匯出任務已提交: %s", taskID))
 	return []string{taskID}, nil
 }
 
@@ -569,7 +582,7 @@ func (a *App) GetSettings() (*Settings, error) {
 		LastOpenedFile:           a.cfg.LastOpenedFile,
 		AutoImportPreviousMatrix: a.cfg.AutoImportPreviousMatrix,
 		Import: &ImportSettings{
-			ConfirmOverwrite:       a.cfg.Import.ConfirmOverwrite,
+			ConfirmOverwrite:         a.cfg.Import.ConfirmOverwrite,
 			AutoImportPreviousMatrix: a.cfg.Import.AutoImportPreviousMatrix,
 		},
 		Logger: &LoggerSettings{
@@ -610,7 +623,7 @@ func (a *App) UpdateSettings(settings *Settings) error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	a.logger.Info("Settings updated")
+	a.logger.Info("設定已更新")
 	return nil
 }
 

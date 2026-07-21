@@ -364,7 +364,7 @@ async function browseFiles(): Promise<void> {
     if (filePath) {
       importFilePath.value = filePath
       importFilePaths.value = [filePath]
-      logStore.addLogEntry('INFO', `已選取匯入檔案：${filePath}`)
+      logStore.addLogEntry('DEBUG', `已選取匯入檔案：${filePath}`)
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -373,13 +373,11 @@ async function browseFiles(): Promise<void> {
 }
 
 async function executeImport(): Promise<void> {
-  logStore.addLogEntry('INFO', `開始執行匯入作業... 檔案數: ${importFilePaths.value.length}`)
   try {
     const results = await ImportExcel(importFilePaths.value)
     importResults.value = results
     importResultDialogVisible.value = true
     importDialogVisible.value = false
-    logStore.addLogEntry('INFO', `匯入作業完成，共處理 ${results.length} 筆結果`)
 
     // 匯入後即時更新左側專案樹狀圖
     if (appStore.seriesInfo?.id) {

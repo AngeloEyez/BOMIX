@@ -152,6 +152,13 @@ export function ListTasks(): $CancellablePromise<($models.Task | null)[] | null>
 }
 
 /**
+ * LogFrontend allows the frontend to send logs to the backend logger
+ */
+export function LogFrontend(level: string, message: string): $CancellablePromise<void> {
+    return $Call.ByID(1087350636, level, message);
+}
+
+/**
  * OpenSeries opens an existing series at the specified path
  */
 export function OpenSeries(path: string): $CancellablePromise<void> {

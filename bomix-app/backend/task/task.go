@@ -99,10 +99,11 @@ func (tm *TaskManager) SubmitWithID(taskID, name, taskType string, fn TaskFunc) 
 
 	// Log task creation
 	if tm.logger != nil {
-		tm.logger.Info("Task created",
+		tm.logger.Info("任務已建立",
 			"taskID", taskID,
 			"name", name,
 			"type", taskType,
+			"taskStatus", "queued",
 		)
 	}
 
@@ -124,9 +125,10 @@ func (tm *TaskManager) SubmitWithID(taskID, name, taskType string, fn TaskFunc) 
 		})
 
 		if tm.logger != nil {
-			tm.logger.Info("Task started",
+			tm.logger.Info("任務已開始",
 				"taskID", taskID,
 				"name", name,
+				"taskStatus", "running",
 			)
 		}
 
@@ -145,10 +147,11 @@ func (tm *TaskManager) SubmitWithID(taskID, name, taskType string, fn TaskFunc) 
 			})
 
 			if tm.logger != nil {
-				tm.logger.Debug("Task progress",
+				tm.logger.Debug("任務進度",
 					"taskID", taskID,
 					"progress", progress,
 					"message", message,
+					"taskStatus", "running",
 				)
 			}
 		}
@@ -167,9 +170,10 @@ func (tm *TaskManager) SubmitWithID(taskID, name, taskType string, fn TaskFunc) 
 					"taskID": taskID,
 				})
 				if tm.logger != nil {
-					tm.logger.Info("Task cancelled",
+					tm.logger.Info("任務已取消",
 						"taskID", taskID,
 						"name", name,
+						"taskStatus", "cancelled",
 					)
 				}
 				return
@@ -187,10 +191,11 @@ func (tm *TaskManager) SubmitWithID(taskID, name, taskType string, fn TaskFunc) 
 			})
 
 			if tm.logger != nil {
-				tm.logger.Error("Task failed",
+				tm.logger.Error("任務失敗",
 					"taskID", taskID,
 					"name", name,
 					"error", err.Error(),
+					"taskStatus", "error",
 				)
 			}
 		} else {
@@ -205,9 +210,10 @@ func (tm *TaskManager) SubmitWithID(taskID, name, taskType string, fn TaskFunc) 
 			})
 
 			if tm.logger != nil {
-				tm.logger.Info("Task completed",
+				tm.logger.Info("任務已完成",
 					"taskID", taskID,
 					"name", name,
+					"taskStatus", "done",
 				)
 			}
 		}
@@ -244,9 +250,10 @@ func (tm *TaskManager) Cancel(taskID string) error {
 	})
 
 	if tm.logger != nil {
-		tm.logger.Info("Task cancelled by user",
+		tm.logger.Info("使用者取消了任務",
 			"taskID", taskID,
 			"name", task.Name,
+			"taskStatus", "cancelled",
 		)
 	}
 
