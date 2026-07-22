@@ -118,8 +118,10 @@
     <Dialog
       v-model:visible="taskDialogVisible"
       modal
+      resizable
+      maximizable
       :header="selectedTaskTracker?.attrs?.name ? `Task Details: ${selectedTaskTracker.attrs.name}` : 'Task Details'"
-      :style="{ width: '800px', height: '600px' }"
+      :style="{ width: '800px', height: '600px', minWidth: '400px', minHeight: '300px' }"
       class="task-log-dialog"
     >
       <div class="task-log-container">
@@ -279,7 +281,8 @@ onUnmounted(() => {
 // ── 工具函式 ───────────────────────────────────────────
 
 /**
- * 格式化時間戳記為 MM-DD hh:mm:ss 格式。
+ * 格式化時間戳記。
+ * 當設定選項或篩選層級為 DEBUG 時，顯示到毫秒 (MM-DD hh:mm:ss.SSS)；否則僅顯示到秒 (MM-DD hh:mm:ss)。
  * @param timestamp - ISO 8601 格式的時間字串
  * @returns 格式化後的時間字串
  */
@@ -291,6 +294,13 @@ function formatTime(timestamp: string): string {
     const hh = String(date.getHours()).padStart(2, '0')
     const mm = String(date.getMinutes()).padStart(2, '0')
     const ss = String(date.getSeconds()).padStart(2, '0')
+
+    const isDebug = logStore.globalLogLevel.toUpperCase() === 'DEBUG' || logStore.filterLevel === 'DEBUG'
+    if (isDebug) {
+      const ms = String(date.getMilliseconds()).padStart(3, '0')
+      return `${MM}-${DD} ${hh}:${mm}:${ss}.${ms}`
+    }
+
     return `${MM}-${DD} ${hh}:${mm}:${ss}`
   } catch {
     return timestamp
@@ -643,13 +653,18 @@ const filteredTaskHistory = computed(() => {
 .task-log-dialog .p-dialog-content {
   padding: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .task-log-container {
   display: flex;
   flex-direction: column;
   height: 100%;
+  width: 100%;
   background-color: var(--surface-card);
+  overflow: hidden;
 }
 
 .task-log-filters {
@@ -658,14 +673,21 @@ const filteredTaskHistory = computed(() => {
   padding: 0.5rem 1rem;
   background-color: var(--surface-section);
   border-bottom: 1px solid var(--surface-border);
+  flex-shrink: 0;
 }
 
 .task-log-content {
   flex: 1;
+  overflow-x: auto;
   overflow-y: auto;
   padding: 0.5rem;
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 0.85rem;
+}
+
+.task-log-content .log-item {
+  white-space: nowrap;
+  min-width: max-content;
 }
 
 /* ── 任務區域（緊湊版） ─────────────────────────────────── */
