@@ -105,8 +105,8 @@ func TestMainVsSecondSource(t *testing.T) {
 	if parts[0].Supplier != "Samsung" {
 		t.Errorf("Expected Main Source supplier 'Samsung', got '%s'", parts[0].Supplier)
 	}
-	if secondSources[0].Supplier != "Murata" {
-		t.Errorf("Expected Second Source supplier 'Murata', got '%s'", secondSources[0].Supplier)
+	if secondSources[0].secondSource.Supplier != "Murata" {
+		t.Errorf("Expected Second Source supplier 'Murata', got '%s'", secondSources[0].secondSource.Supplier)
 	}
 }
 

@@ -215,20 +215,21 @@ func (r *BigMatrixReader) getOrCreateBOMRevision(config BOMConfig) (int64, error
 		return 0, err
 	}
 
-	// Create new revision - first get or create project
-	var project db.Project
-	err = r.db.Where("code = ?", config.ProjectCode).First(&project).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		project = db.Project{
-			Code:        config.ProjectCode,
-			Description: "Imported from BigMatrix",
-		}
-		if err := r.db.Create(&project).Error; err != nil {
-			return 0, err
-		}
-	} else if err != nil {
-		return 0, err
+	if r.db == nil {
+		return 0, errors.New("db is nil")
 	}
+
+	// Create new revision - first get or create project
+	series, err := db.GetSeriesInfo(r.db)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get active series: %w", err)
+	}
+
+	projectPtr, err := db.GetOrCreateProject(r.db, series.ID, config.ProjectCode, "Imported from BigMatrix")
+	if err != nil {
+		return 0, fmt.Errorf("failed to get or create project: %w", err)
+	}
+	project := *projectPtr
 
 	revision = db.BomRevision{
 		ProjectID: project.ID,

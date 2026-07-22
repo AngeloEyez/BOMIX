@@ -10,7 +10,10 @@ import (
 )
 
 // Single writer channel for serialized writes
-var writeQueue = make(chan WriteTask, 50)
+var (
+	writeQueueMu sync.Mutex
+	writeQueue   chan WriteTask
+)
 
 // WriteTask represents a batch write task
 type WriteTask struct {
@@ -24,6 +27,12 @@ var writerMutex sync.Mutex
 
 // Open opens a connection to the SQLite database
 func Open(filePath string) (*gorm.DB, error) {
+	writeQueueMu.Lock()
+	if writeQueue == nil {
+		writeQueue = make(chan WriteTask, 50)
+	}
+	writeQueueMu.Unlock()
+
 	db, err := gorm.Open(sqlite.Open(filePath), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
@@ -64,8 +73,16 @@ func Open(filePath string) (*gorm.DB, error) {
 
 // Close closes the database connection
 func Close(db *gorm.DB) error {
-	// Close the write queue to stop the writer goroutine
-	close(writeQueue)
+	if db == nil {
+		return nil
+	}
+
+	writeQueueMu.Lock()
+	if writeQueue != nil {
+		close(writeQueue)
+		writeQueue = nil
+	}
+	writeQueueMu.Unlock()
 
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -104,8 +121,16 @@ func AutoMigrate(db *gorm.DB) error {
 
 // StartDatabaseWriter starts the single writer goroutine for serialized database writes
 func StartDatabaseWriter(db *gorm.DB) {
+	writeQueueMu.Lock()
+	wq := writeQueue
+	writeQueueMu.Unlock()
+
+	if wq == nil {
+		return
+	}
+
 	go func() {
-		for task := range writeQueue {
+		for task := range wq {
 			// Use a transaction for batch write
 			err := db.Transaction(func(tx *gorm.DB) error {
 				if err := tx.CreateInBatches(task.DataBatch, 500).Error; err != nil {
@@ -124,9 +149,23 @@ func StartDatabaseWriter(db *gorm.DB) {
 
 // SubmitWriteTask submits a batch write task to the writer queue
 func SubmitWriteTask(db *gorm.DB, taskID string, dataBatch any) error {
+	writeQueueMu.Lock()
+	q := writeQueue
+	writeQueueMu.Unlock()
+
+	if q == nil {
+		return fmt.Errorf("database write queue is closed")
+	}
+
 	resultChan := make(chan error, 1)
 
-	writeQueue <- WriteTask{
+	defer func() {
+		if r := recover(); r != nil {
+			// Catch send on closed channel gracefully
+		}
+	}()
+
+	q <- WriteTask{
 		TaskID:     taskID,
 		DataBatch:  dataBatch,
 		ResultChan: resultChan,

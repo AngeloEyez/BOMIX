@@ -30,7 +30,7 @@ func (r *EBOMReader) Import(f Workbook) error {
 
 	// First pass: collect all parts from SMD, PTH, BOTTOM
 	var allParts []db.Part
-	var secondSources []db.SecondSource
+	var allSecondSources []parsedSecondSource
 
 	smdSheet := r.findSheetCaseInsensitive(sheets, "SMD")
 	pthSheet := r.findSheetCaseInsensitive(sheets, "PTH")
@@ -58,27 +58,27 @@ func (r *EBOMReader) Import(f Workbook) error {
 
 	// Process SMD sheet
 	if smdSheet != "" {
-		parts, secondSrcs := r.parseSheet(f, smdSheet, "SMD")
+		parts, secondSrcs := r.parseSheet(f, smdSheet, "SMD", len(allParts))
 		allParts = append(allParts, parts...)
-		secondSources = append(secondSources, secondSrcs...)
+		allSecondSources = append(allSecondSources, secondSrcs...)
 		r.result.PartsCount += len(parts)
 		r.result.SecondSources += len(secondSrcs)
 	}
 
 	// Process PTH sheet
 	if pthSheet != "" {
-		parts, secondSrcs := r.parseSheet(f, pthSheet, "PTH")
+		parts, secondSrcs := r.parseSheet(f, pthSheet, "PTH", len(allParts))
 		allParts = append(allParts, parts...)
-		secondSources = append(secondSources, secondSrcs...)
+		allSecondSources = append(allSecondSources, secondSrcs...)
 		r.result.PartsCount += len(parts)
 		r.result.SecondSources += len(secondSrcs)
 	}
 
 	// Process BOTTOM sheet
 	if bottomSheet != "" {
-		parts, secondSrcs := r.parseSheet(f, bottomSheet, "BOTTOM")
+		parts, secondSrcs := r.parseSheet(f, bottomSheet, "BOTTOM", len(allParts))
 		allParts = append(allParts, parts...)
-		secondSources = append(secondSources, secondSrcs...)
+		allSecondSources = append(allSecondSources, secondSrcs...)
 		r.result.PartsCount += len(parts)
 		r.result.SecondSources += len(secondSrcs)
 	}
@@ -109,7 +109,8 @@ func (r *EBOMReader) Import(f Workbook) error {
 
 	// Save all parts and second sources to database
 	// See product-spec section 7.0.1: Delete old parts and recreate
-	if err := r.saveParts(allParts, secondSources); err != nil {
+	secondSources, err := r.saveParts(allParts, allSecondSources)
+	if err != nil {
 		return fmt.Errorf("failed to save parts: %w", err)
 	}
 
@@ -198,18 +199,28 @@ func (r *EBOMReader) parseHeader(f Workbook, sheetName string) (phase, version, 
 	return phase, version, description, schematicVersion, pcbVersion, pcaPn, date, projectCode, nil
 }
 
+type parsedSecondSource struct {
+	partIndex    int
+	secondSource db.SecondSource
+}
+
 // parseSheet parses data rows from a sheet
 // See product-spec sections 7.1.2, 7.1.3, 7.1.4
-func (r *EBOMReader) parseSheet(f Workbook, sheetName, sheetType string) ([]db.Part, []db.SecondSource) {
+func (r *EBOMReader) parseSheet(f Workbook, sheetName, sheetType string, basePartIndices ...int) ([]db.Part, []parsedSecondSource) {
+	basePartIndex := 0
+	if len(basePartIndices) > 0 {
+		basePartIndex = basePartIndices[0]
+	}
+
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return nil, nil
 	}
 
 	var parts []db.Part
-	var secondSources []db.SecondSource
+	var secondSources []parsedSecondSource
 
-	var currentMainPart *db.Part
+	currentMainPartIndex := -1
 
 	// Start from row 6 (index 5)
 	for i := 5; i < len(rows); i++ {
@@ -227,16 +238,14 @@ func (r *EBOMReader) parseSheet(f Workbook, sheetName, sheetType string) ([]db.P
 			// This is a Main Source
 			part := r.parsePartRow(row, sheetType)
 			parts = append(parts, part)
-
-			currentMainPart = &part
-
-			// Check for second sources in the same row
-			// (Some EBOM formats have 2nd sources inline)
-		} else if currentMainPart != nil {
+			currentMainPartIndex = basePartIndex + len(parts) - 1
+		} else if currentMainPartIndex >= 0 {
 			// This is a 2nd Source (empty item, follows a Main Source)
 			secondSource := r.parseSecondSourceRow(row)
-			secondSource.PartID = currentMainPart.ID
-			secondSources = append(secondSources, secondSource)
+			secondSources = append(secondSources, parsedSecondSource{
+				partIndex:    currentMainPartIndex,
+				secondSource: secondSource,
+			})
 		}
 	}
 
@@ -459,21 +468,22 @@ func (r *EBOMReader) determineMode(f Workbook, sheets []string) string {
 // createOrUpdateRevision creates or updates a BOM revision
 // Returns the revision ID
 func (r *EBOMReader) createOrUpdateRevision(projectCode, phase, version, description, schematicVersion, pcbVersion, pcaPn, date, mode string) (int64, error) {
-	// Find existing project
-	var project db.Project
-	err := r.db.Where("code = ?", projectCode).First(&project).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		// Create project
-		project = db.Project{
-			Code:        projectCode,
-			Description: description,
-		}
-		if err := r.db.Create(&project).Error; err != nil {
-			return 0, err
-		}
-	} else if err != nil {
-		return 0, err
+	if r.db == nil {
+		return 0, errors.New("db is nil")
 	}
+
+	// Find active series
+	series, err := db.GetSeriesInfo(r.db)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get active series: %w", err)
+	}
+
+	// Find or create project with valid SeriesID
+	projectPtr, err := db.GetOrCreateProject(r.db, series.ID, projectCode, description)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get or create project: %w", err)
+	}
+	project := *projectPtr
 
 	// Find existing revision
 	var existing db.BomRevision
@@ -530,32 +540,48 @@ func (r *EBOMReader) createOrUpdateRevision(projectCode, phase, version, descrip
 }
 
 // saveParts saves all parts and second sources to the database
-func (r *EBOMReader) saveParts(parts []db.Part, secondSources []db.SecondSource) error {
+func (r *EBOMReader) saveParts(parts []db.Part, parsedSecondSources []parsedSecondSource) ([]db.SecondSource, error) {
 	if r.revisionID == 0 {
-		return errors.New("revision ID not set")
+		return nil, errors.New("revision ID not set")
+	}
+
+	// Set RevisionID for all parts
+	for i := range parts {
+		parts[i].RevisionID = r.revisionID
 	}
 
 	// Delete old parts for this revision
 	// See product-spec section 7.0.1
 	if err := r.db.Where("revision_id = ?", r.revisionID).Delete(&db.Part{}).Error; err != nil {
-		return err
+		return nil, err
 	}
 
-	// Batch insert new parts
+	// Batch insert new parts - GORM assigns parts[i].ID
 	if len(parts) > 0 {
 		if err := r.db.CreateInBatches(&parts, 500).Error; err != nil {
-			return err
+			return nil, err
 		}
+	}
+
+	// Now map second sources to parent parts' newly generated DB IDs
+	secondSources := make([]db.SecondSource, 0, len(parsedSecondSources))
+	for _, pss := range parsedSecondSources {
+		ss := pss.secondSource
+		ss.RevisionID = r.revisionID
+		if pss.partIndex >= 0 && pss.partIndex < len(parts) {
+			ss.PartID = parts[pss.partIndex].ID
+		}
+		secondSources = append(secondSources, ss)
 	}
 
 	// Batch insert second sources
 	if len(secondSources) > 0 {
 		if err := r.db.CreateInBatches(&secondSources, 500).Error; err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	return nil
+	return secondSources, nil
 }
 
 // applyMergeAlgorithm applies the merge algorithm for EBOM re-import
@@ -577,6 +603,9 @@ func (r *EBOMReader) applyMergeAlgorithm(revisionID int64, newSecondSources []db
 		// Get the main part's supplier info for the group key
 		var mainPart db.Part
 		if err := r.db.Where("id = ?", ss.PartID).First(&mainPart).Error; err != nil {
+			if r.logger != nil {
+				r.logger.Warn("Diff 二源料件時未找到對應主料件", "partID", ss.PartID, "error", err)
+			}
 			continue
 		}
 		key := fmt.Sprintf("%s|%s", mainPart.Supplier, mainPart.SupplierPN)
@@ -589,6 +618,9 @@ func (r *EBOMReader) applyMergeAlgorithm(revisionID int64, newSecondSources []db
 		// Get the main part's supplier info for the group key
 		var mainPart db.Part
 		if err := r.db.Where("id = ?", ss.PartID).First(&mainPart).Error; err != nil {
+			if r.logger != nil {
+				r.logger.Warn("Diff 新二源料件時未找到對應主料件", "partID", ss.PartID, "error", err)
+			}
 			continue
 		}
 		key := fmt.Sprintf("%s|%s", mainPart.Supplier, mainPart.SupplierPN)
