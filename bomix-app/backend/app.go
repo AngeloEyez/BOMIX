@@ -130,6 +130,15 @@ func (a *App) CreateSeries(path, name, description string) error {
 	a.db = database
 	a.mu.Unlock()
 
+	// Update config with last opened file
+	a.cfg.LastOpenedFile = path
+	if err := config.Save(config.GetConfigPath(), a.cfg); err != nil {
+		a.logger.Warn(fmt.Sprintf("儲存設定失敗: %v", err))
+	}
+
+	// Add to recent files
+	a.addToRecentFiles(path)
+
 	a.logger.Info(fmt.Sprintf("成功建立系列: %s (ID: %d)", name, series.ID))
 	return nil
 }
