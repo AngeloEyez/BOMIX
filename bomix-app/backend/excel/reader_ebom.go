@@ -133,10 +133,10 @@ func (r *EBOMReader) Import(f Workbook) error {
 	return nil
 }
 
-// findSheetCaseInsensitive finds a sheet by name (case-insensitive)
+// findSheetCaseInsensitive finds a sheet by name (case-insensitive & trimmed)
 func (r *EBOMReader) findSheetCaseInsensitive(sheets []string, name string) string {
 	for _, sheet := range sheets {
-		if strings.EqualFold(sheet, name) {
+		if strings.EqualFold(strings.TrimSpace(sheet), name) {
 			return sheet
 		}
 	}
