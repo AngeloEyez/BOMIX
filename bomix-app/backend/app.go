@@ -219,10 +219,11 @@ func (a *App) GetSeriesInfo() (*SeriesInfo, error) {
 	}
 
 	return &SeriesInfo{
-		ID:          series.ID,
-		Name:        series.Name,
-		Description: series.Description,
-		Path:        a.cfg.LastOpenedFile,
+		ID:             series.ID,
+		Name:           series.Name,
+		Description:    series.Description,
+		Path:           a.cfg.LastOpenedFile,
+		LastExportPath: series.LastExportPath,
 	}, nil
 }
 
@@ -479,6 +480,13 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 	if err != nil {
 		a.logger.Error(fmt.Sprintf("[ExportExcel] 建立 Excel Writer 失敗: %v", err))
 		return nil, fmt.Errorf("failed to create excel writer: %w", err)
+	}
+
+	// Update the series LastExportPath
+	if options.OutputDir != "" {
+		if err := dbConn.Model(&db.Series{}).Where("id = ?", 1).Update("last_export_path", options.OutputDir).Error; err != nil {
+			a.logger.Warn(fmt.Sprintf("Failed to update last_export_path: %v", err))
+		}
 	}
 
 	// Convert options - convert RevisionIDs from []int64 to []string

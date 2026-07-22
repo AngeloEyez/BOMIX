@@ -259,22 +259,26 @@
           </div>
         </div>
 
-        <!-- Matrix specific options -->
-        <div v-if="exportFormat.toLowerCase() === 'matrix'" class="export-options">
+        <!-- Export Path Selection -->
+        <div class="export-options">
           <div class="form-group">
-            <label for="exportOutputDir">Output Directory</label>
-            <InputText
-              v-model="exportOutputPath"
-              placeholder="Select output directory"
-              id="exportOutputDir"
-              readonly
-            />
-            <Button
-              label="Browse"
-              icon="pi pi-folder-open"
-              class="p-button-text"
-              @click="browseOutputDir"
-            />
+            <label for="exportOutputPath">
+              {{ exportFormat.toLowerCase() === 'bigmatrix' ? 'Output File' : 'Output Directory' }}
+            </label>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <InputText
+                v-model="exportOutputPath"
+                :placeholder="exportFormat.toLowerCase() === 'bigmatrix' ? 'Select output file' : 'Select output directory'"
+                id="exportOutputPath"
+                style="flex: 1;"
+                readonly
+              />
+              <Button
+                label="Browse"
+                icon="pi pi-folder-open"
+                @click="browseExportPath"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -313,6 +317,7 @@ import {
   ExportExcel,
   OpenFileDialog,
   SelectFolderDialog,
+  SaveFileDialog,
   type ImportResult as BackendImportResult,
   type ExportOptions
 } from '../services/api'
@@ -516,23 +521,94 @@ function openExportDialog(): void {
   exportRevisions.value = []
   selectedCards.value = []
   exportDescription.value = ''
-  exportOutputPath.value = ''
+  
+  const lastPath = appStore.seriesInfo?.lastExportPath
+  if (lastPath) {
+    exportOutputPath.value = lastPath
+  } else if (appStore.seriesInfo?.path) {
+    const pathStr = appStore.seriesInfo.path
+    const lastSlash = Math.max(pathStr.lastIndexOf('/'), pathStr.lastIndexOf('\\'))
+    exportOutputPath.value = lastSlash >= 0 ? pathStr.substring(0, lastSlash) : ''
+  } else {
+    exportOutputPath.value = ''
+  }
+  
   exportDialogVisible.value = true
 }
 
-async function browseOutputDir(): Promise<void> {
-  try {
-    const dirPath = await SelectFolderDialog({
-      title: 'Select output directory'
-    })
+function generateBigMatrixFilename(): string {
+  const seriesName = appStore.seriesInfo?.name || 'Unknown'
+  
+  let allSamePhase = true
+  let allSameVersion = true
+  let firstPhase = ''
+  let firstVersion = ''
+  
+  if (selectedCards.value.length > 0) {
+    firstPhase = selectedCards.value[0].phase
+    firstVersion = selectedCards.value[0].version
+    for (const c of selectedCards.value) {
+      if (c.phase !== firstPhase) allSamePhase = false
+      if (c.version !== firstVersion) allSameVersion = false
+    }
+  } else {
+    allSamePhase = false
+    allSameVersion = false
+  }
+  
+  const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, '')
+  
+  let parts = [seriesName, 'BigMatrix']
+  if (allSamePhase && firstPhase) {
+    parts.push(firstPhase)
+    if (allSameVersion && firstVersion) {
+      parts.push(firstVersion)
+    }
+  }
+  parts.push(dateStr)
+  
+  return parts.join('_') + '.xlsx'
+}
 
-    if (dirPath) {
-      exportOutputPath.value = dirPath
-      logStore.addLogEntry('INFO', `已選取匯出目錄：${dirPath}`)
+function getDirectory(pathStr: string): string {
+  if (!pathStr) return ''
+  if (pathStr.toLowerCase().endsWith('.xlsx')) {
+    const lastSlash = Math.max(pathStr.lastIndexOf('/'), pathStr.lastIndexOf('\\'))
+    return lastSlash >= 0 ? pathStr.substring(0, lastSlash) : ''
+  }
+  return pathStr
+}
+
+async function browseExportPath(): Promise<void> {
+  try {
+    if (exportFormat.value.toLowerCase() === 'bigmatrix') {
+      const dir = getDirectory(exportOutputPath.value)
+      const defaultName = generateBigMatrixFilename()
+      const defaultPath = dir ? `${dir}\\${defaultName}` : defaultName
+      
+      const filePath = await SaveFileDialog({
+        title: 'Save BigMatrix Excel',
+        defaultPath: defaultPath,
+        filters: [{ name: 'Excel Files', extensions: ['xlsx'] }]
+      })
+      if (filePath) {
+        exportOutputPath.value = filePath
+        logStore.addLogEntry('INFO', `已選取匯出檔案：${filePath}`)
+      }
+    } else {
+      const dir = getDirectory(exportOutputPath.value)
+      const dirPath = await SelectFolderDialog({
+        title: 'Select output directory',
+        defaultPath: dir
+      })
+      if (dirPath) {
+        exportOutputPath.value = dirPath
+        logStore.addLogEntry('INFO', `已選取匯出目錄：${dirPath}`)
+      }
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    logStore.addLogEntry('ERROR', `選取匯出目錄發生錯誤：${msg}`)
+    logStore.addLogEntry('ERROR', `選取匯出路徑發生錯誤：${msg}`)
   }
 }
 
@@ -545,12 +621,13 @@ async function executeExport(): Promise<void> {
       modelCountOverrides[String(card.id)] = card.modelCount
     })
 
+    const dir = getDirectory(exportOutputPath.value)
     const options: ExportOptions = {
       format: exportFormat.value,
       revisionIds: sortedRevisionIds,
       description: exportDescription.value,
       outputPath: exportOutputPath.value,
-      outputDir: exportOutputPath.value,
+      outputDir: dir,
       modelCountOverrides: modelCountOverrides
     }
 

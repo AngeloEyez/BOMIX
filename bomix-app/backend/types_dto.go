@@ -4,8 +4,9 @@ package backend
 type SeriesInfo struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
-	Description string `json:"description"`
-	Path        string `json:"path"`
+	Description    string `json:"description"`
+	Path           string `json:"path"`
+	LastExportPath string `json:"lastExportPath"`
 }
 
 // SeriesInfoWithTime represents series info with last opened time

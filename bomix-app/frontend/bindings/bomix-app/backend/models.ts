@@ -111,6 +111,7 @@ export interface SeriesInfo {
     "name": string;
     "description": string;
     "path": string;
+    "lastExportPath": string;
 }
 
 /**

@@ -12,10 +12,11 @@ type Series struct {
 	ID          int64          `gorm:"primaryKey"`
 	Name        string         `gorm:"not null;uniqueIndex:idx_series_name"`
 	Description string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	DeletedAt   gorm.DeletedAt `gorm:"index"`
-	Projects    []Project      `gorm:"foreignKey:SeriesID;constraint:OnDelete:CASCADE"`
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	DeletedAt      gorm.DeletedAt `gorm:"index"`
+	LastExportPath string
+	Projects       []Project      `gorm:"foreignKey:SeriesID;constraint:OnDelete:CASCADE"`
 }
 
 // Project represents a project within a series

@@ -8,6 +8,7 @@ export interface SeriesInfo {
   name: string
   description: string
   path: string
+  lastExportPath?: string
 }
 
 export const useAppStore = defineStore('app', () => {
@@ -39,6 +40,7 @@ export const useAppStore = defineStore('app', () => {
         name: info.name,
         description: info.description,
         path,
+        lastExportPath: info.lastExportPath || '',
       }
       isOpen.value = true
     } catch (err) {
@@ -63,6 +65,7 @@ export const useAppStore = defineStore('app', () => {
         name: info?.name || name,
         description: info?.description || description,
         path,
+        lastExportPath: info?.lastExportPath || '',
       }
       isOpen.value = true
     } catch (err) {

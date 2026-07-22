@@ -2,6 +2,7 @@ package excel
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"bomix-app/backend/types"
@@ -206,9 +207,12 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 	}
 
 	// Save to output path
-	outputPath := options.OutputPath
-	if outputPath == "" {
-		outputPath = generateMatrixFileName(rev, date)
+	fileName := generateMatrixFileName(rev, date)
+	var outputPath string
+	if options.OutputDir != "" {
+		outputPath = filepath.Join(options.OutputDir, fileName)
+	} else {
+		outputPath = fileName
 	}
 
 	if err := f.SaveAs(outputPath); err != nil {
@@ -426,9 +430,12 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 	}
 
 	// Save to output path
-	outputPath := options.OutputPath
-	if outputPath == "" {
-		outputPath = generateMatrixFileName(rev, date)
+	fileName := generateMatrixFileName(rev, date)
+	var outputPath string
+	if options.OutputDir != "" {
+		outputPath = filepath.Join(options.OutputDir, fileName)
+	} else {
+		outputPath = fileName
 	}
 
 	if err := f.SaveAs(outputPath); err != nil {
