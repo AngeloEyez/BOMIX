@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed, reactive } from 'vue'
 import { ListenToEvents, GetLogs, LogFrontend } from '../services/api'
+import { useAppStore } from './app'
+import { useProjectStore } from './project'
 
 export interface LogEntry {
   id?: string
@@ -18,6 +20,20 @@ export interface LogEntry {
 export type LogLevel = 'ALL' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
 
 export const useLogStore = defineStore('log', () => {
+  function triggerProjectReload() {
+    try {
+      const appStore = useAppStore()
+      const projectStore = useProjectStore()
+      if (appStore.seriesInfo?.id) {
+        projectStore.loadProjects(appStore.seriesInfo.id).catch(err => {
+          console.error('Failed to auto-reload projects after task completion:', err)
+        })
+      }
+    } catch (e) {
+      console.error('Error triggering project reload:', e)
+    }
+  }
+
   // State
   const logs = ref<LogEntry[]>([])
   const filterLevel = ref<LogLevel>('ALL')
@@ -99,11 +115,13 @@ export const useLogStore = defineStore('log', () => {
         } else if (ts === 'warning' || ts === 'warn') {
           tracker.status = 'warning'
           tracker.level = 'WARN'
+          triggerProjectReload()
         } else if (ts === 'done' || ts === 'completed') {
           tracker.status = 'done'
           if (tracker.level !== 'ERROR' && tracker.level !== 'WARN') {
             tracker.level = 'INFO'
           }
+          triggerProjectReload()
         } else if (ts === 'running') {
           tracker.status = 'running'
         } else if (ts === 'queued') {

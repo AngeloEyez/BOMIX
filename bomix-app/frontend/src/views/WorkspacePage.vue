@@ -378,11 +378,6 @@ async function executeImport(): Promise<void> {
     importResults.value = results
     importResultDialogVisible.value = true
     importDialogVisible.value = false
-
-    // 匯入後即時更新左側專案樹狀圖
-    if (appStore.seriesInfo?.id) {
-      await projectStore.loadProjects(appStore.seriesInfo.id)
-    }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     logStore.addLogEntry('ERROR', `匯入作業失敗：${msg}`)

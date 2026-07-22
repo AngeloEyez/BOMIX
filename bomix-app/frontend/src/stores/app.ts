@@ -57,10 +57,11 @@ export const useAppStore = defineStore('app', () => {
     error.value = null
     try {
       await CreateSeries(path, name, description)
+      const info = await GetSeriesInfo()
       seriesInfo.value = {
-        id: 0,
-        name,
-        description,
+        id: info?.id || 1,
+        name: info?.name || name,
+        description: info?.description || description,
         path,
       }
       isOpen.value = true
