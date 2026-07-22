@@ -373,9 +373,6 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 		return nil, fmt.Errorf("no series is currently open")
 	}
 
-	// Create Excel reader
-	excelReader := excel.NewReader(dbConn, a.logger)
-
 	results := make([]*ImportResult, 0, len(filePaths))
 
 	for _, filePath := range filePaths {
@@ -388,44 +385,41 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 			taskName,
 			"Import",
 			func(ctx context.Context, progress func(float64, string)) error {
-				a.logger.Info("開始執行匯入作業...", "taskID", taskID, "name", taskName)
+				// 綁定 taskID 的專屬 Logger，確保開檔與解析所有日誌均附帶 taskID
+				taskLogger := a.logger.With("taskID", taskID)
+				taskLogger.Info("開始執行匯入作業...", "name", taskName)
 
-				// Update progress
-				a.logger.Info("正在偵測檔案格式...", "taskID", taskID)
+				progress(0.2, "正在開啟與辨識 Excel 檔案...")
 
-				// Open the file using the new Workbook interface to support both .xlsx and .xls
-				f, logs, err := excel.OpenWorkbook(filePath)
-				for _, l := range logs {
-					// Use taskID in args if possible, but the original log just had file, so we just append taskID
-					args := append(l.Args, "taskID", taskID)
-					switch l.Level {
-					case "DEBUG":
-						a.logger.Debug(l.Message, args...)
-					case "WARN":
-						a.logger.Warn(l.Message, args...)
-					}
-				}
+				// 建立專屬單次開檔與解析的 Reader
+				taskExcelReader := excel.NewReader(dbConn, taskLogger)
+
+				// 執行單次開檔、前置驗證與資料匯入
+				importResults, err := taskExcelReader.ImportExcel([]string{filePath})
 				if err != nil {
-					a.logger.Error("開啟檔案失敗", "taskID", taskID, "error", err.Error())
-					return fmt.Errorf("failed to open file: %w", err)
-				}
-				f.Close() // Close it since we just opened it to check validity
-
-				progress(0.3, "正在匯入資料...")
-				a.logger.Info("讀取並解析 Excel 資料...", "taskID", taskID)
-
-				// Import the file
-				importResults, err := excelReader.ImportExcel([]string{filePath})
-				if err != nil {
-					a.logger.Error("匯入 Excel 資料失敗", "taskID", taskID, "error", err.Error())
+					taskLogger.Error("開啟或讀取 Excel 檔案重大失敗", "error", err.Error())
+					// 重大 IO 或系統錯誤，回傳原始 Error (觸發 Task Status = error)
 					return err
 				}
 
 				if len(importResults) > 0 {
 					result := importResults[0]
+
+					// 檢查是否有格式解析錯誤、Unknown 格式或 0 筆資料
+					if len(result.Errors) > 0 || result.Format == types.FormatUnknown || result.PartsCount == 0 {
+						errMsg := fmt.Sprintf("匯入結果需要確認: 格式=%s, 成功筆數=%d", result.Format, result.PartsCount)
+						if len(result.Errors) > 0 {
+							errMsg += fmt.Sprintf(", 錯誤=%v", result.Errors)
+						}
+						taskLogger.Warn(errMsg)
+						progress(0.9, errMsg)
+						// 業務與校驗警示，回傳 WarningError (觸發 Task Status = warning)
+						return task.NewWarningError(fmt.Errorf(errMsg))
+					}
+
 					msg := fmt.Sprintf("成功匯入 %d 筆料件", result.PartsCount)
 					progress(0.9, msg)
-					a.logger.Info(msg, "taskID", taskID)
+					taskLogger.Info(msg)
 				}
 
 				progress(1.0, "匯入作業完成")

@@ -90,30 +90,32 @@ export const useLogStore = defineStore('log', () => {
       tracker.message = entry.message
       tracker.timestamp = entry.timestamp
       
-      // 根據 Log 內容更新狀態 (優先使用後端傳來的 taskStatus)
+      // 根據 Log 內容更新狀態 (完全由確定的 taskStatus 變數與 entry.level 辨識，不使用文字關鍵字比對)
       if (entry.attrs?.taskStatus) {
-        tracker.status = entry.attrs.taskStatus.toLowerCase()
-        if (tracker.status === 'error' || tracker.status === 'failed') {
+        const ts = entry.attrs.taskStatus.toLowerCase()
+        if (ts === 'error' || ts === 'failed') {
           tracker.status = 'error'
           tracker.level = 'ERROR'
+        } else if (ts === 'warning' || ts === 'warn') {
+          tracker.status = 'warning'
+          tracker.level = 'WARN'
+        } else if (ts === 'done' || ts === 'completed') {
+          tracker.status = 'done'
+          if (tracker.level !== 'ERROR' && tracker.level !== 'WARN') {
+            tracker.level = 'INFO'
+          }
+        } else if (ts === 'running') {
+          tracker.status = 'running'
+        } else if (ts === 'queued') {
+          tracker.status = 'queued'
         }
       } else {
-        const msgLower = entry.message.toLowerCase()
-        if (entry.level === 'ERROR' || entry.attrs?.error || msgLower.includes('失敗') || msgLower.includes('錯誤')) {
-          tracker.status = 'error'
-          tracker.level = 'ERROR' // 狀態錯誤時，提升 Tracker 的 Level
-        } else if (msgLower.includes('completed') || msgLower.includes('done') || msgLower.includes('success') || msgLower.includes('完成') || msgLower.includes('成功')) {
-          tracker.status = 'done'
-        } else if (msgLower.includes('start') || msgLower.includes('progress') || msgLower.includes('running') || msgLower.includes('開始') || msgLower.includes('進度') || msgLower.includes('正在')) {
-          tracker.status = 'running'
+        // 若無 taskStatus，僅依據標準 entry.level (ERROR / WARN) 提升 Tracker 的層級
+        const currentSeverity = SEVERITY[tracker.level.toUpperCase()] || 0
+        const newSeverity = SEVERITY[entry.level.toUpperCase()] || 0
+        if (newSeverity > currentSeverity) {
+          tracker.level = entry.level
         }
-      }
-      
-      // 提升 Tracker 的 Level 若收到更嚴重的 log
-      const currentSeverity = SEVERITY[tracker.level.toUpperCase()] || 0
-      const newSeverity = SEVERITY[entry.level.toUpperCase()] || 0
-      if (newSeverity > currentSeverity) {
-        tracker.level = entry.level
       }
       
       return // 不再將 Task 的子日誌放進 main logs 陣列

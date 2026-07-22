@@ -618,6 +618,12 @@ const filteredTaskHistory = computed(() => {
   background-color: rgba(244,67,54,0.12);
 }
 
+.log-status-tag.status-warning,
+.log-status-tag.status-warn {
+  color: #ff9800;
+  background-color: rgba(255,152,0,0.12);
+}
+
 .log-status-tag.status-running {
   color: #2196f3;
   background-color: rgba(33,150,243,0.12);

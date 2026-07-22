@@ -30,6 +30,7 @@ const (
 	TaskQueued    TaskStatus = "Queued"
 	TaskRunning   TaskStatus = "Running"
 	TaskCompleted TaskStatus = "Completed"
+	TaskWarning   TaskStatus = "Warning"
 	TaskFailed    TaskStatus = "Failed"
 	TaskCancelled TaskStatus = "Cancelled"
 )

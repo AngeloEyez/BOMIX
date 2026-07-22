@@ -16,6 +16,34 @@ type EventEmitter interface {
 	EmitEvent(event string, data interface{})
 }
 
+// WarningError represents a non-critical error or validation warning that results in TaskWarning status
+type WarningError struct {
+	Err error
+}
+
+func (w *WarningError) Error() string {
+	if w.Err != nil {
+		return w.Err.Error()
+	}
+	return "warning"
+}
+
+func (w *WarningError) Unwrap() error {
+	return w.Err
+}
+
+func NewWarningError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &WarningError{Err: err}
+}
+
+func IsWarningError(err error) bool {
+	var wErr *WarningError
+	return errors.As(err, &wErr)
+}
+
 // Task represents a background task
 // See product-spec section 5.1.2
 type Task struct {
@@ -179,24 +207,47 @@ func (tm *TaskManager) SubmitWithID(taskID, name, taskType string, fn TaskFunc) 
 				return
 			}
 
-			// Task failed with error
-			task.Status = string(types.TaskFailed)
-			task.Error = err.Error()
-			task.Message = "Task failed"
-			task.mu.Unlock()
+			if IsWarningError(err) {
+				// Task finished with warning (need user verification / non-critical error)
+				task.Status = string(types.TaskWarning)
+				task.Error = err.Error()
+				task.Message = "Task finished with warning"
+				task.mu.Unlock()
 
-			tm.emitEvent(EventTaskFailed, map[string]interface{}{
-				"taskID": taskID,
-				"error":  err.Error(),
-			})
+				tm.emitEvent(EventTaskFailed, map[string]interface{}{
+					"taskID": taskID,
+					"error":  err.Error(),
+					"status": string(types.TaskWarning),
+				})
 
-			if tm.logger != nil {
-				tm.logger.Error("任務失敗",
-					"taskID", taskID,
-					"name", name,
-					"error", err.Error(),
-					"taskStatus", "error",
-				)
+				if tm.logger != nil {
+					tm.logger.Warn("任務需要確認",
+						"taskID", taskID,
+						"name", name,
+						"error", err.Error(),
+						"taskStatus", "warning",
+					)
+				}
+			} else {
+				// Task failed with major error
+				task.Status = string(types.TaskFailed)
+				task.Error = err.Error()
+				task.Message = "Task failed"
+				task.mu.Unlock()
+
+				tm.emitEvent(EventTaskFailed, map[string]interface{}{
+					"taskID": taskID,
+					"error":  err.Error(),
+				})
+
+				if tm.logger != nil {
+					tm.logger.Error("任務失敗",
+						"taskID", taskID,
+						"name", name,
+						"error", err.Error(),
+						"taskStatus", "error",
+					)
+				}
 			}
 		} else {
 			// Task completed successfully
