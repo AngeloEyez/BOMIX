@@ -1,6 +1,7 @@
 package excel
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -423,3 +424,130 @@ func TestExportBigMatrix_Integration(t *testing.T) {
 
 	t.Logf("Successfully exported BigMatrix to: %s", outputPath)
 }
+
+func TestResolveOutputPath(t *testing.T) {
+	// Create temporary folder for testing directory check
+	tmpDir, err := os.MkdirTemp("", "bomix-resolve-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	defaultName := "Default_BigMatrix.xlsx"
+
+	tests := []struct {
+		name        string
+		outputPath  string
+		outputDir   string
+		expectMatch func(res string) bool
+	}{
+		{
+			name:       "Output path is an existing directory",
+			outputPath: tmpDir,
+			outputDir:  "",
+			expectMatch: func(res string) bool {
+				return res == filepath.Join(tmpDir, defaultName)
+			},
+		},
+		{
+			name:       "Output path has no extension and is not dir",
+			outputPath: filepath.Join(tmpDir, "SubFolderWithoutExt"),
+			outputDir:  "",
+			expectMatch: func(res string) bool {
+				return res == filepath.Join(tmpDir, "SubFolderWithoutExt", defaultName)
+			},
+		},
+		{
+			name:       "Output path is a valid xlsx file path",
+			outputPath: filepath.Join(tmpDir, "custom.xlsx"),
+			outputDir:  "",
+			expectMatch: func(res string) bool {
+				return res == filepath.Join(tmpDir, "custom.xlsx")
+			},
+		},
+		{
+			name:       "Output path empty, outputDir provided",
+			outputPath: "",
+			outputDir:  tmpDir,
+			expectMatch: func(res string) bool {
+				return res == filepath.Join(tmpDir, defaultName)
+			},
+		},
+		{
+			name:       "Both empty",
+			outputPath: "",
+			outputDir:  "",
+			expectMatch: func(res string) bool {
+				return res == defaultName
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := resolveOutputPath(tt.outputPath, tt.outputDir, defaultName)
+			if !tt.expectMatch(res) {
+				t.Errorf("resolveOutputPath() = %s, failed expectation", res)
+			}
+		})
+	}
+}
+
+func TestExportBigMatrix_DirectoryOutputPath(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bomix-export-dir-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	// Supply OutputPath as a directory instead of a full file path
+	options := ExportOptions{
+		Format:     types.FormatBigMatrix,
+		OutputPath: tmpDir,
+		PartData:   []PartData{},
+	}
+
+	outputPaths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel with directory OutputPath should succeed, but got error: %v", err)
+	}
+
+	if len(outputPaths) != 1 {
+		t.Fatalf("Expected 1 output path, got %d", len(outputPaths))
+	}
+
+	if filepath.Dir(outputPaths[0]) != tmpDir {
+		t.Errorf("Expected output file in %s, got %s", tmpDir, outputPaths[0])
+	}
+}
+
+func TestExportBigMatrix_InvalidOutputPath(t *testing.T) {
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	// Supply an invalid path that cannot be created or written to
+	invalidPath := `X:\NonExistentDriveDirectory1234567\output.xlsx`
+	options := ExportOptions{
+		Format:     types.FormatBigMatrix,
+		OutputPath: invalidPath,
+		PartData:   []PartData{},
+	}
+
+	_, err = writer.ExportExcel(options)
+	if err == nil {
+		t.Fatalf("Expected ExportExcel to fail for invalid path, but it succeeded")
+	}
+
+	if !strings.Contains(err.Error(), "invalid export output path") && !errors.Is(err, ErrInvalidOutputPath) {
+		t.Errorf("Expected error to contain ErrInvalidOutputPath, got: %v", err)
+	}
+}
+
+

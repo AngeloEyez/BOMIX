@@ -97,10 +97,18 @@ func (w *WriterImpl) exportBigMatrix(options ExportOptions) ([]string, error) {
 		}
 	}
 
-	// Save to output path
-	outputPath := options.OutputPath
-	if outputPath == "" {
-		outputPath = fmt.Sprintf("output_bigmatrix_%s.xlsx", generateTimestamp())
+	// Save to output path using validateAndPrepareOutputPath
+	seriesName := "BOMIX"
+	if len(options.Revisions) > 0 {
+		seriesName = options.Revisions[0].ProjectCode
+	}
+	defaultFileName := generateBigMatrixFileName(seriesName, options.Revisions, generateTimestamp())
+	outputPath, err := validateAndPrepareOutputPath(options.OutputPath, options.OutputDir, defaultFileName)
+	if err != nil {
+		if w.logger != nil {
+			w.logger.Error(fmt.Sprintf("[exportBigMatrix] 驗證匯出路徑失敗: %v", err))
+		}
+		return nil, err
 	}
 
 	if w.logger != nil {
@@ -340,15 +348,15 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		}
 	}
 
-	// Save to output path
-	outputPath := options.OutputPath
-	if outputPath == "" {
-		// Generate filename based on revisions
-		seriesName := "BOMIX"
-		if len(revisions) > 0 {
-			seriesName = revisions[0].ProjectCode
-		}
-		outputPath = generateBigMatrixFileName(seriesName, revisions, date)
+	// Save to output path using validateAndPrepareOutputPath
+	seriesName := "BOMIX"
+	if len(revisions) > 0 {
+		seriesName = revisions[0].ProjectCode
+	}
+	defaultFileName := generateBigMatrixFileName(seriesName, revisions, date)
+	outputPath, err := validateAndPrepareOutputPath(options.OutputPath, options.OutputDir, defaultFileName)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := f.SaveAs(outputPath); err != nil {

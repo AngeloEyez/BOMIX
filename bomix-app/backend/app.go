@@ -474,8 +474,6 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 		return nil, fmt.Errorf("no series is currently open")
 	}
 
-
-
 	// Update the series LastExportPath
 	if options.OutputDir != "" {
 		if err := dbConn.Model(&db.Series{}).Where("id = ?", 1).Update("last_export_path", options.OutputDir).Error; err != nil {
@@ -517,6 +515,12 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 			// Export to Excel
 			outputPaths, err := excelWriter.ExportExcel(exportOptions)
 			if err != nil {
+				if errors.Is(err, excel.ErrInvalidOutputPath) || strings.Contains(err.Error(), "invalid export output path") {
+					if taskLogger != nil {
+						taskLogger.Warn(fmt.Sprintf("[ExportExcel] 匯出路徑無效或無法寫入: %v", err))
+					}
+					return task.NewWarningError(fmt.Errorf("無效的匯出路徑: %w", err))
+				}
 				return fmt.Errorf("failed to export: %w", err)
 			}
 
@@ -525,7 +529,7 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 		},
 	)
 
-	a.logger.Debug(fmt.Sprintf("匯出任務已提交: %s", taskID))
+	//a.logger.Debug(fmt.Sprintf("匯出任務已提交: %s", taskID))
 	return []string{taskID}, nil
 }
 

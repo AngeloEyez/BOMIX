@@ -271,7 +271,6 @@
                 :placeholder="exportFormat.toLowerCase() === 'bigmatrix' ? 'Select output file' : 'Select output directory'"
                 id="exportOutputPath"
                 style="flex: 1;"
-                readonly
               />
               <Button
                 label="Browse"
@@ -302,7 +301,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import MultiSelect from 'primevue/multiselect'
@@ -415,6 +414,17 @@ async function loadProjects(): Promise<void> {
   }
 }
 
+/**
+ * 當 BigMatrix 模式下選取的 Card 發生改變時，即時更新檔名
+ */
+function updateBigMatrixFilenameIfNeed(): void {
+  if (exportFormat.value.toLowerCase() === 'bigmatrix') {
+    const dir = getDirectory(exportOutputPath.value)
+    const defaultFilename = generateBigMatrixFilename()
+    exportOutputPath.value = dir ? `${dir}\\${defaultFilename}` : defaultFilename
+  }
+}
+
 function onRevisionsChange(): void {
   const currentSelectedIds = new Set(exportRevisions.value)
 
@@ -442,11 +452,14 @@ function onRevisionsChange(): void {
       }
     }
   }
+
+  updateBigMatrixFilenameIfNeed()
 }
 
 function removeCard(index: number): void {
   selectedCards.value.splice(index, 1)
   exportRevisions.value = selectedCards.value.map(c => c.id)
+  updateBigMatrixFilenameIfNeed()
 }
 
 // Drag and drop ordering logic
@@ -471,6 +484,7 @@ function onDrop(event: DragEvent, dropIndex: number): void {
 
   exportRevisions.value = selectedCards.value.map(c => c.id)
   draggedIndex.value = null
+  updateBigMatrixFilenameIfNeed()
 }
 
 // Import functions
@@ -516,6 +530,23 @@ async function executeImport(): Promise<void> {
 }
 
 // Export functions
+/**
+ * 監聽匯出格式 (exportFormat) 的切換，即時更新匯出路徑與模式
+ * 切換為 Matrix 時轉換為純目錄模式，切換為 BigMatrix 時轉換為檔案路徑模式
+ */
+watch(exportFormat, (newFormat) => {
+  const dir = getDirectory(exportOutputPath.value)
+  if (newFormat.toLowerCase() === 'bigmatrix') {
+    const defaultFilename = generateBigMatrixFilename()
+    exportOutputPath.value = dir ? `${dir}\\${defaultFilename}` : defaultFilename
+  } else {
+    exportOutputPath.value = dir
+  }
+})
+
+/**
+ * 開啟匯出對話框並初始化預設匯出路徑與檔名
+ */
 function openExportDialog(): void {
   loadProjects()
   exportRevisions.value = []
@@ -523,19 +554,29 @@ function openExportDialog(): void {
   exportDescription.value = ''
   
   const lastPath = appStore.seriesInfo?.lastExportPath
+  let initialDir = ''
   if (lastPath) {
-    exportOutputPath.value = lastPath
+    initialDir = getDirectory(lastPath)
   } else if (appStore.seriesInfo?.path) {
     const pathStr = appStore.seriesInfo.path
     const lastSlash = Math.max(pathStr.lastIndexOf('/'), pathStr.lastIndexOf('\\'))
-    exportOutputPath.value = lastSlash >= 0 ? pathStr.substring(0, lastSlash) : ''
+    initialDir = lastSlash >= 0 ? pathStr.substring(0, lastSlash) : ''
+  }
+
+  if (exportFormat.value.toLowerCase() === 'bigmatrix') {
+    const defaultFilename = generateBigMatrixFilename()
+    exportOutputPath.value = initialDir ? `${initialDir}\\${defaultFilename}` : defaultFilename
   } else {
-    exportOutputPath.value = ''
+    exportOutputPath.value = initialDir
   }
   
   exportDialogVisible.value = true
 }
 
+/**
+ * 依據選取的 Revision 資訊與日期產生 BigMatrix 預設檔名
+ * @returns {string} 預設的 BigMatrix Excel 檔名
+ */
 function generateBigMatrixFilename(): string {
   const seriesName = appStore.seriesInfo?.name || 'Unknown'
   
@@ -570,15 +611,23 @@ function generateBigMatrixFilename(): string {
   return parts.join('_') + '.xlsx'
 }
 
+/**
+ * 從檔案或目錄路徑中提取目錄部分
+ * @param {string} pathStr - 傳入的路徑字串
+ * @returns {string} 提取出來的目錄路徑
+ */
 function getDirectory(pathStr: string): string {
   if (!pathStr) return ''
-  if (pathStr.toLowerCase().endsWith('.xlsx')) {
+  if (pathStr.toLowerCase().endsWith('.xlsx') || pathStr.toLowerCase().endsWith('.xls')) {
     const lastSlash = Math.max(pathStr.lastIndexOf('/'), pathStr.lastIndexOf('\\'))
     return lastSlash >= 0 ? pathStr.substring(0, lastSlash) : ''
   }
   return pathStr
 }
 
+/**
+ * 瀏覽並選取匯出檔案或目錄路徑
+ */
 async function browseExportPath(): Promise<void> {
   try {
     if (exportFormat.value.toLowerCase() === 'bigmatrix') {
@@ -612,6 +661,9 @@ async function browseExportPath(): Promise<void> {
   }
 }
 
+/**
+ * 執行 Excel 匯出作業
+ */
 async function executeExport(): Promise<void> {
   logStore.addLogEntry('INFO', `開始執行匯出作業...`)
   try {
@@ -621,12 +673,20 @@ async function executeExport(): Promise<void> {
       modelCountOverrides[String(card.id)] = card.modelCount
     })
 
-    const dir = getDirectory(exportOutputPath.value)
+    const isBigMatrix = exportFormat.value.toLowerCase() === 'bigmatrix'
+    let finalOutputPath = exportOutputPath.value
+    const dir = getDirectory(finalOutputPath)
+    
+    if (isBigMatrix && !finalOutputPath.toLowerCase().endsWith('.xlsx')) {
+      const defaultName = generateBigMatrixFilename()
+      finalOutputPath = dir ? `${dir}\\${defaultName}` : defaultName
+    }
+
     const options: ExportOptions = {
       format: exportFormat.value,
       revisionIds: sortedRevisionIds,
       description: exportDescription.value,
-      outputPath: exportOutputPath.value,
+      outputPath: finalOutputPath,
       outputDir: dir,
       modelCountOverrides: modelCountOverrides
     }

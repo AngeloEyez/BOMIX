@@ -1,13 +1,19 @@
 package excel
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"bomix-app/backend/logger"
 	"bomix-app/backend/types"
 )
+
+// ErrInvalidOutputPath 表示無效或無法寫入的匯出路徑錯誤
+var ErrInvalidOutputPath = errors.New("invalid export output path")
 
 // Writer defines the interface for Excel export operations
 type Writer interface {
@@ -125,8 +131,8 @@ func generateTimestamp() string {
 // Phase/Version are omitted if not consistent across all revisions
 func generateBigMatrixFileName(seriesName string, revisions []RevisionData, date string) string {
 	// Check if all revisions have the same phase and version
-	samePhase := true
-	sameVersion := true
+	samePhase := len(revisions) > 0
+	sameVersion := len(revisions) > 0
 	if len(revisions) > 0 {
 		firstPhase := revisions[0].Phase
 		firstVersion := revisions[0].Version
@@ -163,3 +169,59 @@ func generateMatrixFileName(rev RevisionData, date string) string {
 	return fmt.Sprintf("%s_EZBOM_%s_%s_MatrixBOM_%s.xlsx",
 		rev.ProjectCode, rev.Phase, rev.Version, date)
 }
+
+// resolveOutputPath 解析並確定 Excel 檔案的最終儲存路徑。
+// 若傳入的路徑為目錄，或未指定完整的 .xlsx 副檔名，將自動將其與預設檔名組合。
+func resolveOutputPath(outputPath, outputDir, defaultFileName string) string {
+	target := strings.TrimSpace(outputPath)
+	if target == "" {
+		target = strings.TrimSpace(outputDir)
+	}
+
+	// 若完全未指定目標路徑，則回傳預設檔名
+	if target == "" {
+		return defaultFileName
+	}
+
+	// 檢查 target 是否為現存的目錄
+	fi, err := os.Stat(target)
+	isDir := err == nil && fi.IsDir()
+	
+	// 判斷是否帶有 .xlsx 或 .xls 展延名
+	hasXlsxExt := strings.HasSuffix(strings.ToLower(target), ".xlsx") || strings.HasSuffix(strings.ToLower(target), ".xls")
+
+	// 如果目標是現存目錄，或是路徑中無檔名副檔名 (例如 D:\Temp\BOMIX)
+	if isDir || !hasXlsxExt {
+		if isDir || filepath.Ext(target) == "" {
+			return filepath.Join(target, defaultFileName)
+		}
+		// 若有其他副檔名但非 excel 格式，補上 .xlsx
+		return target + ".xlsx"
+	}
+
+	return target
+}
+
+// validateAndPrepareOutputPath 驗證並準備輸出檔案路徑。
+// 寫入檔案前確認目標資料夾路徑是否有效、能否成功創建以及是否具備存取權限。
+// 若路徑無效或無法存取，回傳 ErrInvalidOutputPath 與詳細錯誤。
+func validateAndPrepareOutputPath(outputPath, outputDir, defaultFileName string) (string, error) {
+	finalPath := resolveOutputPath(outputPath, outputDir, defaultFileName)
+	dir := filepath.Dir(finalPath)
+
+	if dir != "" && dir != "." {
+		// 嘗試建立目標目錄
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return finalPath, fmt.Errorf("%w: 無效或無法存取的匯出目錄 '%s': %v", ErrInvalidOutputPath, dir, err)
+		}
+
+		// 檢查目錄狀態
+		fi, err := os.Stat(dir)
+		if err != nil || !fi.IsDir() {
+			return finalPath, fmt.Errorf("%w: 目錄不存在或無法存取 '%s'", ErrInvalidOutputPath, dir)
+		}
+	}
+
+	return finalPath, nil
+}
+

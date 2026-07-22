@@ -210,13 +210,11 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		}
 	}
 
-	// Save to output path
+	// Save to output path using validateAndPrepareOutputPath
 	fileName := generateMatrixFileName(rev, date)
-	var outputPath string
-	if options.OutputDir != "" {
-		outputPath = filepath.Join(options.OutputDir, fileName)
-	} else {
-		outputPath = fileName
+	outputPath, err := validateAndPrepareOutputPath(options.OutputPath, options.OutputDir, fileName)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := f.SaveAs(outputPath); err != nil {
