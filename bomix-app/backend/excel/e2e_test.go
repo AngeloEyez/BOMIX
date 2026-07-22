@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// TestEndToEnd_ImportExport tests the complete import → query → export flow
+// TestEndToEnd_ImportExport tests the complete import ??query ??export flow
 func TestEndToEnd_ImportExport(t *testing.T) {
 	// Create in-memory database
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -78,7 +78,7 @@ func TestEndToEnd_ImportExport(t *testing.T) {
 	// This is a pre-existing issue that needs to be fixed in reader_ebom.go
 
 	// Test export (BigMatrix format)
-	writer, err := NewWriter()
+	writer, err := NewWriter(nil)
 	if err != nil {
 		t.Fatalf("Failed to create writer: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestEndToEnd_EBOMMerge(t *testing.T) {
 		t.Fatalf("Failed to auto migrate: %v", err)
 	}
 
-	// Test case: Import EBOM → Re-import with changes → Verify merge
+	// Test case: Import EBOM ??Re-import with changes ??Verify merge
 	// This test verifies:
 	// 1. Initial import creates parts and second sources
 	// 2. Re-import updates parts and merges second sources correctly

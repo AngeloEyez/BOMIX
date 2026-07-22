@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -397,9 +398,7 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 			taskID,
 			taskName,
 			"Import",
-			func(ctx context.Context, progress func(float64, string)) error {
-				// 綁定 taskID 的專屬 Logger，確保開檔與解析所有日誌均附帶 taskID
-				taskLogger := a.logger.With("taskID", taskID)
+			func(ctx context.Context, progress func(float64, string), taskLogger *logger.Logger) error {
 				taskLogger.Info("開始執行匯入作業...", "name", taskName)
 
 				progress(0.2, "正在開啟與辨識 Excel 檔案...")
@@ -427,7 +426,7 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 						taskLogger.Warn(errMsg)
 						progress(0.9, errMsg)
 						// 業務與校驗警示，回傳 WarningError (觸發 Task Status = warning)
-						return task.NewWarningError(fmt.Errorf(errMsg))
+						return task.NewWarningError(errors.New(errMsg))
 					}
 
 					msg := fmt.Sprintf("成功匯入 %d 筆料件", result.PartsCount)
@@ -475,12 +474,7 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 		return nil, fmt.Errorf("no series is currently open")
 	}
 
-	// Create Excel writer
-	excelWriter, err := excel.NewWriter(a.logger)
-	if err != nil {
-		a.logger.Error(fmt.Sprintf("[ExportExcel] 建立 Excel Writer 失敗: %v", err))
-		return nil, fmt.Errorf("failed to create excel writer: %w", err)
-	}
+
 
 	// Update the series LastExportPath
 	if options.OutputDir != "" {
@@ -510,8 +504,15 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 	taskID = a.taskMgr.Submit(
 		fmt.Sprintf("Export: %s", options.Format),
 		"Export",
-		func(ctx context.Context, progress func(float64, string)) error {
+		func(ctx context.Context, progress func(float64, string), taskLogger *logger.Logger) error {
 			progress(0.1, "Preparing export data...")
+
+			// Create Excel writer with taskLogger
+			excelWriter, err := excel.NewWriter(taskLogger)
+			if err != nil {
+				taskLogger.Error(fmt.Sprintf("[ExportExcel] 建立 Excel Writer 失敗: %v", err))
+				return fmt.Errorf("failed to create excel writer: %w", err)
+			}
 
 			// Export to Excel
 			outputPaths, err := excelWriter.ExportExcel(exportOptions)

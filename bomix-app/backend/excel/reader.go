@@ -55,15 +55,7 @@ func (r *ReaderImpl) importFile(path string) (types.ImportResult, error) {
 	}
 
 	// Open the file using our unified workbook reader
-	f, logs, err := OpenWorkbook(path)
-	for _, l := range logs {
-		switch l.Level {
-		case "DEBUG":
-			r.logger.Debug(l.Message, l.Args...)
-		case "WARN":
-			r.logger.Warn(l.Message, l.Args...)
-		}
-	}
+	f, err := OpenWorkbook(path, r.logger)
 	if err != nil {
 		return result, err
 	}

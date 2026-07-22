@@ -11,13 +11,17 @@ import (
 // exportMatrix exports data to Matrix format
 // See product-spec section 8.2
 func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
-	w.logInfo(fmt.Sprintf("[exportMatrix] 開始產生 Matrix 匯出檔 (Revisions 數量: %d)", len(options.RevisionIDs)))
-	w.logDebug(fmt.Sprintf("[exportMatrix] 載入範本檔: %s", types.FormatMatrix))
+	if w.logger != nil {
+		w.logger.Info(fmt.Sprintf("[exportMatrix] 開始產生 Matrix 匯出檔 (Revisions 數量: %d)", len(options.RevisionIDs)))
+		w.logger.Debug(fmt.Sprintf("[exportMatrix] 載入範本檔: %s", types.FormatMatrix))
+	}
 
 	// Load template
 	f, err := w.templateManager.LoadTemplate(types.FormatMatrix)
 	if err != nil {
-		w.logError(fmt.Sprintf("[exportMatrix] 載入 Matrix 範本失敗: %v", err))
+		if w.logger != nil {
+			w.logger.Error(fmt.Sprintf("[exportMatrix] 載入 Matrix 範本失敗: %v", err))
+		}
 		return nil, fmt.Errorf("failed to load Matrix template: %w", err)
 	}
 	defer f.Close()

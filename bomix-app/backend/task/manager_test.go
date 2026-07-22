@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"bomix-app/backend/logger"
 	"bomix-app/backend/types"
 )
 
@@ -27,7 +28,7 @@ func TestTaskManager_Submit_Completed(t *testing.T) {
 	tm := NewTaskManager(nil, emitter)
 
 	// Submit a task that completes successfully
-	taskID := tm.Submit("Test Task", "Import", func(ctx context.Context, progressCb func(float64, string)) error {
+	taskID := tm.Submit("Test Task", "Import", func(ctx context.Context, progressCb func(float64, string), taskLogger *logger.Logger) error {
 		// Simulate progress updates
 		progressCb(0.0, "Starting...")
 		time.Sleep(10 * time.Millisecond)
@@ -66,7 +67,7 @@ func TestTaskManager_Submit_Failed(t *testing.T) {
 
 	// Submit a task that fails
 	testErr := errors.New("test error")
-	taskID := tm.Submit("Failing Task", "Import", func(ctx context.Context, progressCb func(float64, string)) error {
+	taskID := tm.Submit("Failing Task", "Import", func(ctx context.Context, progressCb func(float64, string), taskLogger *logger.Logger) error {
 		progressCb(0.3, "About to fail...")
 		return testErr
 	})
@@ -95,7 +96,7 @@ func TestTaskManager_Cancel(t *testing.T) {
 	tm := NewTaskManager(nil, emitter)
 
 	// Submit a long-running task
-	taskID := tm.Submit("Long Task", "Import", func(ctx context.Context, progressCb func(float64, string)) error {
+	taskID := tm.Submit("Long Task", "Import", func(ctx context.Context, progressCb func(float64, string), taskLogger *logger.Logger) error {
 		for i := 0; i < 100; i++ {
 			select {
 			case <-ctx.Done():
@@ -137,15 +138,15 @@ func TestTaskManager_ListTasks(t *testing.T) {
 	tm := NewTaskManager(nil, emitter)
 
 	// Submit multiple tasks
-	taskID1 := tm.Submit("Task 1", "Import", func(ctx context.Context, progressCb func(float64, string)) error {
+	taskID1 := tm.Submit("Task 1", "Import", func(ctx context.Context, progressCb func(float64, string), taskLogger *logger.Logger) error {
 		return nil
 	})
 
-	taskID2 := tm.Submit("Task 2", "Export", func(ctx context.Context, progressCb func(float64, string)) error {
+	taskID2 := tm.Submit("Task 2", "Export", func(ctx context.Context, progressCb func(float64, string), taskLogger *logger.Logger) error {
 		return nil
 	})
 
-	taskID3 := tm.Submit("Task 3", "Analysis", func(ctx context.Context, progressCb func(float64, string)) error {
+	taskID3 := tm.Submit("Task 3", "Analysis", func(ctx context.Context, progressCb func(float64, string), taskLogger *logger.Logger) error {
 		return nil
 	})
 
@@ -182,7 +183,7 @@ func TestTaskManager_ProgressUpdates(t *testing.T) {
 	tm := NewTaskManager(nil, emitter)
 
 	// Submit a task with multiple progress updates
-	taskID := tm.Submit("Progress Task", "Import", func(ctx context.Context, progressCb func(float64, string)) error {
+	taskID := tm.Submit("Progress Task", "Import", func(ctx context.Context, progressCb func(float64, string), taskLogger *logger.Logger) error {
 		// Simulate progress: 0.0 -> 0.25 -> 0.5 -> 0.75 -> 1.0
 		progressCb(0.0, "Starting...")
 		time.Sleep(10 * time.Millisecond)
@@ -244,7 +245,7 @@ func TestTaskStatusTransitions(t *testing.T) {
 	tm := NewTaskManager(nil, emitter)
 
 	// Submit a task that goes through all states
-	taskID := tm.Submit("State Transition Task", "Import", func(ctx context.Context, progressCb func(float64, string)) error {
+	taskID := tm.Submit("State Transition Task", "Import", func(ctx context.Context, progressCb func(float64, string), taskLogger *logger.Logger) error {
 		time.Sleep(10 * time.Millisecond)
 		progressCb(0.5, "In progress...")
 		time.Sleep(10 * time.Millisecond)
@@ -299,7 +300,7 @@ func TestTaskManager_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			taskID := tm.Submit("Concurrent Task", "Import", func(ctx context.Context, progressCb func(float64, string)) error {
+			taskID := tm.Submit("Concurrent Task", "Import", func(ctx context.Context, progressCb func(float64, string), taskLogger *logger.Logger) error {
 				time.Sleep(10 * time.Millisecond)
 				return nil
 			})

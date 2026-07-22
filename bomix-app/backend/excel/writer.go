@@ -77,11 +77,7 @@ type WriterImpl struct {
 }
 
 // NewWriter creates a new Excel writer
-func NewWriter(loggers ...*logger.Logger) (*WriterImpl, error) {
-	var lg *logger.Logger
-	if len(loggers) > 0 {
-		lg = loggers[0]
-	}
+func NewWriter(lg *logger.Logger) (*WriterImpl, error) {
 	tm, err := NewTemplateManager()
 	if err != nil {
 		return nil, err
@@ -92,39 +88,29 @@ func NewWriter(loggers ...*logger.Logger) (*WriterImpl, error) {
 	}, nil
 }
 
-func (w *WriterImpl) logInfo(msg string, attrs ...any) {
-	if w.logger != nil {
-		w.logger.Info(msg, attrs...)
-	}
-}
-
-func (w *WriterImpl) logDebug(msg string, attrs ...any) {
-	if w.logger != nil {
-		w.logger.Debug(msg, attrs...)
-	}
-}
-
-func (w *WriterImpl) logError(msg string, attrs ...any) {
-	if w.logger != nil {
-		w.logger.Error(msg, attrs...)
-	}
-}
-
 // ExportExcel exports data to Excel files
 func (w *WriterImpl) ExportExcel(options ExportOptions) ([]string, error) {
 	fmtStr := strings.TrimSpace(string(options.Format))
-	w.logInfo(fmt.Sprintf("[Writer] 準備執行 Excel 匯出 (格式: %s)", fmtStr))
-	w.logDebug(fmt.Sprintf("[Writer] 匯出選項: RevisionsCount=%d, OutputPath=%s", len(options.RevisionIDs), options.OutputPath))
+	if w.logger != nil {
+		w.logger.Info(fmt.Sprintf("[Writer] 準備執行 Excel 匯出 (格式: %s)", fmtStr))
+		w.logger.Debug(fmt.Sprintf("[Writer] 匯出選項: RevisionsCount=%d, OutputPath=%s", len(options.RevisionIDs), options.OutputPath))
+	}
 
 	switch {
 	case strings.EqualFold(fmtStr, string(types.FormatBigMatrix)):
-		w.logInfo("[Writer] 比對成功 -> 執行 BigMatrix 匯出")
+		if w.logger != nil {
+			w.logger.Info("[Writer] 比對成功 -> 執行 BigMatrix 匯出")
+		}
 		return w.exportBigMatrix(options)
 	case strings.EqualFold(fmtStr, string(types.FormatMatrix)):
-		w.logInfo("[Writer] 比對成功 -> 執行 Matrix 匯出")
+		if w.logger != nil {
+			w.logger.Info("[Writer] 比對成功 -> 執行 Matrix 匯出")
+		}
 		return w.exportMatrix(options)
 	default:
-		w.logError(fmt.Sprintf("[Writer] 不支援的匯出格式: %s", options.Format))
+		if w.logger != nil {
+			w.logger.Error(fmt.Sprintf("[Writer] 不支援的匯出格式: %s", options.Format))
+		}
 		return nil, fmt.Errorf("%w: unsupported format '%s'", ErrInvalidFormat, options.Format)
 	}
 }

@@ -326,7 +326,7 @@ func TestExportBigMatrix_Integration(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Create writer
-	writer, err := NewWriter()
+	writer, err := NewWriter(nil)
 	if err != nil {
 		t.Fatalf("NewWriter failed: %v", err)
 	}

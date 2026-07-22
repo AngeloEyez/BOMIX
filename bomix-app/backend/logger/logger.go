@@ -90,32 +90,46 @@ func extractAttrs(attrs ...any) map[string]string {
 	return m
 }
 
+// formatMsg formats the message with a tag for terminal output
+func (l *Logger) formatMsg(msg string, attrs map[string]string) string {
+	if taskID, ok := attrs["taskID"]; ok && len(taskID) >= 8 {
+		return fmt.Sprintf("[TASK:%s] %s", taskID[:8], msg)
+	} else if ok {
+		return fmt.Sprintf("[TASK:%s] %s", taskID, msg)
+	}
+	return fmt.Sprintf("[MAIN] %s", msg)
+}
+
 // Debug logs a debug message
 func (l *Logger) Debug(msg string, attrs ...any) {
-	l.Logger.Debug(msg, attrs...)
 	combined := append(append([]any{}, l.defaultAttrs...), attrs...)
-	l.addLogEntry("DEBUG", msg, extractAttrs(combined...))
+	m := extractAttrs(combined...)
+	l.Logger.Debug(l.formatMsg(msg, m), attrs...)
+	l.addLogEntry("DEBUG", msg, m)
 }
 
 // Info logs an info message
 func (l *Logger) Info(msg string, attrs ...any) {
-	l.Logger.Info(msg, attrs...)
 	combined := append(append([]any{}, l.defaultAttrs...), attrs...)
-	l.addLogEntry("INFO", msg, extractAttrs(combined...))
+	m := extractAttrs(combined...)
+	l.Logger.Info(l.formatMsg(msg, m), attrs...)
+	l.addLogEntry("INFO", msg, m)
 }
 
 // Warn logs a warning message
 func (l *Logger) Warn(msg string, attrs ...any) {
-	l.Logger.Warn(msg, attrs...)
 	combined := append(append([]any{}, l.defaultAttrs...), attrs...)
-	l.addLogEntry("WARN", msg, extractAttrs(combined...))
+	m := extractAttrs(combined...)
+	l.Logger.Warn(l.formatMsg(msg, m), attrs...)
+	l.addLogEntry("WARN", msg, m)
 }
 
 // Error logs an error message
 func (l *Logger) Error(msg string, attrs ...any) {
-	l.Logger.Error(msg, attrs...)
 	combined := append(append([]any{}, l.defaultAttrs...), attrs...)
-	l.addLogEntry("ERROR", msg, extractAttrs(combined...))
+	m := extractAttrs(combined...)
+	l.Logger.Error(l.formatMsg(msg, m), attrs...)
+	l.addLogEntry("ERROR", msg, m)
 }
 
 // GetLogs returns log entries filtered by level

@@ -77,8 +77,8 @@ func (t *Task) GetProgress() float64 {
 }
 
 // TaskFunc is the signature for task functions
-// It receives a context for cancellation and a progress callback
-type TaskFunc func(ctx context.Context, progressCb func(progress float64, message string)) error
+// It receives a context for cancellation, a progress callback, and a task logger
+type TaskFunc func(ctx context.Context, progressCb func(progress float64, message string), taskLogger *logger.Logger) error
 
 // TaskManager manages background tasks
 // See product-spec section 5.1.3
@@ -184,8 +184,13 @@ func (tm *TaskManager) SubmitWithID(taskID, name, taskType string, fn TaskFunc) 
 			}
 		}
 
+		var taskLogger *logger.Logger
+		if tm.logger != nil {
+			taskLogger = tm.logger.With("taskID", taskID)
+		}
+
 		// Execute the task
-		err := fn(ctx, progressCb)
+		err := fn(ctx, progressCb, taskLogger)
 
 		task.mu.Lock()
 		if err != nil {

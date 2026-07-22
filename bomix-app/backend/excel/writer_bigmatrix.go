@@ -11,13 +11,17 @@ import (
 // exportBigMatrix exports data to BigMatrix format
 // See product-spec section 8.1
 func (w *WriterImpl) exportBigMatrix(options ExportOptions) ([]string, error) {
-	w.logInfo(fmt.Sprintf("[exportBigMatrix] 開始產生 BigMatrix 匯出檔 (Revisions 數量: %d)", len(options.RevisionIDs)))
-	w.logDebug(fmt.Sprintf("[exportBigMatrix] 載入範本檔: %s", types.FormatBigMatrix))
+	if w.logger != nil {
+		w.logger.Info(fmt.Sprintf("[exportBigMatrix] 開始產生 BigMatrix 匯出檔 (Revisions 數量: %d)", len(options.RevisionIDs)))
+		w.logger.Debug(fmt.Sprintf("[exportBigMatrix] 載入範本檔: %s", types.FormatBigMatrix))
+	}
 
 	// Load template
 	f, err := w.templateManager.LoadTemplate(types.FormatBigMatrix)
 	if err != nil {
-		w.logError(fmt.Sprintf("[exportBigMatrix] 載入 BigMatrix 範本失敗: %v", err))
+		if w.logger != nil {
+			w.logger.Error(fmt.Sprintf("[exportBigMatrix] 載入 BigMatrix 範本失敗: %v", err))
+		}
 		return nil, fmt.Errorf("failed to load BigMatrix template: %w", err)
 	}
 	defer f.Close()
@@ -29,11 +33,15 @@ func (w *WriterImpl) exportBigMatrix(options ExportOptions) ([]string, error) {
 		"{{.Date}}":        generateTimestamp(),
 	}
 
-	w.logDebug(fmt.Sprintf("[exportBigMatrix] 替換標籤內容: %+v", tags))
+	if w.logger != nil {
+		w.logger.Debug(fmt.Sprintf("[exportBigMatrix] 替換標籤內容: %+v", tags))
+	}
 
 	// Apply tag replacement
 	if err := applyTagReplacement(f, tags); err != nil {
-		w.logError(fmt.Sprintf("[exportBigMatrix] 替換標籤失敗: %v", err))
+		if w.logger != nil {
+			w.logger.Error(fmt.Sprintf("[exportBigMatrix] 替換標籤失敗: %v", err))
+		}
 		return nil, fmt.Errorf("failed to apply tag replacement: %w", err)
 	}
 
@@ -95,14 +103,20 @@ func (w *WriterImpl) exportBigMatrix(options ExportOptions) ([]string, error) {
 		outputPath = fmt.Sprintf("output_bigmatrix_%s.xlsx", generateTimestamp())
 	}
 
-	w.logDebug(fmt.Sprintf("[exportBigMatrix] 儲存 Excel 檔案至: %s", outputPath))
+	if w.logger != nil {
+		w.logger.Debug(fmt.Sprintf("[exportBigMatrix] 儲存 Excel 檔案至: %s", outputPath))
+	}
 
 	if err := f.SaveAs(outputPath); err != nil {
-		w.logError(fmt.Sprintf("[exportBigMatrix] 儲存檔案失敗: %v", err))
+		if w.logger != nil {
+			w.logger.Error(fmt.Sprintf("[exportBigMatrix] 儲存檔案失敗: %v", err))
+		}
 		return nil, fmt.Errorf("failed to save BigMatrix: %w", err)
 	}
 
-	w.logInfo(fmt.Sprintf("[exportBigMatrix] 成功產生 BigMatrix 檔案: %s", outputPath))
+	if w.logger != nil {
+		w.logger.Info(fmt.Sprintf("[exportBigMatrix] 成功產生 BigMatrix 檔案: %s", outputPath))
+	}
 	return []string{outputPath}, nil
 }
 
@@ -172,12 +186,16 @@ func writeModelSelections(f *excelize.File, sheet string, row int, modelStartCol
 // exportBigMatrixDetailed is an extended version with full data population
 // See product-spec sections 8.1.2 - 8.1.7
 func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []RevisionData, parts []PartData) ([]string, error) {
-	w.logInfo(fmt.Sprintf("[exportBigMatrixDetailed] 開始詳細產生 BigMatrix 匯出檔 (Revisions: %d, Parts: %d)", len(revisions), len(parts)))
+	if w.logger != nil {
+		w.logger.Info(fmt.Sprintf("[exportBigMatrixDetailed] 開始詳細產生 BigMatrix 匯出檔 (Revisions: %d, Parts: %d)", len(revisions), len(parts)))
+	}
 
 	// Load template
 	f, err := w.templateManager.LoadTemplate(types.FormatBigMatrix)
 	if err != nil {
-		w.logError(fmt.Sprintf("[exportBigMatrixDetailed] 載入 BigMatrix 範本失敗: %v", err))
+		if w.logger != nil {
+			w.logger.Error(fmt.Sprintf("[exportBigMatrixDetailed] 載入 BigMatrix 範本失敗: %v", err))
+		}
 		return nil, fmt.Errorf("failed to load BigMatrix template: %w", err)
 	}
 	defer f.Close()
@@ -190,10 +208,14 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		"{{.Description}}": options.Description,
 		"{{.Date}}":        date,
 	}
-	w.logDebug(fmt.Sprintf("[exportBigMatrixDetailed] 替換標籤內容: %+v", tags))
+	if w.logger != nil {
+		w.logger.Debug(fmt.Sprintf("[exportBigMatrixDetailed] 替換標籤內容: %+v", tags))
+	}
 
 	if err := applyTagReplacement(f, tags); err != nil {
-		w.logError(fmt.Sprintf("[exportBigMatrixDetailed] 替換標籤失敗: %v", err))
+		if w.logger != nil {
+			w.logger.Error(fmt.Sprintf("[exportBigMatrixDetailed] 替換標籤失敗: %v", err))
+		}
 		return nil, err
 	}
 
