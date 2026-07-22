@@ -337,6 +337,8 @@ func TestExportMatrix_Integration(t *testing.T) {
 
 func TestApplyRowStyle(t *testing.T) {
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	// Create a style
@@ -374,6 +376,8 @@ func TestApplyRowStyle(t *testing.T) {
 
 func TestWriteModelSelections(t *testing.T) {
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	// Test data

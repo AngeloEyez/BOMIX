@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 	"bomix-app/backend/db"
 	"bomix-app/backend/logger"
@@ -22,7 +21,7 @@ type BigMatrixReader struct {
 
 // Import imports a BigMatrix format file
 // See product-spec section 7.2
-func (r *BigMatrixReader) Import(f *excelize.File) error {
+func (r *BigMatrixReader) Import(f Workbook) error {
 	sheets := f.GetSheetList()
 
 	// Find BigMatrix sheet
@@ -59,9 +58,9 @@ func (r *BigMatrixReader) Import(f *excelize.File) error {
 	return nil
 }
 
-// parseHeader parses the BigMatrix header
-// See product-spec section 7.2.2
-func (r *BigMatrixReader) parseHeader(f *excelize.File, sheetName string) (description string, bomCount int, date string) {
+// Returns description, number of BOMs, and date
+// See product-spec section 7.2.1
+func (r *BigMatrixReader) parseHeader(f Workbook, sheetName string) (description string, bomCount int, date string) {
 	// B3: "BOMs: {number}"
 	val, _ := f.GetCellValue(sheetName, "B3")
 	if idx := strings.Index(val, "BOMs: "); idx != -1 {
@@ -101,9 +100,9 @@ type ModelConfig struct {
 	Column    int // Column index within the BOM
 }
 
-// parseBOMConfigs parses the horizontal BOM configuration
+// parseBOMConfigs parses the horizontal BOM configurations
 // See product-spec section 7.2.2.1
-func (r *BigMatrixReader) parseBOMConfigs(f *excelize.File, sheetName string) ([]BOMConfig, error) {
+func (r *BigMatrixReader) parseBOMConfigs(f Workbook, sheetName string) ([]BOMConfig, error) {
 	var configs []BOMConfig
 
 	// Start from column H (index 7)
@@ -111,13 +110,13 @@ func (r *BigMatrixReader) parseBOMConfigs(f *excelize.File, sheetName string) ([
 
 	for {
 		// Get project code from row 2
-		projectCode, _ := f.GetCellValue(sheetName, colToCell(startCol+1, 2))
+		projectCode, _ := f.GetCellValue(sheetName, colToCell(startCol, 2))
 		if projectCode == "" {
 			break // No more BOMs
 		}
 
 		// Get revision ID from row 3
-		revisionStr, _ := f.GetCellValue(sheetName, colToCell(startCol+1, 3))
+		revisionStr, _ := f.GetCellValue(sheetName, colToCell(startCol, 3))
 
 		// Parse phase and version from revision string (e.g., "PV-0.3")
 		var phase, version string
@@ -133,14 +132,14 @@ func (r *BigMatrixReader) parseBOMConfigs(f *excelize.File, sheetName string) ([
 		var models []ModelConfig
 		colIdx := startCol
 		for {
-			modelName, _ := f.GetCellValue(sheetName, colToCell(colIdx+1, 4))
+			modelName, _ := f.GetCellValue(sheetName, colToCell(colIdx, 4))
 			if strings.ToUpper(modelName) == "A" && len(models) > 0 {
 				// Found start of next BOM
 				break
 			}
 
 			// Get qty from row 5
-			qtyStr, _ := f.GetCellValue(sheetName, colToCell(colIdx+1, 5))
+			qtyStr, _ := f.GetCellValue(sheetName, colToCell(colIdx, 5))
 			var qty int
 			fmt.Sscanf(qtyStr, "%d", &qty)
 
@@ -246,9 +245,9 @@ func (r *BigMatrixReader) getOrCreateBOMRevision(config BOMConfig) (int64, error
 	return revision.ID, nil
 }
 
-// parsePartsAndSelections parses parts and Matrix selections from BigMatrix
-// See product-spec section 7.2.3
-func (r *BigMatrixReader) parsePartsAndSelections(f *excelize.File, sheetName string, configs []BOMConfig) error {
+// parsePartsAndSelections parses parts and their selections across multiple BOMs
+// See product-spec sections 7.2.2.2 and 7.2.2.3
+func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, configs []BOMConfig) error {
 	// Get all rows from the sheet
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
@@ -288,7 +287,7 @@ func (r *BigMatrixReader) parsePartsAndSelections(f *excelize.File, sheetName st
 				colIdx := config.ModelStart + modelIdx
 
 				// Check if this cell is checked ("V" or "v")
-				cellValue, _ := f.GetCellValue(sheetName, colToCell(colIdx+1, i+1))
+				cellValue, _ := f.GetCellValue(sheetName, colToCell(colIdx, i+1))
 
 				if strings.EqualFold(strings.TrimSpace(cellValue), "V") {
 					// This model selected this part

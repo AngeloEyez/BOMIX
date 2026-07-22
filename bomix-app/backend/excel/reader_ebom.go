@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 	"bomix-app/backend/db"
 	"bomix-app/backend/logger"
@@ -22,7 +21,7 @@ type EBOMReader struct {
 }
 
 // Import imports an EBOM format file
-func (r *EBOMReader) Import(f *excelize.File) error {
+func (r *EBOMReader) Import(f Workbook) error {
 	sheets := f.GetSheetList()
 
 	// Phase 1: Read all parts from SMD, PTH, BOTTOM sheets
@@ -147,7 +146,7 @@ func (r *EBOMReader) findSheetCaseInsensitive(sheets []string, name string) stri
 // parseHeader parses the header row from SMD sheet
 // See product-spec section 7.1.1
 // Returns revision data and project code separately
-func (r *EBOMReader) parseHeader(f *excelize.File, sheetName string) (phase, version, description, schematicVersion, pcbVersion, pcaPn, date, projectCode string, err error) {
+func (r *EBOMReader) parseHeader(f Workbook, sheetName string) (phase, version, description, schematicVersion, pcbVersion, pcaPn, date, projectCode string, err error) {
 	// B3: Project Code - "Product Code: {value}"
 	val, _ := f.GetCellValue(sheetName, "B3")
 	if idx := strings.Index(val, "Product Code: "); idx != -1 {
@@ -201,7 +200,7 @@ func (r *EBOMReader) parseHeader(f *excelize.File, sheetName string) (phase, ver
 
 // parseSheet parses data rows from a sheet
 // See product-spec sections 7.1.2, 7.1.3, 7.1.4
-func (r *EBOMReader) parseSheet(f *excelize.File, sheetName, sheetType string) ([]db.Part, []db.SecondSource) {
+func (r *EBOMReader) parseSheet(f Workbook, sheetName, sheetType string) ([]db.Part, []db.SecondSource) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return nil, nil
@@ -339,7 +338,7 @@ func (r *EBOMReader) parseSecondSourceRow(row []string) db.SecondSource {
 
 // parseStatusSheet parses NI/PROTO/MP sheets
 // See product-spec section 7.1.5
-func (r *EBOMReader) parseStatusSheet(f *excelize.File, sheetName, bomStatus, mode string) []db.Part {
+func (r *EBOMReader) parseStatusSheet(f Workbook, sheetName, bomStatus, mode string) []db.Part {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return nil
@@ -397,7 +396,7 @@ func (r *EBOMReader) parseStatusSheet(f *excelize.File, sheetName, bomStatus, mo
 
 // determineMode determines NPI or MP mode based on PROTO overlap
 // See product-spec section 7.1.6
-func (r *EBOMReader) determineMode(f *excelize.File, sheets []string) string {
+func (r *EBOMReader) determineMode(f Workbook, sheets []string) string {
 	protoSheet := r.findSheetCaseInsensitive(sheets, "PROTO")
 	if protoSheet == "" {
 		return "MP" // No PROTO sheet means MP mode

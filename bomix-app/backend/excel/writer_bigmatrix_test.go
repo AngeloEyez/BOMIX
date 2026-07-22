@@ -13,6 +13,8 @@ import (
 func TestApplyTagReplacement(t *testing.T) {
 	// Create a temporary test file
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	// Set up test data

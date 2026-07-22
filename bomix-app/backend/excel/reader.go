@@ -7,7 +7,6 @@ import (
 	"bomix-app/backend/logger"
 	"bomix-app/backend/types"
 
-	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 )
 
@@ -55,8 +54,16 @@ func (r *ReaderImpl) importFile(path string) (types.ImportResult, error) {
 		FileName: path,
 	}
 
-	// Open the file
-	f, err := excelize.OpenFile(path)
+	// Open the file using our unified workbook reader
+	f, logs, err := OpenWorkbook(path)
+	for _, l := range logs {
+		switch l.Level {
+		case "DEBUG":
+			r.logger.Debug(l.Message, l.Args...)
+		case "WARN":
+			r.logger.Warn(l.Message, l.Args...)
+		}
+	}
 	if err != nil {
 		return result, err
 	}
@@ -88,7 +95,7 @@ func (r *ReaderImpl) importFile(path string) (types.ImportResult, error) {
 }
 
 // importEBOM imports an EBOM format file
-func (r *ReaderImpl) importEBOM(f *excelize.File, path string) (types.ImportResult, error) {
+func (r *ReaderImpl) importEBOM(f Workbook, path string) (types.ImportResult, error) {
 	result := types.ImportResult{
 		FileName: path,
 		Format:   types.FormatEBOM,
@@ -106,7 +113,7 @@ func (r *ReaderImpl) importEBOM(f *excelize.File, path string) (types.ImportResu
 }
 
 // importBigMatrix imports a BigMatrix format file
-func (r *ReaderImpl) importBigMatrix(f *excelize.File, path string) (types.ImportResult, error) {
+func (r *ReaderImpl) importBigMatrix(f Workbook, path string) (types.ImportResult, error) {
 	result := types.ImportResult{
 		FileName: path,
 		Format:   types.FormatBigMatrix,
@@ -124,7 +131,7 @@ func (r *ReaderImpl) importBigMatrix(f *excelize.File, path string) (types.Impor
 }
 
 // importMatrix imports a Matrix format file (placeholder)
-func (r *ReaderImpl) importMatrix(f *excelize.File, path string) (types.ImportResult, error) {
+func (r *ReaderImpl) importMatrix(f Workbook, path string) (types.ImportResult, error) {
 	return types.ImportResult{
 		FileName: path,
 		Format:   types.FormatMatrix,

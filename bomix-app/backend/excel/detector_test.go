@@ -12,6 +12,8 @@ import (
 func TestDetect_EBOM(t *testing.T) {
 	// Create a temporary EBOM format file
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	// Create required sheets
@@ -26,7 +28,7 @@ func TestDetect_EBOM(t *testing.T) {
 
 	// Detect format
 	detector := NewDetector()
-	format, err := detector.Detect(f)
+	format, err := detector.Detect(wb)
 
 	if err != nil {
 		t.Fatalf("Detect failed with error: %v", err)
@@ -41,6 +43,8 @@ func TestDetect_EBOM(t *testing.T) {
 func TestDetect_BigMatrix(t *testing.T) {
 	// Create a temporary BigMatrix format file
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	// Create BigMatrix sheet
@@ -48,7 +52,7 @@ func TestDetect_BigMatrix(t *testing.T) {
 
 	// Detect format
 	detector := NewDetector()
-	format, err := detector.Detect(f)
+	format, err := detector.Detect(wb)
 
 	if err != nil {
 		t.Fatalf("Detect failed with error: %v", err)
@@ -63,6 +67,8 @@ func TestDetect_BigMatrix(t *testing.T) {
 func TestDetect_Matrix(t *testing.T) {
 	// Create a temporary Matrix format file
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	// Create SMD sheet
@@ -74,7 +80,7 @@ func TestDetect_Matrix(t *testing.T) {
 
 	// Detect format
 	detector := NewDetector()
-	format, err := detector.Detect(f)
+	format, err := detector.Detect(wb)
 
 	if err != nil {
 		t.Fatalf("Detect failed with error: %v", err)
@@ -89,6 +95,8 @@ func TestDetect_Matrix(t *testing.T) {
 func TestDetect_Unknown(t *testing.T) {
 	// Create a temporary file with unknown format
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	// Create a generic sheet without specific markers
@@ -96,7 +104,7 @@ func TestDetect_Unknown(t *testing.T) {
 
 	// Detect format
 	detector := NewDetector()
-	format, err := detector.Detect(f)
+	format, err := detector.Detect(wb)
 
 	if err != nil {
 		t.Fatalf("Detect failed with error: %v", err)
@@ -111,11 +119,13 @@ func TestDetect_Unknown(t *testing.T) {
 func TestDetect_EmptySheet(t *testing.T) {
 	// Create a temporary file with empty sheet
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	// Detect format - should return Unknown for a generic empty sheet
 	detector := NewDetector()
-	format, err := detector.Detect(f)
+	format, err := detector.Detect(wb)
 
 	// Empty generic sheet should be detected as Unknown, not error
 	if err != nil {
@@ -131,6 +141,8 @@ func TestDetect_EmptySheet(t *testing.T) {
 func TestDetect_EBOMWithPartialSheets(t *testing.T) {
 	// Create a file with only SMD, PTH, BOTTOM (no NI, PROTO, MP)
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	sheets := []string{"SMD", "PTH", "BOTTOM"}
@@ -144,7 +156,7 @@ func TestDetect_EBOMWithPartialSheets(t *testing.T) {
 
 	// Detect format
 	detector := NewDetector()
-	format, err := detector.Detect(f)
+	format, err := detector.Detect(wb)
 
 	if err != nil {
 		t.Fatalf("Detect failed with error: %v", err)
@@ -158,6 +170,8 @@ func TestDetect_EBOMWithPartialSheets(t *testing.T) {
 // TestDetect_CaseInsensitiveSheetNames tests case-insensitive sheet name matching
 func TestDetect_CaseInsensitiveSheetNames(t *testing.T) {
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	// Create sheets with different case
@@ -171,7 +185,7 @@ func TestDetect_CaseInsensitiveSheetNames(t *testing.T) {
 	f.SetCellValue("smd", "J7", "CCL")
 
 	detector := NewDetector()
-	format, err := detector.Detect(f)
+	format, err := detector.Detect(wb)
 
 	if err != nil {
 		t.Fatalf("Detect failed with error: %v", err)
@@ -192,6 +206,8 @@ func TestDetect_FileRoundTrip(t *testing.T) {
 
 	// Create EBOM format file
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	f.NewSheet("SMD")
 	f.NewSheet("PTH")
 	f.NewSheet("BOTTOM")
@@ -204,13 +220,14 @@ func TestDetect_FileRoundTrip(t *testing.T) {
 
 	// Reopen and detect
 	f2, err := excelize.OpenFile(tmpFile.Name())
+	wb2 := &ExcelizeWorkbook{f: f2}
 	if err != nil {
 		t.Fatalf("Failed to open file: %v", err)
 	}
 	defer f2.Close()
 
 	detector := NewDetector()
-	format, err := detector.Detect(f2)
+	format, err := detector.Detect(wb2)
 
 	if err != nil {
 		t.Fatalf("Detect failed with error: %v", err)

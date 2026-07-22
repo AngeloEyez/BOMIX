@@ -4,7 +4,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/xuri/excelize/v2"
 	"bomix-app/backend/types"
 )
 
@@ -20,7 +19,7 @@ func NewDetector() *Detector {
 // Detect detects the BOM format from an Excel file
 // Returns FormatEBOM, FormatBigMatrix, FormatMatrix, or FormatUnknown
 // See product-spec section 6.3.1 格式辨識與偵測規則對照表
-func (d *Detector) Detect(f *excelize.File) (types.BOMFormat, error) {
+func (d *Detector) Detect(f Workbook) (types.BOMFormat, error) {
 	sheets := f.GetSheetList()
 
 	if len(sheets) == 0 {
@@ -60,7 +59,7 @@ func (d *Detector) hasSheet(sheets []string, name string) bool {
 // Conditions:
 // 1. Contains SMD, PTH, BOTTOM, NI, PROTO, MP sheets
 // 2. SMD/PTH/BOTTOM header H5="Qty" and J7="CCL"
-func (d *Detector) isEBOMFormat(f *excelize.File, sheets []string) bool {
+func (d *Detector) isEBOMFormat(f Workbook, sheets []string) bool {
 	// Check for required sheets
 	requiredSheets := []string{"SMD", "PTH", "BOTTOM"}
 	foundSheets := 0
@@ -108,7 +107,7 @@ func (d *Detector) isEBOMFormat(f *excelize.File, sheets []string) bool {
 // Conditions:
 // 1. Has SMD sheet
 // 2. SMD header H5="Location" and J7="Total Set"
-func (d *Detector) isMatrixFormat(f *excelize.File, sheets []string) bool {
+func (d *Detector) isMatrixFormat(f Workbook, sheets []string) bool {
 	// Check for SMD sheet
 	hasSMD := false
 	smdSheet := ""

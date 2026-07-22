@@ -46,7 +46,7 @@ func TestEndToEnd_ImportExport(t *testing.T) {
 	f.Close()
 
 	// Import the test file
-	reader := NewReader(database)
+	reader := NewReader(database, nil)
 	results, err := reader.ImportExcel([]string{testXlsxPath})
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
@@ -110,6 +110,8 @@ func TestEndToEnd_ImportExport(t *testing.T) {
 // createTestEBOMFile creates a minimal test EBOM xlsx file
 func createTestEBOMFile(path string) error {
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	// Create required sheets

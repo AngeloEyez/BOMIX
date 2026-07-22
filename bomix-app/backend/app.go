@@ -18,7 +18,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 )
 
@@ -394,13 +393,23 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 				// Update progress
 				a.logger.Info("正在偵測檔案格式...", "taskID", taskID)
 
-				// Open the file
-				f, err := excelize.OpenFile(filePath)
+				// Open the file using the new Workbook interface to support both .xlsx and .xls
+				f, logs, err := excel.OpenWorkbook(filePath)
+				for _, l := range logs {
+					// Use taskID in args if possible, but the original log just had file, so we just append taskID
+					args := append(l.Args, "taskID", taskID)
+					switch l.Level {
+					case "DEBUG":
+						a.logger.Debug(l.Message, args...)
+					case "WARN":
+						a.logger.Warn(l.Message, args...)
+					}
+				}
 				if err != nil {
 					a.logger.Error("開啟檔案失敗", "taskID", taskID, "error", err.Error())
 					return fmt.Errorf("failed to open file: %w", err)
 				}
-				defer f.Close()
+				f.Close() // Close it since we just opened it to check validity
 
 				progress(0.3, "正在匯入資料...")
 				a.logger.Info("讀取並解析 Excel 資料...", "taskID", taskID)

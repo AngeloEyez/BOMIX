@@ -13,6 +13,8 @@ import (
 // TestParseHeader_BigMatrix tests BigMatrix header parsing
 func TestParseHeader_BigMatrix(t *testing.T) {
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	f.NewSheet("BigMatrix")
@@ -23,7 +25,7 @@ func TestParseHeader_BigMatrix(t *testing.T) {
 	f.SetCellValue("BigMatrix", "E4", "Date: 2026-01-15")
 
 	reader := &BigMatrixReader{}
-	description, bomCount, date := reader.parseHeader(f, "BigMatrix")
+	description, bomCount, date := reader.parseHeader(wb, "BigMatrix")
 
 	if bomCount != 4 {
 		t.Errorf("Expected BOM count 4, got %d", bomCount)
@@ -40,6 +42,8 @@ func TestParseHeader_BigMatrix(t *testing.T) {
 // See product-spec section 7.2.2.1
 func TestParseBOMConfigs(t *testing.T) {
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	f.NewSheet("BigMatrix")
@@ -67,7 +71,7 @@ func TestParseBOMConfigs(t *testing.T) {
 	f.SetCellValue("BigMatrix", "L5", "1")
 
 	reader := &BigMatrixReader{}
-	configs, err := reader.parseBOMConfigs(f, "BigMatrix")
+	configs, err := reader.parseBOMConfigs(wb, "BigMatrix")
 
 	if err != nil {
 		t.Fatalf("parseBOMConfigs failed: %v", err)
@@ -244,6 +248,8 @@ func TestImport_BigMatrix_Integration(t *testing.T) {
 
 	// Create test Excel file
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	f.NewSheet("BigMatrix")
@@ -278,7 +284,7 @@ func TestImport_BigMatrix_Integration(t *testing.T) {
 		result: &types.ImportResult{FileName: "test.xlsx"},
 	}
 
-	err = reader.Import(f)
+	err = reader.Import(wb)
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -374,6 +380,8 @@ func TestImport_BigMatrix_ClearsOldSelections(t *testing.T) {
 
 	// Create test Excel file with new selections
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 	f.NewSheet("BigMatrix")
 
@@ -396,7 +404,7 @@ func TestImport_BigMatrix_ClearsOldSelections(t *testing.T) {
 		result: &types.ImportResult{FileName: "test.xlsx"},
 	}
 
-	err = reader.Import(f)
+	err = reader.Import(wb)
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}

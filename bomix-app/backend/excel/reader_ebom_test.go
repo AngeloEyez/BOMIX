@@ -12,6 +12,8 @@ import (
 // TestParseHeader tests header parsing from EBOM format
 func TestParseHeader(t *testing.T) {
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	f.NewSheet("SMD")
@@ -27,7 +29,7 @@ func TestParseHeader(t *testing.T) {
 	f.SetCellValue("SMD", "H4", "Date: 2026-01-15")
 
 	reader := &EBOMReader{}
-	phase, version, description, schematicVersion, pcbVersion, pcaPn, date, projectCode, err := reader.parseHeader(f, "SMD")
+	phase, version, description, schematicVersion, pcbVersion, pcaPn, date, projectCode, err := reader.parseHeader(wb, "SMD")
 
 	if err != nil {
 		t.Fatalf("parseHeader failed: %v", err)
@@ -62,6 +64,8 @@ func TestParseHeader(t *testing.T) {
 // TestMainVsSecondSource tests Main Source vs 2nd Source determination
 func TestMainVsSecondSource(t *testing.T) {
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	f.NewSheet("SMD")
@@ -89,7 +93,7 @@ func TestMainVsSecondSource(t *testing.T) {
 	f.SetCellValue("SMD", "J7", "N")
 
 	reader := &EBOMReader{}
-	parts, secondSources := reader.parseSheet(f, "SMD", "SMD")
+	parts, secondSources := reader.parseSheet(wb, "SMD", "SMD")
 
 	if len(parts) != 1 {
 		t.Errorf("Expected 1 Main Source part, got %d", len(parts))
@@ -109,6 +113,8 @@ func TestMainVsSecondSource(t *testing.T) {
 // TestDetermineMode_NPI tests NPI mode detection
 func TestDetermineMode_NPI(t *testing.T) {
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	// Create required sheets
@@ -133,7 +139,7 @@ func TestDetermineMode_NPI(t *testing.T) {
 	f.SetCellValue("PROTO", "I6", "C1,C3")
 
 	reader := &EBOMReader{}
-	mode := reader.determineMode(f, []string{"SMD", "PTH", "BOTTOM", "PROTO"})
+	mode := reader.determineMode(wb, []string{"SMD", "PTH", "BOTTOM", "PROTO"})
 
 	if mode != "NPI" {
 		t.Errorf("Expected mode 'NPI' (due to location overlap), got '%s'", mode)
@@ -143,6 +149,8 @@ func TestDetermineMode_NPI(t *testing.T) {
 // TestDetermineMode_MP tests MP mode detection
 func TestDetermineMode_MP(t *testing.T) {
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	// Create required sheets
@@ -167,7 +175,7 @@ func TestDetermineMode_MP(t *testing.T) {
 	f.SetCellValue("PROTO", "I6", "C10,C11")
 
 	reader := &EBOMReader{}
-	mode := reader.determineMode(f, []string{"SMD", "PTH", "BOTTOM", "PROTO"})
+	mode := reader.determineMode(wb, []string{"SMD", "PTH", "BOTTOM", "PROTO"})
 
 	if mode != "MP" {
 		t.Errorf("Expected mode 'MP' (no location overlap), got '%s'", mode)
@@ -177,6 +185,8 @@ func TestDetermineMode_MP(t *testing.T) {
 // TestDetermineMode_NoProto tests MP mode when no PROTO sheet exists
 func TestDetermineMode_NoProto(t *testing.T) {
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	// Create only SMD sheet
@@ -185,7 +195,7 @@ func TestDetermineMode_NoProto(t *testing.T) {
 	f.SetCellValue("SMD", "J7", "CCL")
 
 	reader := &EBOMReader{}
-	mode := reader.determineMode(f, []string{"SMD"})
+	mode := reader.determineMode(wb, []string{"SMD"})
 
 	if mode != "MP" {
 		t.Errorf("Expected mode 'MP' (no PROTO sheet), got '%s'", mode)
@@ -648,6 +658,8 @@ func TestParsePartRow(t *testing.T) {
 // TestParseStatusSheet tests parsing of NI/PROTO/MP sheets
 func TestParseStatusSheet(t *testing.T) {
 	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	_ = wb
 	defer f.Close()
 
 	f.NewSheet("NI")
@@ -674,7 +686,7 @@ func TestParseStatusSheet(t *testing.T) {
 	f.SetCellValue("NI", "J7", "N")
 
 	reader := &EBOMReader{}
-	parts := reader.parseStatusSheet(f, "NI", "X", "")
+	parts := reader.parseStatusSheet(wb, "NI", "X", "")
 
 	if len(parts) != 2 {
 		t.Errorf("Expected 2 parts, got %d", len(parts))
