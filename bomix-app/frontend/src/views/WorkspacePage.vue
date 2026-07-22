@@ -232,7 +232,7 @@
                     v-model="card.modelCount"
                     :showButtons="true"
                     :min="1"
-                    :disabled="exportFormat === 'matrix'"
+                    :disabled="exportFormat.toLowerCase() === 'matrix'"
                     class="card-model-input"
                   />
                 </div>
@@ -248,7 +248,7 @@
         </div>
 
         <!-- BigMatrix specific options -->
-        <div v-if="exportFormat === 'bigmatrix'" class="export-options">
+        <div v-if="exportFormat.toLowerCase() === 'bigmatrix'" class="export-options">
           <div class="form-group">
             <label for="exportDescription">Description (optional)</label>
             <InputText
@@ -260,7 +260,7 @@
         </div>
 
         <!-- Matrix specific options -->
-        <div v-if="exportFormat === 'matrix'" class="export-options">
+        <div v-if="exportFormat.toLowerCase() === 'matrix'" class="export-options">
           <div class="form-group">
             <label for="exportOutputDir">Output Directory</label>
             <InputText
@@ -356,7 +356,7 @@ export interface SelectedRevisionCard {
 }
 
 const exportDialogVisible = ref(false)
-const exportFormat = ref('bigmatrix')
+const exportFormat = ref('BigMatrix')
 const exportRevisions = ref<number[]>([])
 const exportDescription = ref('')
 const exportOutputPath = ref('')
@@ -366,8 +366,8 @@ const draggedIndex = ref<number | null>(null)
 
 // Export format options
 const exportFormatOptions = [
-  { label: 'BigMatrix', value: 'bigmatrix' },
-  { label: 'Matrix', value: 'matrix' }
+  { label: 'BigMatrix', value: 'BigMatrix' },
+  { label: 'Matrix', value: 'Matrix' }
 ]
 
 onMounted(() => {

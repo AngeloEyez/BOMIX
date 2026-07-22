@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -451,19 +452,32 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 
 // ExportExcel exports data from the database to Excel files
 func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
-	a.logger.Debug("準備匯出資料至 Excel")
+	formatStr := strings.TrimSpace(options.Format)
+	var bomFormat types.BOMFormat
+	if strings.EqualFold(formatStr, string(types.FormatBigMatrix)) {
+		bomFormat = types.FormatBigMatrix
+	} else if strings.EqualFold(formatStr, string(types.FormatMatrix)) {
+		bomFormat = types.FormatMatrix
+	} else {
+		bomFormat = types.BOMFormat(formatStr)
+	}
+
+	a.logger.Info(fmt.Sprintf("[ExportExcel] 開始進行 Excel 匯出作業 (Format: %s, 選取 Revisions 數量: %d)", bomFormat, len(options.RevisionIDs)))
+	a.logger.Debug(fmt.Sprintf("[ExportExcel] 匯出詳細參數: RevisionIDs=%v, ModelCountOverrides=%+v, OutputDir=%s", options.RevisionIDs, options.ModelCountOverrides, options.OutputDir))
 
 	a.mu.RLock()
 	dbConn := a.db
 	a.mu.RUnlock()
 
 	if dbConn == nil {
+		a.logger.Error("[ExportExcel] 失敗: 未開啟 Series 資料庫")
 		return nil, fmt.Errorf("no series is currently open")
 	}
 
 	// Create Excel writer
-	excelWriter, err := excel.NewWriter()
+	excelWriter, err := excel.NewWriter(a.logger)
 	if err != nil {
+		a.logger.Error(fmt.Sprintf("[ExportExcel] 建立 Excel Writer 失敗: %v", err))
 		return nil, fmt.Errorf("failed to create excel writer: %w", err)
 	}
 
@@ -474,7 +488,7 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 	}
 
 	exportOptions := excel.ExportOptions{
-		Format:              types.BOMFormat(options.Format),
+		Format:              bomFormat,
 		ProjectIDs:          options.ProjectIDs,
 		RevisionIDs:         revisionIDsStr,
 		Description:         options.Description,
