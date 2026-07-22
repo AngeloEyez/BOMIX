@@ -56,6 +56,7 @@ type SecondSourceData struct {
 
 // RevisionData contains BOM revision metadata for export
 type RevisionData struct {
+	ID              string
 	ProjectCode     string
 	Description     string
 	SchematicVersion string

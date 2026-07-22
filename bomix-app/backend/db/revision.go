@@ -23,7 +23,7 @@ func CreateRevision(db *gorm.DB, projectID int64, phase, version, description st
 // GetRevision returns a revision by ID
 func GetRevision(db *gorm.DB, id int64) (*BomRevision, error) {
 	var revision BomRevision
-	if err := db.First(&revision, id).Error; err != nil {
+	if err := db.Preload("MatrixModels").First(&revision, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrRevisionNotFound
 		}
@@ -35,7 +35,7 @@ func GetRevision(db *gorm.DB, id int64) (*BomRevision, error) {
 // GetRevisions returns all revisions for a project
 func GetRevisions(db *gorm.DB, projectID int64) ([]BomRevision, error) {
 	var revisions []BomRevision
-	if err := db.Where("project_id = ?", projectID).Order("created_at DESC").Find(&revisions).Error; err != nil {
+	if err := db.Preload("MatrixModels").Where("project_id = ?", projectID).Order("created_at DESC").Find(&revisions).Error; err != nil {
 		return nil, err
 	}
 	return revisions, nil

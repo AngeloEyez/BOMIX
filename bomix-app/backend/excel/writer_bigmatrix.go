@@ -209,7 +209,9 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	currentCol := bomStartCol
 	for _, rev := range revisions {
 		revModelCount := len(rev.ModelQty)
-		if revModelCount == 0 {
+		if override, ok := options.ModelCountOverrides[rev.ID]; ok && override > 0 {
+			revModelCount = override
+		} else if revModelCount == 0 {
 			revModelCount = maxModelCount
 		}
 

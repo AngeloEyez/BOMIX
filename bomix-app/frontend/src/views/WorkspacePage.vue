@@ -200,7 +200,51 @@
             placeholder="Select revisions"
             id="exportRevisions"
             class="revision-multiselect"
+            @change="onRevisionsChange"
           />
+        </div>
+
+        <!-- Selected Revisions Cards (Drag & Drop + Model Count) -->
+        <div v-if="selectedCards.length > 0" class="form-group selected-revisions-section">
+          <label>Selected Revisions & Model Counts (Drag to reorder)</label>
+          <div class="selected-cards-list">
+            <div
+              v-for="(card, index) in selectedCards"
+              :key="card.id"
+              class="revision-card"
+              draggable="true"
+              @dragstart="onDragStart($event, index)"
+              @dragover.prevent="onDragOver($event, index)"
+              @drop="onDrop($event, index)"
+            >
+              <div class="card-left">
+                <i class="pi pi-bars drag-handle" title="Drag to reorder"></i>
+                <div class="card-info">
+                  <span class="card-code">{{ card.projectCode }}</span>
+                  <span class="card-ver">{{ card.phase }} {{ card.version }}</span>
+                </div>
+              </div>
+
+              <div class="card-right">
+                <div class="model-count-group">
+                  <span class="mc-label">Model Count:</span>
+                  <InputNumber
+                    v-model="card.modelCount"
+                    :showButtons="true"
+                    :min="1"
+                    :disabled="exportFormat === 'matrix'"
+                    class="card-model-input"
+                  />
+                </div>
+                <Button
+                  icon="pi pi-times"
+                  class="p-button-text p-button-danger p-button-sm remove-card-btn"
+                  @click="removeCard(index)"
+                  title="Remove"
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- BigMatrix specific options -->
@@ -211,16 +255,6 @@
               v-model="exportDescription"
               placeholder="Enter description"
               id="exportDescription"
-            />
-          </div>
-
-          <div class="form-group">
-            <label for="exportModelCount">Model Count</label>
-            <InputNumber
-              v-model="exportModelCount"
-              placeholder="1"
-              id="exportModelCount"
-              :min="1"
             />
           </div>
         </div>
@@ -310,13 +344,25 @@ const importResultDialogVisible = ref(false)
 const confirmOverwrite = ref(false)
 
 // Export dialog
+export interface SelectedRevisionCard {
+  id: number
+  projectId: number
+  projectCode: string
+  phase: string
+  version: string
+  label: string
+  modelCount: number
+  dbModelCount: number
+}
+
 const exportDialogVisible = ref(false)
 const exportFormat = ref('bigmatrix')
 const exportRevisions = ref<number[]>([])
 const exportDescription = ref('')
-const exportModelCount = ref(1)
 const exportOutputPath = ref('')
 const allRevisions = ref<any[]>([])
+const selectedCards = ref<SelectedRevisionCard[]>([])
+const draggedIndex = ref<number | null>(null)
 
 // Export format options
 const exportFormatOptions = [
@@ -332,14 +378,94 @@ onMounted(() => {
 
 async function loadProjects(): Promise<void> {
   try {
-    allRevisions.value = [
-      { id: 1, label: 'PV 0.1', phase: 'PV', version: '0.1' },
-      { id: 2, label: 'PV 0.2', phase: 'PV', version: '0.2' },
-    ]
+    const list: any[] = []
+    if (projectStore.projects && projectStore.projects.length > 0) {
+      for (const p of projectStore.projects) {
+        if (p.revisions) {
+          for (const r of p.revisions) {
+            const pCode = p.code || p.name || `Project ${p.id}`
+            list.push({
+              id: r.id,
+              projectId: p.id,
+              projectCode: pCode,
+              phase: r.phase,
+              version: r.version,
+              label: `${pCode} - ${r.phase} ${r.version}`,
+              modelCount: r.modelCount || 0
+            })
+          }
+        }
+      }
+    }
+    if (list.length === 0) {
+      list.push(
+        { id: 1, projectId: 101, projectCode: 'PROJECT-A', phase: 'PV', version: '0.1', label: 'PROJECT-A - PV 0.1', modelCount: 0 },
+        { id: 2, projectId: 101, projectCode: 'PROJECT-A', phase: 'PV', version: '0.2', label: 'PROJECT-A - PV 0.2', modelCount: 2 }
+      )
+    }
+    allRevisions.value = list
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     logStore.addLogEntry('ERROR', `載入專案資料失敗：${msg}`)
   }
+}
+
+function onRevisionsChange(): void {
+  const currentSelectedIds = new Set(exportRevisions.value)
+
+  // Remove cards no longer selected
+  selectedCards.value = selectedCards.value.filter(c => currentSelectedIds.has(c.id))
+
+  // Add new cards
+  const existingCardIds = new Set(selectedCards.value.map(c => c.id))
+  for (const id of exportRevisions.value) {
+    if (!existingCardIds.has(id)) {
+      const opt = allRevisions.value.find(r => r.id === id)
+      if (opt) {
+        const dbCount = opt.modelCount || 0
+        const initialCount = dbCount > 0 ? dbCount : 3
+        selectedCards.value.push({
+          id: opt.id,
+          projectId: opt.projectId,
+          projectCode: opt.projectCode,
+          phase: opt.phase,
+          version: opt.version,
+          label: opt.label,
+          modelCount: initialCount,
+          dbModelCount: dbCount
+        })
+      }
+    }
+  }
+}
+
+function removeCard(index: number): void {
+  selectedCards.value.splice(index, 1)
+  exportRevisions.value = selectedCards.value.map(c => c.id)
+}
+
+// Drag and drop ordering logic
+function onDragStart(event: DragEvent, index: number): void {
+  draggedIndex.value = index
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+  }
+}
+
+function onDragOver(event: DragEvent, index: number): void {
+  event.preventDefault()
+}
+
+function onDrop(event: DragEvent, dropIndex: number): void {
+  event.preventDefault()
+  if (draggedIndex.value === null || draggedIndex.value === dropIndex) return
+
+  const itemToMove = selectedCards.value[draggedIndex.value]
+  selectedCards.value.splice(draggedIndex.value, 1)
+  selectedCards.value.splice(dropIndex, 0, itemToMove)
+
+  exportRevisions.value = selectedCards.value.map(c => c.id)
+  draggedIndex.value = null
 }
 
 // Import functions
@@ -386,9 +512,10 @@ async function executeImport(): Promise<void> {
 
 // Export functions
 function openExportDialog(): void {
+  loadProjects()
   exportRevisions.value = []
+  selectedCards.value = []
   exportDescription.value = ''
-  exportModelCount.value = 1
   exportOutputPath.value = ''
   exportDialogVisible.value = true
 }
@@ -412,12 +539,19 @@ async function browseOutputDir(): Promise<void> {
 async function executeExport(): Promise<void> {
   logStore.addLogEntry('INFO', `開始執行匯出作業...`)
   try {
+    const sortedRevisionIds = selectedCards.value.map(c => c.id)
+    const modelCountOverrides: Record<string, number> = {}
+    selectedCards.value.forEach(card => {
+      modelCountOverrides[String(card.id)] = card.modelCount
+    })
+
     const options: ExportOptions = {
       format: exportFormat.value,
-      revisionIds: exportRevisions.value,
+      revisionIds: sortedRevisionIds,
       description: exportDescription.value,
       outputPath: exportOutputPath.value,
-      outputDir: exportOutputPath.value
+      outputDir: exportOutputPath.value,
+      modelCountOverrides: modelCountOverrides
     }
 
     const exportedPaths = await ExportExcel(options)
@@ -716,5 +850,93 @@ async function executeExport(): Promise<void> {
 .export-options {
   border-top: 1px solid var(--surface-border);
   padding-top: 1rem;
+}
+
+/* Selected Revisions Cards & Drag-and-Drop */
+.selected-revisions-section {
+  margin-top: 0.5rem;
+}
+
+.selected-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 0.35rem;
+  border: 1px dashed var(--surface-border);
+  border-radius: 6px;
+  background: var(--surface-ground);
+}
+
+.revision-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  cursor: grab;
+  user-select: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.revision-card:active {
+  cursor: grabbing;
+}
+
+.revision-card:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.card-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.drag-handle {
+  color: var(--text-color-secondary);
+  cursor: grab;
+  font-size: 0.9rem;
+}
+
+.card-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.card-code {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-color);
+}
+
+.card-ver {
+  font-size: 0.8rem;
+  color: var(--text-color-secondary);
+}
+
+.card-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.model-count-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mc-label {
+  font-size: 0.85rem;
+  color: var(--text-color-secondary);
+}
+
+.card-model-input {
+  width: 90px;
 }
 </style>

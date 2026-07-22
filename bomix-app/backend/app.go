@@ -329,6 +329,7 @@ func (a *App) GetRevisions(projectID int64) ([]*BomRevision, error) {
 			Date:             r.Date,
 			Mode:             r.Mode,
 			SourceFile:       r.SourceFile,
+			ModelCount:       len(r.MatrixModels),
 			CreatedAt:        r.CreatedAt.Format(time.RFC3339),
 			UpdatedAt:        r.UpdatedAt.Format(time.RFC3339),
 		}
@@ -363,6 +364,7 @@ func (a *App) GetRevision(id int64) (*BomRevision, error) {
 		Date:             revision.Date,
 		Mode:             revision.Mode,
 		SourceFile:       revision.SourceFile,
+		ModelCount:       len(revision.MatrixModels),
 		CreatedAt:        revision.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:        revision.UpdatedAt.Format(time.RFC3339),
 	}, nil

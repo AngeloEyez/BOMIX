@@ -44,6 +44,7 @@ type BomRevision struct {
 	Date             string `json:"date"`
 	Mode             string `json:"mode"`
 	SourceFile       string `json:"sourceFile"`
+	ModelCount       int    `json:"modelCount"`
 	CreatedAt        string `json:"createdAt"`
 	UpdatedAt        string `json:"updatedAt"`
 }

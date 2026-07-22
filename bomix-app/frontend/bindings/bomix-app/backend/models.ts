@@ -16,6 +16,7 @@ export interface BomRevision {
     "date": string;
     "mode": string;
     "sourceFile": string;
+    "modelCount": number;
     "createdAt": string;
     "updatedAt": string;
 }

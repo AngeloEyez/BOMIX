@@ -9,7 +9,7 @@ import (
 	"bomix-app/backend/types"
 )
 
-//go:embed template/*.xlsx
+//go:embed template/bigmatrix.xlsx template/matrix.xlsx
 var templateFS embed.FS
 
 // TemplateManager manages Excel templates for export
