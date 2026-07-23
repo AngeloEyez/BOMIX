@@ -128,6 +128,17 @@ export const useProjectStore = defineStore('project', () => {
 
   function selectRevision(revisionId: number): void {
     selectedRevisionId.value = revisionId
+    
+    // Find which project owns this revision
+    for (const p of projects.value) {
+      if (p.revisions?.some(r => r.id === revisionId)) {
+        selectedProjectId.value = p.id
+        break
+      }
+    }
+    
+    const logStore = useLogStore()
+    logStore.addLogEntry('DEBUG', `已選擇 BOM Revision ID: ${revisionId}, 所屬 Project ID: ${selectedProjectId.value}`)
   }
 
   function clearSelection(): void {

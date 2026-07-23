@@ -38,6 +38,7 @@
       :scrollable="true"
       scroll-height="flex"
       scroll-direction="both"
+      :virtualScrollerOptions="{ itemSize: 46 }"
       :row-hover="true"
       striped-rows
       table-class="bom-table"
@@ -83,6 +84,20 @@
         </template>
       </Column>
       <Column field="remark" header="Remark" style="width: 150px" />
+      
+      <!-- Dynamic Model Columns -->
+      <Column
+        v-for="modelName in currentRevisionModels"
+        :key="modelName"
+        :header="`${modelName} (Qty: ${getModelQty(modelName)})`"
+        style="width: 150px"
+      >
+        <template #body="slotProps">
+          <span :class="{'model-selected': getModelSelectedPN(slotProps.data, modelName)}">
+            {{ getModelSelectedPN(slotProps.data, modelName) || '-' }}
+          </span>
+        </template>
+      </Column>
     </DataTable>
 
     <!-- Summary Statistics -->
@@ -101,43 +116,20 @@ import Column from 'primevue/column'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
-import { useProjectStore } from '../stores'
+import { useProjectStore, useLogStore } from '../stores'
 import SecondSourceList from './SecondSourceList.vue'
-
-interface AggregatedPart {
-  item: string
-  type: string
-  hhpn: string
-  description: string
-  main_supplier: string
-  main_supplier_pn: string
-  qty: number
-  locations: string
-  bom_status: string
-  ccl: string
-  remark: string
-  second_sources: SecondSource[]
-}
-
-interface SecondSource {
-  id: number
-  supplier: string
-  supplier_pn: string
-  description: string
-  cost: number
-  lead_time: number
-  is_active: boolean
-}
+import { GetBOMView, type ViewPartGroup, type ViewRevision } from '../services/api'
 
 const props = defineProps<{
   revisionId?: number
 }>()
 
 const emit = defineEmits<{
-  (e: 'part-selected', part: AggregatedPart): void
+  (e: 'part-selected', part: ViewPartGroup): void
 }>()
 
 const projectStore = useProjectStore()
+const logStore = useLogStore()
 
 // View options
 const viewOptions = [
@@ -160,11 +152,8 @@ const sortOrder = ref(1)
 // Computed properties
 const currentRevisionId = computed(() => props.revisionId || 0)
 
-const aggregatedParts = computed(() => {
-  // This will be populated with actual BOM data from the backend
-  // For now, return empty array
-  return [] as AggregatedPart[]
-})
+const aggregatedParts = ref<ViewPartGroup[]>([])
+const currentRevisionMetadata = ref<ViewRevision | null>(null)
 
 const smdPartsCount = computed(() => {
   return aggregatedParts.value.filter(p => p.type === 'SMD').length
@@ -174,10 +163,29 @@ const pthPartsCount = computed(() => {
   return aggregatedParts.value.filter(p => p.type === 'PTH').length
 })
 
+const currentRevisionModels = computed(() => {
+  if (!currentRevisionMetadata.value || !currentRevisionMetadata.value.model_names) return []
+  return currentRevisionMetadata.value.model_names
+})
+
+function getModelQty(modelName: string): number {
+  if (!currentRevisionMetadata.value || !currentRevisionMetadata.value.model_qty) return 0
+  return currentRevisionMetadata.value.model_qty[modelName] || 0
+}
+
+function getModelSelectedPN(part: ViewPartGroup, modelName: string): string {
+  if (!part.selections) return ''
+  const sel = part.selections.find(s => s.model_name === modelName)
+  return sel ? sel.selected_pn : ''
+}
+
 // Methods
 function onViewChange(): void {
   // Filter parts based on selected view
   expandedKeys.value = {}
+  if (currentRevisionId.value) {
+    loadBOMData(currentRevisionId.value)
+  }
 }
 
 function expandAll(): void {
@@ -232,14 +240,25 @@ watch(() => props.revisionId, (newId) => {
 })
 
 async function loadBOMData(revisionId: number): Promise<void> {
-  // This will be implemented when we have the backend API for getting parts
-  // For now, this is a placeholder
   try {
-    // const parts = await GetPartsByRevision(revisionId)
-    // const secondSources = await GetSecondSourcesByRevision(revisionId)
-    // Process and aggregate the data
+    const viewType = selectedView.value === 'all' ? '' : selectedView.value.toUpperCase()
+    logStore.addLogEntry('DEBUG', `[View System] 準備建立 View: RevisionIDs=[${revisionId}], ViewType="${viewType || 'ALL'}", ModeOverride=""`)
+    const result = await GetBOMView([revisionId], viewType, '')
+    
+    if (result && result.part_groups) {
+      aggregatedParts.value = result.part_groups
+    } else {
+      aggregatedParts.value = []
+    }
+
+    if (result && result.revisions && result.revisions.length > 0) {
+      currentRevisionMetadata.value = result.revisions[0]
+    } else {
+      currentRevisionMetadata.value = null
+    }
   } catch (error) {
-    console.error('Failed to load BOM data:', error)
+    const msg = error instanceof Error ? error.message : String(error)
+    logStore.addLogEntry('ERROR', `Failed to load BOM data: ${msg}`)
   }
 }
 
@@ -297,8 +316,19 @@ onMounted(() => {
 }
 
 /* Table styling */
-:deep(.bom-table) {
+:deep(.p-datatable) {
   font-size: 0.875rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+:deep(.p-datatable-table-container),
+:deep(.p-datatable-wrapper) {
+  flex: 1;
+  min-height: 0;
 }
 
 :deep(.p-datatable-header) {

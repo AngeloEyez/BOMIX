@@ -7,6 +7,9 @@
 
 import { Dialogs, Events } from '@wailsio/runtime'
 import { App } from '../../bindings/bomix-app/backend/index.js'
+import type { ViewResult, ViewPartGroup, ViewRevision, ViewSecondSource, ViewModelSelection } from '../../bindings/bomix-app/backend/view/models.js'
+
+export type { ViewResult, ViewPartGroup, ViewRevision, ViewSecondSource, ViewModelSelection }
 
 // Type definitions matching backend models
 export interface SeriesInfo {
@@ -292,6 +295,20 @@ export async function GetRevision(id: number): Promise<BomRevision> {
     return res as unknown as BomRevision
   } catch (error) {
     handleApiError(error, 'GetRevision')
+  }
+}
+
+// ==================== BOM View ====================
+
+export async function GetBOMView(revisionIDs: number[], viewType: string, modeOverride: string): Promise<ViewResult> {
+  try {
+    const res = await App.GetBOMView(revisionIDs, viewType, modeOverride)
+    if (!res) {
+      throw new Error('Received null result from GetBOMView')
+    }
+    return res as unknown as ViewResult
+  } catch (error) {
+    handleApiError(error, 'GetBOMView')
   }
 }
 

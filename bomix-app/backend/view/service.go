@@ -72,7 +72,7 @@ type rawRevisionData struct {
 //   - error：若資料庫查詢失敗則回傳錯誤
 func (s *Service) Query(query ViewQuery) (*ViewResult, error) {
 	if s.logger != nil {
-		s.logger.Info(fmt.Sprintf("[ViewService.Query] 執行 View 查詢: RevisionIDs=%v, ViewType=%s, ModeOverride=%s",
+		s.logger.Debug(fmt.Sprintf("[ViewService.Query] 執行 View 查詢: RevisionIDs=%v, ViewType=%s, ModeOverride=%s",
 			query.RevisionIDs, query.ViewType, query.ModeOverride))
 	}
 
