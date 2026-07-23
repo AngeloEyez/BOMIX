@@ -846,5 +846,69 @@ func TestExportBigMatrix_AutoColWidth(t *testing.T) {
 	}
 }
 
+// TestExportBigMatrix_EmptyQtyAndSelection verifies that empty ModelQty and empty Selections remain empty
+func TestExportBigMatrix_EmptyQtyAndSelection(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bigmatrix_empty_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:      types.FormatBigMatrix,
+		OutputPath:  filepath.Join(tmpDir, "empty_test.xlsx"),
+		Description: "Empty Test",
+		Revisions: []RevisionData{
+			{
+				ID:          "1",
+				ProjectCode: "NO_QTY_PROJ",
+				Phase:       "PV",
+				Version:     "0.1",
+				ModelQty:    map[string]int{}, // Empty ModelQty
+			},
+		},
+		PartData: []PartData{
+			{
+				Item:        "1",
+				HHPN:        "PN1",
+				Description: "Capacitor",
+				Supplier:    "MURATA",
+				SupplierPn:  "CAP1",
+				Qty:         2,
+				Location:    "C1,C2",
+				Selections:  map[string]string{}, // Empty Selections
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open file: %v", err)
+	}
+	defer f.Close()
+
+	// 1. Verify Row 5 (Model Qty) is empty, not default 1
+	qtyA, _ := f.GetCellValue("BigMatrix", "H5")
+	if qtyA != "" {
+		t.Errorf("Expected H5 (Model Qty) to be empty when no qty provided, got '%s'", qtyA)
+	}
+
+	// 2. Verify Row 6 Selection is empty, not automatically 'V'
+	selA, _ := f.GetCellValue("BigMatrix", "H6")
+	if selA != "" {
+		t.Errorf("Expected H6 (Selection) to be empty when Selections map is empty, got '%s'", selA)
+	}
+}
+
 
 

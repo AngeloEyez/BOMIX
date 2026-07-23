@@ -263,11 +263,11 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			f.SetCellValue("BigMatrix", fmt.Sprintf("%s4", col), modelNames[i])
 
 			// Model quantity (row 5)
-			qty := rev.ModelQty[modelNames[i]]
-			if qty == 0 {
-				qty = 1 // Default
+			if qty, ok := rev.ModelQty[modelNames[i]]; ok && qty > 0 {
+				f.SetCellValue("BigMatrix", fmt.Sprintf("%s5", col), qty)
+			} else {
+				f.SetCellValue("BigMatrix", fmt.Sprintf("%s5", col), "")
 			}
-			f.SetCellValue("BigMatrix", fmt.Sprintf("%s5", col), qty)
 		}
 
 		// Write Project Code (row 2)
@@ -338,13 +338,11 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 
 		// 3. Model Qty (Row 5) width requirement per column (single cell)
 		for i := 0; i < revModelCount; i++ {
-			qty := rev.ModelQty[modelNames[i]]
-			if qty == 0 {
-				qty = 1
-			}
-			req := float64(len(fmt.Sprintf("%d", qty))) + padding
-			if req > maxColWidthReq {
-				maxColWidthReq = req
+			if qty, ok := rev.ModelQty[modelNames[i]]; ok && qty > 0 {
+				req := float64(len(fmt.Sprintf("%d", qty))) + padding
+				if req > maxColWidthReq {
+					maxColWidthReq = req
+				}
 			}
 		}
 	}
@@ -428,8 +426,6 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 					if part.SupplierPn == selectedPN {
 						f.SetCellValue("BigMatrix", cell, "V")
 					}
-				} else if len(part.Selections) == 0 {
-					f.SetCellValue("BigMatrix", cell, "V")
 				}
 			}
 
