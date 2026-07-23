@@ -637,5 +637,164 @@ func TestExportBigMatrix_TagReplacementAndPartData(t *testing.T) {
 	}
 }
 
+// TestExportBigMatrix_MultipleRevisionsHeader tests multi-project header export and phase-version formatting
+func TestExportBigMatrix_MultipleRevisionsHeader(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bigmatrix_multi_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:      types.FormatBigMatrix,
+		OutputPath:  filepath.Join(tmpDir, "multi_output.xlsx"),
+		Description: "Multi Revision Test",
+		Revisions: []RevisionData{
+			{
+				ID:          "1",
+				ProjectCode: "PROJ_ONE",
+				Phase:       "PV",
+				Version:     "0.3",
+				ModelQty:    map[string]int{"A": 1, "B": 1},
+			},
+			{
+				ID:          "2",
+				ProjectCode: "PROJ_TWO",
+				Phase:       "", // Empty Phase
+				Version:     "0.5",
+				ModelQty:    map[string]int{"A": 1, "B": 1},
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open file: %v", err)
+	}
+	defer f.Close()
+
+	// 1. Verify first project header at H (column 7)
+	proj1, _ := f.GetCellValue("BigMatrix", "H2")
+	if proj1 != "PROJ_ONE" {
+		t.Errorf("Expected H2 to be 'PROJ_ONE', got '%s'", proj1)
+	}
+
+	h3, _ := f.GetCellValue("BigMatrix", "H3")
+	if h3 != "PV-0.3" {
+		t.Errorf("Expected H3 to be 'PV-0.3', got '%s'", h3)
+	}
+
+	// 2. Verify second project header at J (column 7 + 2 = 9, i.e., J)
+	proj2, _ := f.GetCellValue("BigMatrix", "J2")
+	if proj2 != "PROJ_TWO" {
+		t.Errorf("Expected J2 to be 'PROJ_TWO', got '%s'", proj2)
+	}
+
+	j3, _ := f.GetCellValue("BigMatrix", "J3")
+	if j3 != "0.5" {
+		t.Errorf("Expected J3 to be '0.5' (no leading dash), got '%s'", j3)
+	}
+}
+
+// TestExportBigMatrix_StyleInheritance verifies H, I, J archetype style inheritance across multiple BOMs
+func TestExportBigMatrix_StyleInheritance(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bigmatrix_style_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:      types.FormatBigMatrix,
+		OutputPath:  filepath.Join(tmpDir, "style_test.xlsx"),
+		Description: "Style Test",
+		Revisions: []RevisionData{
+			{
+				ID:          "1",
+				ProjectCode: "BOM_1",
+				Phase:       "PV",
+				Version:     "0.1",
+				ModelQty:    map[string]int{"A": 1, "B": 1, "C": 1}, // H, I, J
+			},
+			{
+				ID:          "2",
+				ProjectCode: "BOM_2",
+				Phase:       "PV",
+				Version:     "0.2",
+				ModelQty:    map[string]int{"A": 1, "B": 1, "C": 1}, // K, L, M
+			},
+		},
+		PartData: []PartData{
+			{
+				Item:        "1",
+				HHPN:        "PN1",
+				Description: "Resistor",
+				Supplier:    "YAGEO",
+				SupplierPn:  "RC1",
+				Qty:         1,
+				Location:    "R1",
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open file: %v", err)
+	}
+	defer f.Close()
+
+	// Verify header cell style inheritance on second BOM (K, L, M should inherit from H, I, J)
+	styleH4, _ := f.GetCellStyle("BigMatrix", "H4")
+	styleK4, _ := f.GetCellStyle("BigMatrix", "K4")
+	if styleK4 != styleH4 {
+		t.Errorf("Expected K4 (Start) style to match H4 style (%d), got %d", styleH4, styleK4)
+	}
+
+	styleI4, _ := f.GetCellStyle("BigMatrix", "I4")
+	styleL4, _ := f.GetCellStyle("BigMatrix", "L4")
+	if styleL4 != styleI4 {
+		t.Errorf("Expected L4 (Inner) style to match I4 style (%d), got %d", styleI4, styleL4)
+	}
+
+	styleJ4, _ := f.GetCellStyle("BigMatrix", "J4")
+	styleM4, _ := f.GetCellStyle("BigMatrix", "M4")
+	if styleM4 != styleJ4 {
+		t.Errorf("Expected M4 (End) style to match J4 style (%d), got %d", styleJ4, styleM4)
+	}
+
+	// Verify Row 6 data cell style inheritance on second BOM
+	styleH6, _ := f.GetCellStyle("BigMatrix", "H6")
+	styleK6, _ := f.GetCellStyle("BigMatrix", "K6")
+	if styleK6 != styleH6 {
+		t.Errorf("Expected K6 (Data Start) style to match H6 style (%d), got %d", styleH6, styleK6)
+	}
+
+	styleJ6, _ := f.GetCellStyle("BigMatrix", "J6")
+	styleM6, _ := f.GetCellStyle("BigMatrix", "M6")
+	if styleM6 != styleJ6 {
+		t.Errorf("Expected M6 (Data End) style to match J6 style (%d), got %d", styleJ6, styleM6)
+	}
+}
+
 
 

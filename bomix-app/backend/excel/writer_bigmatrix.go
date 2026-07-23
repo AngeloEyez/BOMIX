@@ -117,6 +117,9 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 
 	if w.logger != nil {
 		w.logger.Debug(fmt.Sprintf("[exportBigMatrixDetailed] 替換標籤內容: %+v", tags))
+		for idx, rev := range revisions {
+			w.logger.Debug(fmt.Sprintf("[exportBigMatrixDetailed] 匯出 BOM Revision [%d]: ID=%s, ProjectCode=%s, Phase=%s, Version=%s, ModelQty=%+v", idx, rev.ID, rev.ProjectCode, rev.Phase, rev.Version, rev.ModelQty))
+		}
 	}
 
 	if err := applyTagReplacement(f, tags); err != nil {
@@ -124,15 +127,6 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			w.logger.Error(fmt.Sprintf("[exportBigMatrixDetailed] 替換標籤失敗: %v", err))
 		}
 		return nil, err
-	}
-
-	if len(revisions) > 0 {
-		if revisions[0].ProjectCode != "" {
-			f.SetCellValue("BigMatrix", "H2", revisions[0].ProjectCode)
-		}
-		if revisions[0].Phase != "" || revisions[0].Version != "" {
-			f.SetCellValue("BigMatrix", "H3", fmt.Sprintf("%s-%s", revisions[0].Phase, revisions[0].Version))
-		}
 	}
 
 	// 8.1.3 - Dynamic column generation for multiple BOMs and Models
@@ -152,10 +146,99 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		modelNames[i] = string(rune('A' + i))
 	}
 
+	// Read archetype style IDs from template for H, I, J columns (Header rows 2-5)
+	styleH2, _ := f.GetCellStyle("BigMatrix", "H2")
+	styleH3, _ := f.GetCellStyle("BigMatrix", "H3")
+	styleH4, _ := f.GetCellStyle("BigMatrix", "H4")
+	styleH5, _ := f.GetCellStyle("BigMatrix", "H5")
+
+	styleI2, _ := f.GetCellStyle("BigMatrix", "I2")
+	styleI3, _ := f.GetCellStyle("BigMatrix", "I3")
+	styleI4, _ := f.GetCellStyle("BigMatrix", "I4")
+	styleI5, _ := f.GetCellStyle("BigMatrix", "I5")
+
+	styleJ2, _ := f.GetCellStyle("BigMatrix", "J2")
+	styleJ3, _ := f.GetCellStyle("BigMatrix", "J3")
+	styleJ4, _ := f.GetCellStyle("BigMatrix", "J4")
+	styleJ5, _ := f.GetCellStyle("BigMatrix", "J5")
+
+	// Read archetype style IDs for data rows (Row 6 = even, Row 7 = odd)
+	styleH6, _ := f.GetCellStyle("BigMatrix", "H6")
+	styleH7, _ := f.GetCellStyle("BigMatrix", "H7")
+	styleI6, _ := f.GetCellStyle("BigMatrix", "I6")
+	styleI7, _ := f.GetCellStyle("BigMatrix", "I7")
+	styleJ6, _ := f.GetCellStyle("BigMatrix", "J6")
+	styleJ7, _ := f.GetCellStyle("BigMatrix", "J7")
+
+	// Helper to get archetype style for a model column based on index and total count
+	getModelStyle := func(row int, colIdx int, totalCount int) int {
+		if row == 6 || row == 7 {
+			if row == 6 {
+				if totalCount == 1 || colIdx == totalCount-1 {
+					if colIdx == 0 && totalCount > 1 {
+						return styleH6
+					}
+					return styleJ6
+				}
+				if colIdx == 0 {
+					return styleH6
+				}
+				return styleI6
+			} else {
+				if totalCount == 1 || colIdx == totalCount-1 {
+					if colIdx == 0 && totalCount > 1 {
+						return styleH7
+					}
+					return styleJ7
+				}
+				if colIdx == 0 {
+					return styleH7
+				}
+				return styleI7
+			}
+		}
+		// Header rows 2..5
+		switch row {
+		case 2:
+			if colIdx == 0 {
+				return styleH2
+			} else if colIdx == totalCount-1 {
+				return styleJ2
+			}
+			return styleI2
+		case 3:
+			if colIdx == 0 {
+				return styleH3
+			} else if colIdx == totalCount-1 {
+				return styleJ3
+			}
+			return styleI3
+		case 4:
+			if colIdx == 0 {
+				return styleH4
+			} else if colIdx == totalCount-1 {
+				return styleJ4
+			}
+			return styleI4
+		case 5:
+			if colIdx == 0 {
+				return styleH5
+			} else if colIdx == totalCount-1 {
+				return styleJ5
+			}
+			return styleI5
+		}
+		return styleI5
+	}
+
 	// Start column for BOM data (H = column 7)
 	bomStartCol := 7 // H
 
-	// Write dynamic Model columns for each revision
+	// Unmerge template default merged header cells (H2:J2, H3:J3) to allow dynamic revision layout
+	_ = f.UnmergeCell("BigMatrix", "H2", "J2")
+	_ = f.UnmergeCell("BigMatrix", "H3", "J3")
+
+	// Write dynamic Model columns and header info for each revision
 	currentCol := bomStartCol
 	for _, rev := range revisions {
 		revModelCount := len(rev.ModelQty)
@@ -165,14 +248,21 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			revModelCount = maxModelCount
 		}
 
-		// Write Model names (row 4) and quantities (row 5)
+		startColName := getColName(currentCol)
+		endColName := getColName(currentCol + revModelCount - 1)
+
+		// Apply archetype styles for each column in this revision (rows 2..5)
 		for i := 0; i < revModelCount; i++ {
 			col := getColName(currentCol + i)
+			for r := 2; r <= 5; r++ {
+				st := getModelStyle(r, i, revModelCount)
+				_ = f.SetCellStyle("BigMatrix", fmt.Sprintf("%s%d", col, r), fmt.Sprintf("%s%d", col, r), st)
+			}
 
-			// Model name
+			// Model name (row 4)
 			f.SetCellValue("BigMatrix", fmt.Sprintf("%s4", col), modelNames[i])
 
-			// Model quantity
+			// Model quantity (row 5)
 			qty := rev.ModelQty[modelNames[i]]
 			if qty == 0 {
 				qty = 1 // Default
@@ -180,12 +270,65 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			f.SetCellValue("BigMatrix", fmt.Sprintf("%s5", col), qty)
 		}
 
+		// Write Project Code (row 2)
+		if rev.ProjectCode != "" {
+			f.SetCellValue("BigMatrix", fmt.Sprintf("%s2", startColName), rev.ProjectCode)
+		}
+
+		// Write Phase-Version (row 3)
+		var phaseVer string
+		if rev.Phase != "" && rev.Version != "" {
+			phaseVer = fmt.Sprintf("%s-%s", rev.Phase, rev.Version)
+		} else if rev.Phase != "" {
+			phaseVer = rev.Phase
+		} else {
+			phaseVer = rev.Version
+		}
+		if phaseVer != "" {
+			f.SetCellValue("BigMatrix", fmt.Sprintf("%s3", startColName), phaseVer)
+		}
+
+		// Merge header cells for this revision if it spans multiple model columns
+		if revModelCount > 1 {
+			_ = f.MergeCell("BigMatrix", fmt.Sprintf("%s2", startColName), fmt.Sprintf("%s2", endColName))
+			_ = f.MergeCell("BigMatrix", fmt.Sprintf("%s3", startColName), fmt.Sprintf("%s3", endColName))
+		}
+
 		currentCol += revModelCount
 	}
 
-	// Get style IDs for alternating rows
-	styleRow6, _ := f.GetCellStyle("BigMatrix", "A6")
-	styleRow7, _ := f.GetCellStyle("BigMatrix", "A7")
+	// Helper function to apply styles to a row (columns A-G and dynamic Model columns)
+	applyFullRowStyle := func(f *excelize.File, sheet string, row int, isEven bool) {
+		refRow := 6
+		if !isEven {
+			refRow = 7
+		}
+
+		// Apply A-G styles from template refRow
+		for c := 'A'; c <= 'G'; c++ {
+			colStr := string(c)
+			cell := fmt.Sprintf("%s%d", colStr, row)
+			refCell := fmt.Sprintf("%s%d", colStr, refRow)
+			st, _ := f.GetCellStyle(sheet, refCell)
+			_ = f.SetCellStyle(sheet, cell, cell, st)
+		}
+
+		// Apply dynamic Model column styles (H onwards)
+		cIdx := bomStartCol
+		for _, rev := range revisions {
+			revModelCount := len(rev.ModelQty)
+			if revModelCount == 0 {
+				revModelCount = maxModelCount
+			}
+			for i := 0; i < revModelCount; i++ {
+				colStr := getColName(cIdx + i)
+				cell := fmt.Sprintf("%s%d", colStr, row)
+				st := getModelStyle(refRow, i, revModelCount)
+				_ = f.SetCellStyle(sheet, cell, cell, st)
+			}
+			cIdx += revModelCount
+		}
+	}
 
 	// Clear default template sample rows (Row 6 and Row 7)
 	for r := 6; r <= 7; r++ {
@@ -197,12 +340,8 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	// 8.1.4 - Write part data
 	rowIndex := 6
 	for _, part := range parts {
-		// Alternate row styles
-		if rowIndex%2 == 0 {
-			applyRowStyle(f, "BigMatrix", rowIndex, styleRow6)
-		} else {
-			applyRowStyle(f, "BigMatrix", rowIndex, styleRow7)
-		}
+		isEven := (rowIndex%2 == 0)
+		applyFullRowStyle(f, "BigMatrix", rowIndex, isEven)
 
 		// Write basic part data (columns A-G)
 		f.SetCellValue("BigMatrix", fmt.Sprintf("A%d", rowIndex), part.Item)
@@ -242,11 +381,8 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 
 		// Write second sources
 		for _, ss := range part.SecondSources {
-			if rowIndex%2 == 0 {
-				applyRowStyle(f, "BigMatrix", rowIndex, styleRow6)
-			} else {
-				applyRowStyle(f, "BigMatrix", rowIndex, styleRow7)
-			}
+			isEvenSS := (rowIndex%2 == 0)
+			applyFullRowStyle(f, "BigMatrix", rowIndex, isEvenSS)
 
 			f.SetCellValue("BigMatrix", fmt.Sprintf("B%d", rowIndex), ss.HHPN)
 			f.SetCellValue("BigMatrix", fmt.Sprintf("C%d", rowIndex), ss.Description)
