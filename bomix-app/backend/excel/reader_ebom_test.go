@@ -22,7 +22,7 @@ func TestParseHeader(t *testing.T) {
 	f.SetCellValue("SMD", "B3", "Product Code: TANGLED")
 	f.SetCellValue("SMD", "B4", "Description: MBD,Tangled,Test Board")
 	f.SetCellValue("SMD", "D3", "Schematic Version: 1.0")
-	f.SetCellValue("SMD", "D4", "Phase: PV")
+	f.SetCellValue("SMD", "J3", "Phase: PV")
 	f.SetCellValue("SMD", "F3", "PCB Version: 2.1")
 	f.SetCellValue("SMD", "F4", "PCA PN: ABC-123")
 	f.SetCellValue("SMD", "H3", "BOM Version: 0.3")
@@ -58,6 +58,41 @@ func TestParseHeader(t *testing.T) {
 	}
 	if date != "2026-01-15" {
 		t.Errorf("Expected date '2026-01-15', got '%s'", date)
+	}
+}
+
+// TestParseHeaderVariations tests header parsing with missing colon spaces or direct values
+func TestParseHeaderVariations(t *testing.T) {
+	tests := []struct {
+		name          string
+		rawPhase      string
+		expectedPhase string
+	}{
+		{"With Space J3", "Phase: EVT", "EVT"},
+		{"Without Space J3", "Phase:DVT", "DVT"},
+		{"Multiple Spaces J3", "Phase:   PV", "PV"},
+		{"Case Variation J3", "phase: MP", "MP"},
+		{"Raw Value Without Prefix J3", "EVT", "EVT"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := excelize.NewFile()
+			wb := &ExcelizeWorkbook{f: f}
+			defer f.Close()
+
+			f.NewSheet("SMD")
+			f.SetCellValue("SMD", "J3", tt.rawPhase)
+
+			reader := &EBOMReader{}
+			phase, _, _, _, _, _, _, _, err := reader.parseHeader(wb, "SMD")
+			if err != nil {
+				t.Fatalf("parseHeader failed: %v", err)
+			}
+			if phase != tt.expectedPhase {
+				t.Errorf("Expected phase '%s', got '%s'", tt.expectedPhase, phase)
+			}
+		})
 	}
 }
 

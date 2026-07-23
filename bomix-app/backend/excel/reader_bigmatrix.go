@@ -62,22 +62,17 @@ func (r *BigMatrixReader) Import(f Workbook) error {
 // See product-spec section 7.2.1
 func (r *BigMatrixReader) parseHeader(f Workbook, sheetName string) (description string, bomCount int, date string) {
 	// B3: "BOMs: {number}"
-	val, _ := f.GetCellValue(sheetName, "B3")
-	if idx := strings.Index(val, "BOMs: "); idx != -1 {
-		fmt.Sscanf(strings.TrimSpace(val[idx+len("BOMs: "):]), "%d", &bomCount)
-	}
+	valB3, _ := f.GetCellValue(sheetName, "B3")
+	bomStr := parseHeaderField(valB3, "BOMs")
+	fmt.Sscanf(bomStr, "%d", &bomCount)
 
 	// B4: "Description: {value}"
-	val, _ = f.GetCellValue(sheetName, "B4")
-	if idx := strings.Index(val, "Description: "); idx != -1 {
-		description = strings.TrimSpace(val[idx+len("Description: "):])
-	}
+	valB4, _ := f.GetCellValue(sheetName, "B4")
+	description = parseHeaderField(valB4, "Description")
 
 	// E4: "Date: {value}"
-	val, _ = f.GetCellValue(sheetName, "E4")
-	if idx := strings.Index(val, "Date: "); idx != -1 {
-		date = strings.TrimSpace(val[idx+len("Date: "):])
-	}
+	valE4, _ := f.GetCellValue(sheetName, "E4")
+	date = parseHeaderField(valE4, "Date")
 
 	return description, bomCount, date
 }
@@ -103,6 +98,7 @@ type ModelConfig struct {
 // parseBOMConfigs parses the horizontal BOM configurations
 // See product-spec section 7.2.2.1
 func (r *BigMatrixReader) parseBOMConfigs(f Workbook, sheetName string) ([]BOMConfig, error) {
+	description, _, _ := r.parseHeader(f, sheetName)
 	var configs []BOMConfig
 
 	// Start from column H (index 7)
@@ -110,10 +106,11 @@ func (r *BigMatrixReader) parseBOMConfigs(f Workbook, sheetName string) ([]BOMCo
 
 	for {
 		// Get project code from row 2
-		projectCode, _ := f.GetCellValue(sheetName, colToCell(startCol, 2))
-		if projectCode == "" {
+		valProj, _ := f.GetCellValue(sheetName, colToCell(startCol, 2))
+		if valProj == "" {
 			break // No more BOMs
 		}
+		projectCode := parseHeaderField(valProj, "Product Code", "Project Code")
 
 		// Get revision ID from row 3
 		revisionStr, _ := f.GetCellValue(sheetName, colToCell(startCol, 3))
@@ -121,11 +118,18 @@ func (r *BigMatrixReader) parseBOMConfigs(f Workbook, sheetName string) ([]BOMCo
 		// Parse phase and version from revision string (e.g., "PV-0.3")
 		var phase, version string
 		if idx := strings.Index(revisionStr, "-"); idx != -1 {
-			phase = revisionStr[:idx]
-			version = revisionStr[idx+1:]
+			phase = strings.TrimSpace(revisionStr[:idx])
+			version = strings.TrimSpace(revisionStr[idx+1:])
 		} else {
-			phase = revisionStr
+			phase = strings.TrimSpace(revisionStr)
 			version = "0.1"
+		}
+
+		if r.logger != nil {
+			r.logger.Debug(fmt.Sprintf("[BigMatrix 讀取] 取得 Project Code: %s", projectCode))
+			r.logger.Debug(fmt.Sprintf("[BigMatrix 讀取] 取得 Phase: %s", phase))
+			r.logger.Debug(fmt.Sprintf("[BigMatrix 讀取] 取得 Version: %s", version))
+			r.logger.Debug(fmt.Sprintf("[BigMatrix 讀取] 取得 Description: %s", description))
 		}
 
 		// Parse models starting from row 4
@@ -133,8 +137,8 @@ func (r *BigMatrixReader) parseBOMConfigs(f Workbook, sheetName string) ([]BOMCo
 		colIdx := startCol
 		for {
 			modelName, _ := f.GetCellValue(sheetName, colToCell(colIdx, 4))
-			if strings.ToUpper(modelName) == "A" && len(models) > 0 {
-				// Found start of next BOM
+			if (modelName == "" || strings.ToUpper(modelName) == "A") && len(models) > 0 {
+				// Found start of next BOM or end of models
 				break
 			}
 
@@ -171,11 +175,13 @@ func (r *BigMatrixReader) parseBOMConfigs(f Workbook, sheetName string) ([]BOMCo
 		}
 
 		// Get or create the BOM revision in database
-		revisionID, err := r.getOrCreateBOMRevision(config)
-		if err != nil {
-			return nil, err
+		if r.db != nil {
+			revisionID, err := r.getOrCreateBOMRevision(config)
+			if err != nil {
+				return nil, err
+			}
+			config.RevisionID = revisionID
 		}
-		config.RevisionID = revisionID
 
 		configs = append(configs, config)
 

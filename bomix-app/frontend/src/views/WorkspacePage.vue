@@ -221,7 +221,7 @@
                 <i class="pi pi-bars drag-handle" title="Drag to reorder"></i>
                 <div class="card-info">
                   <span class="card-code">{{ card.projectCode }}</span>
-                  <span class="card-ver">{{ card.phase }} {{ card.version }}</span>
+                  <span class="card-ver">{{ [card.phase, card.version].filter(Boolean).join(' ') }}</span>
                 </div>
               </div>
 
@@ -388,13 +388,16 @@ async function loadProjects(): Promise<void> {
         if (p.revisions) {
           for (const r of p.revisions) {
             const pCode = p.code || p.name || `Project ${p.id}`
+            const phaseStr = (r.phase || '').trim()
+            const verStr = (r.version || '').trim()
+            const phaseVer = [phaseStr, verStr].filter(Boolean).join(' ')
             list.push({
               id: r.id,
               projectId: p.id,
               projectCode: pCode,
-              phase: r.phase,
-              version: r.version,
-              label: `${pCode} - ${r.phase} ${r.version}`,
+              phase: phaseStr,
+              version: verStr,
+              label: phaseVer ? `${pCode} - ${phaseVer}` : pCode,
               modelCount: r.modelCount || 0
             })
           }

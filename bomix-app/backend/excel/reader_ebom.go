@@ -144,56 +144,66 @@ func (r *EBOMReader) findSheetCaseInsensitive(sheets []string, name string) stri
 	return ""
 }
 
+// parseHeaderField extracts value after colon or prefix, returning trimmed value.
+// If no prefix matches, returns the raw trimmed cell value.
+func parseHeaderField(val string, prefixes ...string) string {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return ""
+	}
+	lowerVal := strings.ToLower(val)
+	for _, p := range prefixes {
+		lowerP := strings.ToLower(p)
+		if idx := strings.Index(lowerVal, lowerP); idx != -1 {
+			res := val[idx+len(lowerP):]
+			res = strings.TrimPrefix(res, ":")
+			return strings.TrimSpace(res)
+		}
+	}
+	return val
+}
+
 // parseHeader parses the header row from SMD sheet
 // See product-spec section 7.1.1
 // Returns revision data and project code separately
 func (r *EBOMReader) parseHeader(f Workbook, sheetName string) (phase, version, description, schematicVersion, pcbVersion, pcaPn, date, projectCode string, err error) {
 	// B3: Project Code - "Product Code: {value}"
-	val, _ := f.GetCellValue(sheetName, "B3")
-	if idx := strings.Index(val, "Product Code: "); idx != -1 {
-		projectCode = strings.TrimSpace(val[idx+len("Product Code: "):])
-	}
+	valB3, _ := f.GetCellValue(sheetName, "B3")
+	projectCode = parseHeaderField(valB3, "Product Code", "Project Code")
 
 	// B4: Description - "Description: {value}"
-	val, _ = f.GetCellValue(sheetName, "B4")
-	if idx := strings.Index(val, "Description: "); idx != -1 {
-		description = strings.TrimSpace(val[idx+len("Description: "):])
-	}
+	valB4, _ := f.GetCellValue(sheetName, "B4")
+	description = parseHeaderField(valB4, "Description")
 
 	// D3: Schematic Version - "Schematic Version: {value}"
-	val, _ = f.GetCellValue(sheetName, "D3")
-	if idx := strings.Index(val, "Schematic Version: "); idx != -1 {
-		schematicVersion = strings.TrimSpace(val[idx+len("Schematic Version: "):])
-	}
+	valD3, _ := f.GetCellValue(sheetName, "D3")
+	schematicVersion = parseHeaderField(valD3, "Schematic Version")
 
-	// D4: Phase - "Phase: {value}"
-	val, _ = f.GetCellValue(sheetName, "D4")
-	if idx := strings.Index(val, "Phase: "); idx != -1 {
-		phase = strings.TrimSpace(val[idx+len("Phase: "):])
-	}
+	// J3: Phase - "Phase: {value}"
+	valJ3, _ := f.GetCellValue(sheetName, "J3")
+	phase = parseHeaderField(valJ3, "Phase")
 
 	// F3: PCB Version - "PCB Version: {value}"
-	val, _ = f.GetCellValue(sheetName, "F3")
-	if idx := strings.Index(val, "PCB Version: "); idx != -1 {
-		pcbVersion = strings.TrimSpace(val[idx+len("PCB Version: "):])
-	}
+	valF3, _ := f.GetCellValue(sheetName, "F3")
+	pcbVersion = parseHeaderField(valF3, "PCB Version")
 
 	// F4: PCA PN - "PCA PN: {value}"
-	val, _ = f.GetCellValue(sheetName, "F4")
-	if idx := strings.Index(val, "PCA PN: "); idx != -1 {
-		pcaPn = strings.TrimSpace(val[idx+len("PCA PN: "):])
-	}
+	valF4, _ := f.GetCellValue(sheetName, "F4")
+	pcaPn = parseHeaderField(valF4, "PCA PN")
 
 	// H3: Version - "BOM Version: {value}"
-	val, _ = f.GetCellValue(sheetName, "H3")
-	if idx := strings.Index(val, "BOM Version: "); idx != -1 {
-		version = strings.TrimSpace(val[idx+len("BOM Version: "):])
-	}
+	valH3, _ := f.GetCellValue(sheetName, "H3")
+	version = parseHeaderField(valH3, "BOM Version", "Version")
 
 	// H4: Date - "Date: {value}"
-	val, _ = f.GetCellValue(sheetName, "H4")
-	if idx := strings.Index(val, "Date: "); idx != -1 {
-		date = strings.TrimSpace(val[idx+len("Date: "):])
+	valH4, _ := f.GetCellValue(sheetName, "H4")
+	date = parseHeaderField(valH4, "Date")
+
+	if r.logger != nil {
+		r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 取得 Project Code: %s", projectCode))
+		r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 取得 Phase: %s", phase))
+		r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 取得 Version: %s", version))
+		r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 取得 Description: %s", description))
 	}
 
 	return phase, version, description, schematicVersion, pcbVersion, pcaPn, date, projectCode, nil

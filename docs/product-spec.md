@@ -792,7 +792,7 @@ bom revision基本資料由 "SMD" sheet 的表頭取得。
 | B3 | project_code | 取 `"Product Code: "` 後方文字 | `Product Code: TANGLED` → `TANGLED` |
 | B4 | description | 取 `"Description: "` 後方文字 | `Description: MBD,Tangled,...` |
 | D3 | schematic_version | 取 `"Schematic Version: "` 後方文字 | `Schematic Version: 1.0` → `1.0` |
-| D4 | phase_name | 取 `"Phase: "` 後方文字 | `Phase: DB` → `DB` |
+| J3 | phase_name | 取 `"Phase: "` 後方文字 | `Phase: DB` → `DB` |
 | F3 | pcb_version | 取 `"PCB Version: "` 後方文字 | `PCB Version: 2.1` → `2.1` |
 | F4 | pca_pn | 取 `"PCA PN: "` 後方文字 | `PCA PN: ABC-123` → `ABC-123` |
 | H3 | version | 取 `"BOM Version: "` 後方文字 | `BOM Version: 0.1` → `0.1` |

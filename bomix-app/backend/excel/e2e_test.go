@@ -127,8 +127,8 @@ func createTestEBOMFile(path string) error {
 	f.SetCellValue("SMD", "B4", "Description: Test Product")
 	// D3: Schematic Version
 	f.SetCellValue("SMD", "D3", "Schematic Version: 1.0")
-	// D4: Phase
-	f.SetCellValue("SMD", "D4", "Phase: PV")
+	// J3: Phase
+	f.SetCellValue("SMD", "J3", "Phase: PV")
 	// F3: PCB Version
 	f.SetCellValue("SMD", "F3", "PCB Version: 1.0")
 	// F4: PCA PN
