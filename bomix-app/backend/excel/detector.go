@@ -82,7 +82,7 @@ func (d *Detector) hasSheet(sheets []string, name string) bool {
 // isEBOMFormat checks if the file matches EBOM format
 // Conditions:
 // 1. Contains SMD, PTH, BOTTOM sheets
-// 2. SMD header H5="Qty" and J7="CCL"
+// 2. SMD header H5="Qty" and J5="CCL"
 func (d *Detector) isEBOMFormat(f Workbook, sheets []string) bool {
 	smdSheet := ""
 	pthSheet := ""
@@ -102,7 +102,7 @@ func (d *Detector) isEBOMFormat(f Workbook, sheets []string) bool {
 	}
 
 	if d.logger != nil {
-		d.logger.Debug("EBOM 工作表比對結果",
+		d.logger.Debug("[isEBOMFormat] EBOM 工作表比對結果",
 			"SMD", smdSheet,
 			"PTH", pthSheet,
 			"BOTTOM", bottomSheet,
@@ -112,40 +112,40 @@ func (d *Detector) isEBOMFormat(f Workbook, sheets []string) bool {
 	// Need at least SMD sheet
 	if smdSheet == "" {
 		if d.logger != nil {
-			d.logger.Debug("EBOM 判定不符: 未找到 SMD 工作表")
+			d.logger.Debug("[isEBOMFormat] EBOM 判定不符: 未找到 SMD 工作表")
 		}
 		return false
 	}
 
 	// Check header patterns in SMD sheet
 	valH5, _ := f.GetCellValue(smdSheet, "H5")
-	valJ7, _ := f.GetCellValue(smdSheet, "J7")
+	valJ5, _ := f.GetCellValue(smdSheet, "J5")
 
 	trimmedH5 := strings.TrimSpace(valH5)
-	trimmedJ7 := strings.TrimSpace(valJ7)
+	trimmedJ5 := strings.TrimSpace(valJ5)
 
 	if d.logger != nil {
-		d.logger.Debug("EBOM 表頭儲存格比對",
+		d.logger.Debug("[isEBOMFormat] EBOM 表頭儲存格比對",
 			"sheet", smdSheet,
 			"H5_raw", valH5,
 			"H5_trimmed", trimmedH5,
-			"J7_raw", valJ7,
-			"J7_trimmed", trimmedJ7,
+			"J5_raw", valJ5,
+			"J5_trimmed", trimmedJ5,
 		)
 	}
 
-	// Standard check: H5 = "Qty", J7 = "CCL"
-	if strings.EqualFold(trimmedH5, "Qty") && strings.EqualFold(trimmedJ7, "CCL") {
+	// Standard check: H5 = "Qty", J5 = "CCL"
+	if strings.EqualFold(trimmedH5, "Qty") && strings.EqualFold(trimmedJ5, "CCL") {
 		return true
 	}
 
 	// Compatibility fallback: If SMD and at least one of (PTH, BOTTOM) exist, and H5 is not "Location" (Matrix header)
-	if (pthSheet != "" || bottomSheet != "") && !strings.EqualFold(trimmedH5, "Location") {
-		if d.logger != nil {
-			d.logger.Debug("EBOM 觸發相容模式 (包含 SMD 且有 PTH/BOTTOM 工作表，表頭非 Matrix)")
-		}
-		return true
-	}
+	// if (pthSheet != "" || bottomSheet != "") && !strings.EqualFold(trimmedH5, "Location") {
+	// 	if d.logger != nil {
+	// 		d.logger.Debug("[isEBOMFormat] EBOM 觸發相容模式 (包含 SMD 且有 PTH/BOTTOM 工作表，表頭非 Matrix)")
+	// 	}
+	// 	return true
+	// }
 
 	return false
 }

@@ -24,7 +24,7 @@ func TestDetect_EBOM(t *testing.T) {
 
 	// Set EBOM-specific header values in SMD sheet
 	f.SetCellValue("SMD", "H5", "Qty")
-	f.SetCellValue("SMD", "J7", "CCL")
+	f.SetCellValue("SMD", "J5", "CCL")
 
 	// Detect format
 	detector := NewDetector()
@@ -152,7 +152,7 @@ func TestDetect_EBOMWithPartialSheets(t *testing.T) {
 
 	// Set EBOM-specific header values
 	f.SetCellValue("SMD", "H5", "Qty")
-	f.SetCellValue("SMD", "J7", "CCL")
+	f.SetCellValue("SMD", "J5", "CCL")
 
 	// Detect format
 	detector := NewDetector()
@@ -182,7 +182,7 @@ func TestDetect_CaseInsensitiveSheetNames(t *testing.T) {
 
 	// Set header values (case shouldn't matter for sheet detection)
 	f.SetCellValue("smd", "H5", "Qty")
-	f.SetCellValue("smd", "J7", "CCL")
+	f.SetCellValue("smd", "J5", "CCL")
 
 	detector := NewDetector()
 	format, err := detector.Detect(wb)
@@ -212,7 +212,7 @@ func TestDetect_FileRoundTrip(t *testing.T) {
 	f.NewSheet("PTH")
 	f.NewSheet("BOTTOM")
 	f.SetCellValue("SMD", "H5", "Qty")
-	f.SetCellValue("SMD", "J7", "CCL")
+	f.SetCellValue("SMD", "J5", "CCL")
 
 	if err := f.SaveAs(tmpFile.Name()); err != nil {
 		t.Fatalf("Failed to save file: %v", err)

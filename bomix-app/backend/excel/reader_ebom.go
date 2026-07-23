@@ -63,6 +63,16 @@ func (r *EBOMReader) Import(f Workbook) error {
 		allSecondSources = append(allSecondSources, secondSrcs...)
 		r.result.PartsCount += len(parts)
 		r.result.SecondSources += len(secondSrcs)
+
+		if r.logger != nil {
+			r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析完成", smdSheet),
+				"sheet", smdSheet,
+				"type", "SMD",
+				"mainParts", len(parts),
+				"secondSources", len(secondSrcs),
+				"totalParts", len(parts)+len(secondSrcs),
+			)
+		}
 	}
 
 	// Process PTH sheet
@@ -72,6 +82,16 @@ func (r *EBOMReader) Import(f Workbook) error {
 		allSecondSources = append(allSecondSources, secondSrcs...)
 		r.result.PartsCount += len(parts)
 		r.result.SecondSources += len(secondSrcs)
+
+		if r.logger != nil {
+			r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析完成", pthSheet),
+				"sheet", pthSheet,
+				"type", "PTH",
+				"mainParts", len(parts),
+				"secondSources", len(secondSrcs),
+				"totalParts", len(parts)+len(secondSrcs),
+			)
+		}
 	}
 
 	// Process BOTTOM sheet
@@ -81,6 +101,16 @@ func (r *EBOMReader) Import(f Workbook) error {
 		allSecondSources = append(allSecondSources, secondSrcs...)
 		r.result.PartsCount += len(parts)
 		r.result.SecondSources += len(secondSrcs)
+
+		if r.logger != nil {
+			r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析完成", bottomSheet),
+				"sheet", bottomSheet,
+				"type", "BOTTOM",
+				"mainParts", len(parts),
+				"secondSources", len(secondSrcs),
+				"totalParts", len(parts)+len(secondSrcs),
+			)
+		}
 	}
 
 	// Process NI sheet (bom_status = X)
@@ -89,6 +119,16 @@ func (r *EBOMReader) Import(f Workbook) error {
 		niParts := r.parseStatusSheet(f, niSheet, "X", "")
 		allParts = append(allParts, niParts...)
 		r.result.PartsCount += len(niParts)
+
+		if r.logger != nil {
+			r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析完成", niSheet),
+				"sheet", niSheet,
+				"status", "X (NI)",
+				"mainParts", len(niParts),
+				"secondSources", 0,
+				"totalParts", len(niParts),
+			)
+		}
 	}
 
 	// Process PROTO sheet (bom_status = P)
@@ -97,6 +137,16 @@ func (r *EBOMReader) Import(f Workbook) error {
 		protoParts := r.parseStatusSheet(f, protoSheet, "P", mode)
 		allParts = append(allParts, protoParts...)
 		r.result.PartsCount += len(protoParts)
+
+		if r.logger != nil {
+			r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析完成", protoSheet),
+				"sheet", protoSheet,
+				"status", "P (PROTO)",
+				"mainParts", len(protoParts),
+				"secondSources", 0,
+				"totalParts", len(protoParts),
+			)
+		}
 	}
 
 	// Process MP sheet (bom_status = M)
@@ -105,6 +155,24 @@ func (r *EBOMReader) Import(f Workbook) error {
 		mpParts := r.parseStatusSheet(f, mpSheet, "M", mode)
 		allParts = append(allParts, mpParts...)
 		r.result.PartsCount += len(mpParts)
+
+		if r.logger != nil {
+			r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析完成", mpSheet),
+				"sheet", mpSheet,
+				"status", "M (MP)",
+				"mainParts", len(mpParts),
+				"secondSources", 0,
+				"totalParts", len(mpParts),
+			)
+		}
+	}
+
+	if r.logger != nil {
+		r.logger.Debug("[EBOM 讀取] 全檔案工作表解析統計完成",
+			"totalMainParts", len(allParts),
+			"totalSecondSources", len(allSecondSources),
+			"totalAllParts", len(allParts)+len(allSecondSources),
+		)
 	}
 
 	// Save all parts and second sources to database

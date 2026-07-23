@@ -107,7 +107,7 @@ func TestMainVsSecondSource(t *testing.T) {
 
 	// Set header
 	f.SetCellValue("SMD", "H5", "Qty")
-	f.SetCellValue("SMD", "J7", "CCL")
+	f.SetCellValue("SMD", "J5", "CCL")
 
 	// Row 6: Main Source (has item number)
 	f.SetCellValue("SMD", "A6", "1")
@@ -159,7 +159,7 @@ func TestDetermineMode_NPI(t *testing.T) {
 
 	// Set header for EBOM format
 	f.SetCellValue("SMD", "H5", "Qty")
-	f.SetCellValue("SMD", "J7", "CCL")
+	f.SetCellValue("SMD", "J5", "CCL")
 
 	// Add a part in SMD with location C1,C2
 	f.SetCellValue("SMD", "A6", "1")
@@ -195,7 +195,7 @@ func TestDetermineMode_MP(t *testing.T) {
 
 	// Set header for EBOM format
 	f.SetCellValue("SMD", "H5", "Qty")
-	f.SetCellValue("SMD", "J7", "CCL")
+	f.SetCellValue("SMD", "J5", "CCL")
 
 	// Add a part in SMD with location C1,C2
 	f.SetCellValue("SMD", "A6", "1")
@@ -227,7 +227,7 @@ func TestDetermineMode_NoProto(t *testing.T) {
 	// Create only SMD sheet
 	f.NewSheet("SMD")
 	f.SetCellValue("SMD", "H5", "Qty")
-	f.SetCellValue("SMD", "J7", "CCL")
+	f.SetCellValue("SMD", "J5", "CCL")
 
 	reader := &EBOMReader{}
 	mode := reader.determineMode(wb, []string{"SMD"})
@@ -701,7 +701,7 @@ func TestParseStatusSheet(t *testing.T) {
 
 	// Set header
 	f.SetCellValue("NI", "H5", "Qty")
-	f.SetCellValue("NI", "J7", "CCL")
+	f.SetCellValue("NI", "J5", "CCL")
 
 	// Add some parts in NI sheet starting from row 6
 	f.SetCellValue("NI", "A6", "1")

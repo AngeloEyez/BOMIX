@@ -39,10 +39,10 @@ func TestEndToEnd_ImportExport(t *testing.T) {
 	sheets := f.GetSheetList()
 	t.Logf("Sheets in test file: %v", sheets)
 
-	// Check H5 and J7 values
+	// Check H5 and J5 values
 	h5Val, _ := f.GetCellValue("SMD", "H5")
-	j7Val, _ := f.GetCellValue("SMD", "J7")
-	t.Logf("H5 value: %q, J7 value: %q", h5Val, j7Val)
+	j5Val, _ := f.GetCellValue("SMD", "J5")
+	t.Logf("H5 value: %q, J5 value: %q", h5Val, j5Val)
 	f.Close()
 
 	// Import the test file
@@ -139,10 +139,10 @@ func createTestEBOMFile(path string) error {
 	f.SetCellValue("SMD", "H4", "Date: 2024-01-15")
 
 	// Set column headers (row 5)
-	// Note: H5 must be "Qty" and J7 must be "CCL" for EBOM detection
+	// Note: H5 must be "Qty" and J5 must be "CCL" for EBOM detection
 	// Column mapping based on product-spec 7.1.1:
 	// A=Item, B=HHPN, C=Type, D=Qty, E=Description, F=Supplier, G=Supplier PN, H=Type (again), I=Location, J=CCL, K=Status, L=Remark
-	// But for detector, H5 must be "Qty" and J7 must be "CCL"
+	// But for detector, H5 must be "Qty" and J5 must be "CCL"
 	f.SetCellValue("SMD", "A5", "#")
 	f.SetCellValue("SMD", "B5", "HHPN")
 	f.SetCellValue("SMD", "C5", "Type")
@@ -155,9 +155,6 @@ func createTestEBOMFile(path string) error {
 	f.SetCellValue("SMD", "J5", "CCL")
 	f.SetCellValue("SMD", "K5", "Status")
 	f.SetCellValue("SMD", "L5", "Remark")
-
-	// Set J7 to "CCL" for EBOM detection (required by detector)
-	f.SetCellValue("SMD", "J7", "CCL")
 
 	// Add test part data (starting from row 6)
 	f.SetCellValue("SMD", "A6", "1")

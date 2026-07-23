@@ -27,7 +27,7 @@ type ReaderImpl struct {
 func NewReader(db *gorm.DB, logger *logger.Logger) *ReaderImpl {
 	return &ReaderImpl{
 		db:       db,
-		detector: NewDetector(),
+		detector: NewDetector(logger),
 		logger:   logger,
 	}
 }
