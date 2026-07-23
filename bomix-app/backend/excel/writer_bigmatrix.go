@@ -297,6 +297,65 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		currentCol += revModelCount
 	}
 
+	// Calculate and apply uniform column width for all model columns (H onwards)
+	maxColWidthReq := 5.0
+	padding := 2.0
+
+	for _, rev := range revisions {
+		revModelCount := len(rev.ModelQty)
+		if override, ok := options.ModelCountOverrides[rev.ID]; ok && override > 0 {
+			revModelCount = override
+		} else if revModelCount == 0 {
+			revModelCount = maxModelCount
+		}
+		if revModelCount <= 0 {
+			revModelCount = 1
+		}
+
+		// 1. Project Code (Row 2) width requirement per column (considering merged columns)
+		if rev.ProjectCode != "" {
+			req := (float64(len(rev.ProjectCode)) + padding) / float64(revModelCount)
+			if req > maxColWidthReq {
+				maxColWidthReq = req
+			}
+		}
+
+		// 2. Phase-Version (Row 3) width requirement per column (considering merged columns)
+		var phaseVer string
+		if rev.Phase != "" && rev.Version != "" {
+			phaseVer = fmt.Sprintf("%s-%s", rev.Phase, rev.Version)
+		} else if rev.Phase != "" {
+			phaseVer = rev.Phase
+		} else {
+			phaseVer = rev.Version
+		}
+		if phaseVer != "" {
+			req := (float64(len(phaseVer)) + padding) / float64(revModelCount)
+			if req > maxColWidthReq {
+				maxColWidthReq = req
+			}
+		}
+
+		// 3. Model Qty (Row 5) width requirement per column (single cell)
+		for i := 0; i < revModelCount; i++ {
+			qty := rev.ModelQty[modelNames[i]]
+			if qty == 0 {
+				qty = 1
+			}
+			req := float64(len(fmt.Sprintf("%d", qty))) + padding
+			if req > maxColWidthReq {
+				maxColWidthReq = req
+			}
+		}
+	}
+
+	totalModelCols := currentCol - bomStartCol
+	if totalModelCols > 0 {
+		startColStr := getColName(bomStartCol)
+		endColStr := getColName(bomStartCol + totalModelCols - 1)
+		_ = f.SetColWidth("BigMatrix", startColStr, endColStr, maxColWidthReq)
+	}
+
 	// Helper function to apply styles to a row (columns A-G and dynamic Model columns)
 	applyFullRowStyle := func(f *excelize.File, sheet string, row int, isEven bool) {
 		refRow := 6

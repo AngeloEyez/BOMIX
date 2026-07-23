@@ -796,5 +796,55 @@ func TestExportBigMatrix_StyleInheritance(t *testing.T) {
 	}
 }
 
+// TestExportBigMatrix_AutoColWidth verifies automatic column width calculation based on header text
+func TestExportBigMatrix_AutoColWidth(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bigmatrix_width_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	longProjCode := "VERY_VERY_LONG_PROJECT_CODE_NAME" // 32 chars
+	options := ExportOptions{
+		Format:      types.FormatBigMatrix,
+		OutputPath:  filepath.Join(tmpDir, "width_test.xlsx"),
+		Description: "Width Test",
+		Revisions: []RevisionData{
+			{
+				ID:          "1",
+				ProjectCode: longProjCode,
+				Phase:       "PV",
+				Version:     "0.1",
+				ModelQty:    map[string]int{"A": 1}, // Single column, so width req is (32 + 2) / 1 = 34
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open file: %v", err)
+	}
+	defer f.Close()
+
+	w, err := f.GetColWidth("BigMatrix", "H")
+	if err != nil {
+		t.Fatalf("GetColWidth failed: %v", err)
+	}
+
+	if w < 30.0 {
+		t.Errorf("Expected H column width to be >= 30.0 for long project code, got %f", w)
+	}
+}
+
 
 
