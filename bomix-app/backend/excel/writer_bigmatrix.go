@@ -12,120 +12,9 @@ import (
 // See product-spec section 8.1
 func (w *WriterImpl) exportBigMatrix(options ExportOptions) ([]string, error) {
 	if w.logger != nil {
-		w.logger.Info(fmt.Sprintf("[exportBigMatrix] 開始產生 BigMatrix 匯出檔 (Revisions 數量: %d)", len(options.RevisionIDs)))
-		w.logger.Debug(fmt.Sprintf("[exportBigMatrix] 載入範本檔: %s", types.FormatBigMatrix))
+		w.logger.Info(fmt.Sprintf("[exportBigMatrix] 開始產生 BigMatrix 匯出檔 (Revisions 數量: %d, PartData 數量: %d)", len(options.Revisions), len(options.PartData)))
 	}
-
-	// Load template
-	f, err := w.templateManager.LoadTemplate(types.FormatBigMatrix)
-	if err != nil {
-		if w.logger != nil {
-			w.logger.Error(fmt.Sprintf("[exportBigMatrix] 載入 BigMatrix 範本失敗: %v", err))
-		}
-		return nil, fmt.Errorf("failed to load BigMatrix template: %w", err)
-	}
-	defer f.Close()
-
-	// Prepare tag replacement data
-	tags := map[string]string{
-		"{{.BOMCount}}":    fmt.Sprintf("%d", len(options.RevisionIDs)),
-		"{{.Description}}": options.Description,
-		"{{.Date}}":        generateTimestamp(),
-	}
-
-	if w.logger != nil {
-		w.logger.Debug(fmt.Sprintf("[exportBigMatrix] 替換標籤內容: %+v", tags))
-	}
-
-	// Apply tag replacement
-	if err := applyTagReplacement(f, tags); err != nil {
-		if w.logger != nil {
-			w.logger.Error(fmt.Sprintf("[exportBigMatrix] 替換標籤失敗: %v", err))
-		}
-		return nil, fmt.Errorf("failed to apply tag replacement: %w", err)
-	}
-
-	// Get style IDs for alternating rows
-	styleRow6, _ := f.GetCellStyle("BigMatrix", "A6")
-	styleRow7, _ := f.GetCellStyle("BigMatrix", "A7")
-
-	// Start writing data from row 6
-	rowIndex := 6
-
-	// Write parts data (placeholder - in real implementation, fetch from DB)
-	// This is a skeleton showing the structure
-	for _, part := range options.PartData {
-		// Alternate row styles
-		if rowIndex%2 == 0 {
-			applyRowStyle(f, "BigMatrix", rowIndex, styleRow6)
-		} else {
-			applyRowStyle(f, "BigMatrix", rowIndex, styleRow7)
-		}
-
-		// Write basic part data (columns A-G)
-		f.SetCellValue("BigMatrix", fmt.Sprintf("A%d", rowIndex), part.Item)
-		f.SetCellValue("BigMatrix", fmt.Sprintf("B%d", rowIndex), part.HHPN)
-		f.SetCellValue("BigMatrix", fmt.Sprintf("C%d", rowIndex), part.Description)
-		f.SetCellValue("BigMatrix", fmt.Sprintf("D%d", rowIndex), part.Supplier)
-		f.SetCellValue("BigMatrix", fmt.Sprintf("E%d", rowIndex), part.SupplierPn)
-		f.SetCellValue("BigMatrix", fmt.Sprintf("F%d", rowIndex), part.Qty)
-		f.SetCellValue("BigMatrix", fmt.Sprintf("G%d", rowIndex), part.Location)
-
-		// Write Model selections (columns H onwards)
-		// This would be populated based on MatrixSelection data
-		for model, supplierPn := range part.Selections {
-			_ = model
-			_ = supplierPn
-		}
-
-		rowIndex++
-
-		// Write second sources (if any)
-		for _, ss := range part.SecondSources {
-			if rowIndex%2 == 0 {
-				applyRowStyle(f, "BigMatrix", rowIndex, styleRow6)
-			} else {
-				applyRowStyle(f, "BigMatrix", rowIndex, styleRow7)
-			}
-
-			f.SetCellValue("BigMatrix", fmt.Sprintf("B%d", rowIndex), ss.HHPN)
-			f.SetCellValue("BigMatrix", fmt.Sprintf("D%d", rowIndex), ss.Supplier)
-			f.SetCellValue("BigMatrix", fmt.Sprintf("E%d", rowIndex), ss.SupplierPn)
-			f.SetCellValue("BigMatrix", fmt.Sprintf("C%d", rowIndex), ss.Description)
-
-			rowIndex++
-		}
-	}
-
-	// Save to output path using validateAndPrepareOutputPath
-	seriesName := "BOMIX"
-	if len(options.Revisions) > 0 {
-		seriesName = options.Revisions[0].ProjectCode
-	}
-	defaultFileName := generateBigMatrixFileName(seriesName, options.Revisions, generateTimestamp())
-	outputPath, err := validateAndPrepareOutputPath(options.OutputPath, options.OutputDir, defaultFileName)
-	if err != nil {
-		if w.logger != nil {
-			w.logger.Error(fmt.Sprintf("[exportBigMatrix] 驗證匯出路徑失敗: %v", err))
-		}
-		return nil, err
-	}
-
-	if w.logger != nil {
-		w.logger.Debug(fmt.Sprintf("[exportBigMatrix] 儲存 Excel 檔案至: %s", outputPath))
-	}
-
-	if err := f.SaveAs(outputPath); err != nil {
-		if w.logger != nil {
-			w.logger.Error(fmt.Sprintf("[exportBigMatrix] 儲存檔案失敗: %v", err))
-		}
-		return nil, fmt.Errorf("failed to save BigMatrix: %w", err)
-	}
-
-	if w.logger != nil {
-		w.logger.Info(fmt.Sprintf("[exportBigMatrix] 成功產生 BigMatrix 檔案: %s", outputPath))
-	}
-	return []string{outputPath}, nil
+	return w.exportBigMatrixDetailed(options, options.Revisions, options.PartData)
 }
 
 // applyTagReplacement applies tag replacement to the template
@@ -140,12 +29,18 @@ func applyTagReplacement(f *excelize.File, tags map[string]string) error {
 		}
 		for i, row := range rows {
 			for j, cell := range row {
+				cellValue := cell
+				replaced := false
 				for tag, value := range tags {
-					if cell == tag {
-						colName := getColName(j)
-						rowNum := i + 1
-						f.SetCellValue(sheet, fmt.Sprintf("%s%d", colName, rowNum), value)
+					if strings.Contains(cellValue, tag) {
+						cellValue = strings.ReplaceAll(cellValue, tag, value)
+						replaced = true
 					}
+				}
+				if replaced {
+					colName := getColName(j)
+					rowNum := i + 1
+					f.SetCellValue(sheet, fmt.Sprintf("%s%d", colName, rowNum), cellValue)
 				}
 			}
 		}
@@ -154,7 +49,7 @@ func applyTagReplacement(f *excelize.File, tags map[string]string) error {
 	return nil
 }
 
-// getCellName converts column index to Excel column name (0 -> A, 1 -> B, etc.)
+// getColName converts column index to Excel column name (0 -> A, 1 -> B, etc.)
 func getColName(col int) string {
 	if col < 26 {
 		return string(rune('A' + col))
@@ -212,10 +107,14 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 
 	// 8.1.2 - Tag replacement for header
 	tags := map[string]string{
-		"{{.BOMCount}}":    fmt.Sprintf("%d", len(revisions)),
+		"{{.BOMCount}}":    fmt.Sprintf("%d", len(options.RevisionIDs)),
 		"{{.Description}}": options.Description,
 		"{{.Date}}":        date,
 	}
+	if len(revisions) > 0 {
+		tags["{{.BOMCount}}"] = fmt.Sprintf("%d", len(revisions))
+	}
+
 	if w.logger != nil {
 		w.logger.Debug(fmt.Sprintf("[exportBigMatrixDetailed] 替換標籤內容: %+v", tags))
 	}
@@ -227,8 +126,16 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		return nil, err
 	}
 
+	if len(revisions) > 0 {
+		if revisions[0].ProjectCode != "" {
+			f.SetCellValue("BigMatrix", "H2", revisions[0].ProjectCode)
+		}
+		if revisions[0].Phase != "" || revisions[0].Version != "" {
+			f.SetCellValue("BigMatrix", "H3", fmt.Sprintf("%s-%s", revisions[0].Phase, revisions[0].Version))
+		}
+	}
+
 	// 8.1.3 - Dynamic column generation for multiple BOMs and Models
-	// Calculate total Model count across all revisions
 	maxModelCount := 0
 	for _, rev := range revisions {
 		if len(rev.ModelQty) > maxModelCount {
@@ -258,9 +165,6 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			revModelCount = maxModelCount
 		}
 
-		// Write Project Code and Revision ID (merged cells for rows 2 and 3)
-		// This would need proper merge logic based on actual revision data
-
 		// Write Model names (row 4) and quantities (row 5)
 		for i := 0; i < revModelCount; i++ {
 			col := getColName(currentCol + i)
@@ -283,6 +187,13 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	styleRow6, _ := f.GetCellStyle("BigMatrix", "A6")
 	styleRow7, _ := f.GetCellStyle("BigMatrix", "A7")
 
+	// Clear default template sample rows (Row 6 and Row 7)
+	for r := 6; r <= 7; r++ {
+		for col := 'A'; col <= 'J'; col++ {
+			f.SetCellValue("BigMatrix", fmt.Sprintf("%c%d", col, r), "")
+		}
+	}
+
 	// 8.1.4 - Write part data
 	rowIndex := 6
 	for _, part := range parts {
@@ -303,7 +214,6 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		f.SetCellValue("BigMatrix", fmt.Sprintf("G%d", rowIndex), part.Location)
 
 		// 8.1.5.3 - Write Model selections
-		// Reset currentCol for writing selections
 		currentCol = bomStartCol
 		for _, rev := range revisions {
 			revModelCount := len(rev.ModelQty)
@@ -317,10 +227,11 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 
 				modelName := modelNames[i]
 				if selectedPN, ok := part.Selections[modelName]; ok && selectedPN != "" {
-					// Check if this part exists in this revision
 					if part.SupplierPn == selectedPN {
 						f.SetCellValue("BigMatrix", cell, "V")
 					}
+				} else if len(part.Selections) == 0 {
+					f.SetCellValue("BigMatrix", cell, "V")
 				}
 			}
 
@@ -331,18 +242,16 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 
 		// Write second sources
 		for _, ss := range part.SecondSources {
-			// Apply alternating style
 			if rowIndex%2 == 0 {
 				applyRowStyle(f, "BigMatrix", rowIndex, styleRow6)
 			} else {
 				applyRowStyle(f, "BigMatrix", rowIndex, styleRow7)
 			}
 
-			// Second sources don't have Item or Location
 			f.SetCellValue("BigMatrix", fmt.Sprintf("B%d", rowIndex), ss.HHPN)
+			f.SetCellValue("BigMatrix", fmt.Sprintf("C%d", rowIndex), ss.Description)
 			f.SetCellValue("BigMatrix", fmt.Sprintf("D%d", rowIndex), ss.Supplier)
 			f.SetCellValue("BigMatrix", fmt.Sprintf("E%d", rowIndex), ss.SupplierPn)
-			f.SetCellValue("BigMatrix", fmt.Sprintf("C%d", rowIndex), ss.Description)
 
 			rowIndex++
 		}
@@ -350,7 +259,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 
 	// Save to output path using validateAndPrepareOutputPath
 	seriesName := "BOMIX"
-	if len(revisions) > 0 {
+	if len(revisions) > 0 && revisions[0].ProjectCode != "" {
 		seriesName = revisions[0].ProjectCode
 	}
 	defaultFileName := generateBigMatrixFileName(seriesName, revisions, date)
@@ -361,6 +270,10 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 
 	if err := f.SaveAs(outputPath); err != nil {
 		return nil, fmt.Errorf("failed to save BigMatrix: %w", err)
+	}
+
+	if w.logger != nil {
+		w.logger.Info(fmt.Sprintf("[exportBigMatrixDetailed] 成功匯出 BigMatrix 檔案至: %s", outputPath))
 	}
 
 	return []string{outputPath}, nil

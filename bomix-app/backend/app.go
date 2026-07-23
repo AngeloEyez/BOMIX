@@ -487,6 +487,14 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 		revisionIDsStr[i] = fmt.Sprintf("%d", id)
 	}
 
+	// Load revisions and part data from DB
+	revisions, parts, err := loadExportData(dbConn, options.RevisionIDs)
+	if err != nil {
+		a.logger.Warn(fmt.Sprintf("[ExportExcel] 從資料庫載入資料失敗/警告: %v", err))
+	} else {
+		a.logger.Info(fmt.Sprintf("[ExportExcel] 成功載入 DB 資料: Revisions=%d, Parts=%d", len(revisions), len(parts)))
+	}
+
 	exportOptions := excel.ExportOptions{
 		Format:              bomFormat,
 		ProjectIDs:          options.ProjectIDs,
@@ -495,6 +503,8 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 		OutputPath:          options.OutputPath,
 		OutputDir:           options.OutputDir,
 		ModelCountOverrides: options.ModelCountOverrides,
+		Revisions:           revisions,
+		PartData:            parts,
 	}
 
 	// Export in a task
@@ -531,6 +541,114 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 
 	//a.logger.Debug(fmt.Sprintf("匯出任務已提交: %s", taskID))
 	return []string{taskID}, nil
+}
+
+// loadExportData 從資料庫讀取匯出所需之 Revisions 與 Parts 資料
+func loadExportData(dbConn *gorm.DB, revisionIDs []int64) ([]excel.RevisionData, []excel.PartData, error) {
+	if len(revisionIDs) == 0 {
+		return nil, nil, nil
+	}
+
+	// 1. 查詢 BomRevisions
+	var dbRevs []db.BomRevision
+	if err := dbConn.Where("id IN ?", revisionIDs).Preload("MatrixModels").Find(&dbRevs).Error; err != nil {
+		return nil, nil, fmt.Errorf("failed to query revisions: %w", err)
+	}
+
+	var revDataList []excel.RevisionData
+	for _, rev := range dbRevs {
+		var proj db.Project
+		_ = dbConn.First(&proj, rev.ProjectID)
+
+		modelQty := make(map[string]int)
+		for _, m := range rev.MatrixModels {
+			modelQty[m.ModelName] = m.Qty
+		}
+
+		revDataList = append(revDataList, excel.RevisionData{
+			ID:               fmt.Sprintf("%d", rev.ID),
+			ProjectCode:      proj.Code,
+			Description:      rev.Description,
+			SchematicVersion: rev.SchematicVersion,
+			PCBVersion:       rev.PCBVersion,
+			PCAPN:            rev.PCAPN,
+			Phase:            rev.Phase,
+			Version:          rev.Version,
+			Date:             rev.Date,
+			Mode:             rev.Mode,
+			ModelQty:         modelQty,
+		})
+	}
+
+	// 2. 查詢 Parts
+	var dbParts []db.Part
+	if err := dbConn.Where("revision_id IN ?", revisionIDs).Find(&dbParts).Error; err != nil {
+		return nil, nil, fmt.Errorf("failed to query parts: %w", err)
+	}
+
+	// 3. 查詢 SecondSource
+	var dbSecondSources []db.SecondSource
+	_ = dbConn.Where("revision_id IN ?", revisionIDs).Find(&dbSecondSources)
+	ssMap := make(map[int64][]excel.SecondSourceData)
+	for _, ss := range dbSecondSources {
+		ssMap[ss.PartID] = append(ssMap[ss.PartID], excel.SecondSourceData{
+			HHPN:        ss.SupplierPN,
+			Supplier:    ss.Supplier,
+			SupplierPn:  ss.SupplierPN,
+			Description: ss.Description,
+		})
+	}
+
+	// 4. 查詢 MatrixSelections
+	var dbSelections []db.MatrixSelection
+	_ = dbConn.Where("revision_id IN ?", revisionIDs).Find(&dbSelections)
+
+	var dbModels []db.MatrixModel
+	_ = dbConn.Where("revision_id IN ?", revisionIDs).Find(&dbModels)
+	modelIDToName := make(map[int64]string)
+	for _, m := range dbModels {
+		modelIDToName[m.ID] = m.ModelName
+	}
+
+	selMap := make(map[int64]map[string]string)
+	for _, sel := range dbSelections {
+		modelName, ok := modelIDToName[sel.ModelID]
+		if !ok {
+			continue
+		}
+		if selMap[sel.PartID] == nil {
+			selMap[sel.PartID] = make(map[string]string)
+		}
+		selMap[sel.PartID][modelName] = sel.SelectedSupplierPn
+	}
+
+	// 組裝 PartData
+	var partDataList []excel.PartData
+	for idx, p := range dbParts {
+		selections := selMap[p.ID]
+		if selections == nil {
+			selections = make(map[string]string)
+		}
+
+		itemStr := fmt.Sprintf("%d", idx+1)
+		partDataList = append(partDataList, excel.PartData{
+			Item:          itemStr,
+			HHPN:          p.SupplierPN,
+			Description:   p.Description,
+			Supplier:      p.Supplier,
+			SupplierPn:    p.SupplierPN,
+			Qty:           p.Quantity,
+			Location:      p.Location,
+			Type:          p.Type,
+			BOMStatus:     p.BOMStatus,
+			CCL:           p.CCL,
+			Remark:        p.Remark,
+			SecondSources: ssMap[p.ID],
+			Selections:    selections,
+		})
+	}
+
+	return revDataList, partDataList, nil
 }
 
 // ==================== Task Management ====================

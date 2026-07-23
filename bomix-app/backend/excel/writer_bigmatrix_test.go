@@ -550,4 +550,92 @@ func TestExportBigMatrix_InvalidOutputPath(t *testing.T) {
 	}
 }
 
+func TestExportBigMatrix_TagReplacementAndPartData(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bigmatrix_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:      types.FormatBigMatrix,
+		OutputPath:  filepath.Join(tmpDir, "test_output.xlsx"),
+		Description: "Test BigMatrix Project",
+		Revisions: []RevisionData{
+			{
+				ID:          "1",
+				ProjectCode: "DEMO_PROJ",
+				Phase:       "PV",
+				Version:     "0.3",
+				ModelQty:    map[string]int{"A": 2, "B": 1},
+			},
+		},
+		PartData: []PartData{
+			{
+				Item:        "1",
+				HHPN:        "123456789",
+				Description: "Resistor 10K",
+				Supplier:    "YAGEO",
+				SupplierPn:  "RC0603FR-0710KL",
+				Qty:         5,
+				Location:    "R1,R2,R3,R4,R5",
+				Selections: map[string]string{
+					"A": "RC0603FR-0710KL",
+				},
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	if len(paths) != 1 {
+		t.Fatalf("Expected 1 path, got %d", len(paths))
+	}
+
+	// Verify generated file
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open exported file: %v", err)
+	}
+	defer f.Close()
+
+	// Verify Description tag replacement in B4
+	desc, _ := f.GetCellValue("BigMatrix", "B4")
+	if !strings.Contains(desc, "Test BigMatrix Project") {
+		t.Errorf("Expected B4 to contain 'Test BigMatrix Project', got '%s'", desc)
+	}
+
+	// Verify H2 (Project Code)
+	proj, _ := f.GetCellValue("BigMatrix", "H2")
+	if proj != "DEMO_PROJ" {
+		t.Errorf("Expected H2 to be 'DEMO_PROJ', got '%s'", proj)
+	}
+
+	// Verify Part Data at Row 6
+	item, _ := f.GetCellValue("BigMatrix", "A6")
+	if item != "1" {
+		t.Errorf("Expected A6 (Item) to be '1', got '%s'", item)
+	}
+
+	hhpn, _ := f.GetCellValue("BigMatrix", "B6")
+	if hhpn != "123456789" {
+		t.Errorf("Expected B6 (HHPN) to be '123456789', got '%s'", hhpn)
+	}
+
+	// Verify Selection V at H6 (Model A)
+	selA, _ := f.GetCellValue("BigMatrix", "H6")
+	if selA != "V" {
+		t.Errorf("Expected H6 (Selection A) to be 'V', got '%s'", selA)
+	}
+}
+
+
 
