@@ -778,18 +778,20 @@ func Detect(file *excelize.File) BOMFormat {
 4. **解析與儲存**：各 Reader 任務在後端平行/序列解析資料，並寫入 SQLite 資料庫中。
 5. **匯入完成與更新**：當個別檔案任務完成後，透過非同步回呼機制通知前端 UI 即時重新整理與載入資料。
 
-### 6.4 BOM 資料分析
+### 6.4 BOM 資料分析與 View 系統
 
-#### 6.4.1 聚合邏輯
+BOM 資料的聚合、過濾與多 BOM Revision 整合均由 **View 系統（`backend/view/`）** 統一處理（詳見 **5.4 View 系統**）。前端 UI 介面顯示與 Excel 匯出模組皆透過呼叫 View 系統傳入 `ViewQuery` 取得 `ViewResult`。
 
-將原子化的零件資料聚合為 Main Item 視圖：
+#### 6.4.1 聚合與多 BOM 整合邏輯
 
-1. 以 `(supplier, supplier_pn)` 為群組鍵
-2. 合併同群組的 Location 為逗號分隔字串
-3. Qty 自動計算（Location 數量）
-4. 附加該群組的所有 Second Source
+1. **主料群組化**：以 `(supplier, supplier_pn)` 為群組鍵將原子化零件聚合。
+2. **多 BOM 聯集合併**：當查詢包含多份 BOM Revision 時，建立所有 BOM 中的主料與替代料（2nd Source）聯集合併群組。
+3. **Location 與 Qty 聚合**：合併同群組的 Location 為逗號分隔字串，並自動計算打件數量 Qty（預設取自第一個包含此物料的 BOM Revision）。
+4. **來源歸屬標記**：每個物料群組附帶 `SourceRevisionIDs`，列出其存在的 BOM Revision ID 列表。
 
-#### 6.4.2 視圖過濾
+#### 6.4.2 視圖過濾類別
+
+View 系統支援以下視圖種類的動態過濾（過濾規則由 View 系統的 `Filter` 模組執行）：
 
 | 視圖 | 過濾條件 |
 |------|----------|
@@ -828,7 +830,7 @@ func Detect(file *excelize.File) BOMFormat {
 3. **設定儲存位置**：
    - **單一檔案匯出**（如 BigMatrix 或僅選單個 Matrix）：使用者透過檔案儲存對話框選擇具體的儲存檔案路徑。
    - **多檔案批次匯出**（如多選 Matrix）：使用者選擇一個輸出目錄（OutputDir），系統自動依據 BOM 屬性命名並輸出檔案至該目錄。
-4. **解析與填寫**：對應格式的 Writer 自資料庫讀取 BOM 資料（與對應的 Matrix Model 勾選狀態），並將數據寫入內嵌的 Excel 範本。
+4. **解析與填寫**：對應格式的 Writer 透過 **View 系統（`backend/view/`）** 傳入匯出條件取得整合與過濾後的 BOM 資料（含對應的 Matrix Model 勾選狀態與 `SourceRevisionIDs` 歸屬標記），並將數據寫入內嵌的 Excel 範本。
 5. **匯出完成與通知**：各個任務執行完畢後，透過 Wails 事件發送完成回呼以通知 UI 更新進度或提示成功。
 
 #### 6.5.3 匯出參數
@@ -1223,7 +1225,7 @@ BigMatrix 格式的工作表中，自 **H 欄** 開始向右排列了多份 BOM 
 | F | `qty` | 打件數量 (由計算location中位置數量得到) |
 | G | `location` | 零件位置編號（逗號分隔） |
 
-因為物料列表是多份 BOM 聚合的結果，`qty` 與 `location` 以第一份 BOM 的資料為主；若第一份 BOM 無此物料，則往後尋找下一份 BOM，直到找到對應物料的資料為止。
+物料列表與欄位資料直接取自 **View 系統** 回傳之 `ViewPartGroup` 結構體。因為物料列表是 View 系統對多份 BOM 聯集合併的結果，`qty` 與 `location` 由 View 系統自動取自第一份包含該物料的 BOM Revision。
 
 ##### 8.1.5.2 Main Source / 2nd Source 排列
 
@@ -1236,16 +1238,18 @@ BigMatrix 格式的工作表中，自 **H 欄** 開始向右排列了多份 BOM 
 
 - 若該 Model 對該物料存在 `MatrixSelection` 記錄（即被勾選），寫入 **"V"**。
 - 若未被勾選，儲存格留空。
-- 若該物料在對應的 BOM 中完全不存在，則將該儲存格背景填滿灰色。
+- **灰色背景處理**：利用 View 系統提供之物料來源歸屬標記 `SourceRevisionIDs`，若當前 BOM Revision ID 不存在於該物料的 `SourceRevisionIDs` 中（即 `revID ∉ SourceRevisionIDs`，代表該物料在此 BOM 中不存在），將對應的儲存格背景填滿淺灰色（`#D9D9D9`）。
 - 若該物料群組只有 Main Source、無 2nd Source，則相對應的 Model 位置自動寫入 **"V"**。
 
 #### 8.1.6 零件篩選條件
 
-匯出至 BigMatrix 時，歷遍所選擇的所有 bom revisions, 建立一個集合的零件列表，若有同一個主料帶有不同2nd組合，則合併為一個聯集群組。
+匯出至 BigMatrix 時，所有資料的獲取與動態篩選**統一由 View 系統（`backend/view/`）負責處理**：
 
-零件屬性僅包含符合以下條件的零件：
-- `ccl = Y`
-- `bom_status = I`，以及依據該 BOM 的 Mode 決定包含 `P` (NPI 模式) 或 `M` (MP 模式)
+1. **多 BOM 聯集合併**：View 系統自動遍歷所選擇的所有 BOM Revisions，建立包含所有主料與 2nd Source 組合的聯集群組。
+2. **條件篩選**：View 系統會在查詢時依據以下條件進行過濾，僅回傳符合條件的零件：
+   - `ccl = Y`
+   - `bom_status = I`，以及依據該 BOM 的 Mode 決定包含 `P` (NPI 模式) 或 `M` (MP 模式)
+3. **來源標記**：View 系統在回傳的 `ViewPartGroup` 中附帶 `SourceRevisionIDs` 欄位，供 BigMatrix Writer 直接據以進行灰色儲存格繪製。
 
 #### 8.1.7 零件排序規則
 
@@ -1307,10 +1311,10 @@ Matrix 匯出為**單一 BOM** 的 Model 選擇表，與 BigMatrix（橫向多 B
 
 #### 8.2.2 輸出 Sheet 結構
 
-根據零件基本屬性 `type` 分別產生三個 sheet：
-- **`SMD`**：篩選 `type = SMD` 的零件。
-- **`PTH`**：篩選 `type = PTH` 的零件。
-- **`BOTTOM`**：篩選 `type = BOTTOM` 的零件。
+對應的三個 Sheet 資料統一透過 **View 系統（`backend/view/`）** 以對應的 `ViewType` 查詢取得：
+- **`SMD`**：傳入 `ViewType = SMD` 取得零件列表。
+- **`PTH`**：傳入 `ViewType = PTH` 取得零件列表。
+- **`BOTTOM`**：傳入 `ViewType = BOTTOM` 取得零件列表。
 
 #### 8.2.3 表頭寫入（標籤置換法）
 
@@ -1410,9 +1414,12 @@ Remark 欄位位於所有 Model 欄位結束後的下一欄（參見 `8.2.4` 第
 
 #### 8.2.6 零件篩選條件
 
-匯出至 Matrix 時，除了依據 `type` 分別產生三個 Sheet 外，還需滿足以下過濾條件：
-- `ccl = Y`
-- `bom_status = I`，以及依據該 BOM 的 Mode 決定包含 `P` (NPI 模式) 或 `M` (MP 模式)
+匯出至 Matrix 時，所有資料過濾統一由 **View 系統（`backend/view/`）** 負責處理：
+
+- **製程分類過濾**：分別依 `ViewType` (`SMD` / `PTH` / `BOTTOM`) 取得對應 Sheet 的物料。
+- **狀態與關鍵零件過濾**：View 系統自動根據以下條件過濾，僅回傳符合條件的零件：
+  - `ccl = Y`
+  - `bom_status = I`，以及依據該 BOM 的 Mode 決定包含 `P` (NPI 模式) 或 `M` (MP 模式)
 
 #### 8.2.7 零件排序規則
 
@@ -1571,11 +1578,11 @@ GetBOMRevisions(projectID string) ([]BOMRevision, error)
 GetBOMRevision(id string) (*BOMRevision, error)
 ```
 
-#### 10.1.4 BOM 資料查詢
+#### 10.1.4 BOM 資料查詢與 View 系統
 
 ```go
-GetBOMParts(revisionID string, view string) ([]AggregatedPart, error)
-GetBOMSummary(revisionID string) (*BOMSummary, error)
+GetBOMView(revisionIDs []int64, viewType string, modeOverride string) (*view.ViewResult, error)
+GetBOMSummary(revisionID int64) (*BOMSummary, error)
 ```
 
 #### 10.1.5 Excel 匯入/匯出

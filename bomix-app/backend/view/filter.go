@@ -54,7 +54,7 @@ func (f *Filter) Apply(parts []ViewPartGroup, query ViewQuery, rawData map[int64
 	case ViewMP:
 		return f.filterByBOMStatus(parts, "M")
 	case ViewCCL:
-		return f.filterCCL(parts)
+		return f.filterCCL(parts, query, rawData)
 	default:
 		// 未知視圖類型：回傳全部（不過濾）
 		return parts
@@ -217,18 +217,15 @@ func (f *Filter) filterByBOMStatus(parts []ViewPartGroup, status string) []ViewP
 	return result
 }
 
-// filterCCL 過濾出關鍵零件（CCL = Y）。
-// See product-spec section 6.4.2
-//
-// 參數：
-//   - parts：待過濾列表
-//
-// 回傳：
-//   - []ViewPartGroup：過濾後的列表
-func (f *Filter) filterCCL(parts []ViewPartGroup) []ViewPartGroup {
+// filterCCL 過濾出關鍵零件 (CCL = Y) 且符合 Mode 的有效 BOM 狀態 (I + P/M)。
+// See product-spec section 6.4.2 & 8.1.6
+func (f *Filter) filterCCL(parts []ViewPartGroup, query ViewQuery, rawData map[int64]*rawRevisionData) []ViewPartGroup {
+	// 先經過 filterAll 進行 bom_status 與 Mode 的有效性過濾 (NPI: I+P, MP: I+M, 排除 X)
+	validParts := f.filterAll(parts, query, rawData)
+
 	result := make([]ViewPartGroup, 0)
-	for _, part := range parts {
-		if part.CCL == "Y" {
+	for _, part := range validParts {
+		if strings.EqualFold(part.CCL, "Y") {
 			result = append(result, part)
 		}
 	}

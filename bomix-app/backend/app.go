@@ -403,7 +403,7 @@ func (a *App) GetBOMView(revisionIDs []int64, viewType string, modeOverride stri
 		ModeOverride: modeOverride,
 	}
 
-	svc := view.NewService(dbConn)
+	svc := view.NewService(dbConn, a.logger)
 	result, err := svc.Query(query)
 	if err != nil {
 		a.logger.Error(fmt.Sprintf("[GetBOMView] 視圖查詢失敗: %v", err))
@@ -530,26 +530,6 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 		revisionIDsStr[i] = fmt.Sprintf("%d", id)
 	}
 
-	// Load revisions and part data from DB
-	revisions, parts, err := loadExportData(dbConn, options.RevisionIDs)
-	if err != nil {
-		a.logger.Warn(fmt.Sprintf("[ExportExcel] 從資料庫載入資料失敗/警告: %v", err))
-	} else {
-		a.logger.Info(fmt.Sprintf("[ExportExcel] 成功載入 DB 資料: Revisions=%d, Parts=%d", len(revisions), len(parts)))
-	}
-
-	exportOptions := excel.ExportOptions{
-		Format:              bomFormat,
-		ProjectIDs:          options.ProjectIDs,
-		RevisionIDs:         revisionIDsStr,
-		Description:         options.Description,
-		OutputPath:          options.OutputPath,
-		OutputDir:           options.OutputDir,
-		ModelCountOverrides: options.ModelCountOverrides,
-		Revisions:           revisions,
-		PartData:            parts,
-	}
-
 	// Export in a task
 	taskID := uuid.New().String()
 	taskID = a.taskMgr.Submit(
@@ -557,6 +537,26 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 		"Export",
 		func(ctx context.Context, progress func(float64, string), taskLogger *logger.Logger) error {
 			progress(0.1, "Preparing export data...")
+
+			// Load revisions and part data from DB via View System using taskLogger
+			revisions, parts, err := loadExportData(taskLogger, dbConn, options.RevisionIDs)
+			if err != nil {
+				taskLogger.Warn(fmt.Sprintf("[ExportExcel] 從資料庫載入 View 資料失敗/警告: %v", err))
+			} else {
+				taskLogger.Info(fmt.Sprintf("[ExportExcel] 成功透過 View 系統載入 DB 資料: Revisions=%d, Parts=%d", len(revisions), len(parts)))
+			}
+
+			exportOptions := excel.ExportOptions{
+				Format:              bomFormat,
+				ProjectIDs:          options.ProjectIDs,
+				RevisionIDs:         revisionIDsStr,
+				Description:         options.Description,
+				OutputPath:          options.OutputPath,
+				OutputDir:           options.OutputDir,
+				ModelCountOverrides: options.ModelCountOverrides,
+				Revisions:           revisions,
+				PartData:            parts,
+			}
 
 			// Create Excel writer with taskLogger
 			excelWriter, err := excel.NewWriter(taskLogger)
@@ -588,14 +588,15 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 
 // loadExportData 透過 View 系統從資料庫讀取匯出所需的 Revisions 與 Parts 資料。
 //
-// 此函數替換了原本直接操作資料庫的實作，改為呼叫 View 系統的 Query()，
-// 確保匯出資料與前端顯示使用同一套聚合邏輯。
+// 此函數透過 View 系統的 Query() 取得資料，
+// 依據 product-spec 8.1.6 規定使用 ViewCCL 視圖條件過濾 (ccl=Y, bom_status=I + P/M)。
 //
 // 匯出時使用「整合聯集」視圖（多 revision 時取聯集），
 // ViewPartGroup 中的 SourceRevisionIDs 會被傳遞至 PartData，
 // 供 BigMatrix Writer 判斷哪些儲存格需要填灰色底色。
 //
 // 參數：
+//   - lg：Logger 實例
 //   - dbConn：GORM 資料庫連線
 //   - revisionIDs：要匯出的 BOM Revision ID 列表
 //
@@ -603,21 +604,24 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 //   - []excel.RevisionData：revision 元資料列表
 //   - []excel.PartData：物料資料列表（包含 SourceRevisionIDs）
 //   - error：若查詢失敗則回傳錯誤
-func loadExportData(dbConn *gorm.DB, revisionIDs []int64) ([]excel.RevisionData, []excel.PartData, error) {
+func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]excel.RevisionData, []excel.PartData, error) {
 	if len(revisionIDs) == 0 {
 		return nil, nil, nil
 	}
 
-	// 透過 View 系統查詢，使用 CCL 過濾（匯出只需 CCL=Y 的物料）
-	// BigMatrix/Matrix 匯出條件：ccl=Y + bom_status=I (+ P 或 M 依 Mode)
-	// 此處使用 ALL 視圖，由 Writer 根據需要進一步過濾
-	// （保持現有行為：由 writer_bigmatrix 根據 8.1.6 過濾）
-	svc := view.NewService(dbConn)
-	viewResult, err := svc.Query(view.ViewQuery{
+	query := view.ViewQuery{
 		RevisionIDs:  revisionIDs,
-		ViewType:     view.ViewAll, // 匯出時回傳全部，由 Writer 側過濾
-		ModeOverride: "",          // 各 revision 使用自己的 Mode
-	})
+		ViewType:     view.ViewCCL, // BigMatrix/Matrix 匯出依 product-spec 8.1.6 需使用 CCL 視圖過濾 (ccl=Y, bom_status=I + P/M)
+		ModeOverride: "",           // 各 revision 使用自己的 Mode
+	}
+
+	if lg != nil {
+		lg.Info(fmt.Sprintf("[loadExportData] 建立 View 條件: RevisionIDs=%v, ViewType=%s, ModeOverride=%s",
+			query.RevisionIDs, query.ViewType, query.ModeOverride))
+	}
+
+	svc := view.NewService(dbConn, lg)
+	viewResult, err := svc.Query(query)
 	if err != nil {
 		return nil, nil, fmt.Errorf("view query failed: %w", err)
 	}

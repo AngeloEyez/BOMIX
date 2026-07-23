@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"bomix-app/backend/db"
+	"bomix-app/backend/logger"
 
 	"gorm.io/gorm"
 )
@@ -18,18 +19,24 @@ import (
 //
 // Service 依賴注入 *gorm.DB，但僅用於讀取操作，不進行任何寫入。
 type Service struct {
-	db *gorm.DB
+	db     *gorm.DB
+	logger *logger.Logger
 }
 
 // NewService 建立一個新的 View 服務實例。
 //
 // 參數：
 //   - db：GORM 資料庫連線，View 服務將使用此連線進行唯讀查詢。
+//   - lg：選填的 Logger 實例（可用於紀錄 debug log）
 //
 // 回傳：
 //   - *Service：View 服務實例
-func NewService(db *gorm.DB) *Service {
-	return &Service{db: db}
+func NewService(db *gorm.DB, lg ...*logger.Logger) *Service {
+	svc := &Service{db: db}
+	if len(lg) > 0 && lg[0] != nil {
+		svc.logger = lg[0]
+	}
+	return svc
 }
 
 // rawRevisionData 是從資料庫取得的單一 revision 原始資料容器（內部使用）
@@ -64,6 +71,11 @@ type rawRevisionData struct {
 //   - *ViewResult：查詢結果，包含聚合物料群組與 revision 元資料
 //   - error：若資料庫查詢失敗則回傳錯誤
 func (s *Service) Query(query ViewQuery) (*ViewResult, error) {
+	if s.logger != nil {
+		s.logger.Info(fmt.Sprintf("[ViewService.Query] 執行 View 查詢: RevisionIDs=%v, ViewType=%s, ModeOverride=%s",
+			query.RevisionIDs, query.ViewType, query.ModeOverride))
+	}
+
 	if len(query.RevisionIDs) == 0 {
 		return &ViewResult{
 			Query:      query,
