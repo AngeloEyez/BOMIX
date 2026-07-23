@@ -2,6 +2,7 @@ package excel
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"bomix-app/backend/types"
@@ -401,7 +402,11 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		applyFullRowStyle(f, "BigMatrix", rowIndex, isEven)
 
 		// Write basic part data (columns A-G)
-		f.SetCellValue("BigMatrix", fmt.Sprintf("A%d", rowIndex), part.Item)
+		if itemNum, err := strconv.Atoi(strings.TrimSpace(part.Item)); err == nil {
+			f.SetCellValue("BigMatrix", fmt.Sprintf("A%d", rowIndex), itemNum)
+		} else {
+			f.SetCellValue("BigMatrix", fmt.Sprintf("A%d", rowIndex), part.Item)
+		}
 		f.SetCellValue("BigMatrix", fmt.Sprintf("B%d", rowIndex), part.HHPN)
 		f.SetCellValue("BigMatrix", fmt.Sprintf("C%d", rowIndex), part.Description)
 		f.SetCellValue("BigMatrix", fmt.Sprintf("D%d", rowIndex), part.Supplier)
