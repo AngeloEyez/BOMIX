@@ -600,9 +600,106 @@ var DefaultConfig = Config{
 }
 ```
 
+### 5.4 View 系統
+
+View 系統（`backend/view/`）是 BOMIX 所有資料消費者的**統一資料查詢入口**。前端 UI 顯示與 Excel 匯出模組均不直接存取資料庫，而是透過 View 系統以指定條件取得已聚合、已過濾、且標有來源歸屬的結構化資料。
+
+#### 5.4.1 設計原則
+
+1. **無狀態（Stateless）**：`view.Service` 不持有任何查詢中間狀態，每次呼叫 `Query()` 均獨立執行，可安全地被多個 goroutine 同時呼叫（例如前端顯示與後端匯出同時以不同條件查詢互不干擾）。
+2. **同步查詢**：View 系統僅做同步查詢（資料量在合理範圍內），不走非同步任務。匯出任務仍然是非同步的，但匯出任務內部呼叫 View 系統的步驟是同步的。
+3. **批量讀取**：一次查詢使用 IN 子句批量讀取所有 revision 的 parts、second sources、matrix models、matrix selections，避免 N+1 查詢問題。
+4. **唯讀**：View 系統不進行任何資料庫寫入操作。
+
+#### 5.4.2 資料流程（更新後）
+
+```
+┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│  Excel File │ ──> │   Detector   │ ──> │    Reader    │ ──> │   Database   │
+│ (.xls/.xlsx)│     │ (格式辨識)    │     │ (格式專用)    │     │   (.bomx)    │
+└─────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
+                                                                      │
+                                                                      v
+┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│ Excel Output│ <── │    Writer    │ <── │ View System  │ <── │   Query DB   │
+│   (.xlsx)   │     │ (Template)   │     │ (聚合/過濾/   │     │              │
+└─────────────┘     └──────────────┘     │ 整合/標記)    │     └──────────────┘
+                                         └──────────────┘
+                                                │
+                                    ┌───────────┴───────────┐
+                                    │  Frontend (Vue UI)     │
+                                    └───────────────────────┘
+```
+
+#### 5.4.3 核心 DTO
+
+```go
+// ViewQuery 視圖查詢參數（無狀態設計的完整查詢描述）
+type ViewQuery struct {
+    RevisionIDs  []int64 // 要查詢的 BOM Revision ID 列表（1個=單一視圖，多個=整合視圖）
+    ViewType     string  // ALL, SMD, PTH, BOTTOM, NI, PROTO, MP, CCL
+    ModeOverride string  // 覆蓋 Mode（NPI/MP），空字串=各自使用 revision 的 Mode
+}
+
+// ViewPartGroup 聚合後的物料群組，View 系統的核心輸出單元
+type ViewPartGroup struct {
+    MainSupplier   string             // 群組識別鍵（主料 Supplier）
+    MainSupplierPN string             // 群組識別鍵（主料 Supplier PN）
+    Item           string             // 項目編號（由下游消費者產生）
+    HHPN           string             // 公司內部料號
+    Description    string
+    Type           string             // SMD, PTH, BOTTOM
+    BOMStatus      string             // I, X, P, M
+    CCL            string             // Y, N
+    Remark         string
+    Qty            int                // 聚合計算的打件數量
+    Locations      string             // 逗號分隔的位置編號（取自第一份 revision）
+
+    // SourceRevisionIDs：此物料群組出現在哪些 BOM Revision 中
+    // 下游消費者依此判斷物料存在性：
+    //   revisionID ∈ SourceRevisionIDs → 存在（正常顯示）
+    //   revisionID ∉ SourceRevisionIDs → 不存在（BigMatrix 填灰色底色）
+    SourceRevisionIDs []int64
+
+    SecondSources []ViewSecondSource  // 所有 revision 的替代料聯集
+    Selections    []ViewModelSelection // 跨 revision × model 的完整勾選矩陣
+}
+
+// ViewResult 查詢結果
+type ViewResult struct {
+    Query      ViewQuery
+    PartGroups []ViewPartGroup  // 聚合後的物料群組列表
+    Revisions  []ViewRevision   // 參與查詢的 revision 元資料（按 ID 排序）
+}
+```
+
+#### 5.4.4 多 Revision 聯集合併演算法
+
+當 `ViewQuery.RevisionIDs` 包含多個 ID 時，View 系統執行以下整合：
+
+1. **主料聯集**：以 `(supplier, supplier_pn)` 為群組鍵，遍歷所有 revision 的 parts，建立主料聯集。
+2. **來源歸屬標記**：每個 `ViewPartGroup` 記錄 `SourceRevisionIDs`，列出此群組存在的所有 revision ID。物料屬性（description、type、qty、locations）取自 `RevisionIDs` 列表中**第一個包含此物料的 revision**。
+3. **替代料聯集**：各 revision 的 SecondSource 以 `(supplier, supplier_pn)` 去重後取聯集，每個 `ViewSecondSource` 也附帶自己的 `SourceRevisionIDs`。
+4. **勾選狀態蒐集**：蒐集所有 revision × model 的 `MatrixSelection`，附帶在 `ViewPartGroup.Selections` 中。
+
+#### 5.4.5 SourceRevisionIDs 的下游使用
+
+| 下游消費者 | 判斷邏輯 | 對應動作 |
+|-----------|---------|---------|
+| **BigMatrix 匯出** | `revID ∉ part.SourceRevisionIDs` | 對應儲存格填灰色底色（不填任何值） |
+| **Frontend 顯示** | `revID ∉ part.SourceRevisionIDs` | 加特殊標記或不同底色顯示 |
+
+#### 5.4.6 Wails API
+
+```go
+// GetBOMView 查詢 BOM 視圖資料（無狀態同步呼叫，前端與匯出可同時查詢）
+GetBOMView(revisionIDs []int64, viewType string, modeOverride string) (*view.ViewResult, error)
+```
+
 ---
 
 ## 6. 功能需求 — Wave 1
+
 
 ### 6.1 資料庫管理
 

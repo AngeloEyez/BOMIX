@@ -12,6 +12,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as view$0 from "./view/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as context$0 from "../../context/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -58,6 +61,24 @@ export function EmitEvent(event: string, data: any): $CancellablePromise<void> {
  */
 export function ExportExcel(options: $models.ExportOptions | null): $CancellablePromise<string[] | null> {
     return $Call.ByID(3476992315, options);
+}
+
+/**
+ * GetBOMView 查詢 BOM 視圖資料，是 View 系統的 Wails 綁定入口。
+ * 
+ * View 系統為無狀態設計，前端顯示與後端匯出可同時以不同條件查詢。
+ * 
+ * 參數：
+ *   - revisionIDs：要查詢的 BOM Revision ID 列表（1個=單一視圖，多個=整合視圖）
+ *   - viewType：視圖類型（ALL/SMD/PTH/BOTTOM/NI/PROTO/MP/CCL），空字串預設為 ALL
+ *   - modeOverride：覆蓋 Mode（NPI/MP），空字串=各自使用 revision 的 Mode
+ * 
+ * 回傳：
+ *   - *view.ViewResult：查詢結果，包含聚合物料群組與 revision 元資料
+ *   - error：若資料庫連線未開啟或查詢失敗則回傳錯誤
+ */
+export function GetBOMView(revisionIDs: number[] | null, viewType: string, modeOverride: string): $CancellablePromise<view$0.ViewResult | null> {
+    return $Call.ByID(318394637, revisionIDs, viewType, modeOverride);
 }
 
 /**

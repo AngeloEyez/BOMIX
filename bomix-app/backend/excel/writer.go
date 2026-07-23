@@ -51,6 +51,13 @@ type PartData struct {
 	Remark         string
 	SecondSources  []SecondSourceData
 	Selections     map[string]string // Model -> Supplier PN mapping
+
+	// SourceRevisionIDs 記錄此物料群組出現在哪些 BOM Revision 中。
+	// 由 View 系統的 ViewPartGroup.SourceRevisionIDs 填入。
+	// BigMatrix Writer 利用此欄位判斷某個儲存格是否需要填灰色底色：
+	//   if revisionID ∈ SourceRevisionIDs → 物料存在，正常填值
+	//   if revisionID ∉ SourceRevisionIDs → 物料不存在，填灰色底色
+	SourceRevisionIDs []int64
 }
 
 // SecondSourceData represents second source data for export

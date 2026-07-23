@@ -388,11 +388,44 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		}
 	}
 
-	// Clear default template sample rows (Row 6 and Row 7)
-	for r := 6; r <= 7; r++ {
-		for col := 'A'; col <= 'J'; col++ {
-			f.SetCellValue("BigMatrix", fmt.Sprintf("%c%d", col, r), "")
+	// 預先建立灰色底色樣式，用於標記「物料在此 BOM 不存在」的儲存格
+	// See product-spec section 8.1.5.3
+	grayStyleID, err := f.NewStyle(&excelize.Style{
+		Fill: excelize.Fill{
+			Type:    "pattern",
+			Color:   []string{"#D9D9D9"}, // 淺灰色
+			Pattern: 1,
+		},
+	})
+	if err != nil {
+		// 若樣式建立失敗則略過（灰色效果無法呈現，但不影響資料正確性）
+		grayStyleID = -1
+	}
+
+	// 建立 revision ID 字串 -> int64 的解析輔助（用於比對 SourceRevisionIDs）
+	// RevisionData.ID 為字串格式，SourceRevisionIDs 為 int64
+	revIDToInt64 := make(map[string]int64, len(revisions))
+	for _, rev := range revisions {
+		var revIDInt int64
+		if _, parseErr := fmt.Sscanf(rev.ID, "%d", &revIDInt); parseErr == nil {
+			revIDToInt64[rev.ID] = revIDInt
 		}
+	}
+
+	// partExistsInRevision 判斷物料是否存在於指定的 revision 中
+	// 利用 PartData.SourceRevisionIDs 進行 O(n) 查找
+	partExistsInRevision := func(part PartData, revIDStr string) bool {
+		revIDInt, ok := revIDToInt64[revIDStr]
+		if !ok {
+			return false
+		}
+		for _, srcID := range part.SourceRevisionIDs {
+			if srcID == revIDInt {
+				return true
+			}
+		}
+		// 若 SourceRevisionIDs 為空（舊資料相容），視為存在於所有 revision
+		return len(part.SourceRevisionIDs) == 0
 	}
 
 	// 8.1.4 - Write part data
@@ -415,6 +448,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		f.SetCellValue("BigMatrix", fmt.Sprintf("G%d", rowIndex), part.Location)
 
 		// 8.1.5.3 - Write Model selections
+		// 若物料在某 BOM Revision 中不存在，將對應的所有 Model 欄位填入灰色底色
 		currentCol = bomStartCol
 		for _, rev := range revisions {
 			revModelCount := len(rev.ModelQty)
@@ -422,14 +456,26 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 				revModelCount = maxModelCount
 			}
 
+			// 判斷此物料在當前 revision 中是否存在
+			partExists := partExistsInRevision(part, rev.ID)
+
 			for i := 0; i < revModelCount; i++ {
 				col := getColName(currentCol + i)
 				cell := fmt.Sprintf("%s%d", col, rowIndex)
 
-				modelName := modelNames[i]
-				if selectedPN, ok := part.Selections[modelName]; ok && selectedPN != "" {
-					if part.SupplierPn == selectedPN {
-						f.SetCellValue("BigMatrix", cell, "V")
+				if !partExists {
+					// 物料在此 BOM 不存在：填灰色底色（不填任何值）
+					// See product-spec section 8.1.5.3
+					if grayStyleID >= 0 {
+						_ = f.SetCellStyle("BigMatrix", cell, cell, grayStyleID)
+					}
+				} else {
+					// 物料存在：判斷 Model 勾選狀態並填 "V"
+					modelName := modelNames[i]
+					if selectedPN, ok := part.Selections[modelName]; ok && selectedPN != "" {
+						if part.SupplierPn == selectedPN {
+							f.SetCellValue("BigMatrix", cell, "V")
+						}
 					}
 				}
 			}
@@ -448,6 +494,38 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			f.SetCellValue("BigMatrix", fmt.Sprintf("C%d", rowIndex), ss.Description)
 			f.SetCellValue("BigMatrix", fmt.Sprintf("D%d", rowIndex), ss.Supplier)
 			f.SetCellValue("BigMatrix", fmt.Sprintf("E%d", rowIndex), ss.SupplierPn)
+
+			// 替代料也需要處理灰色底色（2nd source 在各 revision 中的存在性）
+			// 此處使用主料的存在性作為判斷依據（若主料不存在，替代料格也填灰色）
+			cIdx := bomStartCol
+			for _, rev := range revisions {
+				revModelCount := len(rev.ModelQty)
+				if revModelCount == 0 {
+					revModelCount = maxModelCount
+				}
+
+				partExists := partExistsInRevision(part, rev.ID)
+
+				for i := 0; i < revModelCount; i++ {
+					col := getColName(cIdx + i)
+					cell := fmt.Sprintf("%s%d", col, rowIndex)
+
+					if !partExists {
+						if grayStyleID >= 0 {
+							_ = f.SetCellStyle("BigMatrix", cell, cell, grayStyleID)
+						}
+					} else {
+						// 替代料勾選：判斷此 model 是否選了這個 2nd source
+						modelName := modelNames[i]
+						if selectedPN, ok := part.Selections[modelName]; ok && selectedPN != "" {
+							if ss.SupplierPn == selectedPN {
+								f.SetCellValue("BigMatrix", cell, "V")
+							}
+						}
+					}
+				}
+				cIdx += revModelCount
+			}
 
 			rowIndex++
 		}

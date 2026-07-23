@@ -17,6 +17,7 @@ import (
 	"bomix-app/backend/logger"
 	"bomix-app/backend/task"
 	"bomix-app/backend/types"
+	"bomix-app/backend/view"
 
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -373,6 +374,48 @@ func (a *App) GetRevision(id int64) (*BomRevision, error) {
 	}, nil
 }
 
+// ==================== BOM View 查詢 ====================
+
+// GetBOMView 查詢 BOM 視圖資料，是 View 系統的 Wails 綁定入口。
+//
+// View 系統為無狀態設計，前端顯示與後端匯出可同時以不同條件查詢。
+//
+// 參數：
+//   - revisionIDs：要查詢的 BOM Revision ID 列表（1個=單一視圖，多個=整合視圖）
+//   - viewType：視圖類型（ALL/SMD/PTH/BOTTOM/NI/PROTO/MP/CCL），空字串預設為 ALL
+//   - modeOverride：覆蓋 Mode（NPI/MP），空字串=各自使用 revision 的 Mode
+//
+// 回傳：
+//   - *view.ViewResult：查詢結果，包含聚合物料群組與 revision 元資料
+//   - error：若資料庫連線未開啟或查詢失敗則回傳錯誤
+func (a *App) GetBOMView(revisionIDs []int64, viewType string, modeOverride string) (*view.ViewResult, error) {
+	a.mu.RLock()
+	dbConn := a.db
+	a.mu.RUnlock()
+
+	if dbConn == nil {
+		return nil, fmt.Errorf("no series is currently open")
+	}
+
+	query := view.ViewQuery{
+		RevisionIDs:  revisionIDs,
+		ViewType:     viewType,
+		ModeOverride: modeOverride,
+	}
+
+	svc := view.NewService(dbConn)
+	result, err := svc.Query(query)
+	if err != nil {
+		a.logger.Error(fmt.Sprintf("[GetBOMView] 視圖查詢失敗: %v", err))
+		return nil, fmt.Errorf("view query failed: %w", err)
+	}
+
+	a.logger.Debug(fmt.Sprintf("[GetBOMView] 查詢完成: revisions=%d, parts=%d, viewType=%s",
+		len(result.Revisions), len(result.PartGroups), viewType))
+
+	return result, nil
+}
+
 // ==================== Import/Export ====================
 
 // ImportExcel imports Excel files into the database
@@ -543,108 +586,101 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 	return []string{taskID}, nil
 }
 
-// loadExportData 從資料庫讀取匯出所需之 Revisions 與 Parts 資料
+// loadExportData 透過 View 系統從資料庫讀取匯出所需的 Revisions 與 Parts 資料。
+//
+// 此函數替換了原本直接操作資料庫的實作，改為呼叫 View 系統的 Query()，
+// 確保匯出資料與前端顯示使用同一套聚合邏輯。
+//
+// 匯出時使用「整合聯集」視圖（多 revision 時取聯集），
+// ViewPartGroup 中的 SourceRevisionIDs 會被傳遞至 PartData，
+// 供 BigMatrix Writer 判斷哪些儲存格需要填灰色底色。
+//
+// 參數：
+//   - dbConn：GORM 資料庫連線
+//   - revisionIDs：要匯出的 BOM Revision ID 列表
+//
+// 回傳：
+//   - []excel.RevisionData：revision 元資料列表
+//   - []excel.PartData：物料資料列表（包含 SourceRevisionIDs）
+//   - error：若查詢失敗則回傳錯誤
 func loadExportData(dbConn *gorm.DB, revisionIDs []int64) ([]excel.RevisionData, []excel.PartData, error) {
 	if len(revisionIDs) == 0 {
 		return nil, nil, nil
 	}
 
-	// 1. 查詢 BomRevisions
-	var dbRevs []db.BomRevision
-	if err := dbConn.Where("id IN ?", revisionIDs).Preload("MatrixModels").Find(&dbRevs).Error; err != nil {
-		return nil, nil, fmt.Errorf("failed to query revisions: %w", err)
+	// 透過 View 系統查詢，使用 CCL 過濾（匯出只需 CCL=Y 的物料）
+	// BigMatrix/Matrix 匯出條件：ccl=Y + bom_status=I (+ P 或 M 依 Mode)
+	// 此處使用 ALL 視圖，由 Writer 根據需要進一步過濾
+	// （保持現有行為：由 writer_bigmatrix 根據 8.1.6 過濾）
+	svc := view.NewService(dbConn)
+	viewResult, err := svc.Query(view.ViewQuery{
+		RevisionIDs:  revisionIDs,
+		ViewType:     view.ViewAll, // 匯出時回傳全部，由 Writer 側過濾
+		ModeOverride: "",          // 各 revision 使用自己的 Mode
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("view query failed: %w", err)
 	}
 
-	var revDataList []excel.RevisionData
-	for _, rev := range dbRevs {
-		var proj db.Project
-		_ = dbConn.First(&proj, rev.ProjectID)
-
-		modelQty := make(map[string]int)
-		for _, m := range rev.MatrixModels {
-			modelQty[m.ModelName] = m.Qty
-		}
-
+	// 將 ViewRevision 轉換為 excel.RevisionData
+	revDataList := make([]excel.RevisionData, 0, len(viewResult.Revisions))
+	for _, vr := range viewResult.Revisions {
 		revDataList = append(revDataList, excel.RevisionData{
-			ID:               fmt.Sprintf("%d", rev.ID),
-			ProjectCode:      proj.Code,
-			Description:      rev.Description,
-			SchematicVersion: rev.SchematicVersion,
-			PCBVersion:       rev.PCBVersion,
-			PCAPN:            rev.PCAPN,
-			Phase:            rev.Phase,
-			Version:          rev.Version,
-			Date:             rev.Date,
-			Mode:             rev.Mode,
-			ModelQty:         modelQty,
+			ID:               fmt.Sprintf("%d", vr.ID),
+			ProjectCode:      vr.ProjectCode,
+			Description:      vr.Description,
+			SchematicVersion: vr.SchematicVersion,
+			PCBVersion:       vr.PCBVersion,
+			PCAPN:            vr.PCAPN,
+			Phase:            vr.Phase,
+			Version:          vr.Version,
+			Date:             vr.Date,
+			Mode:             vr.Mode,
+			ModelQty:         vr.ModelQty,
 		})
 	}
 
-	// 2. 查詢 Parts
-	var dbParts []db.Part
-	if err := dbConn.Where("revision_id IN ?", revisionIDs).Find(&dbParts).Error; err != nil {
-		return nil, nil, fmt.Errorf("failed to query parts: %w", err)
-	}
-
-	// 3. 查詢 SecondSource
-	var dbSecondSources []db.SecondSource
-	_ = dbConn.Where("revision_id IN ?", revisionIDs).Find(&dbSecondSources)
-	ssMap := make(map[int64][]excel.SecondSourceData)
-	for _, ss := range dbSecondSources {
-		ssMap[ss.PartID] = append(ssMap[ss.PartID], excel.SecondSourceData{
-			HHPN:        ss.SupplierPN,
-			Supplier:    ss.Supplier,
-			SupplierPn:  ss.SupplierPN,
-			Description: ss.Description,
-		})
-	}
-
-	// 4. 查詢 MatrixSelections
-	var dbSelections []db.MatrixSelection
-	_ = dbConn.Where("revision_id IN ?", revisionIDs).Find(&dbSelections)
-
-	var dbModels []db.MatrixModel
-	_ = dbConn.Where("revision_id IN ?", revisionIDs).Find(&dbModels)
-	modelIDToName := make(map[int64]string)
-	for _, m := range dbModels {
-		modelIDToName[m.ID] = m.ModelName
-	}
-
-	selMap := make(map[int64]map[string]string)
-	for _, sel := range dbSelections {
-		modelName, ok := modelIDToName[sel.ModelID]
-		if !ok {
-			continue
-		}
-		if selMap[sel.PartID] == nil {
-			selMap[sel.PartID] = make(map[string]string)
-		}
-		selMap[sel.PartID][modelName] = sel.SelectedSupplierPn
-	}
-
-	// 組裝 PartData
-	var partDataList []excel.PartData
-	for idx, p := range dbParts {
-		selections := selMap[p.ID]
-		if selections == nil {
-			selections = make(map[string]string)
+	// 將 ViewPartGroup 轉換為 excel.PartData
+	// 物料群組已由 View 系統聚合完畢（locations 已合併、qty 已計算）
+	partDataList := make([]excel.PartData, 0, len(viewResult.PartGroups))
+	for idx, pg := range viewResult.PartGroups {
+		// 整合此群組的 Model 勾選狀態為 map[modelName]selectedPN
+		selections := make(map[string]string)
+		for _, sel := range pg.Selections {
+			if sel.SelectedPN != "" {
+				// 若同一 model 在多個 revision 均有勾選，以第一個為主
+				if _, exists := selections[sel.ModelName]; !exists {
+					selections[sel.ModelName] = sel.SelectedPN
+				}
+			}
 		}
 
-		itemStr := fmt.Sprintf("%d", idx+1)
+		// 整合 SecondSources
+		ssData := make([]excel.SecondSourceData, 0, len(pg.SecondSources))
+		for _, ss := range pg.SecondSources {
+			ssData = append(ssData, excel.SecondSourceData{
+				HHPN:        ss.SupplierPN,
+				Supplier:    ss.Supplier,
+				SupplierPn:  ss.SupplierPN,
+				Description: ss.Description,
+			})
+		}
+
 		partDataList = append(partDataList, excel.PartData{
-			Item:          itemStr,
-			HHPN:          p.SupplierPN,
-			Description:   p.Description,
-			Supplier:      p.Supplier,
-			SupplierPn:    p.SupplierPN,
-			Qty:           p.Quantity,
-			Location:      p.Location,
-			Type:          p.Type,
-			BOMStatus:     p.BOMStatus,
-			CCL:           p.CCL,
-			Remark:        p.Remark,
-			SecondSources: ssMap[p.ID],
-			Selections:    selections,
+			Item:              fmt.Sprintf("%d", idx+1), // 流水號
+			HHPN:              pg.HHPN,
+			Description:       pg.Description,
+			Supplier:          pg.MainSupplier,
+			SupplierPn:        pg.MainSupplierPN,
+			Qty:               pg.Qty,
+			Location:          pg.Locations,
+			Type:              pg.Type,
+			BOMStatus:         pg.BOMStatus,
+			CCL:               pg.CCL,
+			Remark:            pg.Remark,
+			SecondSources:     ssData,
+			Selections:        selections,
+			SourceRevisionIDs: pg.SourceRevisionIDs, // 傳遞來源歸屬，供 BigMatrix 填灰色
 		})
 	}
 
