@@ -66,7 +66,7 @@ func (a *Aggregator) Aggregate(parts []db.Part, secondSources []db.SecondSource)
 		if groupSS, ok := ssByGroup[key]; ok {
 			for _, ss := range groupSS {
 				ssDTOs = append(ssDTOs, types.SecondSourceDTO{
-					Hhpn:        firstPart.Type, // Using Type as hhpn reference
+					Hhpn:        ss.HHPN,
 					Supplier:    ss.Supplier,
 					SupplierPn:  ss.SupplierPN,
 					Description: ss.Description,
@@ -75,10 +75,10 @@ func (a *Aggregator) Aggregate(parts []db.Part, secondSources []db.SecondSource)
 		}
 
 		aggregated := types.AggregatedPart{
-			Item:           firstPart.Type, // Using Type as item reference
+			Item:           firstPart.Item,
 			MainSupplier:   supplier,
 			MainSupplierPn: supplierPN,
-			Hhpn:           firstPart.Type,
+			Hhpn:           firstPart.HHPN,
 			Description:    firstPart.Description,
 			Type:           firstPart.Type,
 			Qty:            quantity,

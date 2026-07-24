@@ -32,48 +32,76 @@
       </div>
     </div>
 
-    <!-- BOM Data Table -->
+    <!-- BOM Data Table (Flattened single table with shared columns) -->
     <DataTable
-      :value="aggregatedParts"
-      :expanded-keys="expandedKeys"
+      :value="displayRows"
+      dataKey="rowId"
       :scrollable="true"
       scroll-height="flex"
       scroll-direction="both"
-      :virtualScrollerOptions="{ itemSize: 46 }"
       :row-hover="true"
+      :row-class="getRowClass"
       striped-rows
       table-class="bom-table"
       v-model:sort-field="sortField"
       v-model:sort-order="sortOrder"
     >
-      <!-- Expandable Row -->
-      <template #expansion="slotProps">
-        <div class="row-expansion">
-          <SecondSourceList
-            :part="slotProps.data"
-            :revision-id="currentRevisionId"
+      <!-- 收合 / 展開 控制欄 -->
+      <Column style="width: 3.2rem" header="">
+        <template #body="slotProps">
+          <Button
+            v-if="!slotProps.data.isSecondSource && slotProps.data.hasSecondSources"
+            :icon="isCollapsed(slotProps.data.parentKey) ? 'pi pi-chevron-right' : 'pi pi-chevron-down'"
+            text
+            rounded
+            size="small"
+            class="toggle-ss-btn"
+            :title="isCollapsed(slotProps.data.parentKey) ? '展開替代料' : '收合替代料'"
+            @click.stop="toggleCollapse(slotProps.data.parentKey)"
           />
-        </div>
-      </template>
+        </template>
+      </Column>
 
-      <!-- Row Columns -->
-      <Column expander style="width: 5rem" />
+      <!-- Item (2nd 替代料該欄位為空白) -->
       <Column field="item" header="Item" style="width: 80px" sortable />
-      <Column field="hhpn" header="HHPN" style="width: 150px" sortable />
-      <Column field="description" header="Description" style="width: 200px" />
-      <Column field="main_supplier" header="Supplier" style="width: 150px" sortable />
-      <Column field="main_supplier_pn" header="Supplier PN" style="width: 150px" sortable />
+
+      <!-- HHPN (2nd 替代料前附帶 ↳ 2nd 縮排標籤) -->
+      <Column field="hhpn" header="HHPN" style="width: 170px" sortable>
+        <template #body="slotProps">
+          <div :class="{'ss-indented': slotProps.data.isSecondSource}">
+            <Tag v-if="slotProps.data.isSecondSource" value="↳ 2nd" severity="warn" class="ss-inline-tag" />
+            <span>{{ slotProps.data.hhpn }}</span>
+          </div>
+        </template>
+      </Column>
+
+      <!-- Description -->
+      <Column field="description" header="Description" style="width: 220px" />
+
+      <!-- Supplier -->
+      <Column field="supplier" header="Supplier" style="width: 150px" sortable />
+
+      <!-- Supplier PN -->
+      <Column field="supplier_pn" header="Supplier PN" style="width: 180px" sortable />
+
+      <!-- Qty -->
       <Column field="qty" header="Qty" style="width: 80px" sortable />
+
+      <!-- Location -->
       <Column field="locations" header="Location" style="width: 150px" />
+
+      <!-- CCL -->
       <Column field="ccl" header="CCL" style="width: 80px" sortable>
         <template #body="slotProps">
-          <span :class="getCCLClass(slotProps.data.ccl)">
+          <span v-if="slotProps.data.ccl" :class="getCCLClass(slotProps.data.ccl)">
             {{ slotProps.data.ccl }}
           </span>
         </template>
       </Column>
+
+      <!-- Remark -->
       <Column field="remark" header="Remark" style="width: 150px" />
-      
+
       <!-- Dynamic Model Columns -->
       <Column
         v-for="modelName in currentRevisionModels"
@@ -82,7 +110,7 @@
         style="width: 150px"
       >
         <template #body="slotProps">
-          <span :class="{'model-selected': getModelSelectedPN(slotProps.data, modelName)}">
+          <span :class="{'model-selected': isModelSelected(slotProps.data, modelName)}">
             {{ getModelSelectedPN(slotProps.data, modelName) || '-' }}
           </span>
         </template>
@@ -91,7 +119,7 @@
 
     <!-- Summary Statistics -->
     <div class="table-summary">
-      <span>Total Parts: {{ aggregatedParts.length }}</span>
+      <span>Total Main Parts: {{ aggregatedParts.length }}</span>
       <span v-if="selectedView === 'smd'">| SMD Parts: {{ smdPartsCount }}</span>
       <span v-if="selectedView === 'pth'">| PTH Parts: {{ pthPartsCount }}</span>
     </div>
@@ -106,8 +134,26 @@ import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useProjectStore, useLogStore } from '../stores'
-import SecondSourceList from './SecondSourceList.vue'
 import { GetBOMView, type ViewPartGroup, type ViewRevision } from '../services/api'
+
+// Display row interface for flattened table rendering
+export interface BOMDisplayRow {
+  rowId: string
+  parentKey: string
+  isSecondSource: boolean
+  hasSecondSources: boolean
+  secondSourcesCount: number
+  item: string
+  hhpn: string
+  description: string
+  supplier: string
+  supplier_pn: string
+  qty: string | number
+  locations: string
+  ccl: string
+  remark: string
+  selections: Record<string, string>
+}
 
 const props = defineProps<{
   revisionId?: number
@@ -134,7 +180,7 @@ const viewOptions = [
 
 // State
 const selectedView = ref('all')
-const expandedKeys = ref<Record<string, boolean>>({})
+const collapsedParents = ref<Set<string>>(new Set())
 const sortField = ref('item')
 const sortOrder = ref(1)
 
@@ -158,36 +204,128 @@ const currentRevisionModels = computed(() => {
   return currentRevisionMetadata.value.model_names
 })
 
+// Flattened display rows computed property
+const displayRows = computed<BOMDisplayRow[]>(() => {
+  const rows: BOMDisplayRow[] = []
+
+  aggregatedParts.value.forEach((part) => {
+    const parentKey = `${part.main_supplier}|${part.main_supplier_pn}`
+    const hasSS = Boolean(part.second_sources && part.second_sources.length > 0)
+    const ssCount = part.second_sources ? part.second_sources.length : 0
+
+    // Build Model selections map: model_name -> selected_pn
+    const selectionsMap: Record<string, string> = {}
+    if (part.selections) {
+      part.selections.forEach(sel => {
+        if (sel.model_name && sel.selected_pn) {
+          selectionsMap[sel.model_name] = sel.selected_pn
+        }
+      })
+    }
+
+    // 1. Add Main Source Row
+    rows.push({
+      rowId: `${parentKey}-main`,
+      parentKey: parentKey,
+      isSecondSource: false,
+      hasSecondSources: hasSS,
+      secondSourcesCount: ssCount,
+      item: part.item || '',
+      hhpn: part.hhpn || '',
+      description: part.description || '',
+      supplier: part.main_supplier || '',
+      supplier_pn: part.main_supplier_pn || '',
+      qty: part.qty ?? '',
+      locations: part.locations || '',
+      ccl: part.ccl || '',
+      remark: part.remark || '',
+      selections: selectionsMap,
+    })
+
+    // 2. Add 2nd Source Rows directly below Main Source (if not collapsed)
+    if (hasSS && part.second_sources && !collapsedParents.value.has(parentKey)) {
+      part.second_sources.forEach((ss, idx) => {
+        rows.push({
+          rowId: `${parentKey}-ss-${idx}`,
+          parentKey: parentKey,
+          isSecondSource: true,
+          hasSecondSources: false,
+          secondSourcesCount: 0,
+          item: '', // 2nd 替代料沒有 Item number，該欄位為空白！
+          hhpn: ss.hhpn || '',
+          description: ss.description || '',
+          supplier: ss.supplier || '',
+          supplier_pn: ss.supplier_pn || '',
+          qty: '',
+          locations: '',
+          ccl: '',
+          remark: '',
+          selections: selectionsMap,
+        })
+      })
+    }
+  })
+
+  return rows
+})
+
+function getPartKey(part: ViewPartGroup): string {
+  return `${part.main_supplier}|${part.main_supplier_pn}`
+}
+
+function isCollapsed(parentKey: string): boolean {
+  return collapsedParents.value.has(parentKey)
+}
+
+function toggleCollapse(parentKey: string): void {
+  const newSet = new Set(collapsedParents.value)
+  if (newSet.has(parentKey)) {
+    newSet.delete(parentKey)
+  } else {
+    newSet.add(parentKey)
+  }
+  collapsedParents.value = newSet
+}
+
+function expandAll(): void {
+  collapsedParents.value = new Set()
+}
+
+function collapseAll(): void {
+  const allKeys = new Set<string>()
+  aggregatedParts.value.forEach(part => {
+    if (part.second_sources && part.second_sources.length > 0) {
+      allKeys.add(getPartKey(part))
+    }
+  })
+  collapsedParents.value = allKeys
+}
+
+function getRowClass(data: BOMDisplayRow) {
+  return data.isSecondSource ? 'second-source-row' : 'main-source-row'
+}
+
 function getModelQty(modelName: string): number {
   if (!currentRevisionMetadata.value || !currentRevisionMetadata.value.model_qty) return 0
   return currentRevisionMetadata.value.model_qty[modelName] || 0
 }
 
-function getModelSelectedPN(part: ViewPartGroup, modelName: string): string {
-  if (!part.selections) return ''
-  const sel = part.selections.find(s => s.model_name === modelName)
-  return sel ? sel.selected_pn : ''
+function getModelSelectedPN(row: BOMDisplayRow, modelName: string): string {
+  const selectedPN = row.selections[modelName]
+  if (!selectedPN) return ''
+  // 僅當選擇的料號正是此 Row（主料或 2nd）的 supplier_pn 時才顯示
+  return row.supplier_pn === selectedPN ? selectedPN : ''
 }
 
-// Methods
+function isModelSelected(row: BOMDisplayRow, modelName: string): boolean {
+  return getModelSelectedPN(row, modelName) !== ''
+}
+
 function onViewChange(): void {
-  // Filter parts based on selected view
-  expandedKeys.value = {}
+  collapsedParents.value = new Set()
   if (currentRevisionId.value) {
     loadBOMData(currentRevisionId.value)
   }
-}
-
-function expandAll(): void {
-  const allExpanded: Record<string, boolean> = {}
-  aggregatedParts.value.forEach((part, index) => {
-    allExpanded[index] = true
-  })
-  expandedKeys.value = allExpanded
-}
-
-function collapseAll(): void {
-  expandedKeys.value = {}
 }
 
 function getCCLClass(ccl: string): string {
@@ -209,8 +347,11 @@ async function loadBOMData(revisionId: number): Promise<void> {
     
     if (result && result.part_groups) {
       aggregatedParts.value = result.part_groups
+      // 預設全部 2nd 替代料展開直接顯示於主料正下方
+      expandAll()
     } else {
       aggregatedParts.value = []
+      collapsedParents.value = new Set()
     }
 
     if (result && result.revisions && result.revisions.length > 0) {
@@ -278,11 +419,45 @@ onMounted(() => {
   font-weight: 600;
 }
 
-/* Row expansion */
-.row-expansion {
-  background: var(--surface-ground);
-  padding: 1rem;
-  border-top: 1px solid var(--surface-border);
+.supplier-pn-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ss-badge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.4rem;
+}
+
+/* Flattened Table 2nd Source Row styling */
+:deep(.second-source-row) {
+  background-color: var(--surface-50, #f8fafc) !important;
+  color: var(--text-color-secondary, #475569);
+  font-size: 0.825rem;
+}
+
+:deep(.second-source-row:hover) {
+  background-color: var(--surface-100, #f1f5f9) !important;
+}
+
+.ss-indented {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding-left: 0.25rem;
+}
+
+.ss-inline-tag {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.35rem;
+  line-height: 1;
+}
+
+.toggle-ss-btn {
+  width: 1.75rem !important;
+  height: 1.75rem !important;
+  padding: 0 !important;
 }
 
 /* Table styling */
@@ -308,10 +483,6 @@ onMounted(() => {
 
 :deep(.p-datatable-tbody > tr) {
   cursor: pointer;
-}
-
-:deep(.p-datatable-tbody > tr:hover) {
-  background: var(--highlight-background);
 }
 
 /* Summary */

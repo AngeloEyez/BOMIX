@@ -446,6 +446,8 @@ func (r *BigMatrixReader) findOrCreatePart(revisionID int64, data *partData) (in
 	// Create new part
 	part = db.Part{
 		RevisionID:  revisionID,
+		Item:        data.item,
+		HHPN:        data.hhpn,
 		Type:        "Main",
 		Supplier:    data.supplier,
 		SupplierPN:  data.supplierPN,

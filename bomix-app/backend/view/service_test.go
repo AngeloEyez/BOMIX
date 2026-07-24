@@ -355,3 +355,140 @@ func TestSourceRevisionIDs_Logic(t *testing.T) {
 		t.Error("物料C 應存在於 Rev2")
 	}
 }
+
+// TestIsEffectiveBOMStatus 測試 bom_status 在不同 Mode 下的有效性判斷
+func TestIsEffectiveBOMStatus(t *testing.T) {
+	t.Run("NPI 模式：僅 I 與 P 有效", func(t *testing.T) {
+		if !isEffectiveBOMStatus("I", "NPI") {
+			t.Error("I 在 NPI 應為有效")
+		}
+		if !isEffectiveBOMStatus("P", "NPI") {
+			t.Error("P 在 NPI 應為有效")
+		}
+		if isEffectiveBOMStatus("X", "NPI") {
+			t.Error("X 在 NPI 應為無效")
+		}
+		if isEffectiveBOMStatus("M", "NPI") {
+			t.Error("M 在 NPI 應為無效")
+		}
+	})
+
+	t.Run("MP 模式：僅 I 與 M 有效", func(t *testing.T) {
+		if !isEffectiveBOMStatus("I", "MP") {
+			t.Error("I 在 MP 應為有效")
+		}
+		if !isEffectiveBOMStatus("M", "MP") {
+			t.Error("M 在 MP 應為有效")
+		}
+		if isEffectiveBOMStatus("X", "MP") {
+			t.Error("X 在 MP 應為無效")
+		}
+		if isEffectiveBOMStatus("P", "MP") {
+			t.Error("P 在 MP 應為無效")
+		}
+	})
+}
+
+// TestMergeRevisions_LocationAndQtyAggregation 測試同一 Revision 内跨 Type/CCL 的 Location 去重合併與 Qty 重新計算
+func TestMergeRevisions_LocationAndQtyAggregation(t *testing.T) {
+	svc := &Service{}
+
+	rev1Data := &rawRevisionData{
+		revision: db.BomRevision{ID: 1, Mode: "NPI"},
+		parts: []db.Part{
+			{ID: 101, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", BOMStatus: "I", CCL: "N", Location: "C1, C2", Item: "1"},
+			{ID: 102, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "PTH", BOMStatus: "I", CCL: "Y", Location: "C2, C3", Item: "1"},
+		},
+	}
+
+	rawData := map[int64]*rawRevisionData{1: rev1Data}
+	query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewAll}
+
+	groups := svc.mergeRevisions(rawData, query)
+	if len(groups) != 1 {
+		t.Fatalf("期望 1 個物料群組，實際得到 %d 個", len(groups))
+	}
+
+	group := groups[0]
+	// Location 應該合併去重為 "C1,C2,C3"
+	if group.Locations != "C1,C2,C3" {
+		t.Errorf("Locations 合併期望 %q，實際得到 %q", "C1,C2,C3", group.Locations)
+	}
+	// Qty 應該重新計算為 3
+	if group.Qty != 3 {
+		t.Errorf("Qty 期望 3，實際得到 %d", group.Qty)
+	}
+}
+
+// TestMergeRevisions_MultipleRevisionsAnd2ndSources 測試多個 Revision 聚合與 2nd Source 判斷組裝
+func TestMergeRevisions_MultipleRevisionsAnd2ndSources(t *testing.T) {
+	svc := &Service{}
+
+	// Rev 1: Part A (Main) + 2nd Source S1
+	rev1Data := &rawRevisionData{
+		revision: db.BomRevision{ID: 1, Mode: "NPI"},
+		parts: []db.Part{
+			{ID: 1, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", BOMStatus: "I", Location: "C1", Item: "1"},
+		},
+		secondSources: []db.SecondSource{
+			{ID: 10, RevisionID: 1, PartID: 1, Supplier: "Yageo", SupplierPN: "CC0402KRX7R9BB104", HHPN: "HH1001"},
+		},
+	}
+
+	// Rev 2: Part A (Main) + 2nd Source S1 & S2, plus Part B (Main)
+	rev2Data := &rawRevisionData{
+		revision: db.BomRevision{ID: 2, Mode: "NPI"},
+		parts: []db.Part{
+			{ID: 2, RevisionID: 2, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", BOMStatus: "I", Location: "C1", Item: "1"},
+			{ID: 3, RevisionID: 2, Supplier: "Murata", SupplierPN: "GRM155R71C104KA88D", Type: "SMD", BOMStatus: "I", Location: "C5", Item: "2"},
+		},
+		secondSources: []db.SecondSource{
+			{ID: 11, RevisionID: 2, PartID: 2, Supplier: "Yageo", SupplierPN: "CC0402KRX7R9BB104", HHPN: "HH1001"},
+			{ID: 12, RevisionID: 2, PartID: 2, Supplier: "Walsin", SupplierPN: "0402B104K500CT", HHPN: "HH1002"},
+		},
+	}
+
+	rawData := map[int64]*rawRevisionData{1: rev1Data, 2: rev2Data}
+	query := ViewQuery{RevisionIDs: []int64{1, 2}, ViewType: ViewAll}
+
+	groups := svc.mergeRevisions(rawData, query)
+	if len(groups) != 2 {
+		t.Fatalf("期望 2 個物料群組，實際得到 %d 個", len(groups))
+	}
+
+	// Part A 驗證
+	partA := groups[0]
+	if len(partA.SourceRevisionIDs) != 2 {
+		t.Errorf("Part A 應出現在 2 個 Revision 中，實際 SourceRevisionIDs=%v", partA.SourceRevisionIDs)
+	}
+
+	if len(partA.SecondSources) != 2 {
+		t.Fatalf("Part A 的 2nd Source 應合併為 2 個，實際得到 %d 個", len(partA.SecondSources))
+	}
+
+	// Yageo 2nd Source 應包含 Rev 1 和 Rev 2
+	var yageoSS *ViewSecondSource
+	var walsinSS *ViewSecondSource
+	for i := range partA.SecondSources {
+		if partA.SecondSources[i].Supplier == "Yageo" {
+			yageoSS = &partA.SecondSources[i]
+		}
+		if partA.SecondSources[i].Supplier == "Walsin" {
+			walsinSS = &partA.SecondSources[i]
+		}
+	}
+
+	if yageoSS == nil || len(yageoSS.SourceRevisionIDs) != 2 {
+		t.Errorf("Yageo 2nd Source 的 SourceRevisionIDs 應為 [1, 2]")
+	}
+	if walsinSS == nil || len(walsinSS.SourceRevisionIDs) != 1 || walsinSS.SourceRevisionIDs[0] != 2 {
+		t.Errorf("Walsin 2nd Source 的 SourceRevisionIDs 應僅包含 Rev 2 ([2])")
+	}
+
+	// Part B 驗證
+	partB := groups[1]
+	if len(partB.SourceRevisionIDs) != 1 || partB.SourceRevisionIDs[0] != 2 {
+		t.Errorf("Part B 的 SourceRevisionIDs 應僅包含 Rev 2 ([2])")
+	}
+}
+

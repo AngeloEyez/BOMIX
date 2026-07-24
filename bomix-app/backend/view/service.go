@@ -257,25 +257,39 @@ func groupKey(supplier, supplierPN string) string {
 	return supplier + "|" + supplierPN
 }
 
+// isEffectiveBOMStatus 判斷指定物料的 bom_status 在給定 Mode 下是否有效。
+//
+// 預設規則：
+//   - Mode = "NPI": 包含 bom_status = "I" 或 "P" (Install + Proto)
+//   - Mode = "MP":  包含 bom_status = "I" 或 "M" (Install + MP)
+//   - 其他情況:    排除 bom_status = "X"
+func isEffectiveBOMStatus(bomStatus, mode string) bool {
+	status := strings.ToUpper(strings.TrimSpace(bomStatus))
+	switch strings.ToUpper(strings.TrimSpace(mode)) {
+	case "NPI":
+		return status == "I" || status == "P"
+	case "MP":
+		return status == "I" || status == "M"
+	default:
+		return status != "X"
+	}
+}
+
 // mergeRevisions 執行多 BOM Revision 的主料與替代料聯集合併，
 // 並蒐集 Model 勾選狀態，建立 ViewPartGroup 列表。
 //
 // 整合演算法步驟：
-//  1. 對每個 revision 的 parts，依 (supplier, supplier_pn) 建立群組
-//  2. 同一群組鍵出現在多個 revision → 合併為一個 ViewPartGroup，
-//     物料屬性取自第一個出現的 revision
-//  3. 各 revision 的 SecondSource 以 (supplier, supplier_pn) 去重後取聯集
-//  4. 蒐集所有 revision × model 的 MatrixSelection
-//
-// 重要：不同 Type 的物料若具有相同的 (supplier, supplier_pn)，
-//      會被合併到同一個群組中。這符合「All」條件的定義：
-//      bom_status=I 且根據 mode 決定加入 P 或 M。
-//
-// 注意：此方法不進行視圖過濾，過濾由 Filter.Apply() 負責。
+//  1. 依 Mode 判斷有效的 bom_status 條件（預設 bom_status=I，自動擴充 NPI->P, MP->M），先排除非標的物料。
+//  2. 依 query.RevisionIDs 順序遍歷 Revision：
+//     - Revision 1（及首次出現的主料）：建立 Group 初始基礎（Item, Description, Remark 等）。
+//     - 若同 Revision 中有相同 (Supplier, SupplierPN) 但不同 Type 或 CCL 的主料，合併 Location（去重）並重新計算 Qty。
+//     - 2nd Source 依序組裝至 Group 中。
+//     - 後續 Revision：若主料已存在，增補 RevisionID 並檢查 2nd Source（未存在則新增，已存在則追加 RevisionID）；若主料不存在，依首個 Revision 原則新增。
+//  3. 蒐集所有 revision × model 的 MatrixSelection。
 //
 // 參數：
 //   - rawData：從資料庫載入的原始資料映射
-//   - query：查詢參數（用於取得 revision 排序以確保「第一份」的定義一致）
+//   - query：查詢參數（用於取得 revision 排序與 ModeOverride）
 //
 // 回傳：
 //   - []ViewPartGroup：聯集合併後的物料群組列表
@@ -307,15 +321,23 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			continue
 		}
 
-		// --- 建立此 revision 的 partID → Part 映射 ---
-		partByID := make(map[int64]db.Part, len(data.parts))
-		for _, p := range data.parts {
-			partByID[p.ID] = p
+		// 決定此 revision 的有效 Mode (優先使用 query.ModeOverride)
+		mode := data.revision.Mode
+		if query.ModeOverride != "" {
+			mode = query.ModeOverride
 		}
 
-		// --- 處理此 revision 的 SecondSources ---
-		// secondSources 依其關聯的主料 partID → 群組鍵映射
-		// db.SecondSource.PartID 為所關聯的主料 Part 的 ID
+		// --- 1. 過濾此 revision 中符合有效 bom_status 的 Parts ---
+		validParts := make([]db.Part, 0, len(data.parts))
+		partByID := make(map[int64]db.Part, len(data.parts))
+		for _, p := range data.parts {
+			if isEffectiveBOMStatus(p.BOMStatus, mode) {
+				validParts = append(validParts, p)
+				partByID[p.ID] = p
+			}
+		}
+
+		// --- 2. 處理此 revision 有效主料對應的 SecondSources ---
 		ssByMainKey := make(map[string][]db.SecondSource) // 主料 groupKey → []SecondSource
 		for _, ss := range data.secondSources {
 			mainPart, exists := partByID[ss.PartID]
@@ -326,15 +348,11 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			ssByMainKey[key] = append(ssByMainKey[key], ss)
 		}
 
-		// --- 建立此 revision 的 MatrixSelection 映射 ---
-		// selByPartKey: 主料 groupKey → model 名稱 → 被選中的 SupplierPN
+		// --- 3. 建立此 revision 的 MatrixSelection 映射 ---
 		selByGroupKey := make(map[string]map[string]string)
 		for _, sel := range data.selections {
-			// MatrixSelection.Group 儲存 "main_supplier|main_supplier_pn"
-			// 若 Group 欄位非空，直接使用；否則從 PartID 查找
 			mainKey := sel.Group
 			if mainKey == "" {
-				// fallback：嘗試從 PartID 查找主料
 				mainPart, exists := partByID[sel.PartID]
 				if !exists {
 					continue
@@ -353,33 +371,39 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			selByGroupKey[mainKey][modelName] = sel.SelectedSupplierPn
 		}
 
-		// --- 遍歷此 revision 的 Parts，合併至 builders ---
-		// 先找出每個群組的「代表 Part」（location 非空的最小 ID 的 part）
-		// 群組鍵 → 代表 Part
+		// --- 4. 處理此 revision 的 Parts（按 (Supplier, SupplierPN) 歸類） ---
+		// 收集同 Revision 內同 Group 的 Representative Part 與去重後的 Location 集合
 		representativeParts := make(map[string]db.Part)
-		// 群組鍵 → 此 revision 下此群組的所有 locations（去重）
 		locationsByGroup := make(map[string]map[string]bool)
 
-		for _, p := range data.parts {
+		for _, p := range validParts {
 			key := groupKey(p.Supplier, p.SupplierPN)
 			if locationsByGroup[key] == nil {
 				locationsByGroup[key] = make(map[string]bool)
 			}
+			// 拆分 location 字串（如 "C1, C2"）進行去重收集
 			if p.Location != "" {
-				locationsByGroup[key][p.Location] = true
+				locs := strings.Split(p.Location, ",")
+				for _, loc := range locs {
+					loc = strings.TrimSpace(loc)
+					if loc != "" {
+						locationsByGroup[key][loc] = true
+					}
+				}
 			}
-			// 以第一個（ID 最小）有位置的 part 作為代表
+			// 以第一個出現的 part 作為代表性 basic info 基礎
 			if _, exists := representativeParts[key]; !exists {
 				representativeParts[key] = p
 			}
 		}
 
-		// 將此 revision 的群組合併至 builders
+		// --- 5. 將此 revision 的群組合併至 builders ---
 		for key, repPart := range representativeParts {
-			if _, exists := builders[key]; !exists {
-				// 首次出現此群組：建立新 builder
+			b, exists := builders[key]
+			if !exists {
+				// 主料不存在於 group 中：首次出現此群組，建立新 builder 基礎
 				locs := sortedLocations(locationsByGroup[key])
-				builders[key] = &partGroupBuilder{
+				b = &partGroupBuilder{
 					group: ViewPartGroup{
 						MainSupplier:   repPart.Supplier,
 						MainSupplierPN: repPart.SupplierPN,
@@ -396,22 +420,21 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 					},
 					ssBuilder: make(map[string]*ViewSecondSource),
 				}
+				builders[key] = b
 				keyOrder = append(keyOrder, key)
 			} else {
-				// 此群組已存在：僅追加 SourceRevisionID
-				b := builders[key]
+				// 主料已存在於 group 中：追加 SourceRevisionID
 				b.group.SourceRevisionIDs = appendUnique(b.group.SourceRevisionIDs, revID)
 			}
 
-			// 合併此 revision 的 SecondSources
-			b := builders[key]
+			// 檢察與組裝此 revision 屬於該主料的 2nd Source (替代料)
 			for _, ss := range ssByMainKey[key] {
 				ssKey := groupKey(ss.Supplier, ss.SupplierPN)
 				if existing, ok := b.ssBuilder[ssKey]; ok {
-					// 已存在此替代料：追加 SourceRevisionID
+					// 2nd 已存在：追加 SourceRevisionID
 					existing.SourceRevisionIDs = appendUnique(existing.SourceRevisionIDs, revID)
 				} else {
-					// 首次出現此替代料
+					// 2nd 不存在：新增至 group 中
 					b.ssBuilder[ssKey] = &ViewSecondSource{
 						HHPN:              ss.HHPN,
 						Supplier:          ss.Supplier,
@@ -424,13 +447,13 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 
 			// 蒐集此 revision 的 MatrixSelections
 			if selMap, ok := selByGroupKey[key]; ok {
-				for _, data := range rawData[revID].models {
-					modelName := data.ModelName
+				for _, mData := range rawData[revID].models {
+					modelName := mData.ModelName
 					selectedPN := selMap[modelName] // 若未勾選則為空字串
 					b.group.Selections = append(b.group.Selections, ViewModelSelection{
 						RevisionID: revID,
 						ModelName:  modelName,
-						ModelQty:   data.Qty,
+						ModelQty:   mData.Qty,
 						SelectedPN: selectedPN,
 					})
 				}
