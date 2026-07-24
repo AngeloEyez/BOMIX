@@ -45,7 +45,6 @@ export interface BomRevision {
   pcbVersion: string
   pcaPn: string
   date: string
-  mode: string
   sourceFile: string
   createdAt: string
   updatedAt: string
@@ -300,9 +299,9 @@ export async function GetRevision(id: number): Promise<BomRevision> {
 
 // ==================== BOM View ====================
 
-export async function GetBOMView(revisionIDs: number[], viewType: string, modeOverride: string): Promise<ViewResult> {
+export async function GetBOMView(revisionIDs: number[], viewType: string): Promise<ViewResult> {
   try {
-    const res = await App.GetBOMView(revisionIDs, viewType, modeOverride)
+    const res = await App.GetBOMView(revisionIDs, viewType)
     if (!res) {
       throw new Error('Received null result from GetBOMView')
     }

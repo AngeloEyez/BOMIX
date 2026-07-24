@@ -331,7 +331,6 @@ func (a *App) GetRevisions(projectID int64) ([]*BomRevision, error) {
 			PCBVersion:       r.PCBVersion,
 			PCAPN:            r.PCAPN,
 			Date:             r.Date,
-			Mode:             r.Mode,
 			SourceFile:       r.SourceFile,
 			ModelCount:       len(r.MatrixModels),
 			CreatedAt:        r.CreatedAt.Format(time.RFC3339),
@@ -366,7 +365,6 @@ func (a *App) GetRevision(id int64) (*BomRevision, error) {
 		PCBVersion:       revision.PCBVersion,
 		PCAPN:            revision.PCAPN,
 		Date:             revision.Date,
-		Mode:             revision.Mode,
 		SourceFile:       revision.SourceFile,
 		ModelCount:       len(revision.MatrixModels),
 		CreatedAt:        revision.CreatedAt.Format(time.RFC3339),
@@ -383,12 +381,11 @@ func (a *App) GetRevision(id int64) (*BomRevision, error) {
 // 參數：
 //   - revisionIDs：要查詢的 BOM Revision ID 列表（1個=單一視圖，多個=整合視圖）
 //   - viewType：視圖類型（ALL/SMD/PTH/BOTTOM/NI/PROTO/MP/CCL），空字串預設為 ALL
-//   - modeOverride：覆蓋 Mode（NPI/MP），空字串=各自使用 revision 的 Mode
 //
 // 回傳：
 //   - *view.ViewResult：查詢結果，包含聚合物料群組與 revision 元資料
 //   - error：若資料庫連線未開啟或查詢失敗則回傳錯誤
-func (a *App) GetBOMView(revisionIDs []int64, viewType string, modeOverride string) (*view.ViewResult, error) {
+func (a *App) GetBOMView(revisionIDs []int64, viewType string) (*view.ViewResult, error) {
 	a.mu.RLock()
 	dbConn := a.db
 	a.mu.RUnlock()
@@ -398,9 +395,8 @@ func (a *App) GetBOMView(revisionIDs []int64, viewType string, modeOverride stri
 	}
 
 	query := view.ViewQuery{
-		RevisionIDs:  revisionIDs,
-		ViewType:     viewType,
-		ModeOverride: modeOverride,
+		RevisionIDs: revisionIDs,
+		ViewType:    viewType,
 	}
 
 	svc := view.NewService(dbConn, a.logger)
@@ -610,14 +606,13 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 	}
 
 	query := view.ViewQuery{
-		RevisionIDs:  revisionIDs,
-		ViewType:     view.ViewCCL, // BigMatrix/Matrix 匯出依 product-spec 8.1.6 需使用 CCL 視圖過濾 (ccl=Y, bom_status=I + P/M)
-		ModeOverride: "",           // 各 revision 使用自己的 Mode
+		RevisionIDs: revisionIDs,
+		ViewType:    view.ViewCCL, // BigMatrix/Matrix 匯出依 product-spec 8.1.6 需使用 CCL 視圖過濾 (ccl=Y, bom_status!=X)
 	}
 
 	if lg != nil {
-		lg.Info(fmt.Sprintf("[loadExportData] 建立 View 條件: RevisionIDs=%v, ViewType=%s, ModeOverride=%s",
-			query.RevisionIDs, query.ViewType, query.ModeOverride))
+		lg.Info(fmt.Sprintf("[loadExportData] 建立 View 條件: RevisionIDs=%v, ViewType=%s",
+			query.RevisionIDs, query.ViewType))
 	}
 
 	svc := view.NewService(dbConn, lg)
@@ -639,7 +634,6 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 			Phase:            vr.Phase,
 			Version:          vr.Version,
 			Date:             vr.Date,
-			Mode:             vr.Mode,
 			ModelQty:         vr.ModelQty,
 		})
 	}

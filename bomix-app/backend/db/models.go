@@ -44,7 +44,6 @@ type BomRevision struct {
 	PCBVersion     string
 	PCAPN          string
 	Date           string
-	Mode           string // NPI or MP
 	SourceFile     string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time

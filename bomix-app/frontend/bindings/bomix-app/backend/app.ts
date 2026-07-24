@@ -71,14 +71,13 @@ export function ExportExcel(options: $models.ExportOptions | null): $Cancellable
  * 參數：
  *   - revisionIDs：要查詢的 BOM Revision ID 列表（1個=單一視圖，多個=整合視圖）
  *   - viewType：視圖類型（ALL/SMD/PTH/BOTTOM/NI/PROTO/MP/CCL），空字串預設為 ALL
- *   - modeOverride：覆蓋 Mode（NPI/MP），空字串=各自使用 revision 的 Mode
  * 
  * 回傳：
  *   - *view.ViewResult：查詢結果，包含聚合物料群組與 revision 元資料
  *   - error：若資料庫連線未開啟或查詢失敗則回傳錯誤
  */
-export function GetBOMView(revisionIDs: number[] | null, viewType: string, modeOverride: string): $CancellablePromise<view$0.ViewResult | null> {
-    return $Call.ByID(318394637, revisionIDs, viewType, modeOverride);
+export function GetBOMView(revisionIDs: number[] | null, viewType: string): $CancellablePromise<view$0.ViewResult | null> {
+    return $Call.ByID(318394637, revisionIDs, viewType);
 }
 
 /**

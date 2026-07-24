@@ -207,31 +207,18 @@ func TestFilterPartsByCriteria(t *testing.T) {
 		},
 	}
 
-	// Test NPI mode
-	npiFiltered := FilterPartsByCriteria(parts, "NPI")
-	if len(npiFiltered) != 2 {
-		t.Errorf("NPI filter: expected 2 parts, got %d", len(npiFiltered))
+	// Test FilterPartsByCriteria
+	filtered := FilterPartsByCriteria(parts)
+	// CCL=Y, status!=X: Part 1(I), Part 2(P), Part 3(M) => 3 parts
+	if len(filtered) != 3 {
+		t.Errorf("FilterPartsByCriteria: expected 3 parts, got %d", len(filtered))
 	}
-	for _, p := range npiFiltered {
-		if p.BOMStatus != "I" && p.BOMStatus != "P" {
-			t.Errorf("NPI filter: part %s has invalid status %s", p.SupplierPn, p.BOMStatus)
+	for _, p := range filtered {
+		if p.BOMStatus == "X" {
+			t.Errorf("FilterPartsByCriteria: part %s has invalid status X", p.SupplierPn)
 		}
 		if p.CCL != "Y" {
-			t.Errorf("NPI filter: part %s is not CCL", p.SupplierPn)
-		}
-	}
-
-	// Test MP mode
-	mpFiltered := FilterPartsByCriteria(parts, "MP")
-	if len(mpFiltered) != 2 {
-		t.Errorf("MP filter: expected 2 parts, got %d", len(mpFiltered))
-	}
-	for _, p := range mpFiltered {
-		if p.BOMStatus != "I" && p.BOMStatus != "M" {
-			t.Errorf("MP filter: part %s has invalid status %s", p.SupplierPn, p.BOMStatus)
-		}
-		if p.CCL != "Y" {
-			t.Errorf("MP filter: part %s is not CCL", p.SupplierPn)
+			t.Errorf("FilterPartsByCriteria: part %s is not CCL", p.SupplierPn)
 		}
 	}
 }

@@ -316,7 +316,7 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 	styleRow7, _ := f.GetCellStyle("SMD", "A7")
 
 	// 8.2.6 - Filter parts by criteria
-	filteredParts := filterMatrixParts(parts, rev.Mode)
+	filteredParts := filterMatrixParts(parts)
 
 	// 8.2.5 - Write part data to each sheet
 	for _, sheet := range sheets {
@@ -447,9 +447,9 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 	return []string{outputPath}, nil
 }
 
-// filterMatrixParts filters parts based on Matrix export criteria
+// filterMatrixParts filters parts based on Matrix export criteria (CCL = Y, BOMStatus != X)
 // See product-spec section 8.2.6
-func filterMatrixParts(parts []PartData, mode string) []PartData {
+func filterMatrixParts(parts []PartData) []PartData {
 	var filtered []PartData
 
 	for _, part := range parts {
@@ -461,17 +461,6 @@ func filterMatrixParts(parts []PartData, mode string) []PartData {
 		// Filter by BOM status
 		if part.BOMStatus == "X" {
 			continue
-		}
-
-		// Filter by mode
-		if mode == "NPI" {
-			if part.BOMStatus != "I" && part.BOMStatus != "P" {
-				continue
-			}
-		} else if mode == "MP" {
-			if part.BOMStatus != "I" && part.BOMStatus != "M" {
-				continue
-			}
 		}
 
 		filtered = append(filtered, part)

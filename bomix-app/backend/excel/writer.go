@@ -79,7 +79,6 @@ type RevisionData struct {
 	Phase           string
 	Version         string
 	Date            string
-	Mode            string // NPI or MP
 	ModelQty        map[string]int // Model name -> quantity
 }
 

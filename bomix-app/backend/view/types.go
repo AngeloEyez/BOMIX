@@ -34,13 +34,9 @@ const (
 //     傳入單個 ID → 單一 revision 視圖；
 //     傳入多個 ID → 多 revision 整合聯集視圖。
 //   - ViewType：視圖過濾類型，空字串預設為 ALL。
-//   - ModeOverride：覆蓋 revision 自身的 Mode（NPI/MP）。
-//     空字串表示由各 revision 自己的 Mode 決定；
-//     指定後，所有 revision 皆使用此 Mode 進行過濾。
 type ViewQuery struct {
-	RevisionIDs  []int64 // 要查詢的 BOM Revision ID 列表（1個=單一視圖，多個=整合視圖）
-	ViewType     string  // 視圖類型：ALL, SMD, PTH, BOTTOM, NI, PROTO, MP, CCL
-	ModeOverride string  // 覆蓋 Mode（NPI/MP），空字串=各自使用 revision 的 Mode
+	RevisionIDs []int64 // 要查詢的 BOM Revision ID 列表（1個=單一視圖，多個=整合視圖）
+	ViewType    string  // 視圖類型：ALL, SMD, PTH, BOTTOM, NI, PROTO, MP, CCL
 }
 
 // ViewSecondSource 替代料（2nd Source）的視圖 DTO。
@@ -119,7 +115,6 @@ type ViewRevision struct {
 	PCBVersion       string         `json:"pcb_version"`
 	PCAPN            string         `json:"pca_pn"`
 	Date             string         `json:"date"`
-	Mode             string         `json:"mode"` // NPI 或 MP
 	ModelNames       []string       `json:"model_names"`
 	ModelQty         map[string]int `json:"model_qty"` // Model 名稱 -> 打件數量
 }

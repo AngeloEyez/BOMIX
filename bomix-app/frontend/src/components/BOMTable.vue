@@ -28,7 +28,6 @@
           text
           @click="collapseAll"
         />
-        <Tag v-if="bomMode" :value="bomMode" severity="info" class="mode-badge" />
       </div>
     </div>
 
@@ -190,7 +189,6 @@ const currentRevisionId = computed(() => props.revisionId || 0)
 
 const aggregatedParts = ref<ViewPartGroup[]>([])
 const currentRevisionMetadata = ref<ViewRevision | null>(null)
-const bomMode = ref<string>('')
 
 const smdPartsCount = computed(() => {
   return aggregatedParts.value.filter(p => p.type === 'SMD').length
@@ -431,8 +429,8 @@ watch(() => props.revisionId, (newId) => {
 async function loadBOMData(revisionId: number): Promise<void> {
   try {
     const viewType = selectedView.value === 'all' ? '' : selectedView.value.toUpperCase()
-    logStore.addLogEntry('DEBUG', `[View System] 準備建立 View: RevisionIDs=[${revisionId}], ViewType="${viewType || 'ALL'}", ModeOverride=""`)
-    const result = await GetBOMView([revisionId], viewType, '')
+    logStore.addLogEntry('DEBUG', `[View System] 準備建立 View: RevisionIDs=[${revisionId}], ViewType="${viewType || 'ALL'}"`)
+    const result = await GetBOMView([revisionId], viewType)
     
     if (result && result.part_groups) {
       aggregatedParts.value = result.part_groups
@@ -445,10 +443,8 @@ async function loadBOMData(revisionId: number): Promise<void> {
 
     if (result && result.revisions && result.revisions.length > 0) {
       currentRevisionMetadata.value = result.revisions[0]
-      bomMode.value = result.revisions[0].mode || ''
     } else {
       currentRevisionMetadata.value = null
-      bomMode.value = ''
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)

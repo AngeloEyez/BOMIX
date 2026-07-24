@@ -145,97 +145,7 @@ func TestMainVsSecondSource(t *testing.T) {
 	}
 }
 
-// TestDetermineMode_NPI tests NPI mode detection
-func TestDetermineMode_NPI(t *testing.T) {
-	f := excelize.NewFile()
-	wb := &ExcelizeWorkbook{f: f}
-	_ = wb
-	defer f.Close()
 
-	// Create required sheets
-	for _, sheet := range []string{"SMD", "PTH", "BOTTOM", "PROTO"} {
-		f.NewSheet(sheet)
-	}
-
-	// Set header for EBOM format
-	f.SetCellValue("SMD", "H5", "Qty")
-	f.SetCellValue("SMD", "J5", "CCL")
-
-	// Add a part in SMD with location C1,C2
-	f.SetCellValue("SMD", "A6", "1")
-	f.SetCellValue("SMD", "F6", "Samsung")
-	f.SetCellValue("SMD", "G6", "CAP-001")
-	f.SetCellValue("SMD", "I6", "C1,C2")
-
-	// Add a part in PROTO with overlapping location C1
-	f.SetCellValue("PROTO", "A6", "1")
-	f.SetCellValue("PROTO", "F6", "Samsung")
-	f.SetCellValue("PROTO", "G6", "CAP-001")
-	f.SetCellValue("PROTO", "I6", "C1,C3")
-
-	reader := &EBOMReader{}
-	mode := reader.determineMode(wb, []string{"SMD", "PTH", "BOTTOM", "PROTO"})
-
-	if mode != "NPI" {
-		t.Errorf("Expected mode 'NPI' (due to location overlap), got '%s'", mode)
-	}
-}
-
-// TestDetermineMode_MP tests MP mode detection
-func TestDetermineMode_MP(t *testing.T) {
-	f := excelize.NewFile()
-	wb := &ExcelizeWorkbook{f: f}
-	_ = wb
-	defer f.Close()
-
-	// Create required sheets
-	for _, sheet := range []string{"SMD", "PTH", "BOTTOM", "PROTO"} {
-		f.NewSheet(sheet)
-	}
-
-	// Set header for EBOM format
-	f.SetCellValue("SMD", "H5", "Qty")
-	f.SetCellValue("SMD", "J5", "CCL")
-
-	// Add a part in SMD with location C1,C2
-	f.SetCellValue("SMD", "A6", "1")
-	f.SetCellValue("SMD", "F6", "Samsung")
-	f.SetCellValue("SMD", "G6", "CAP-001")
-	f.SetCellValue("SMD", "I6", "C1,C2")
-
-	// Add a part in PROTO with NO overlapping location
-	f.SetCellValue("PROTO", "A6", "1")
-	f.SetCellValue("PROTO", "F6", "Samsung")
-	f.SetCellValue("PROTO", "G6", "CAP-002")
-	f.SetCellValue("PROTO", "I6", "C10,C11")
-
-	reader := &EBOMReader{}
-	mode := reader.determineMode(wb, []string{"SMD", "PTH", "BOTTOM", "PROTO"})
-
-	if mode != "MP" {
-		t.Errorf("Expected mode 'MP' (no location overlap), got '%s'", mode)
-	}
-}
-
-// TestDetermineMode_NoProto tests MP mode when no PROTO sheet exists
-func TestDetermineMode_NoProto(t *testing.T) {
-	f := excelize.NewFile()
-	wb := &ExcelizeWorkbook{f: f}
-	_ = wb
-	defer f.Close()
-
-	// Create only SMD sheet
-	f.NewSheet("SMD")
-	f.SetCellValue("SMD", "H5", "Qty")
-	f.SetCellValue("SMD", "J5", "CCL")
-
-	reader := &EBOMReader{}
-	mode := reader.determineMode(wb, []string{"SMD"})
-
-	if mode != "MP" {
-		t.Errorf("Expected mode 'MP' (no PROTO sheet), got '%s'", mode)
-	}
-}
 
 // TestAtomizeLocation tests location atomization
 func TestAtomizeLocation(t *testing.T) {
@@ -288,7 +198,6 @@ func TestMergeAlgorithm(t *testing.T) {
 		ProjectID: project.ID,
 		Phase:     "PV",
 		Version:   "0.2",
-		Mode:      "NPI",
 	}
 	if err := database.Create(&revision).Error; err != nil {
 		t.Fatalf("Failed to create revision: %v", err)
@@ -499,7 +408,6 @@ func TestImportMatrixSelections(t *testing.T) {
 		ProjectID: sourceProject.ID,
 		Phase:     "PV",
 		Version:   "0.1",
-		Mode:      "NPI",
 	}
 	if err := database.Create(&sourceRevision).Error; err != nil {
 		t.Fatalf("Failed to create source revision: %v", err)
@@ -510,7 +418,6 @@ func TestImportMatrixSelections(t *testing.T) {
 		ProjectID: sourceProject.ID,
 		Phase:     "PV",
 		Version:   "0.2",
-		Mode:      "NPI",
 	}
 	if err := database.Create(&targetRevision).Error; err != nil {
 		t.Fatalf("Failed to create target revision: %v", err)
@@ -721,7 +628,7 @@ func TestParseStatusSheet(t *testing.T) {
 	f.SetCellValue("NI", "J7", "N")
 
 	reader := &EBOMReader{}
-	parts := reader.parseStatusSheet(wb, "NI", "X", "")
+	parts := reader.parseStatusSheet(wb, "NI", "X")
 
 	if len(parts) != 2 {
 		t.Errorf("Expected 2 parts, got %d", len(parts))

@@ -47,11 +47,8 @@ func (r *EBOMReader) Import(f Workbook) error {
 		}
 	}
 
-	// Determine NPI/MP mode
-	mode := r.determineMode(f, sheets)
-
 	// Create or update the BOM revision
-	revisionID, err := r.createOrUpdateRevision(projectCode, phase, version, description, schematicVersion, pcbVersion, pcaPn, date, mode)
+	revisionID, err := r.createOrUpdateRevision(projectCode, phase, version, description, schematicVersion, pcbVersion, pcaPn, date)
 	if err != nil {
 		return fmt.Errorf("failed to create/update revision: %w", err)
 	}
@@ -117,7 +114,7 @@ func (r *EBOMReader) Import(f Workbook) error {
 	// Process NI sheet (bom_status = X)
 	niSheet := r.findSheetCaseInsensitive(sheets, "NI")
 	if niSheet != "" {
-		niParts := r.parseStatusSheet(f, niSheet, "X", "")
+		niParts := r.parseStatusSheet(f, niSheet, "X")
 		allParts = append(allParts, niParts...)
 		r.result.PartsCount += len(niParts)
 
@@ -135,7 +132,7 @@ func (r *EBOMReader) Import(f Workbook) error {
 	// Process PROTO sheet (bom_status = P)
 	protoSheet := r.findSheetCaseInsensitive(sheets, "PROTO")
 	if protoSheet != "" {
-		protoParts := r.parseStatusSheet(f, protoSheet, "P", mode)
+		protoParts := r.parseStatusSheet(f, protoSheet, "P")
 		allParts = append(allParts, protoParts...)
 		r.result.PartsCount += len(protoParts)
 
@@ -153,7 +150,7 @@ func (r *EBOMReader) Import(f Workbook) error {
 	// Process MP sheet (bom_status = M)
 	mpSheet := r.findSheetCaseInsensitive(sheets, "MP")
 	if mpSheet != "" {
-		mpParts := r.parseStatusSheet(f, mpSheet, "M", mode)
+		mpParts := r.parseStatusSheet(f, mpSheet, "M")
 		allParts = append(allParts, mpParts...)
 		r.result.PartsCount += len(mpParts)
 
@@ -486,7 +483,7 @@ func (r *EBOMReader) parseSecondSourceRow(row []string) db.SecondSource {
 }
 
 // parseStatusSheet parses NI/PROTO/MP sheets according to product-spec section 7.1.5
-func (r *EBOMReader) parseStatusSheet(f Workbook, sheetName, bomStatus, mode string) []db.Part {
+func (r *EBOMReader) parseStatusSheet(f Workbook, sheetName, bomStatus string) []db.Part {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return nil
@@ -558,71 +555,9 @@ func (r *EBOMReader) parseStatusSheet(f Workbook, sheetName, bomStatus, mode str
 	return parts
 }
 
-// determineMode determines NPI or MP mode based on PROTO overlap
-// See product-spec section 7.1.6
-func (r *EBOMReader) determineMode(f Workbook, sheets []string) string {
-	protoSheet := r.findSheetCaseInsensitive(sheets, "PROTO")
-	if protoSheet == "" {
-		return "MP" // No PROTO sheet means MP mode
-	}
-
-	// Get all locations from SMD, PTH, BOTTOM sheets
-	mainLocations := make(map[string]bool)
-
-	smdSheet := r.findSheetCaseInsensitive(sheets, "SMD")
-	pthSheet := r.findSheetCaseInsensitive(sheets, "PTH")
-	bottomSheet := r.findSheetCaseInsensitive(sheets, "BOTTOM")
-
-	for _, sheet := range []string{smdSheet, pthSheet, bottomSheet} {
-		if sheet == "" {
-			continue
-		}
-		rows, err := f.GetRows(sheet)
-		if err != nil {
-			continue
-		}
-
-		for i := 5; i < len(rows); i++ {
-			row := rows[i]
-			if len(row) > 8 {
-				locationStr := strings.TrimSpace(row[8])
-				locations := strings.Split(locationStr, ",")
-				for _, loc := range locations {
-					trimmed := strings.TrimSpace(loc)
-					if trimmed != "" {
-						mainLocations[trimmed] = true
-					}
-				}
-			}
-		}
-	}
-
-	// Check if any PROTO location overlaps with main locations
-	protoRows, err := f.GetRows(protoSheet)
-	if err != nil {
-		return "MP"
-	}
-
-	for i := 5; i < len(protoRows); i++ {
-		row := protoRows[i]
-		if len(row) > 8 {
-			locationStr := strings.TrimSpace(row[8])
-			locations := strings.Split(locationStr, ",")
-			for _, loc := range locations {
-				trimmed := strings.TrimSpace(loc)
-				if trimmed != "" && mainLocations[trimmed] {
-					return "NPI" // Found overlap
-				}
-			}
-		}
-	}
-
-	return "MP" // No overlap found
-}
-
 // createOrUpdateRevision creates or updates a BOM revision
 // Returns the revision ID
-func (r *EBOMReader) createOrUpdateRevision(projectCode, phase, version, description, schematicVersion, pcbVersion, pcaPn, date, mode string) (int64, error) {
+func (r *EBOMReader) createOrUpdateRevision(projectCode, phase, version, description, schematicVersion, pcbVersion, pcaPn, date string) (int64, error) {
 	if r.db == nil {
 		return 0, errors.New("db is nil")
 	}
@@ -656,7 +591,6 @@ func (r *EBOMReader) createOrUpdateRevision(projectCode, phase, version, descrip
 		existing.PCBVersion = pcbVersion
 		existing.PCAPN = pcaPn
 		existing.Date = date
-		existing.Mode = mode
 		existing.UpdatedAt = time.Now()
 		if err := r.db.Save(&existing).Error; err != nil {
 			return 0, err
@@ -678,7 +612,6 @@ func (r *EBOMReader) createOrUpdateRevision(projectCode, phase, version, descrip
 		PCBVersion:       pcbVersion,
 		PCAPN:            pcaPn,
 		Date:             date,
-		Mode:             mode,
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}

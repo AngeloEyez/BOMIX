@@ -638,7 +638,6 @@ View 系統（`backend/view/`）是 BOMIX 所有資料消費者的**統一資料
 type ViewQuery struct {
     RevisionIDs  []int64 // 要查詢的 BOM Revision ID 列表（1個=單一視圖，多個=整合視圖）
     ViewType     string  // ALL, SMD, PTH, BOTTOM, NI, PROTO, MP, CCL
-    ModeOverride string  // 覆蓋 Mode（NPI/MP），空字串=各自使用 revision 的 Mode
 }
 
 // ViewPartGroup 聚合後的物料群組，View 系統的核心輸出單元
@@ -795,11 +794,11 @@ View 系統支援以下視圖種類的動態過濾（過濾規則由 View 系統
 
 | 視圖 | 過濾條件 |
 |------|----------|
-| **ALL** | 排除 `bom_status = X`，依 Mode 過濾（NPI 顯示 I+P，MP 顯示 I+M） |
-| **SMD** | `type = SMD` 且符合 Mode 過濾 |
-| **PTH** | `type = PTH` 且符合 Mode 過濾 |
-| **BOTTOM** | `type = BOTTOM` 且符合 Mode 過濾 |
-| **NI** | NPI: `bom_status = X 或 M`；MP: `bom_status = X 或 P` |
+| **ALL** | 排除 `bom_status = X` 的所有零件（即包含 `I`, `P`, `M` 上件狀態） |
+| **SMD** | `type = SMD` 且 `bom_status != X` |
+| **PTH** | `type = PTH` 且 `bom_status != X` |
+| **BOTTOM** | `type = BOTTOM` 且 `bom_status != X` |
+| **NI** | `bom_status = X` (Not Install) |
 | **PROTO** | `bom_status = P` |
 | **MP** | `bom_status = M` |
 | **CCL** | `ccl = Y` |
@@ -942,23 +941,17 @@ Main Source 的 `location` 欄位以 `","` 分隔，逐一存入 `parts` 表。
 **階段二覆蓋與新增規則：**
 
 1. **NI 頁面**：
-   - 若零件已存在，**新增**一筆 `bom_status=X` 的紀錄 （不覆蓋原紀錄）
+   - 若零件已存在，新增一筆 `bom_status=X` 的紀錄（不覆蓋原紀錄）
    - 若零件不存在，新增一筆 `bom_status=X` 的紀錄
 
 2. **PROTO 頁面**：
-   - Mode=NPI：若零件已存在則**覆蓋** `bom_status=P`；不存在則新增
-   - Mode=MP：若零件已存在則**新增**一筆 `bom_status=P`；不存在則新增
+   - 若零件已存在則覆蓋或新增 `bom_status=P` 的紀錄
 
 3. **MP 頁面**：
-   - Mode=MP：若零件已存在則**覆蓋** `bom_status=M`；不存在則新增
-   - Mode=NPI：若零件已存在則**新增**一筆 `bom_status=M`；不存在則新增
+   - 若零件已存在則覆蓋或新增 `bom_status=M` 的紀錄
 
-#### 7.1.6 NPI / MP 模式判斷
-
-在匯入過程中，系統會依據以下條件自動判斷該 BOM 版本的模式（`bom_revisions.mode`）：
-
-- **NPI**：若 `PROTO` 頁面中有任何零件**同時出現在** `SMD`、`PTH` 或 `BOTTOM` 任一頁面中。判斷零件是否出現在另一個頁面的標準，是用零件編號，例如在proto頁面有一個物料，其location為C1,C3。在 SMD頁面有一個物料，其location為C11,C1, C2, C3, C4, C5, C7，因為proto頁面的C1,C3有出現在SMD頁面的location內，這就算是有同時出現在proto 和 SMD。
-- **MP**：不滿足上述 NPI 條件的所有其他情況（即 `PROTO` 頁面無零件與主製程重疊，則判定為量產模式 `MP`）。
+#### 7.1.6 (已廢棄) NPI / MP 模式判斷
+*註：系統已移除 BOM 模式 (NPI/MP) 區分，所有 BOM 視圖與物料狀態直接依據 `bom_status` 獨立進行管理與過濾。*
 
 #### 7.1.7 EBOM 重新匯入的 Merge 演算法
 
@@ -1248,7 +1241,7 @@ BigMatrix 格式的工作表中，自 **H 欄** 開始向右排列了多份 BOM 
 1. **多 BOM 聯集合併**：View 系統自動遍歷所選擇的所有 BOM Revisions，建立包含所有主料與 2nd Source 組合的聯集群組。
 2. **條件篩選**：View 系統會在查詢時依據以下條件進行過濾，僅回傳符合條件的零件：
    - `ccl = Y`
-   - `bom_status = I`，以及依據該 BOM 的 Mode 決定包含 `P` (NPI 模式) 或 `M` (MP 模式)
+   - `bom_status != X` (包含 `I`, `P`, `M` 上件狀態)
 3. **來源標記**：View 系統在回傳的 `ViewPartGroup` 中附帶 `SourceRevisionIDs` 欄位，供 BigMatrix Writer 直接據以進行灰色儲存格繪製。
 
 #### 8.1.7 零件排序規則
@@ -1419,7 +1412,7 @@ Remark 欄位位於所有 Model 欄位結束後的下一欄（參見 `8.2.4` 第
 - **製程分類過濾**：分別依 `ViewType` (`SMD` / `PTH` / `BOTTOM`) 取得對應 Sheet 的物料。
 - **狀態與關鍵零件過濾**：View 系統自動根據以下條件過濾，僅回傳符合條件的零件：
   - `ccl = Y`
-  - `bom_status = I`，以及依據該 BOM 的 Mode 決定包含 `P` (NPI 模式) 或 `M` (MP 模式)
+  - `bom_status != X` (包含 `I`, `P`, `M` 上件狀態)
 
 #### 8.2.7 零件排序規則
 
@@ -1651,7 +1644,6 @@ var (
     ErrNotFound         = errors.New("resource not found")
     ErrInvalidFormat    = errors.New("invalid file format")
     ErrDuplicate        = errors.New("duplicate entry")
-    ErrInvalidMode      = errors.New("invalid mode: must be NPI or MP")
     ErrFormatDetectFail = errors.New("unable to detect BOM format")
     ErrTaskCancelled    = errors.New("task was cancelled")
     ErrDatabaseClosed   = errors.New("database is not open")
@@ -1802,7 +1794,6 @@ type BomRevision struct {
     ProjectID       string    `gorm:"index:idx_revision_project"`
     PhaseName       string    // DB, EVT, DVT, PVT...
     Version         string    // 0.1, 0.2, 1.0
-    Mode            string    `gorm:"default:NPI"` // NPI | MP
     ProjectCode     string    // 快取，來自 Excel 表頭
     Description     string    // 快取，來自 Excel 表頭
     SchematicVer    string

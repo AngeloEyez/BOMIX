@@ -34,13 +34,12 @@ func TestViewTypeConstants(t *testing.T) {
 
 // ==================== Filter 單元測試 ====================
 
-// makeTestRawData 建立測試用的 rawRevisionData，模擬指定 mode 的 revision
-func makeTestRawData(revID int64, mode string) map[int64]*rawRevisionData {
+// makeTestRawData 建立測試用的 rawRevisionData
+func makeTestRawData(revID int64) map[int64]*rawRevisionData {
 	return map[int64]*rawRevisionData{
 		revID: {
 			revision: db.BomRevision{
-				ID:   revID,
-				Mode: mode,
+				ID: revID,
 			},
 		},
 	}
@@ -62,50 +61,26 @@ func makeTestPart(supplier, supplierPN, partType, bomStatus, ccl string, revIDs 
 func TestFilter_Apply_ALL(t *testing.T) {
 	filter := NewFilter()
 
-	cases := []struct {
-		name       string
-		parts      []ViewPartGroup
-		mode       string
-		wantCount  int
-		wantKeys   []string // supplier|supplierPN 的期望結果
-	}{
-		{
-			name: "NPI模式：I和P通過，X和M排除",
-			parts: []ViewPartGroup{
-				makeTestPart("S1", "P1", "SMD", "I", "N", []int64{1}),
-				makeTestPart("S2", "P2", "SMD", "P", "N", []int64{1}),
-				makeTestPart("S3", "P3", "SMD", "X", "N", []int64{1}),
-				makeTestPart("S4", "P4", "SMD", "M", "N", []int64{1}),
-			},
-			mode:      "NPI",
-			wantCount: 2,
-		},
-		{
-			name: "MP模式：I和M通過，X和P排除",
-			parts: []ViewPartGroup{
-				makeTestPart("S1", "P1", "SMD", "I", "N", []int64{1}),
-				makeTestPart("S2", "P2", "SMD", "P", "N", []int64{1}),
-				makeTestPart("S3", "P3", "SMD", "X", "N", []int64{1}),
-				makeTestPart("S4", "P4", "SMD", "M", "N", []int64{1}),
-			},
-			mode:      "MP",
-			wantCount: 2,
-		},
+	parts := []ViewPartGroup{
+		makeTestPart("S1", "P1", "SMD", "I", "N", []int64{1}),
+		makeTestPart("S2", "P2", "SMD", "P", "N", []int64{1}),
+		makeTestPart("S3", "P3", "SMD", "X", "N", []int64{1}),
+		makeTestPart("S4", "P4", "SMD", "M", "N", []int64{1}),
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			rawData := makeTestRawData(1, tc.mode)
-			query := ViewQuery{
-				RevisionIDs:  []int64{1},
-				ViewType:     ViewAll,
-				ModeOverride: tc.mode,
-			}
-			result := filter.Apply(tc.parts, query, rawData)
-			if len(result) != tc.wantCount {
-				t.Errorf("期望 %d 個結果，實際得到 %d 個", tc.wantCount, len(result))
-			}
-		})
+	query := ViewQuery{
+		RevisionIDs: []int64{1},
+		ViewType:    ViewAll,
+	}
+	result := filter.Apply(parts, query)
+	// ALL 應包含 I, P, M，排除 X (共3個)
+	if len(result) != 3 {
+		t.Errorf("ALL 視圖期望 3 個結果（包含 I, P, M），實際得到 %d 個", len(result))
+	}
+	for _, p := range result {
+		if p.BOMStatus == "X" {
+			t.Errorf("ALL 視圖不應包含 bom_status=X 的物料")
+		}
 	}
 }
 
@@ -119,7 +94,6 @@ func TestFilter_Apply_TypeFilter(t *testing.T) {
 		makeTestPart("S3", "P3", "BOTTOM", "I", "N", []int64{1}),
 		makeTestPart("S4", "P4", "SMD", "I", "N", []int64{1}),
 	}
-	rawData := makeTestRawData(1, "NPI")
 
 	cases := []struct {
 		viewType  string
@@ -133,11 +107,10 @@ func TestFilter_Apply_TypeFilter(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.viewType+" 過濾", func(t *testing.T) {
 			query := ViewQuery{
-				RevisionIDs:  []int64{1},
-				ViewType:     tc.viewType,
-				ModeOverride: "NPI",
+				RevisionIDs: []int64{1},
+				ViewType:    tc.viewType,
 			}
-			result := filter.Apply(parts, query, rawData)
+			result := filter.Apply(parts, query)
 			if len(result) != tc.wantCount {
 				t.Errorf("[%s] 期望 %d 個結果，實際得到 %d 個", tc.viewType, tc.wantCount, len(result))
 			}
@@ -156,33 +129,15 @@ func TestFilter_Apply_NI(t *testing.T) {
 		makeTestPart("S4", "P4", "", "M", "N", []int64{1}),
 	}
 
-	t.Run("NPI模式NI：X和M", func(t *testing.T) {
-		rawData := makeTestRawData(1, "NPI")
-		query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewNI, ModeOverride: "NPI"}
-		result := filter.Apply(parts, query, rawData)
-		if len(result) != 2 {
-			t.Errorf("NPI NI 期望 2 個（X+M），實際得到 %d 個", len(result))
-		}
-		for _, p := range result {
-			if p.BOMStatus != "X" && p.BOMStatus != "M" {
-				t.Errorf("NPI NI 不應包含 bom_status=%s 的物料", p.BOMStatus)
-			}
-		}
-	})
-
-	t.Run("MP模式NI：X和P", func(t *testing.T) {
-		rawData := makeTestRawData(1, "MP")
-		query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewNI, ModeOverride: "MP"}
-		result := filter.Apply(parts, query, rawData)
-		if len(result) != 2 {
-			t.Errorf("MP NI 期望 2 個（X+P），實際得到 %d 個", len(result))
-		}
-		for _, p := range result {
-			if p.BOMStatus != "X" && p.BOMStatus != "P" {
-				t.Errorf("MP NI 不應包含 bom_status=%s 的物料", p.BOMStatus)
-			}
-		}
-	})
+	query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewNI}
+	result := filter.Apply(parts, query)
+	// NI 應僅包含 bom_status = X
+	if len(result) != 1 {
+		t.Errorf("NI 視圖期望 1 個結果（僅X），實際得到 %d 個", len(result))
+	}
+	if result[0].BOMStatus != "X" {
+		t.Errorf("NI 視圖期望 bom_status=X，實際=%s", result[0].BOMStatus)
+	}
 }
 
 // TestFilter_Apply_CCL 測試 CCL 視圖過濾
@@ -194,10 +149,9 @@ func TestFilter_Apply_CCL(t *testing.T) {
 		makeTestPart("S2", "P2", "SMD", "I", "N", []int64{1}),
 		makeTestPart("S3", "P3", "SMD", "I", "Y", []int64{1}),
 	}
-	rawData := makeTestRawData(1, "NPI")
 	query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewCCL}
 
-	result := filter.Apply(parts, query, rawData)
+	result := filter.Apply(parts, query)
 	if len(result) != 2 {
 		t.Errorf("CCL 過濾期望 2 個（CCL=Y），實際得到 %d 個", len(result))
 	}
@@ -216,10 +170,9 @@ func TestFilter_Apply_EmptyViewType(t *testing.T) {
 		makeTestPart("S1", "P1", "SMD", "I", "N", []int64{1}),
 		makeTestPart("S2", "P2", "SMD", "X", "N", []int64{1}), // X 應被排除
 	}
-	rawData := makeTestRawData(1, "NPI")
-	query := ViewQuery{RevisionIDs: []int64{1}, ViewType: "", ModeOverride: "NPI"}
+	query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ""}
 
-	result := filter.Apply(parts, query, rawData)
+	result := filter.Apply(parts, query)
 	// 空 ViewType 應等同 ALL，排除 X
 	if len(result) != 1 {
 		t.Errorf("空 ViewType 預設 ALL，期望 1 個結果（排除X），實際得到 %d 個", len(result))
@@ -275,9 +228,6 @@ func TestAppendUnique(t *testing.T) {
 
 // TestViewResult_EmptyQuery 測試空查詢
 func TestViewResult_EmptyQuery(t *testing.T) {
-	// 空 RevisionIDs 查詢不應 panic
-	// 此測試不需要資料庫連線，僅測試 Service.Query() 的空輸入處理
-	// 實際的空查詢回傳在 service.go 的 Query() 中已有早期返回
 	query := ViewQuery{
 		RevisionIDs: []int64{},
 		ViewType:    ViewAll,
@@ -295,11 +245,6 @@ func TestViewResult_EmptyQuery(t *testing.T) {
 // ==================== 多 Revision 聯集語義測試（不依賴 DB）====================
 
 // TestSourceRevisionIDs_Logic 測試 SourceRevisionIDs 的來源歸屬邏輯
-//
-// 此測試驗證物料存在性判斷的語義：
-//   - 物料 A 只在 Rev1 存在 → SourceRevisionIDs = [1]
-//   - 物料 B 在 Rev1 和 Rev2 都存在 → SourceRevisionIDs = [1, 2]
-//   - 物料 C 只在 Rev2 存在 → SourceRevisionIDs = [2]
 func TestSourceRevisionIDs_Logic(t *testing.T) {
 	rev1ID := int64(1)
 	rev2ID := int64(2)
@@ -356,35 +301,20 @@ func TestSourceRevisionIDs_Logic(t *testing.T) {
 	}
 }
 
-// TestIsEffectiveBOMStatus 測試 bom_status 在不同 Mode 下的有效性判斷
+// TestIsEffectiveBOMStatus 測試 bom_status 有效性判斷
 func TestIsEffectiveBOMStatus(t *testing.T) {
-	t.Run("NPI 模式：僅 I 與 P 有效", func(t *testing.T) {
-		if !isEffectiveBOMStatus("I", "NPI") {
-			t.Error("I 在 NPI 應為有效")
+	t.Run("有效與無效狀態測試", func(t *testing.T) {
+		if !isEffectiveBOMStatus("I") {
+			t.Error("I 應為有效狀態")
 		}
-		if !isEffectiveBOMStatus("P", "NPI") {
-			t.Error("P 在 NPI 應為有效")
+		if !isEffectiveBOMStatus("P") {
+			t.Error("P 應為有效狀態")
 		}
-		if isEffectiveBOMStatus("X", "NPI") {
-			t.Error("X 在 NPI 應為無效")
+		if !isEffectiveBOMStatus("M") {
+			t.Error("M 應為有效狀態")
 		}
-		if isEffectiveBOMStatus("M", "NPI") {
-			t.Error("M 在 NPI 應為無效")
-		}
-	})
-
-	t.Run("MP 模式：僅 I 與 M 有效", func(t *testing.T) {
-		if !isEffectiveBOMStatus("I", "MP") {
-			t.Error("I 在 MP 應為有效")
-		}
-		if !isEffectiveBOMStatus("M", "MP") {
-			t.Error("M 在 MP 應為有效")
-		}
-		if isEffectiveBOMStatus("X", "MP") {
-			t.Error("X 在 MP 應為無效")
-		}
-		if isEffectiveBOMStatus("P", "MP") {
-			t.Error("P 在 MP 應為無效")
+		if isEffectiveBOMStatus("X") {
+			t.Error("X 應為無效狀態")
 		}
 	})
 }
@@ -394,7 +324,7 @@ func TestMergeRevisions_LocationAndQtyAggregation(t *testing.T) {
 	svc := &Service{}
 
 	rev1Data := &rawRevisionData{
-		revision: db.BomRevision{ID: 1, Mode: "NPI"},
+		revision: db.BomRevision{ID: 1},
 		parts: []db.Part{
 			{ID: 101, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", BOMStatus: "I", CCL: "N", Location: "C1, C2", Item: "1"},
 			{ID: 102, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "PTH", BOMStatus: "I", CCL: "Y", Location: "C2, C3", Item: "1"},
@@ -426,7 +356,7 @@ func TestMergeRevisions_MultipleRevisionsAnd2ndSources(t *testing.T) {
 
 	// Rev 1: Part A (Main) + 2nd Source S1
 	rev1Data := &rawRevisionData{
-		revision: db.BomRevision{ID: 1, Mode: "NPI"},
+		revision: db.BomRevision{ID: 1},
 		parts: []db.Part{
 			{ID: 1, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", BOMStatus: "I", Location: "C1", Item: "1"},
 		},
@@ -437,7 +367,7 @@ func TestMergeRevisions_MultipleRevisionsAnd2ndSources(t *testing.T) {
 
 	// Rev 2: Part A (Main) + 2nd Source S1 & S2, plus Part B (Main)
 	rev2Data := &rawRevisionData{
-		revision: db.BomRevision{ID: 2, Mode: "NPI"},
+		revision: db.BomRevision{ID: 2},
 		parts: []db.Part{
 			{ID: 2, RevisionID: 2, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", BOMStatus: "I", Location: "C1", Item: "1"},
 			{ID: 3, RevisionID: 2, Supplier: "Murata", SupplierPN: "GRM155R71C104KA88D", Type: "SMD", BOMStatus: "I", Location: "C5", Item: "2"},
@@ -491,4 +421,3 @@ func TestMergeRevisions_MultipleRevisionsAnd2ndSources(t *testing.T) {
 		t.Errorf("Part B 的 SourceRevisionIDs 應僅包含 Rev 2 ([2])")
 	}
 }
-

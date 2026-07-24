@@ -72,8 +72,8 @@ type rawRevisionData struct {
 //   - error：若資料庫查詢失敗則回傳錯誤
 func (s *Service) Query(query ViewQuery) (*ViewResult, error) {
 	if s.logger != nil {
-		s.logger.Debug(fmt.Sprintf("[ViewService.Query] 執行 View 查詢: RevisionIDs=%v, ViewType=%s, ModeOverride=%s",
-			query.RevisionIDs, query.ViewType, query.ModeOverride))
+		s.logger.Debug(fmt.Sprintf("[ViewService.Query] 執行 View 查詢: RevisionIDs=%v, ViewType=%s",
+			query.RevisionIDs, query.ViewType))
 	}
 
 	if len(query.RevisionIDs) == 0 {
@@ -98,7 +98,7 @@ func (s *Service) Query(query ViewQuery) (*ViewResult, error) {
 
 	// 套用視圖過濾
 	filter := NewFilter()
-	partGroups = filter.Apply(partGroups, query, rawData)
+	partGroups = filter.Apply(partGroups, query)
 
 	return &ViewResult{
 		Query:      query,
@@ -244,7 +244,6 @@ func buildViewRevisions(rawData map[int64]*rawRevisionData) []ViewRevision {
 			PCBVersion:       rev.PCBVersion,
 			PCAPN:            rev.PCAPN,
 			Date:             rev.Date,
-			Mode:             rev.Mode,
 			ModelNames:       modelNames,
 			ModelQty:         modelQty,
 		})
@@ -257,22 +256,10 @@ func groupKey(supplier, supplierPN string) string {
 	return supplier + "|" + supplierPN
 }
 
-// isEffectiveBOMStatus 判斷指定物料的 bom_status 在給定 Mode 下是否有效。
-//
-// 預設規則：
-//   - Mode = "NPI": 包含 bom_status = "I" 或 "P" (Install + Proto)
-//   - Mode = "MP":  包含 bom_status = "I" 或 "M" (Install + MP)
-//   - 其他情況:    排除 bom_status = "X"
-func isEffectiveBOMStatus(bomStatus, mode string) bool {
+// isEffectiveBOMStatus 判斷指定物料的 bom_status 是否有效（非 X 上件狀態）。
+func isEffectiveBOMStatus(bomStatus string) bool {
 	status := strings.ToUpper(strings.TrimSpace(bomStatus))
-	switch strings.ToUpper(strings.TrimSpace(mode)) {
-	case "NPI":
-		return status == "I" || status == "P"
-	case "MP":
-		return status == "I" || status == "M"
-	default:
-		return status != "X"
-	}
+	return status != "X"
 }
 
 // mergeRevisions 執行多 BOM Revision 的主料與替代料聯集合併，
@@ -321,17 +308,11 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			continue
 		}
 
-		// 決定此 revision 的有效 Mode (優先使用 query.ModeOverride)
-		mode := data.revision.Mode
-		if query.ModeOverride != "" {
-			mode = query.ModeOverride
-		}
-
 		// --- 1. 過濾此 revision 中符合有效 bom_status 的 Parts ---
 		validParts := make([]db.Part, 0, len(data.parts))
 		partByID := make(map[int64]db.Part, len(data.parts))
 		for _, p := range data.parts {
-			if isEffectiveBOMStatus(p.BOMStatus, mode) {
+			if isEffectiveBOMStatus(p.BOMStatus) {
 				validParts = append(validParts, p)
 				partByID[p.ID] = p
 			}

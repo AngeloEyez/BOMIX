@@ -553,9 +553,9 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	return []string{outputPath}, nil
 }
 
-// FilterPartsByCriteria filters parts based on export criteria
+// FilterPartsByCriteria filters parts based on export criteria (CCL = Y, BOMStatus != X)
 // See product-spec section 8.1.6
-func FilterPartsByCriteria(parts []PartData, mode string) []PartData {
+func FilterPartsByCriteria(parts []PartData) []PartData {
 	var filtered []PartData
 
 	for _, part := range parts {
@@ -567,17 +567,6 @@ func FilterPartsByCriteria(parts []PartData, mode string) []PartData {
 		// Filter by BOM status
 		if part.BOMStatus == "X" {
 			continue
-		}
-
-		// Filter by mode
-		if mode == "NPI" {
-			if part.BOMStatus != "I" && part.BOMStatus != "P" {
-				continue
-			}
-		} else if mode == "MP" {
-			if part.BOMStatus != "I" && part.BOMStatus != "M" {
-				continue
-			}
 		}
 
 		filtered = append(filtered, part)
