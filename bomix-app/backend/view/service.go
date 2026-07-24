@@ -267,6 +267,10 @@ func groupKey(supplier, supplierPN string) string {
 //  3. 各 revision 的 SecondSource 以 (supplier, supplier_pn) 去重後取聯集
 //  4. 蒐集所有 revision × model 的 MatrixSelection
 //
+// 重要：不同 Type 的物料若具有相同的 (supplier, supplier_pn)，
+//      會被合併到同一個群組中。這符合「All」條件的定義：
+//      bom_status=I 且根據 mode 決定加入 P 或 M。
+//
 // 注意：此方法不進行視圖過濾，過濾由 Filter.Apply() 負責。
 //
 // 參數：

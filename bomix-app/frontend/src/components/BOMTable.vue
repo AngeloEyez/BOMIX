@@ -28,6 +28,7 @@
           text
           @click="collapseAll"
         />
+        <Tag v-if="bomMode" :value="bomMode" severity="info" class="mode-badge" />
       </div>
     </div>
 
@@ -58,24 +59,12 @@
       <!-- Row Columns -->
       <Column expander style="width: 5rem" />
       <Column field="item" header="Item" style="width: 80px" sortable />
-      <Column field="type" header="Type" style="width: 100px" sortable>
-        <template #body="slotProps">
-          <Tag :value="slotProps.data.type" :severity="getTypeSeverity(slotProps.data.type)" />
-        </template>
-      </Column>
       <Column field="hhpn" header="HHPN" style="width: 150px" sortable />
       <Column field="description" header="Description" style="width: 200px" />
       <Column field="main_supplier" header="Supplier" style="width: 150px" sortable />
       <Column field="main_supplier_pn" header="Supplier PN" style="width: 150px" sortable />
       <Column field="qty" header="Qty" style="width: 80px" sortable />
       <Column field="locations" header="Location" style="width: 150px" />
-      <Column field="bom_status" header="BOM Status" style="width: 100px" sortable>
-        <template #body="slotProps">
-          <span :class="getBOMStatusClass(slotProps.data.bom_status)">
-            {{ slotProps.data.bom_status }}
-          </span>
-        </template>
-      </Column>
       <Column field="ccl" header="CCL" style="width: 80px" sortable>
         <template #body="slotProps">
           <span :class="getCCLClass(slotProps.data.ccl)">
@@ -154,6 +143,7 @@ const currentRevisionId = computed(() => props.revisionId || 0)
 
 const aggregatedParts = ref<ViewPartGroup[]>([])
 const currentRevisionMetadata = ref<ViewRevision | null>(null)
+const bomMode = ref<string>('')
 
 const smdPartsCount = computed(() => {
   return aggregatedParts.value.filter(p => p.type === 'SMD').length
@@ -200,34 +190,6 @@ function collapseAll(): void {
   expandedKeys.value = {}
 }
 
-function getTypeSeverity(type: string): string {
-  switch (type) {
-    case 'SMD':
-      return 'info'
-    case 'PTH':
-      return 'success'
-    case 'BOTTOM':
-      return 'warning'
-    default:
-      return 'secondary'
-  }
-}
-
-function getBOMStatusClass(status: string): string {
-  switch (status) {
-    case 'I':
-      return 'bom-status-install'
-    case 'X':
-      return 'bom-status-exclude'
-    case 'P':
-      return 'bom-status-proto'
-    case 'M':
-      return 'bom-status-mp'
-    default:
-      return ''
-  }
-}
-
 function getCCLClass(ccl: string): string {
   return ccl === 'Y' ? 'ccl-critical' : 'ccl-normal'
 }
@@ -253,8 +215,10 @@ async function loadBOMData(revisionId: number): Promise<void> {
 
     if (result && result.revisions && result.revisions.length > 0) {
       currentRevisionMetadata.value = result.revisions[0]
+      bomMode.value = result.revisions[0].mode || ''
     } else {
       currentRevisionMetadata.value = null
+      bomMode.value = ''
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -306,6 +270,12 @@ onMounted(() => {
 .view-actions {
   display: flex;
   gap: 0.25rem;
+  align-items: center;
+}
+
+.mode-badge {
+  margin-left: 0.5rem;
+  font-weight: 600;
 }
 
 /* Row expansion */
@@ -353,32 +323,6 @@ onMounted(() => {
   border-top: 1px solid var(--surface-border);
   font-size: 0.75rem;
   color: var(--text-color-secondary);
-}
-
-/* Status classes */
-.bom-status-install {
-  color: var(--success-color);
-  font-weight: 600;
-}
-
-.bom-status-exclude {
-  color: var(--danger-color);
-  font-weight: 600;
-}
-
-.bom-status-proto {
-  color: var(--warning-color);
-  font-weight: 600;
-}
-
-.bom-status-mp {
-  color: var(--primary-color);
-  font-weight: 600;
-}
-
-.ccl-critical {
-  color: var(--danger-color);
-  font-weight: 700;
 }
 
 .ccl-normal {
