@@ -3,6 +3,7 @@ package excel
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -282,8 +283,7 @@ type parsedSecondSource struct {
 	secondSource db.SecondSource
 }
 
-// parseSheet parses data rows from a sheet
-// See product-spec sections 7.1.2, 7.1.3, 7.1.4
+// parseSheet parses data rows from a sheet according to product-spec section 7.1.2
 func (r *EBOMReader) parseSheet(f Workbook, sheetName, sheetType string, basePartIndices ...int) ([]db.Part, []parsedSecondSource) {
 	basePartIndex := 0
 	if len(basePartIndices) > 0 {
@@ -299,31 +299,106 @@ func (r *EBOMReader) parseSheet(f Workbook, sheetName, sheetType string, basePar
 	var secondSources []parsedSecondSource
 
 	currentMainPartIndex := -1
+	var currentMainItem string
+	var currentMainHHPN string
 
-	// Start from row 6 (index 5)
+	// 根據 product-spec 7.1.2，從 Row 6 (Index 5) 開始往下逐行讀取
 	for i := 5; i < len(rows); i++ {
 		row := rows[i]
 		if len(row) == 0 {
 			continue
 		}
 
-		// Get item number (column A)
-		item := strings.TrimSpace(row[0])
+		// A: Item (Index 0)
+		item := safeGetCol(row, 0)
+		// B: HHPN (Index 1)
+		hhpn := safeGetCol(row, 1)
+		// E: Description (Index 4) -- C, D 欄跳過
+		description := safeGetCol(row, 4)
+		// F: Supplier (Index 5)
+		supplier := safeGetCol(row, 5)
+		// G: Supplier PN (Index 6)
+		supplierPN := safeGetCol(row, 6)
+		// H: Quantity (Index 7)
+		qtyStr := safeGetCol(row, 7)
+		// I: Location (Index 8)
+		locationStr := safeGetCol(row, 8)
+		// J: CCL (Index 9)
+		ccl := safeGetCol(row, 9)
+		// L: Remark (Index 11) -- K 欄跳過
+		remark := safeGetCol(row, 11)
 
-		// Determine if this is a Main Source or 2nd Source
-		// See product-spec section 7.1.3
+		// 若此列所有主要欄位均為空白，則忽略
+		if item == "" && hhpn == "" && description == "" && supplier == "" && supplierPN == "" {
+			continue
+		}
+
 		if item != "" {
-			// This is a Main Source
-			part := r.parsePartRow(row, sheetType)
+			// Main Source (主料: item 有值)
+			var part db.Part
+			part.Item = item
+			part.HHPN = hhpn
+			part.Description = description
+			part.Supplier = supplier
+			part.SupplierPN = supplierPN
+
+			if q, err := strconv.Atoi(qtyStr); err == nil {
+				part.Quantity = q
+			}
+
+			if locationStr != "" {
+				part.Location = r.atomizeLocation(locationStr)
+			}
+
+			part.CCL = ccl
+			part.Remark = remark
+			part.Type = sheetType
+			part.BOMStatus = "I" // 預設 Install
+
 			parts = append(parts, part)
 			currentMainPartIndex = basePartIndex + len(parts) - 1
+			currentMainItem = part.Item
+			currentMainHHPN = part.HHPN
+
+			if r.logger != nil {
+				r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析主料 (Main Source)", sheetName),
+					"item", part.Item,
+					"hhpn", part.HHPN,
+					"description", part.Description,
+					"supplier", part.Supplier,
+					"supplierPN", part.SupplierPN,
+					"qty", part.Quantity,
+					"location", part.Location,
+					"remark", part.Remark,
+					"type", part.Type,
+					"bom_status", part.BOMStatus,
+					"ccl", part.CCL,
+				)
+			}
 		} else if currentMainPartIndex >= 0 {
-			// This is a 2nd Source (empty item, follows a Main Source)
-			secondSource := r.parseSecondSourceRow(row)
+			// 2nd Source (二源: item 為空且跟隨在 Main Source 之後)
+			var source db.SecondSource
+			source.HHPN = hhpn
+			source.Description = description
+			source.Supplier = supplier
+			source.SupplierPN = supplierPN
+
 			secondSources = append(secondSources, parsedSecondSource{
 				partIndex:    currentMainPartIndex,
-				secondSource: secondSource,
+				secondSource: source,
 			})
+
+			if r.logger != nil {
+				r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析二源 (2nd Source)", sheetName),
+					"mainItem", currentMainItem,
+					"mainHHPN", currentMainHHPN,
+					"hhpn", source.HHPN,
+					"description", source.Description,
+					"supplier", source.Supplier,
+					"supplierPN", source.SupplierPN,
+					"remark", remark,
+				)
+			}
 		}
 	}
 
@@ -338,8 +413,7 @@ func safeGetCol(row []string, colIndex int) string {
 	return ""
 }
 
-// parsePartRow parses a single part data row
-// See product-spec section 7.1.2
+// parsePartRow parses a single part data row from row slice
 func (r *EBOMReader) parsePartRow(row []string, sheetType string) db.Part {
 	var part db.Part
 
@@ -353,6 +427,12 @@ func (r *EBOMReader) parsePartRow(row []string, sheetType string) db.Part {
 	part.Supplier = safeGetCol(row, 5)
 	// G: Supplier PN
 	part.SupplierPN = safeGetCol(row, 6)
+
+	// H: Quantity
+	qtyStr := safeGetCol(row, 7)
+	if q, err := strconv.Atoi(qtyStr); err == nil {
+		part.Quantity = q
+	}
 
 	// I: Location (comma-separated)
 	locationStr := safeGetCol(row, 8)
@@ -370,7 +450,7 @@ func (r *EBOMReader) parsePartRow(row []string, sheetType string) db.Part {
 	part.Type = sheetType
 
 	// Set default BOM status
-	part.BOMStatus = "I" // Default to "Install"
+	part.BOMStatus = "I"
 
 	return part
 }
@@ -378,7 +458,6 @@ func (r *EBOMReader) parsePartRow(row []string, sheetType string) db.Part {
 // atomizeLocation splits comma-separated locations into individual entries
 // See product-spec section 7.1.4
 func (r *EBOMReader) atomizeLocation(locationStr string) string {
-	// Split by comma and trim spaces
 	parts := strings.Split(locationStr, ",")
 	var atomized []string
 	for _, p := range parts {
@@ -390,7 +469,7 @@ func (r *EBOMReader) atomizeLocation(locationStr string) string {
 	return strings.Join(atomized, ",")
 }
 
-// parseSecondSourceRow parses a second source row
+// parseSecondSourceRow parses a second source row from row slice
 func (r *EBOMReader) parseSecondSourceRow(row []string) db.SecondSource {
 	var source db.SecondSource
 
@@ -406,8 +485,7 @@ func (r *EBOMReader) parseSecondSourceRow(row []string) db.SecondSource {
 	return source
 }
 
-// parseStatusSheet parses NI/PROTO/MP sheets
-// See product-spec section 7.1.5
+// parseStatusSheet parses NI/PROTO/MP sheets according to product-spec section 7.1.5
 func (r *EBOMReader) parseStatusSheet(f Workbook, sheetName, bomStatus, mode string) []db.Part {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
@@ -416,38 +494,64 @@ func (r *EBOMReader) parseStatusSheet(f Workbook, sheetName, bomStatus, mode str
 
 	var parts []db.Part
 
-	// Start from row 6 (index 5)
+	// 從 Row 6 (Index 5) 開始往下讀取
 	for i := 5; i < len(rows); i++ {
 		row := rows[i]
 		if len(row) == 0 {
 			continue
 		}
 
-		// Create part with status
-		part := db.Part{
-			Type:      "", // Status sheets don't have type
-			BOMStatus: bomStatus,
+		item := safeGetCol(row, 0)
+		hhpn := safeGetCol(row, 1)
+		description := safeGetCol(row, 4)
+		supplier := safeGetCol(row, 5)
+		supplierPN := safeGetCol(row, 6)
+		qtyStr := safeGetCol(row, 7)
+		locationStr := safeGetCol(row, 8)
+		ccl := safeGetCol(row, 9)
+		remark := safeGetCol(row, 11)
+
+		if item == "" && hhpn == "" && description == "" && supplier == "" && supplierPN == "" {
+			continue
 		}
 
-		// B: HHPN
-		part.HHPN = safeGetCol(row, 1)
-		// E: Description
-		part.Description = safeGetCol(row, 4)
-		// F: Supplier
-		part.Supplier = safeGetCol(row, 5)
-		// G: Supplier PN
-		part.SupplierPN = safeGetCol(row, 6)
-		
-		// I: Location
-		locationStr := safeGetCol(row, 8)
+		part := db.Part{
+			Type:        "",
+			BOMStatus:   bomStatus,
+			Item:        item,
+			HHPN:        hhpn,
+			Description: description,
+			Supplier:    supplier,
+			SupplierPN:  supplierPN,
+			CCL:         ccl,
+			Remark:      remark,
+		}
+
+		if q, err := strconv.Atoi(qtyStr); err == nil {
+			part.Quantity = q
+		}
+
 		if locationStr != "" {
 			part.Location = r.atomizeLocation(locationStr)
 		}
-		
-		// J: CCL
-		part.CCL = safeGetCol(row, 9)
 
 		parts = append(parts, part)
+
+		if r.logger != nil {
+			r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析狀態頁零件", sheetName),
+				"item", part.Item,
+				"hhpn", part.HHPN,
+				"description", part.Description,
+				"supplier", part.Supplier,
+				"supplierPN", part.SupplierPN,
+				"qty", part.Quantity,
+				"location", part.Location,
+				"remark", part.Remark,
+				"type", part.Type,
+				"bom_status", part.BOMStatus,
+				"ccl", part.CCL,
+			)
+		}
 	}
 
 	return parts

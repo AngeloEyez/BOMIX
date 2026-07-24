@@ -103,46 +103,47 @@ func (w *ExtrameXlsWorkbook) GetRows(sheetName string) (rows [][]string, err err
 	}
 
 	maxRow := int(targetSheet.MaxRow)
-	
-	// Determine the maximum column across all rows to pad slices correctly
-	maxColOverall := 0
-	for i := 0; i <= maxRow; i++ {
-		row := targetSheet.Row(i)
-		if row != nil {
-			lastCol := row.LastCol()
-			if lastCol > maxColOverall {
-				maxColOverall = lastCol
+
+	// 先觀察 Row 5 (index 4) 的 LastCol() 決定基準欄位數，預設最少 12
+	targetCols := 12
+	if maxRow >= 4 {
+		row5 := targetSheet.Row(4)
+		if row5 != nil {
+			r5Last := row5.LastCol()
+			if r5Last > targetCols {
+				targetCols = r5Last
 			}
 		}
 	}
 
+	// 走訪全頁一次性填入，若某 Row 超過 targetCols 則即時動態調大
+	rows = make([][]string, 0, maxRow+1)
 	for i := 0; i <= maxRow; i++ {
 		row := targetSheet.Row(i)
 		if row == nil {
-			rows = append(rows, []string{})
+			rows = append(rows, make([]string, targetCols))
 			continue
 		}
 
-		var rowData []string
-		for j := 0; j < maxColOverall; j++ {
-			rowData = append(rowData, row.Col(j))
-		}
-		
-		// Trim trailing empty strings to match excelize behavior somewhat
-		lastNonEmpty := -1
-		for j := len(rowData) - 1; j >= 0; j-- {
-			if rowData[j] != "" {
-				lastNonEmpty = j
-				break
-			}
-		}
-		if lastNonEmpty >= 0 {
-			rowData = rowData[:lastNonEmpty+1]
-		} else {
-			rowData = []string{}
+		lastCol := row.LastCol()
+		if lastCol > targetCols {
+			targetCols = lastCol
 		}
 
+		rowData := make([]string, targetCols)
+		for j := 0; j < targetCols; j++ {
+			rowData[j] = row.Col(j)
+		}
 		rows = append(rows, rowData)
+	}
+
+	// 若在過程中 targetCols 被擴展，將先前的 rowData 補齊
+	for i := range rows {
+		if len(rows[i]) < targetCols {
+			padded := make([]string, targetCols)
+			copy(padded, rows[i])
+			rows[i] = padded
+		}
 	}
 
 	return rows, nil

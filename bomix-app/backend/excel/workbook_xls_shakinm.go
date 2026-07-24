@@ -108,50 +108,48 @@ func (w *ShakinmXlsWorkbook) GetRows(sheetName string) (rows [][]string, err err
 
 	maxRow := targetSheet.GetNumberRows()
 
-	// Determine the maximum column across all rows to pad slices correctly
-	maxColOverall := 0
-	for i := 0; i < maxRow; i++ {
-		r, err := targetSheet.GetRow(i)
-		if err == nil && r != nil {
-			cols := r.GetCols()
-			if len(cols) > maxColOverall {
-				maxColOverall = len(cols)
+	// 先觀察 Row 5 (index 4) 決定基準欄位數，預設最少 12
+	targetCols := 12
+	if maxRow >= 5 {
+		row5, err := targetSheet.GetRow(4)
+		if err == nil && row5 != nil {
+			r5Cols := len(row5.GetCols())
+			if r5Cols > targetCols {
+				targetCols = r5Cols
 			}
 		}
 	}
 
+	rows = make([][]string, 0, maxRow)
 	for i := 0; i < maxRow; i++ {
 		r, err := targetSheet.GetRow(i)
 		if err != nil || r == nil {
-			rows = append(rows, []string{})
+			rows = append(rows, make([]string, targetCols))
 			continue
 		}
 
-		var rowData []string
-		for j := 0; j < maxColOverall; j++ {
-			cell, err := r.GetCol(j)
-			if err != nil || cell == nil {
-				rowData = append(rowData, "")
-			} else {
-				rowData = append(rowData, cell.GetString())
-			}
+		colCount := len(r.GetCols())
+		if colCount > targetCols {
+			targetCols = colCount
 		}
 
-		// Trim trailing empty strings
-		lastNonEmpty := -1
-		for j := len(rowData) - 1; j >= 0; j-- {
-			if rowData[j] != "" {
-				lastNonEmpty = j
-				break
+		rowData := make([]string, targetCols)
+		for j := 0; j < targetCols; j++ {
+			cell, err := r.GetCol(j)
+			if err == nil && cell != nil {
+				rowData[j] = cell.GetString()
 			}
-		}
-		if lastNonEmpty >= 0 {
-			rowData = rowData[:lastNonEmpty+1]
-		} else {
-			rowData = []string{}
 		}
 
 		rows = append(rows, rowData)
+	}
+
+	for i := range rows {
+		if len(rows[i]) < targetCols {
+			padded := make([]string, targetCols)
+			copy(padded, rows[i])
+			rows[i] = padded
+		}
 	}
 
 	return rows, nil
