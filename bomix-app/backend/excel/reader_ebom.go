@@ -330,49 +330,41 @@ func (r *EBOMReader) parseSheet(f Workbook, sheetName, sheetType string, basePar
 	return parts, secondSources
 }
 
+// safeGetCol safely retrieves a column value from a row slice, returning empty string if index is out of bounds
+func safeGetCol(row []string, colIndex int) string {
+	if colIndex >= 0 && colIndex < len(row) {
+		return strings.TrimSpace(row[colIndex])
+	}
+	return ""
+}
+
 // parsePartRow parses a single part data row
 // See product-spec section 7.1.2
 func (r *EBOMReader) parsePartRow(row []string, sheetType string) db.Part {
 	var part db.Part
 
-	// A: Item (not stored in database, just for reference)
-	_ = strings.TrimSpace(row[0])
-
-	// B: HHPN (not stored in Part model, skip for now)
-	_ = strings.TrimSpace(row[1])
-
+	// A: Item
+	part.Item = safeGetCol(row, 0)
+	// B: HHPN
+	part.HHPN = safeGetCol(row, 1)
 	// E: Description
-	if len(row) > 4 {
-		part.Description = strings.TrimSpace(row[4])
-	}
-
+	part.Description = safeGetCol(row, 4)
 	// F: Supplier
-	if len(row) > 5 {
-		part.Supplier = strings.TrimSpace(row[5])
-	}
-
+	part.Supplier = safeGetCol(row, 5)
 	// G: Supplier PN
-	if len(row) > 6 {
-		part.SupplierPN = strings.TrimSpace(row[6])
-	}
+	part.SupplierPN = safeGetCol(row, 6)
 
 	// I: Location (comma-separated)
-	if len(row) > 8 {
-		locationStr := strings.TrimSpace(row[8])
-		// Atomize location: split by comma and create individual parts
-		locations := r.atomizeLocation(locationStr)
-		part.Location = locations
+	locationStr := safeGetCol(row, 8)
+	if locationStr != "" {
+		part.Location = r.atomizeLocation(locationStr)
 	}
 
 	// J: CCL
-	if len(row) > 9 {
-		part.CCL = strings.TrimSpace(row[9])
-	}
+	part.CCL = safeGetCol(row, 9)
 
 	// L: Remark
-	if len(row) > 11 {
-		part.Remark = strings.TrimSpace(row[11])
-	}
+	part.Remark = safeGetCol(row, 11)
 
 	// Set type based on sheet
 	part.Type = sheetType
@@ -402,23 +394,14 @@ func (r *EBOMReader) atomizeLocation(locationStr string) string {
 func (r *EBOMReader) parseSecondSourceRow(row []string) db.SecondSource {
 	var source db.SecondSource
 
-	// B: HHPN (not in SecondSource model, skip)
-	_ = strings.TrimSpace(row[1])
-
+	// B: HHPN
+	source.HHPN = safeGetCol(row, 1)
 	// E: Description
-	if len(row) > 4 {
-		source.Description = strings.TrimSpace(row[4])
-	}
-
+	source.Description = safeGetCol(row, 4)
 	// F: Supplier
-	if len(row) > 5 {
-		source.Supplier = strings.TrimSpace(row[5])
-	}
-
+	source.Supplier = safeGetCol(row, 5)
 	// G: Supplier PN
-	if len(row) > 6 {
-		source.SupplierPN = strings.TrimSpace(row[6])
-	}
+	source.SupplierPN = safeGetCol(row, 6)
 
 	return source
 }
@@ -446,34 +429,23 @@ func (r *EBOMReader) parseStatusSheet(f Workbook, sheetName, bomStatus, mode str
 			BOMStatus: bomStatus,
 		}
 
-		// B: HHPN (not in Part model, skip)
-		_ = strings.TrimSpace(row[1])
-
+		// B: HHPN
+		part.HHPN = safeGetCol(row, 1)
 		// E: Description
-		if len(row) > 4 {
-			part.Description = strings.TrimSpace(row[4])
-		}
-
+		part.Description = safeGetCol(row, 4)
 		// F: Supplier
-		if len(row) > 5 {
-			part.Supplier = strings.TrimSpace(row[5])
-		}
-
+		part.Supplier = safeGetCol(row, 5)
 		// G: Supplier PN
-		if len(row) > 6 {
-			part.SupplierPN = strings.TrimSpace(row[6])
-		}
-
+		part.SupplierPN = safeGetCol(row, 6)
+		
 		// I: Location
-		if len(row) > 8 {
-			locationStr := strings.TrimSpace(row[8])
+		locationStr := safeGetCol(row, 8)
+		if locationStr != "" {
 			part.Location = r.atomizeLocation(locationStr)
 		}
-
+		
 		// J: CCL
-		if len(row) > 9 {
-			part.CCL = strings.TrimSpace(row[9])
-		}
+		part.CCL = safeGetCol(row, 9)
 
 		parts = append(parts, part)
 	}

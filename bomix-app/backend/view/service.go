@@ -379,11 +379,8 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 					group: ViewPartGroup{
 						MainSupplier:   repPart.Supplier,
 						MainSupplierPN: repPart.SupplierPN,
-						// db.Part 目前尚未有獨立 Item/HHPN 欄位
-						// Item 由下游消費者（通常是流水號）產生
-						// HHPN 暫時使用 SupplierPN（與現有 loadExportData 行為一致）
-						Item:              "",
-						HHPN:              repPart.SupplierPN,
+						Item:              repPart.Item,
+						HHPN:              repPart.HHPN,
 						Description:       repPart.Description,
 						Type:              repPart.Type, // SMD, PTH, BOTTOM
 						BOMStatus:         repPart.BOMStatus,
@@ -412,6 +409,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				} else {
 					// 首次出現此替代料
 					b.ssBuilder[ssKey] = &ViewSecondSource{
+						HHPN:              ss.HHPN,
 						Supplier:          ss.Supplier,
 						SupplierPN:        ss.SupplierPN,
 						Description:       ss.Description,

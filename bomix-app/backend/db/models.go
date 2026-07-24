@@ -61,6 +61,8 @@ type Part struct {
 	ID          int64           `gorm:"primaryKey"`
 	RevisionID  int64           `gorm:"not null;index:idx_part_revision_supplier_pn"`
 	Type        string          `gorm:"not null;index:idx_part_revision_type"` // Main, 2nd Source
+	Item        string
+	HHPN        string
 	Supplier    string          `gorm:"not null;index:idx_part_revision_supplier_pn"`
 	SupplierPN  string          `gorm:"not null;index:idx_part_revision_supplier_pn"`
 	Description string
@@ -81,6 +83,7 @@ type SecondSource struct {
 	ID          int64           `gorm:"primaryKey"`
 	RevisionID  int64           `gorm:"not null;index:idx_second_source_revision"`
 	PartID      int64           `gorm:"not null;index"`
+	HHPN        string
 	Supplier    string          `gorm:"not null"`
 	SupplierPN  string          `gorm:"not null"`
 	Description string
