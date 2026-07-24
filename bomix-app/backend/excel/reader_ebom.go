@@ -328,8 +328,8 @@ func (r *EBOMReader) parseSheet(f Workbook, sheetName, sheetType string, basePar
 		// L: Remark (Index 11) -- K 欄跳過
 		remark := safeGetCol(row, 11)
 
-		// 若此列所有主要欄位均為空白，則忽略
-		if item == "" && hhpn == "" && description == "" && supplier == "" && supplierPN == "" {
+		// 判定是否為零件資料：必須 Supplier 與 Supplier PN 同時存在且不為空白（避免讀取統計列或非零件資料）
+		if strings.TrimSpace(supplier) == "" || strings.TrimSpace(supplierPN) == "" {
 			continue
 		}
 
@@ -511,7 +511,8 @@ func (r *EBOMReader) parseStatusSheet(f Workbook, sheetName, bomStatus, mode str
 		ccl := safeGetCol(row, 9)
 		remark := safeGetCol(row, 11)
 
-		if item == "" && hhpn == "" && description == "" && supplier == "" && supplierPN == "" {
+		// 判定是否為零件資料：必須 Supplier 與 Supplier PN 同時存在且不為空白（避免讀取統計列或非零件資料）
+		if strings.TrimSpace(supplier) == "" || strings.TrimSpace(supplierPN) == "" {
 			continue
 		}
 

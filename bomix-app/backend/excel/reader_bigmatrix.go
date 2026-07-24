@@ -389,8 +389,8 @@ func (r *BigMatrixReader) parsePartDataRow(row []string) *partData {
 		data.location = strings.TrimSpace(row[6])
 	}
 
-	// Skip if no supplier info
-	if data.supplier == "" && data.supplierPN == "" {
+	// 判定是否為零件資料：必須 Supplier 與 Supplier PN 同時存在且不為空白
+	if strings.TrimSpace(data.supplier) == "" || strings.TrimSpace(data.supplierPN) == "" {
 		return nil
 	}
 

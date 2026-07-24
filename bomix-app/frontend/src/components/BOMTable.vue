@@ -43,8 +43,10 @@
       :row-class="getRowClass"
       striped-rows
       table-class="bom-table"
-      v-model:sort-field="sortField"
-      v-model:sort-order="sortOrder"
+      :lazy="true"
+      :sort-field="sortField"
+      :sort-order="sortOrder"
+      @sort="onSort"
     >
       <!-- 收合 / 展開 控制欄 -->
       <Column style="width: 3.2rem" header="">
@@ -65,11 +67,10 @@
       <!-- Item (2nd 替代料該欄位為空白) -->
       <Column field="item" header="Item" style="width: 80px" sortable />
 
-      <!-- HHPN (2nd 替代料前附帶 ↳ 2nd 縮排標籤) -->
+      <!-- HHPN (2nd 替代料具縮排效果) -->
       <Column field="hhpn" header="HHPN" style="width: 170px" sortable>
         <template #body="slotProps">
           <div :class="{'ss-indented': slotProps.data.isSecondSource}">
-            <Tag v-if="slotProps.data.isSecondSource" value="↳ 2nd" severity="warn" class="ss-inline-tag" />
             <span>{{ slotProps.data.hhpn }}</span>
           </div>
         </template>
@@ -128,7 +129,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import DataTable from 'primevue/datatable'
+import DataTable, { type DataTableSortEvent } from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
@@ -204,11 +205,85 @@ const currentRevisionModels = computed(() => {
   return currentRevisionMetadata.value.model_names
 })
 
+/**
+ * 依據當前選定的排序欄位 (sortField) 與排序方向 (sortOrder)，
+ * 對物料群組 (ViewPartGroup) 進行 Group 層級的排序。
+ * 確保排序作用於主料，而非打散平鋪後的個別 row。
+ */
+const sortedAggregatedParts = computed<ViewPartGroup[]>(() => {
+  if (!aggregatedParts.value || aggregatedParts.value.length === 0) return []
+
+  const list = [...aggregatedParts.value]
+  const field = sortField.value
+  const order = sortOrder.value
+
+  list.sort((a, b) => {
+    let valA: unknown = ''
+    let valB: unknown = ''
+
+    if (field === 'item') {
+      valA = a.item || ''
+      valB = b.item || ''
+    } else if (field === 'hhpn') {
+      valA = a.hhpn || ''
+      valB = b.hhpn || ''
+    } else if (field === 'supplier') {
+      valA = a.main_supplier || ''
+      valB = b.main_supplier || ''
+    } else if (field === 'supplier_pn') {
+      valA = a.main_supplier_pn || ''
+      valB = b.main_supplier_pn || ''
+    } else if (field === 'qty') {
+      valA = a.qty ?? 0
+      valB = b.qty ?? 0
+    } else if (field === 'ccl') {
+      valA = a.ccl || ''
+      valB = b.ccl || ''
+    } else if (field === 'description') {
+      valA = a.description || ''
+      valB = b.description || ''
+    } else if (field === 'remark') {
+      valA = a.remark || ''
+      valB = b.remark || ''
+    } else {
+      valA = (a as Record<string, unknown>)[field] || ''
+      valB = (b as Record<string, unknown>)[field] || ''
+    }
+
+    let compareRes = 0
+    if (field === 'item' || field === 'qty') {
+      const numA = parseFloat(String(valA))
+      const numB = parseFloat(String(valB))
+      if (!isNaN(numA) && !isNaN(numB)) {
+        compareRes = numA - numB
+      } else {
+        compareRes = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' })
+      }
+    } else {
+      compareRes = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' })
+    }
+
+    if (compareRes !== 0) {
+      return compareRes * order
+    }
+
+    // Tie-breaker: 依 item 自然數字序進行次要排序
+    const itemA = parseFloat(a.item)
+    const itemB = parseFloat(b.item)
+    if (!isNaN(itemA) && !isNaN(itemB)) {
+      return itemA - itemB
+    }
+    return String(a.item).localeCompare(String(b.item), undefined, { numeric: true, sensitivity: 'base' })
+  })
+
+  return list
+})
+
 // Flattened display rows computed property
 const displayRows = computed<BOMDisplayRow[]>(() => {
   const rows: BOMDisplayRow[] = []
 
-  aggregatedParts.value.forEach((part) => {
+  sortedAggregatedParts.value.forEach((part) => {
     const parentKey = `${part.main_supplier}|${part.main_supplier_pn}`
     const hasSS = Boolean(part.second_sources && part.second_sources.length > 0)
     const ssCount = part.second_sources ? part.second_sources.length : 0
@@ -268,6 +343,20 @@ const displayRows = computed<BOMDisplayRow[]>(() => {
 
   return rows
 })
+
+/**
+ * DataTable 排序事件處理常式
+ * 當使用者點擊表頭進行排序時，更新 sortField 與 sortOrder，
+ * 以觸發 Group 層級的重新排序，確保 2nd 替代料始終緊跟對應主料正下方。
+ * 
+ * @param event DataTable 的 sort 事件物件
+ */
+function onSort(event: DataTableSortEvent): void {
+  if (typeof event.sortField === 'string') {
+    sortField.value = event.sortField
+    sortOrder.value = event.sortOrder ?? 1
+  }
+}
 
 function getPartKey(part: ViewPartGroup): string {
   return `${part.main_supplier}|${part.main_supplier_pn}`
@@ -445,13 +534,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  padding-left: 0.25rem;
-}
-
-.ss-inline-tag {
-  font-size: 0.65rem;
-  padding: 0.1rem 0.35rem;
-  line-height: 1;
+  padding-left: 0.75rem;
 }
 
 .toggle-ss-btn {
