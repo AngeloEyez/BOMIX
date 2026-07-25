@@ -62,7 +62,7 @@
 
 **Unique Constraint**: `(project_id, phase, version)` 組合唯一
 
-#### Part (主料表) - 去重後的物料
+#### Part (主料表) - 物料基本資訊表
 | 欄位 | 型別 | 約束 | 說明 |
 |------|------|------|------|
 | id | INTEGER | PRIMARY KEY | 自增主鍵 |
@@ -71,11 +71,7 @@
 | supplier | TEXT | NOT NULL, INDEX | 供應商名稱 |
 | supplier_pn | TEXT | NOT NULL, INDEX | 供應商料號 |
 | description | TEXT | | 零件描述 |
-| location | TEXT | | **已棄用：保留用於遷移** |
-| quantity | INTEGER | | **已棄用：保留用於遷移** |
 | cost | REAL | | 成本 |
-| bom_status | TEXT | DEFAULT 'I', INDEX | BOM 狀態 (I, X, P, M) |
-| ccl | TEXT | DEFAULT 'N', INDEX | 是否為 Critical Part |
 | remark | TEXT | | 註記 |
 | created_at | DATETIME | | 建立時間 |
 | updated_at | DATETIME | | 更新時間 |
@@ -84,17 +80,15 @@
 **索引**:
 - `idx_part_revision_supplier_pn`: `(revision_id, supplier, supplier_pn)` - 用於物料群組查詢
 - `idx_part_revision_type`: `(revision_id, type)` - 用於類型過濾
-- `idx_part_bom_status`: `(bom_status)` - 用於狀態過濾
-- `idx_part_ccl`: `(ccl)` - 用於 CCL 過濾
 
-#### PartLocation (Location 獨立表) - **新增**
+#### PartLocation (Location 獨立表)
 | 欄位 | 型別 | 約束 | 說明 |
 |------|------|------|------|
 | id | INTEGER | PRIMARY KEY | 自增主鍵 |
 | part_id | INTEGER | NOT NULL, INDEX | 關聯主料 |
 | location | TEXT | NOT NULL, INDEX | 零件位置編號 |
 | bom_status | TEXT | DEFAULT 'I', INDEX | BOM 狀態 (跟著 Location) |
-| ccl | TEXT | DEFAULT 'N', INDEX | 是否為 Critical Part |
+| ccl | BOOLEAN | DEFAULT false, INDEX | 是否為 CCL 物料 (true: 是, false: 否) |
 
 **索引**:
 - `idx_part_location_part`: `(part_id)` - 用於 JOIN 查詢
@@ -114,7 +108,6 @@
 | description | TEXT | | 零件描述 |
 | cost | REAL | | 成本 |
 | lead_time | INTEGER | | 交貨期 |
-| is_active | BOOLEAN | DEFAULT true | 是否啟用 |
 | created_at | DATETIME | | 建立時間 |
 | updated_at | DATETIME | | 更新時間 |
 
@@ -173,7 +166,8 @@ BomRevision (1) ──< MatrixModel (N) ──< MatrixSelection (N)
 | 原則 | 說明 |
 |------|------|
 | **Location 原子化** | 每個 location 為獨立紀錄，存在 `part_locations` 表 |
-| **CCL/Status 跟 Location** | `bom_status` 和 `ccl` 欄位移至 `part_locations` 表，因為它們是跟著 location 走 |
+| **CCL/Status 跟 Location** | `bom_status` 和 `ccl` (bool) 欄位移至 `part_locations` 表，因為它們是跟著 location 走 |
+| **Part 純化物料資訊** | `parts` 表僅存放獨立物料屬性，不再存放 location, quantity, bom_status, ccl 等資訊 |
 | **Type 跟著 Part** | `type` 欄位 (SMD/PTH/BOTTOM) 存在 `parts` 表，因為它是物料屬性 |
 | **物料去重** | 相同 `(supplier, supplier_pn)` 的物料只存一筆在 `parts` 表 |
 | **Location 聚合** | 查詢時使用 `GROUP_CONCAT` 或記憶體聚合將 location 合併為逗號分隔字串 |
@@ -206,33 +200,185 @@ Excel 檔案 → 格式偵測 → 表頭解析 → 零件解析 → Mode 判斷 
 | H3 | version | "BOM Version: {value}" |
 | H4 | date | "Date: {value}" |
 
-#### 步驟 3: 零件解析
+#### 步驟 3: 零件解析與兩階段匯入流程
 
-**階段一：製程頁面 (SMD/PTH/BOTTOM)**
-
-```go
-// 從 Row 6 (index 5) 開始讀取
-for i := 5; i < len(rows); i++ {
-    row := rows[i]
-    
-    // 判斷 Main Source vs Second Source
-    item := strings.TrimSpace(row[0])
-    
-    if item != "" {
-        // Main Source: 解析完整資料
-        part := parsePartRow(row, sheetType)
-        parts = append(parts, part)
-    } else if currentMainSource != nil {
-        // Second Source: 僅儲存替代料資訊
-        secondSource := parseSecondSourceRow(row)
-        secondSources = append(secondSources, secondSource)
-    }
-}
+```
+[Phase 1] 製程頁面 (SMD/PTH/BOTTOM) & NI 頁面
+  ├─ 建立 Parts (主料去重 deduplication)
+  └─ 建立 PartLocations (bom_status = 'I' 或 'X', ccl = false)
+                      ↓
+[Phase 2] 狀態與屬性頁面 (PROTO & CCL 頁面)
+  ├─ PROTO 頁面：僅更新既有 Location 的 bom_status = 'P'
+  └─ CCL 頁面：僅更新既有 Location 的 ccl = true
 ```
 
-**Location 原子化處理**:
+##### 階段一 (Phase 1)：物料去重與 Location 建置
+
+| Sheet 來源 | 處理規則 | Part (主料) 處理 | PartLocation 處理 |
+|-----------|---------|-----------------|------------------|
+| **SMD / PTH / BOTTOM** | 主製程頁面 | 依 `(supplier, supplier_pn)` 去重，若已存在則重用既有 Part ID；若無則建立新 Part (`type` = Sheet Name) | Location 原子化，寫入 `part_locations` (`bom_status` = `'I'`, `ccl` = `false`) |
+| **NI** | 不上件頁面 | 依 `(supplier, supplier_pn)` 比對，若已存在則重用既有 Part ID；若無則建立新 Part (`type` = `'NI'`) | Location 原子化，寫入 `part_locations` (`bom_status` = `'X'`, `ccl` = `false`) |
+
+##### 階段二 (Phase 2)：Location 屬性與狀態覆寫
+
+| Sheet 來源 | 處理規則 | 動作說明 |
+|-----------|---------|---------|
+| **PROTO** | Proto 狀態頁面 | 不建立新物料，僅尋找 Phase 1 已建立的匹配 Location，將其 `bom_status` 欄位更新為 `'P'` |
+| **CCL** | Critical Part 頁面 | 不建立新物料，僅尋找 Phase 1 已建立的匹配 Location，將其 `ccl` 欄位更新為 `true` |
+
+##### 解析範例程式碼 (Go)
 
 ```go
+// 兩階段 EBOM 解析與資料建置
+type ParsedData struct {
+    Parts         []*Part
+    PartLocations []*PartLocation
+    SecondSources []*SecondSource
+}
+
+func parseEBOM(sheets map[string][][]string, revisionID int64) (*ParsedData, error) {
+    partMap := make(map[string]*Part)            // Key: "supplier|supplier_pn" (用於主料去重)
+    partList := make([]*Part, 0)
+    locationList := make([]*PartLocation, 0)
+    secondSourceList := make([]*SecondSource, 0)
+    
+    // ================= Phase 1: 建立 Part 與 PartLocation =================
+    
+    // Step 1.1: 處理主製程頁面 (SMD, PTH, BOTTOM)
+    mainSheets := []string{"SMD", "PTH", "BOTTOM"}
+    for _, sheetName := range mainSheets {
+        rows, ok := sheets[sheetName]
+        if !ok {
+            continue
+        }
+        
+        var currentMainPart *Part
+        for i := 5; i < len(rows); i++ {
+            row := rows[i]
+            item := strings.TrimSpace(row[0])
+            
+            if item != "" { // Main Source
+                supplier := strings.TrimSpace(row[1])
+                supplierPN := strings.TrimSpace(row[2])
+                locStr := strings.TrimSpace(row[3])
+                
+                if supplier == "" || supplierPN == "" {
+                    continue
+                }
+                
+                key := fmt.Sprintf("%s|%s", supplier, supplierPN)
+                part, exists := partMap[key]
+                if !exists {
+                    // 主料不存在：建立新主料
+                    part = &Part{
+                        RevisionID:  revisionID,
+                        Type:        sheetName, // SMD / PTH / BOTTOM
+                        Supplier:    supplier,
+                        SupplierPN:  supplierPN,
+                        Description: strings.TrimSpace(row[4]),
+                        Cost:        parseCost(row[5]),
+                        Remark:      strings.TrimSpace(row[6]),
+                    }
+                    partMap[key] = part
+                    partList = append(partList, part)
+                }
+                currentMainPart = part
+                
+                // 原子化 Location 並建立 PartLocation (bom_status = 'I')
+                for _, loc := range atomizeLocation(locStr) {
+                    locationList = append(locationList, &PartLocation{
+                        Part:      part,
+                        Location:  loc,
+                        BomStatus: "I",
+                        CCL:       false,
+                    })
+                }
+            } else if currentMainPart != nil { // Second Source
+                secondSource := parseSecondSource(row, revisionID, currentMainPart)
+                if secondSource != nil {
+                    secondSourceList = append(secondSourceList, secondSource)
+                }
+            }
+        }
+    }
+    
+    // Step 1.2: 處理 NI 頁面 (不上件, bom_status = 'X')
+    if niRows, ok := sheets["NI"]; ok {
+        for i := 5; i < len(niRows); i++ {
+            row := niRows[i]
+            supplier := strings.TrimSpace(row[1])
+            supplierPN := strings.TrimSpace(row[2])
+            locStr := strings.TrimSpace(row[3])
+            
+            if supplier == "" || supplierPN == "" {
+                continue
+            }
+            
+            key := fmt.Sprintf("%s|%s", supplier, supplierPN)
+            part, exists := partMap[key]
+            if !exists {
+                // 主料不存在：建立新主料
+                part = &Part{
+                    RevisionID:  revisionID,
+                    Type:        "NI",
+                    Supplier:    supplier,
+                    SupplierPN:  supplierPN,
+                    Description: strings.TrimSpace(row[4]),
+                }
+                partMap[key] = part
+                partList = append(partList, part)
+            }
+            
+            for _, loc := range atomizeLocation(locStr) {
+                locationList = append(locationList, &PartLocation{
+                    Part:      part,
+                    Location:  loc,
+                    BomStatus: "X", // 不上件
+                    CCL:       false,
+                })
+            }
+        }
+    }
+    
+    // ================= Phase 2: Location 狀態與屬性覆寫更新 =================
+    
+    // 建立 Location 快速查詢 Mapping (Location 名稱 -> *PartLocation 紀錄)
+    locIndexMap := make(map[string]*PartLocation)
+    for _, locObj := range locationList {
+        locIndexMap[locObj.Location] = locObj
+    }
+    
+    // Step 2.1: 處理 PROTO 頁面 (僅將對應 Location 的 bom_status 更新為 'P')
+    if protoRows, ok := sheets["PROTO"]; ok {
+        for i := 5; i < len(protoRows); i++ {
+            locStr := strings.TrimSpace(protoRows[i][3])
+            for _, loc := range atomizeLocation(locStr) {
+                if targetLoc, exists := locIndexMap[loc]; exists {
+                    targetLoc.BomStatus = "P"
+                }
+            }
+        }
+    }
+    
+    // Step 2.2: 處理 CCL 頁面 (僅將對應 Location 的 ccl 更新為 true)
+    if cclRows, ok := sheets["CCL"]; ok {
+        for i := 5; i < len(cclRows); i++ {
+            locStr := strings.TrimSpace(cclRows[i][3])
+            for _, loc := range atomizeLocation(locStr) {
+                if targetLoc, exists := locIndexMap[loc]; exists {
+                    targetLoc.CCL = true
+                }
+            }
+        }
+    }
+    
+    return &ParsedData{
+        Parts:         partList,
+        PartLocations: locationList,
+        SecondSources: secondSourceList,
+    }, nil
+}
+
 func atomizeLocation(locationStr string) []string {
     parts := strings.Split(locationStr, ",")
     var atomized []string
@@ -245,14 +391,6 @@ func atomizeLocation(locationStr string) []string {
     return atomized
 }
 ```
-
-**階段二：狀態頁面 (NI/PROTO/MP)**
-
-| Sheet | bom_status | type | 說明 |
-|-------|------------|------|------|
-| NI | X | NULL | 不上件 |
-| PROTO | P | NULL | Proto Part |
-| MP | M | NULL | MP Only |
 
 #### 步驟 4: Mode 判斷
 
@@ -279,9 +417,9 @@ func determineMode(mainLocations, protoLocations, mpLocations map[string]bool) s
 #### 步驟 5: 資料庫寫入
 
 ```go
-func saveParts(db *gorm.DB, revisionID int64, parts []Part, locations []PartLocation, secondSources []SecondSource) error {
+func saveEBOM(db *gorm.DB, revisionID int64, data *ParsedData) error {
     return db.Transaction(func(tx *gorm.DB) error {
-        // 1. 刪除舊資料
+        // 1. 刪除該 Revision 舊資料
         if err := tx.Where("revision_id = ?", revisionID).Delete(&Part{}).Error; err != nil {
             return err
         }
@@ -292,30 +430,33 @@ func saveParts(db *gorm.DB, revisionID int64, parts []Part, locations []PartLoca
             return err
         }
 
-        // 2. 批次插入 Parts
-        if len(parts) > 0 {
-            if err := tx.CreateInBatches(&parts, 500).Error; err != nil {
+        // 2. 批次插入 Parts (寫入後取得 GORM 生成的 ID)
+        if len(data.Parts) > 0 {
+            if err := tx.CreateInBatches(data.Parts, 500).Error; err != nil {
                 return err
             }
         }
 
-        // 3. 批次插入 PartLocations (需先更新 part_id)
-        for i := range parts {
-            for j := range locations {
-                if locations[j].partIndex == i {
-                    locations[j].PartID = parts[i].ID
-                }
+        // 3. 更新 PartLocations 的 PartID 並批次插入
+        for _, locObj := range data.PartLocations {
+            if locObj.Part != nil {
+                locObj.PartID = locObj.Part.ID
             }
         }
-        if len(locations) > 0 {
-            if err := tx.CreateInBatches(&locations, 500).Error; err != nil {
+        if len(data.PartLocations) > 0 {
+            if err := tx.CreateInBatches(data.PartLocations, 500).Error; err != nil {
                 return err
             }
         }
 
-        // 4. 批次插入 SecondSources
-        if len(secondSources) > 0 {
-            if err := tx.CreateInBatches(&secondSources, 500).Error; err != nil {
+        // 4. 更新 SecondSources 的 PartID 與 RevisionID 並批次插入
+        for _, sec := range data.SecondSources {
+            if sec.Part != nil {
+                sec.PartID = sec.Part.ID
+            }
+        }
+        if len(data.SecondSources) > 0 {
+            if err := tx.CreateInBatches(data.SecondSources, 500).Error; err != nil {
                 return err
             }
         }
@@ -342,11 +483,11 @@ func saveParts(db *gorm.DB, revisionID int64, parts []Part, locations []PartLoca
 
 **parts 表儲存**:
 ```
-┌────┬───────────────┬─────────┬──────────────┬──────────┬────────┐
-│ id │ revision_id   │ type    │ supplier     │ supplier_pn│ ccl  │
-├────┼───────────────┼─────────┼──────────────┼──────────┼────────┤
-│ 101│ 5             │ Main    │ Samsung      │ CL05B104 │ Y      │
-└────┴───────────────┴─────────┴──────────────┴──────────┴────────┘
+┌────┬───────────────┬─────────┬──────────────┬──────────────┐
+│ id │ revision_id   │ type    │ supplier     │ supplier_pn  │
+├────┼───────────────┼─────────┼──────────────┼──────────────┤
+│ 101│ 5             │ Main    │ Samsung      │ CL05B104     │
+└────┴───────────────┴─────────┴──────────────┴──────────────┘
 ```
 
 **part_locations 表儲存**:
@@ -354,15 +495,15 @@ func saveParts(db *gorm.DB, revisionID int64, parts []Part, locations []PartLoca
 ┌────┬──────────────┬─────────┬──────────┬────────┐
 │ id │ part_id      │ location│ bom_status│ ccl   │
 ├────┼──────────────┼─────────┼──────────┼────────┤
-│ 1  │ 101          │ C1      │ I        │ Y      │
+│ 1  │ 101          │ C1      │ I        │ true   │
 ├────┼──────────────┼─────────┼──────────┼────────┤
-│ 2  │ 101          │ C2      │ I        │ Y      │
+│ 2  │ 101          │ C2      │ I        │ true   │
 ├────┼──────────────┼─────────┼──────────┼────────┤
-│ 3  │ 101          │ C3      │ I        │ Y      │
+│ 3  │ 101          │ C3      │ I        │ true   │
 ├────┼──────────────┼─────────┼──────────┼────────┤
-│ 4  │ 101          │ C4      │ I        │ Y      │
+│ 4  │ 101          │ C4      │ I        │ true   │
 ├────┼──────────────┼─────────┼──────────┼────────┤
-│ 5  │ 101          │ C5      │ I        │ Y      │
+│ 5  │ 101          │ C5      │ I        │ true   │
 └────┴──────────────┴─────────┴──────────┴────────┘
 ```
 
@@ -391,17 +532,17 @@ SELECT
     p.supplier_pn,
     p.description,
     p.cost,
-    p.ccl AS part_ccl,
     p.remark,
     GROUP_CONCAT(pl.location, ',') AS locations,
     COUNT(pl.id) AS quantity,
     -- 注意：bom_status 可能多個值，需根據視圖過濾
-    MIN(pl.bom_status) AS bom_status
+    MIN(pl.bom_status) AS bom_status,
+    MAX(pl.ccl) AS ccl
 FROM parts p
 LEFT JOIN part_locations pl ON p.id = pl.part_id
 WHERE p.revision_id = ?
 GROUP BY p.id
-ORDER BY p.item;
+ORDER BY p.id;
 ```
 
 **視圖過濾查詢 (SMD)**:
@@ -428,7 +569,7 @@ SELECT
 FROM parts p
 JOIN part_locations pl ON p.id = pl.part_id
 WHERE p.revision_id = ?
-  AND pl.ccl = 'Y'
+  AND pl.ccl = true
 GROUP BY p.id;
 ```
 
@@ -445,7 +586,7 @@ func executeView(db *gorm.DB, revisionIDs []int64, viewType string, mode string)
         Type         string
         Location     string
         BomStatus    string
-        CCL          string
+        CCL          bool
     }
     
     query := `
@@ -462,7 +603,7 @@ func executeView(db *gorm.DB, revisionIDs []int64, viewType string, mode string)
         query += ` AND p.type = ? AND pl.bom_status IN ?`
         // 執行時追加參數
     } else if viewType == "CCL" {
-        query += ` AND pl.ccl = 'Y'`
+        query += ` AND pl.ccl = true`
     } else if viewType == "NI" {
         query += ` AND pl.bom_status = 'X'`
     } else {
@@ -538,14 +679,15 @@ func GetBomView(db *gorm.DB, revisionID int64) ([]AggregatedPart, error) {
     query := `
         SELECT 
             p.id, p.revision_id, p.supplier, p.supplier_pn, p.type,
-            p.description, p.cost, p.ccl, p.remark,
+            p.description, p.cost, p.remark,
             GROUP_CONCAT(pl.location, ',') AS locations,
-            COUNT(pl.id) AS quantity
+            COUNT(pl.id) AS quantity,
+            MAX(pl.ccl) AS ccl
         FROM parts p
         LEFT JOIN part_locations pl ON p.id = pl.part_id
         WHERE p.revision_id = ?
         GROUP BY p.id
-        ORDER BY p.item
+        ORDER BY p.id
     `
     
     err := db.Raw(query, revisionID).Scan(&results).Error
@@ -610,7 +752,7 @@ func GetBomViewByFilter(db *gorm.DB, revisionID int64, viewType string, mode str
             SELECT p.*, GROUP_CONCAT(pl.location, ',') AS locations, COUNT(pl.id) AS quantity
             FROM parts p
             JOIN part_locations pl ON p.id = pl.part_id
-            WHERE p.revision_id = ? AND pl.ccl = 'Y'
+            WHERE p.revision_id = ? AND pl.ccl = true
             GROUP BY p.id
         `
         
@@ -650,14 +792,15 @@ func GetMultiBomView(db *gorm.DB, revisionIDs []int64, viewType string, mode str
     query := fmt.Sprintf(`
         SELECT 
             p.id, p.revision_id, p.supplier, p.supplier_pn, p.type,
-            p.description, p.cost, p.ccl, p.remark,
+            p.description, p.cost, p.remark,
             GROUP_CONCAT(pl.location, ',') AS locations,
-            COUNT(pl.id) AS quantity
+            COUNT(pl.id) AS quantity,
+            MAX(pl.ccl) AS ccl
         FROM parts p
         JOIN part_locations pl ON p.id = pl.part_id
         WHERE p.revision_id IN (%s)
         GROUP BY p.id
-        ORDER BY p.item
+        ORDER BY p.id
     `, inClause)
     
     err := db.Raw(query).Scan(&results).Error
@@ -783,54 +926,50 @@ bomix-app/
 
 ## 7. 修改方案計畫
 
-### 7.1 遷移策略
+### 7.1 實作階段規劃 (不考慮遷移)
 
-#### 階段一：資料結構擴充 (不破壞現有功能)
+#### 階段一：資料庫 Schema 更新
 
-1. **新增 `part_locations` 表**
-   - 建立新的資料表結構
-   - 建立適當索引
+1. **更新 `parts` 表結構**
+   - 僅保留獨立物料基本欄位 (`supplier`, `supplier_pn`, `description`, `cost`, `remark` 等)
+   - 移除 `location`, `quantity`, `bom_status`, `ccl` 欄位與索引
 
-2. **擴充 `parts` 表**
-   - 保留現有 `location` 欄位 (標記為 deprecated)
-   - 保留現有 `bom_status` 和 `ccl` 欄位 (標記為 deprecated)
-   - 新增 `sheet_origin` 欄位 (記錄來源 sheet)
+2. **新增/更新 `part_locations` 表結構**
+   - 包含 `part_id`, `location`, `bom_status`, `ccl` (bool)
+   - 建立 `idx_part_location_part`, `idx_part_location_ccl` 及複合索引 `idx_part_loc_status_ccl`
 
-3. **資料遷移腳本**
-   - 將現有 `parts.location` 拆分到 `part_locations`
-   - 將現有 `parts.bom_status` 和 `parts.ccl` 複製到 `part_locations`
+3. **更新 `second_sources` 表結構**
+   - 移除 `is_active` 欄位
 
 #### 階段二：匯入邏輯修改
 
 1. **修改 `reader_ebom.go`**
    - 將 Location 原子化為 `[]string`
-   - 在儲存時建立 `PartLocation` 紀錄
+   - 在儲存時同時為每個 location 建立 `PartLocation` 紀錄 (`ccl` 儲存為 `bool`)
 
 2. **修改 `saveParts` 函數**
-   - 批次插入 `Part` 紀錄
-   - 批次插入 `PartLocation` 紀錄
+   - 批次插入純化後的 `Part` 紀錄
+   - 批次插入 `PartLocation` 紀錄 (連結對應的 `part_id`)
+   - 批次插入 `SecondSource` 紀錄
 
 #### 階段三：查詢邏輯修改
 
 1. **修改 `part.go`**
-   - 新增 `GetPartLocations` 函數
-   - 修改 `GetPartsByRevision` 以 JOIN `part_locations`
+   - 新增 `PartLocation` CRUD 函數
+   - 修改 `GetPartsByRevision` 等查詢以 JOIN `part_locations`
 
 2. **修改 `aggregator.go`**
-   - 從 `part_locations` 聚合 location
-   - 使用 `bom_status` 和 `ccl` 從 `part_locations`
+   - 從 `part_locations` 聚合 location 字串與計算 quantity
+   - 依 `part_locations.bom_status` 與 `part_locations.ccl` 進行狀態判斷
 
-3. **修改 `filter.go`**
-   - 修改過濾邏輯以使用 `part_locations.bom_status` 和 `part_locations.ccl`
-
-4. **修改 `view/service.go`**
-   - 修改 View 查詢以 JOIN `part_locations`
+3. **修改 `filter.go` 與 `view/service.go`**
+   - 修改過濾邏輯以使用 `part_locations.bom_status` 和 `part_locations.ccl` (bool 條件)
 
 #### 階段四：測試與驗證
 
 1. **單元測試**
    - 測試 Location 原子化
-   - 測試視圖過濾
+   - 測試視圖過濾 (包含 CCL bool 視圖過濾)
    - 測試聚合邏輯
 
 2. **整合測試**
@@ -846,32 +985,31 @@ bomix-app/
 
 | 檔案 | 修改類型 | 說明 |
 |------|---------|------|
-| `backend/db/models.go` | 擴充 | 新增 `PartLocation` Model |
-| `backend/db/part.go` | 擴充 | 新增 `PartLocation` CRUD |
-| `backend/db/matrix.go` | 擴充 | 修改關聯查詢 |
+| `backend/db/models.go` | 修改 | 重構 `Part`, `SecondSource` 並新增 `PartLocation` Model |
+| `backend/db/part.go` | 修改 | 新增 `PartLocation` CRUD，調整 Part 寫入/查詢 |
+| `backend/db/matrix.go` | 修改 | 修改關聯查詢 |
 | `backend/excel/reader_ebom.go` | 修改 | 修改 Location 解析與儲存邏輯 |
-| `backend/processor/aggregator.go` | 修改 | 修改聚合邏輯 |
-| `backend/processor/filter.go` | 修改 | 修改過濾邏輯 |
-| `backend/view/service.go` | 修改 | 修改 View 查詢 |
+| `backend/processor/aggregator.go` | 修改 | 修改聚合邏輯 (改用 part_locations) |
+| `backend/processor/filter.go` | 修改 | 修改過濾邏輯 (ccl bool 條件) |
+| `backend/view/service.go` | 修改 | 修改 View 查詢 (JOIN part_locations) |
 | `backend/view/filter.go` | 修改 | 修改 View 過濾 |
 
 ### 7.3 時間估計
 
 | 階段 | 預估時間 | 備註 |
 |------|---------|------|
-| 資料結構擴充 | 2-4 小時 | 包含資料遷移 |
+| 資料結構更新 | 1-2 小時 | Model 定義與索引建立 |
 | 匯入邏輯修改 | 4-6 小時 | 包含測試 |
 | 查詢邏輯修改 | 6-8 小時 | 包含所有視圖 |
 | 測試與驗證 | 4-6 小時 | 完整測試 |
-| **總計** | **16-24 小時** | |
+| **總計** | **15-22 小時** | |
 
 ### 7.4 風險評估
 
 | 風險 | 等級 | 緩解措施 |
 |------|------|----------|
-| 資料遷移失敗 | 高 | 先備份資料庫，進行多次測試 |
 | 查詢效能下降 | 中 | 建立適當索引，進行效能測試 |
-| 現有功能破壞 | 高 | 完整的回歸測試 |
+| 現有功能破壞 | 高 | 完整的回歸測試與 View 測試 |
 | JOIN 效能問題 | 中 | 使用記憶體聚合優化 |
 
 ---
@@ -881,9 +1019,10 @@ bomix-app/
 本架構設計在 **儲存效率** 和 **查詢效能** 之間取得了最佳平衡：
 
 1. **Location 原子化**：每個 location 獨立儲存，支援精確查詢與過濾
-2. **CCL/Status 跟 Location**：確保資料準確性，每個 location 可獨立設定狀態
-3. **JOIN + 記憶體聚合**：一次性查詢所有資料，在記憶體中進行聚合，避免 N+1 問題
-4. **索引優化**：針對常見查詢模式建立複合索引
+2. **CCL/Status 跟 Location**：確保資料準確性，每個 location 可獨立設定狀態與 CCL (bool)
+3. **Part 表純化**：主料表僅保留物料本身屬性，使架構更符合資料庫正規化原則
+4. **JOIN + 記憶體聚合**：一次性查詢所有資料，在記憶體中進行聚合，避免 N+1 問題
+5. **索引優化**：針對常見查詢模式建立複合索引
 
 此設計可支援：
 - 單 BOM 載入 < 10ms
