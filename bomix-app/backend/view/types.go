@@ -82,9 +82,9 @@ type ViewPartGroup struct {
 	Item        string `json:"item"`
 	HHPN        string `json:"hhpn"`
 	Description string `json:"description"`
-	Type        string `json:"type"`       // SMD, PTH, BOTTOM（空=僅狀態頁面的料）
+	Type        string `json:"type"`       // SMD, PTH, BOTTOM
 	BOMStatus   string `json:"bom_status"` // I, X, P, M
-	CCL         string `json:"ccl"`        // Y, N
+	CCL         bool   `json:"ccl"`        // 是否含有 CCL location (bool)
 	Remark      string `json:"remark"`
 
 	// 聚合結果（取自第一份有此物料的 revision）

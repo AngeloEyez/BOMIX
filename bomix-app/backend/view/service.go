@@ -44,6 +44,7 @@ type rawRevisionData struct {
 	revision      db.BomRevision
 	project       db.Project
 	parts         []db.Part
+	partLocations []db.PartLocation
 	secondSources []db.SecondSource
 	models        []db.MatrixModel
 	selections    []db.MatrixSelection
@@ -159,9 +160,31 @@ func (s *Service) loadRawData(revisionIDs []int64) (map[int64]*rawRevisionData, 
 	if err := s.db.Where("revision_id IN ?", revisionIDs).Find(&parts).Error; err != nil {
 		return nil, fmt.Errorf("查詢 Parts 失敗: %w", err)
 	}
+	partIDs := make([]int64, 0, len(parts))
 	for _, p := range parts {
 		if data, ok := result[p.RevisionID]; ok {
 			data.parts = append(data.parts, p)
+		}
+		partIDs = append(partIDs, p.ID)
+	}
+
+	// 2.1 批量查詢 PartLocations
+	var locations []db.PartLocation
+	if len(partIDs) > 0 {
+		if err := s.db.Where("part_id IN ?", partIDs).Find(&locations).Error; err != nil {
+			return nil, fmt.Errorf("查詢 PartLocations 失敗: %w", err)
+		}
+		// 按 PartID 重組映射，方便對應到對應 revision 的 rawRevisionData
+		partToRev := make(map[int64]int64, len(parts))
+		for _, p := range parts {
+			partToRev[p.ID] = p.RevisionID
+		}
+		for _, loc := range locations {
+			if revID, ok := partToRev[loc.PartID]; ok {
+				if data, ok := result[revID]; ok {
+					data.partLocations = append(data.partLocations, loc)
+				}
+			}
 		}
 	}
 
@@ -308,13 +331,27 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			continue
 		}
 
-		// --- 1. 過濾此 revision 中符合有效 bom_status 的 Parts ---
-		validParts := make([]db.Part, 0, len(data.parts))
+		// 建立 partID -> Part 的快速映射
 		partByID := make(map[int64]db.Part, len(data.parts))
 		for _, p := range data.parts {
-			if isEffectiveBOMStatus(p.BOMStatus) {
-				validParts = append(validParts, p)
-				partByID[p.ID] = p
+			partByID[p.ID] = p
+		}
+
+		// --- 1. 按 Part 收集有效 (bom_status != 'X') 的 PartLocation ---
+		validLocsByPartID := make(map[int64][]db.PartLocation)
+		for _, loc := range data.partLocations {
+			if isEffectiveBOMStatus(loc.BomStatus) {
+				validLocsByPartID[loc.PartID] = append(validLocsByPartID[loc.PartID], loc)
+			}
+		}
+
+		// 找出在此 revision 中含有有效 location 的 Parts
+		validParts := make([]db.Part, 0, len(data.parts))
+		for partID, locs := range validLocsByPartID {
+			if len(locs) > 0 {
+				if p, exists := partByID[partID]; exists {
+					validParts = append(validParts, p)
+				}
 			}
 		}
 
@@ -325,8 +362,11 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			if !exists {
 				continue
 			}
-			key := groupKey(mainPart.Supplier, mainPart.SupplierPN)
-			ssByMainKey[key] = append(ssByMainKey[key], ss)
+			// 僅當主料存在有效 Location 時採納替代料
+			if len(validLocsByPartID[mainPart.ID]) > 0 {
+				key := groupKey(mainPart.Supplier, mainPart.SupplierPN)
+				ssByMainKey[key] = append(ssByMainKey[key], ss)
+			}
 		}
 
 		// --- 3. 建立此 revision 的 MatrixSelection 映射 ---
@@ -353,26 +393,28 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 		}
 
 		// --- 4. 處理此 revision 的 Parts（按 (Supplier, SupplierPN) 歸類） ---
-		// 收集同 Revision 內同 Group 的 Representative Part 與去重後的 Location 集合
 		representativeParts := make(map[string]db.Part)
 		locationsByGroup := make(map[string]map[string]bool)
+		cclByGroup := make(map[string]bool)
+		statusByGroup := make(map[string]string)
 
 		for _, p := range validParts {
 			key := groupKey(p.Supplier, p.SupplierPN)
 			if locationsByGroup[key] == nil {
 				locationsByGroup[key] = make(map[string]bool)
 			}
-			// 拆分 location 字串（如 "C1, C2"）進行去重收集
-			if p.Location != "" {
-				locs := strings.Split(p.Location, ",")
-				for _, loc := range locs {
-					loc = strings.TrimSpace(loc)
-					if loc != "" {
-						locationsByGroup[key][loc] = true
-					}
+
+			locs := validLocsByPartID[p.ID]
+			for _, loc := range locs {
+				locationsByGroup[key][loc.Location] = true
+				if loc.CCL {
+					cclByGroup[key] = true
+				}
+				if statusByGroup[key] == "" {
+					statusByGroup[key] = loc.BomStatus
 				}
 			}
-			// 以第一個出現的 part 作為代表性 basic info 基礎
+
 			if _, exists := representativeParts[key]; !exists {
 				representativeParts[key] = p
 			}
@@ -382,8 +424,12 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 		for key, repPart := range representativeParts {
 			b, exists := builders[key]
 			if !exists {
-				// 主料不存在於 group 中：首次出現此群組，建立新 builder 基礎
+				// 主料不存在於 group 中：首次出現此群組
 				locs := sortedLocations(locationsByGroup[key])
+				bomStat := statusByGroup[key]
+				if bomStat == "" {
+					bomStat = "I"
+				}
 				b = &partGroupBuilder{
 					group: ViewPartGroup{
 						MainSupplier:   repPart.Supplier,
@@ -392,8 +438,8 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 						HHPN:              repPart.HHPN,
 						Description:       repPart.Description,
 						Type:              repPart.Type, // SMD, PTH, BOTTOM
-						BOMStatus:         repPart.BOMStatus,
-						CCL:               repPart.CCL,
+						BOMStatus:         bomStat,
+						CCL:               cclByGroup[key],
 						Remark:            repPart.Remark,
 						Qty:               len(locationsByGroup[key]),
 						Locations:         locs,
@@ -406,16 +452,17 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			} else {
 				// 主料已存在於 group 中：追加 SourceRevisionID
 				b.group.SourceRevisionIDs = appendUnique(b.group.SourceRevisionIDs, revID)
+				if cclByGroup[key] {
+					b.group.CCL = true
+				}
 			}
 
 			// 檢察與組裝此 revision 屬於該主料的 2nd Source (替代料)
 			for _, ss := range ssByMainKey[key] {
 				ssKey := groupKey(ss.Supplier, ss.SupplierPN)
 				if existing, ok := b.ssBuilder[ssKey]; ok {
-					// 2nd 已存在：追加 SourceRevisionID
 					existing.SourceRevisionIDs = appendUnique(existing.SourceRevisionIDs, revID)
 				} else {
-					// 2nd 不存在：新增至 group 中
 					b.ssBuilder[ssKey] = &ViewSecondSource{
 						HHPN:              ss.HHPN,
 						Supplier:          ss.Supplier,
@@ -430,7 +477,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			if selMap, ok := selByGroupKey[key]; ok {
 				for _, mData := range rawData[revID].models {
 					modelName := mData.ModelName
-					selectedPN := selMap[modelName] // 若未勾選則為空字串
+					selectedPN := selMap[modelName]
 					b.group.Selections = append(b.group.Selections, ViewModelSelection{
 						RevisionID: revID,
 						ModelName:  modelName,

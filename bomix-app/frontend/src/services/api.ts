@@ -45,7 +45,9 @@ export interface BomRevision {
   pcbVersion: string
   pcaPn: string
   date: string
+  mode: string
   sourceFile: string
+  modelCount: number
   createdAt: string
   updatedAt: string
 }
@@ -54,14 +56,12 @@ export interface Part {
   id: number
   revisionId: number
   type: string
+  item: string
+  hhpn: string
   supplier: string
   supplierPn: string
   description: string
-  location: string
-  quantity: number
   cost: number
-  bomStatus: string
-  ccl: string
   remark: string
   createdAt: string
   updatedAt: string
@@ -71,12 +71,11 @@ export interface SecondSource {
   id: number
   revisionId: number
   partId: number
+  hhpn: string
   supplier: string
   supplierPn: string
   description: string
   cost: number
-  leadTime: number
-  isActive: boolean
   createdAt: string
   updatedAt: string
 }

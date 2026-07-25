@@ -47,7 +47,7 @@ type PartData struct {
 	Location       string
 	Type           string
 	BOMStatus      string
-	CCL            string
+	CCL            bool
 	Remark         string
 	SecondSources  []SecondSourceData
 	Selections     map[string]string // Model -> Supplier PN mapping

@@ -102,6 +102,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&Project{},
 		&BomRevision{},
 		&Part{},
+		&PartLocation{},
 		&SecondSource{},
 		&MatrixModel{},
 		&MatrixSelection{},
@@ -109,12 +110,10 @@ func AutoMigrate(db *gorm.DB) error {
 		return err
 	}
 
-	// Create foreign key constraints with CASCADE for SQLite
-	// SQLite requires explicit DROP TABLE and CREATE TABLE with FK constraints
-	// We use raw SQL to add foreign keys after migration
-
-	// Note: In SQLite, foreign keys must be enabled per connection with PRAGMA foreign_keys=ON
-	// The CASCADE behavior is defined in the table schema
+	// 建立 PartLocation 的複合索引（bom_status, ccl），用於視圖過濾
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_part_loc_status_ccl ON part_locations (bom_status, ccl)`).Error; err != nil {
+		return fmt.Errorf("建立 part_locations 複合索引失敗: %w", err)
+	}
 
 	return nil
 }

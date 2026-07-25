@@ -2,9 +2,10 @@ package db
 
 import (
 	"testing"
+	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -203,8 +204,10 @@ func TestGetRevisions(t *testing.T) {
 	// Create multiple revisions
 	rev1, err := CreateRevision(db, project.ID, "DB", "0.1", "Initial")
 	assert.NoError(t, err)
+	time.Sleep(10 * time.Millisecond)
 	rev2, err := CreateRevision(db, project.ID, "DB", "0.2", "Second")
 	assert.NoError(t, err)
+	time.Sleep(10 * time.Millisecond)
 	rev3, err := CreateRevision(db, project.ID, "SI", "0.1", "SI Initial")
 	assert.NoError(t, err)
 
@@ -321,30 +324,17 @@ func TestCreatePartsInBatch(t *testing.T) {
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "Main",
+			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP,22uF,+/-20%,X5R,6.3V,SMD0603",
-			Location:    "C1",
-			Quantity:    1,
 		},
 		{
 			RevisionID:  revision.ID,
-			Type:        "Main",
-			Supplier:    "Samsung",
-			SupplierPN:  "CL05B104KO5NNNC",
-			Description: "CAP,22uF,+/-20%,X5R,6.3V,SMD0603",
-			Location:    "C2",
-			Quantity:    1,
-		},
-		{
-			RevisionID:  revision.ID,
-			Type:        "2nd Source",
+			Type:        "SMD",
 			Supplier:    "Murata",
 			SupplierPN:  "GRM188R61A106KE15D",
 			Description: "CAP,10uF,+/-10%,X5R,10V,SMD0603",
-			Location:    "",
-			Quantity:    0,
 		},
 	}
 
@@ -354,7 +344,7 @@ func TestCreatePartsInBatch(t *testing.T) {
 	// Get parts by revision
 	retrieved, err := GetPartsByRevision(db, revision.ID)
 	assert.NoError(t, err)
-	assert.Len(t, retrieved, 3)
+	assert.Len(t, retrieved, 2)
 }
 
 // TestDeletePartsByRevision tests deleting parts by revision
@@ -373,12 +363,10 @@ func TestDeletePartsByRevision(t *testing.T) {
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "Main",
+			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP",
-			Location:    "C1",
-			Quantity:    1,
 		},
 	}
 	err = CreatePartsInBatch(db, parts)
@@ -410,37 +398,33 @@ func TestGetPartsByRevisionAndType(t *testing.T) {
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "Main",
+			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP",
-			Location:    "C1",
-			Quantity:    1,
 		},
 		{
 			RevisionID:  revision.ID,
-			Type:        "2nd Source",
+			Type:        "PTH",
 			Supplier:    "Murata",
 			SupplierPN:  "GRM188R61A106KE15D",
 			Description: "CAP",
-			Location:    "",
-			Quantity:    0,
 		},
 	}
 	err = CreatePartsInBatch(db, parts)
 	assert.NoError(t, err)
 
-	// Get Main parts
-	mainParts, err := GetPartsByRevisionAndType(db, revision.ID, "Main")
+	// Get SMD parts
+	smdParts, err := GetPartsByRevisionAndType(db, revision.ID, "SMD")
 	assert.NoError(t, err)
-	assert.Len(t, mainParts, 1)
-	assert.Equal(t, "Main", mainParts[0].Type)
+	assert.Len(t, smdParts, 1)
+	assert.Equal(t, "SMD", smdParts[0].Type)
 
-	// Get 2nd Source parts
-	secondParts, err := GetPartsByRevisionAndType(db, revision.ID, "2nd Source")
+	// Get PTH parts
+	pthParts, err := GetPartsByRevisionAndType(db, revision.ID, "PTH")
 	assert.NoError(t, err)
-	assert.Len(t, secondParts, 1)
-	assert.Equal(t, "2nd Source", secondParts[0].Type)
+	assert.Len(t, pthParts, 1)
+	assert.Equal(t, "PTH", pthParts[0].Type)
 }
 
 // TestCascadeDeleteRevision tests that deleting a revision cascades to all related tables
@@ -461,12 +445,10 @@ func TestCascadeDeleteRevision(t *testing.T) {
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "Main",
+			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP",
-			Location:    "C1",
-			Quantity:    1,
 		},
 	}
 	err = CreatePartsInBatch(db, parts)
@@ -614,12 +596,10 @@ func TestMatrixSelectionOperations(t *testing.T) {
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "Main",
+			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP",
-			Location:    "C1",
-			Quantity:    1,
 		},
 	}
 	err = CreatePartsInBatch(db, parts)
@@ -671,21 +651,17 @@ func TestDeleteInvalidSelections(t *testing.T) {
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "Main",
+			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP",
-			Location:    "C1",
-			Quantity:    1,
 		},
 		{
 			RevisionID:  revision.ID,
-			Type:        "Main",
+			Type:        "PTH",
 			Supplier:    "Murata",
 			SupplierPN:  "GRM188R61A106KE15D",
 			Description: "CAP",
-			Location:    "C2",
-			Quantity:    1,
 		},
 	}
 	err = CreatePartsInBatch(db, parts)
@@ -749,12 +725,10 @@ func TestSecondSourceOperations(t *testing.T) {
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "Main",
+			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP",
-			Location:    "C1",
-			Quantity:    1,
 		},
 	}
 	err = CreatePartsInBatch(db, parts)
@@ -768,7 +742,6 @@ func TestSecondSourceOperations(t *testing.T) {
 			Supplier:    "Murata",
 			SupplierPN:  "GRM188R61A106KE15D",
 			Description: "CAP",
-			IsActive:    true,
 		},
 	}
 	err = CreateSecondSourcesInBatch(db, sources)
@@ -781,14 +754,14 @@ func TestSecondSourceOperations(t *testing.T) {
 	assert.Equal(t, "Murata", retrieved[0].Supplier)
 
 	// Update second source
-	retrieved[0].IsActive = false
+	retrieved[0].Description = "Updated Description"
 	err = UpdateSecondSource(db, &retrieved[0])
 	assert.NoError(t, err)
 
 	// Verify update
 	updated, err := GetSecondSourcesByRevision(db, revision.ID)
 	assert.NoError(t, err)
-	assert.False(t, updated[0].IsActive)
+	assert.Equal(t, "Updated Description", updated[0].Description)
 
 	// Delete second source
 	err = DeleteSecondSource(db, retrieved[0].ID)
@@ -823,118 +796,26 @@ func TestFullWorkflow(t *testing.T) {
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "Main",
+			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP,22uF,+/-20%,X5R,6.3V,SMD0603",
-			Location:    "C1",
-			Quantity:    1,
-			CCL:         "Y",
-			BOMStatus:   "I",
-		},
-		{
-			RevisionID:  revision.ID,
-			Type:        "Main",
-			Supplier:    "Samsung",
-			SupplierPN:  "CL05B104KO5NNNC",
-			Description: "CAP,22uF,+/-20%,X5R,6.3V,SMD0603",
-			Location:    "C2",
-			Quantity:    1,
-			CCL:         "Y",
-			BOMStatus:   "I",
-		},
-		{
-			RevisionID:  revision.ID,
-			Type:        "2nd Source",
-			Supplier:    "Murata",
-			SupplierPN:  "GRM188R61A106KE15D",
-			Description: "CAP,10uF,+/-10%,X5R,10V,SMD0603",
-			Location:    "",
-			Quantity:    0,
-			CCL:         "N",
-			BOMStatus:   "I",
 		},
 	}
 	err = CreatePartsInBatch(db, parts)
 	assert.NoError(t, err)
 
-	// Step 5: Create matrix models
-	models := []MatrixModel{
-		{RevisionID: revision.ID, ModelName: "A", Qty: 1},
-		{RevisionID: revision.ID, ModelName: "B", Qty: 2},
-		{RevisionID: revision.ID, ModelName: "C", Qty: 1},
+	// Step 5: Create part locations
+	locs := []PartLocation{
+		{PartID: parts[0].ID, Location: "C1", BomStatus: "I", CCL: true},
+		{PartID: parts[0].ID, Location: "C2", BomStatus: "I", CCL: true},
 	}
-	for _, model := range models {
-		err = CreateMatrixModel(db, &model)
-		assert.NoError(t, err)
-	}
-
-	// Step 6: Create second sources
-	secondSources := []SecondSource{
-		{
-			RevisionID:  revision.ID,
-			PartID:      1,
-			Supplier:    "Murata",
-			SupplierPN:  "GRM188R61A106KE15D",
-			Description: "CAP,10uF,+/-10%,X5R,10V,SMD0603",
-			IsActive:    true,
-		},
-	}
-	err = CreateSecondSourcesInBatch(db, secondSources)
+	err = CreatePartLocationsInBatch(db, locs)
 	assert.NoError(t, err)
 
-	// Step 7: Create matrix selections
-	selections := []MatrixSelection{
-		{
-			RevisionID:     revision.ID,
-			ModelID:        1,
-			PartID:         1,
-			Group:          "Samsung-CL05B104KO5NNNC",
-			Material:       "Samsung-CL05B104KO5NNNC",
-			IsAutoSelected: false,
-		},
-	}
-	err = CreateMatrixSelections(db, selections)
+	// Verify workflow retrieval
+	retrievedParts, err := GetPartsByRevisionWithLocations(db, revision.ID)
 	assert.NoError(t, err)
-
-	// Step 8: Verify all data
-	// Get series info
-	seriesInfo, err := GetSeriesInfo(db)
-	assert.NoError(t, err)
-	assert.Equal(t, "FY27", seriesInfo.Name)
-
-	// Get projects
-	projects, err := GetProjects(db, series.ID)
-	assert.NoError(t, err)
-	assert.Len(t, projects, 1)
-
-	// Get revisions
-	revisions, err := GetRevisions(db, project.ID)
-	assert.NoError(t, err)
-	assert.Len(t, revisions, 1)
-
-	// Get parts
-	retrievedParts, err := GetPartsByRevision(db, revision.ID)
-	assert.NoError(t, err)
-	assert.Len(t, retrievedParts, 3)
-
-	// Get second sources
-	ss, err := GetSecondSourcesByRevision(db, revision.ID)
-	assert.NoError(t, err)
-	assert.Len(t, ss, 1)
-
-	// Get matrix models
-	matrixModels, err := GetMatrixModels(db, revision.ID)
-	assert.NoError(t, err)
-	assert.Len(t, matrixModels, 3)
-
-	// Get matrix selections
-	matrixSelections, err := GetMatrixSelectionsByRevision(db, revision.ID)
-	assert.NoError(t, err)
-	assert.Len(t, matrixSelections, 1)
-
-	// Step 9: Verify matrix models have selections loaded
-	for _, model := range matrixModels {
-		assert.NotNil(t, model.Selections)
-	}
+	assert.Len(t, retrievedParts, 1)
+	assert.Len(t, retrievedParts[0].Locations, 2)
 }

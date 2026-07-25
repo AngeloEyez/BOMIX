@@ -78,7 +78,7 @@ type AggregatedPart struct {
 	Qty            int               `json:"qty"`
 	Locations      string            `json:"locations"` // 逗號分隔
 	BOMStatus      string            `json:"bom_status"`
-	CCL            string            `json:"ccl"`
+	CCL            bool              `json:"ccl"`
 	Remark         string            `json:"remark"`
 	SecondSources  []SecondSourceDTO `json:"second_sources"`
 }

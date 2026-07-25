@@ -46,7 +46,7 @@ export interface ViewPartGroup {
     "description": string;
 
     /**
-     * SMD, PTH, BOTTOM（空=僅狀態頁面的料）
+     * SMD, PTH, BOTTOM
      */
     "type": string;
 
@@ -56,9 +56,9 @@ export interface ViewPartGroup {
     "bom_status": string;
 
     /**
-     * Y, N
+     * 是否含有 CCL location (bool)
      */
-    "ccl": string;
+    "ccl": boolean;
     "remark": string;
 
     /**

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/xuri/excelize/v2"
-	"gorm.io/driver/sqlite"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"bomix-app/backend/db"
 	"bomix-app/backend/types"
@@ -227,8 +227,14 @@ func TestImport_BigMatrix_Integration(t *testing.T) {
 		t.Fatalf("Failed to auto migrate: %v", err)
 	}
 
-	// Create project first
+	// Create series, project, and revision
+	series := db.Series{Name: "Test Series"}
+	if err := database.Create(&series).Error; err != nil {
+		t.Fatalf("Failed to create series: %v", err)
+	}
+
 	project := db.Project{
+		SeriesID:    series.ID,
 		Code:        "TEST_PROJECT",
 		Description: "Test Project",
 	}
@@ -236,7 +242,6 @@ func TestImport_BigMatrix_Integration(t *testing.T) {
 		t.Fatalf("Failed to create project: %v", err)
 	}
 
-	// Create revision
 	revision := db.BomRevision{
 		ProjectID: project.ID,
 		Phase:     "PV",
@@ -244,6 +249,17 @@ func TestImport_BigMatrix_Integration(t *testing.T) {
 	}
 	if err := database.Create(&revision).Error; err != nil {
 		t.Fatalf("Failed to create revision: %v", err)
+	}
+
+	// 預先建立 Part（因為 BigMatrix 匯入不建立/更新 Part）
+	part := db.Part{
+		RevisionID: revision.ID,
+		Supplier:   "Samsung",
+		SupplierPN: "CL10A106MQ8NNNC",
+		Type:       "SMD",
+	}
+	if err := database.Create(&part).Error; err != nil {
+		t.Fatalf("Failed to create test part: %v", err)
 	}
 
 	// Create test Excel file
@@ -336,8 +352,12 @@ func TestImport_BigMatrix_ClearsOldSelections(t *testing.T) {
 		t.Fatalf("Failed to auto migrate: %v", err)
 	}
 
+	series := db.Series{Name: "Test Series"}
+	_ = database.Create(&series).Error
+
 	// Create project and revision
 	project := db.Project{
+		SeriesID:    series.ID,
 		Code:        "TEST_PROJECT",
 		Description: "Test Project",
 	}
@@ -353,6 +373,15 @@ func TestImport_BigMatrix_ClearsOldSelections(t *testing.T) {
 	if err := database.Create(&revision).Error; err != nil {
 		t.Fatalf("Failed to create revision: %v", err)
 	}
+
+	// 預先建立物料
+	newPart := db.Part{
+		RevisionID: revision.ID,
+		Supplier:   "NewSupplier",
+		SupplierPN: "NEW-PN",
+		Type:       "SMD",
+	}
+	_ = database.Create(&newPart).Error
 
 	// Create existing MatrixModel and Selections
 	modelA := db.MatrixModel{

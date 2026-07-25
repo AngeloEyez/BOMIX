@@ -118,11 +118,11 @@ func (f *Filter) filterMP(parts []types.AggregatedPart) []types.AggregatedPart {
 	return result
 }
 
-// filterCCL returns only parts with ccl = Y and bom_status != X
+// filterCCL returns only parts with ccl = true and bom_status != X
 func (f *Filter) filterCCL(parts []types.AggregatedPart) []types.AggregatedPart {
 	var result []types.AggregatedPart
 	for _, part := range parts {
-		if part.CCL == "Y" && part.BOMStatus != "X" {
+		if part.CCL && part.BOMStatus != "X" {
 			result = append(result, part)
 		}
 	}

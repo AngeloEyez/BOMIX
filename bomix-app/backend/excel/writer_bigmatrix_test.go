@@ -173,35 +173,35 @@ func TestFilterPartsByCriteria(t *testing.T) {
 		{
 			Supplier:    "Samsung",
 			SupplierPn:  "CL05B104KO5NNNC",
-			CCL:         "Y",
+			CCL:         true,
 			BOMStatus:   "I",
 			Description: "Test Part 1",
 		},
 		{
 			Supplier:    "Murata",
 			SupplierPn:  "GRM155B81C105KE19D",
-			CCL:         "Y",
+			CCL:         true,
 			BOMStatus:   "P",
 			Description: "Test Part 2 (NPI)",
 		},
 		{
 			Supplier:    "Taiyo Yuden",
 			SupplierPn:  "UMK105B7105KV-F",
-			CCL:         "Y",
+			CCL:         true,
 			BOMStatus:   "M",
 			Description: "Test Part 3 (MP)",
 		},
 		{
 			Supplier:    "Yageo",
 			SupplierPn:  "CC0402KRX7R9BB104",
-			CCL:         "Y",
+			CCL:         true,
 			BOMStatus:   "X",
 			Description: "Test Part 4 (Not Installed)",
 		},
 		{
 			Supplier:    "Kemet",
 			SupplierPn:  "C0603C104K5RACTU",
-			CCL:         "N",
+			CCL:         false,
 			BOMStatus:   "I",
 			Description: "Test Part 5 (Not CCL)",
 		},
@@ -209,7 +209,7 @@ func TestFilterPartsByCriteria(t *testing.T) {
 
 	// Test FilterPartsByCriteria
 	filtered := FilterPartsByCriteria(parts)
-	// CCL=Y, status!=X: Part 1(I), Part 2(P), Part 3(M) => 3 parts
+	// CCL=true, status!=X: Part 1(I), Part 2(P), Part 3(M) => 3 parts
 	if len(filtered) != 3 {
 		t.Errorf("FilterPartsByCriteria: expected 3 parts, got %d", len(filtered))
 	}
@@ -217,7 +217,7 @@ func TestFilterPartsByCriteria(t *testing.T) {
 		if p.BOMStatus == "X" {
 			t.Errorf("FilterPartsByCriteria: part %s has invalid status X", p.SupplierPn)
 		}
-		if p.CCL != "Y" {
+		if !p.CCL {
 			t.Errorf("FilterPartsByCriteria: part %s is not CCL", p.SupplierPn)
 		}
 	}
@@ -335,7 +335,7 @@ func TestExportBigMatrix_Integration(t *testing.T) {
 				Location:    "C1,C2,C3,C4",
 				Type:        "SMD",
 				BOMStatus:   "I",
-				CCL:         "Y",
+				CCL:         true,
 				Remark:      "",
 				SecondSources: []SecondSourceData{
 					{
@@ -360,7 +360,7 @@ func TestExportBigMatrix_Integration(t *testing.T) {
 				Location:    "R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12",
 				Type:        "SMD",
 				BOMStatus:   "I",
-				CCL:         "Y",
+				CCL:         true,
 				Remark:      "",
 				Selections: map[string]string{
 					"A": "RC0603FR-0710KL",

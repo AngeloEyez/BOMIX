@@ -43,6 +43,7 @@ type BomRevision struct {
 	PCBVersion       string `json:"pcbVersion"`
 	PCAPN            string `json:"pcaPn"`
 	Date             string `json:"date"`
+	Mode             string `json:"mode"`
 	SourceFile       string `json:"sourceFile"`
 	ModelCount       int    `json:"modelCount"`
 	CreatedAt        string `json:"createdAt"`
@@ -51,35 +52,32 @@ type BomRevision struct {
 
 // Part represents a part for the frontend
 type Part struct {
-	ID          int64  `json:"id"`
-	RevisionID  int64  `json:"revisionId"`
-	Type        string `json:"type"`
-	Supplier    string `json:"supplier"`
-	SupplierPn  string `json:"supplierPn"`
-	Description string `json:"description"`
-	Location    string `json:"location"`
-	Quantity    int    `json:"quantity"`
+	ID          int64   `json:"id"`
+	RevisionID  int64   `json:"revisionId"`
+	Type        string  `json:"type"`
+	Item        string  `json:"item"`
+	HHPN        string  `json:"hhpn"`
+	Supplier    string  `json:"supplier"`
+	SupplierPn  string  `json:"supplierPn"`
+	Description string  `json:"description"`
 	Cost        float64 `json:"cost"`
-	BOMStatus   string `json:"bomStatus"`
-	CCL         string `json:"ccl"`
-	Remark      string `json:"remark"`
-	CreatedAt   string `json:"createdAt"`
-	UpdatedAt   string `json:"updatedAt"`
+	Remark      string  `json:"remark"`
+	CreatedAt   string  `json:"createdAt"`
+	UpdatedAt   string  `json:"updatedAt"`
 }
 
 // SecondSource represents a second source for the frontend
 type SecondSource struct {
-	ID          int64  `json:"id"`
-	RevisionID  int64  `json:"revisionId"`
-	PartID      int64  `json:"partId"`
-	Supplier    string `json:"supplier"`
-	SupplierPn  string `json:"supplierPn"`
-	Description string `json:"description"`
+	ID          int64   `json:"id"`
+	RevisionID  int64   `json:"revisionId"`
+	PartID      int64   `json:"partId"`
+	HHPN        string  `json:"hhpn"`
+	Supplier    string  `json:"supplier"`
+	SupplierPn  string  `json:"supplierPn"`
+	Description string  `json:"description"`
 	Cost        float64 `json:"cost"`
-	LeadTime    int    `json:"leadTime"`
-	IsActive    bool   `json:"isActive"`
-	CreatedAt   string `json:"createdAt"`
-	UpdatedAt   string `json:"updatedAt"`
+	CreatedAt   string  `json:"createdAt"`
+	UpdatedAt   string  `json:"updatedAt"`
 }
 
 // MatrixModel represents a matrix model for the frontend

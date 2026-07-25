@@ -138,14 +138,14 @@ func (f *Filter) filterByBOMStatus(parts []ViewPartGroup, status string) []ViewP
 	return result
 }
 
-// filterCCL 過濾出關鍵零件 (CCL = Y) 且 bom_status != X 的有效物料。
+// filterCCL 過濾出關鍵零件 (CCL = true) 且 bom_status != X 的有效物料。
 // See product-spec section 6.4.2 & 8.1.6
 func (f *Filter) filterCCL(parts []ViewPartGroup) []ViewPartGroup {
 	validParts := f.filterAll(parts)
 
 	result := make([]ViewPartGroup, 0)
 	for _, part := range validParts {
-		if strings.EqualFold(part.CCL, "Y") {
+		if part.CCL {
 			result = append(result, part)
 		}
 	}

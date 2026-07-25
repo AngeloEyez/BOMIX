@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/xuri/excelize/v2"
-	"gorm.io/driver/sqlite"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"bomix-app/backend/db"
 )
@@ -128,17 +128,22 @@ func TestMainVsSecondSource(t *testing.T) {
 	f.SetCellValue("SMD", "J7", "N")
 
 	reader := &EBOMReader{}
-	parts, secondSources := reader.parseSheet(wb, "SMD", "SMD")
+	partMap := make(map[string]*db.Part)
+	var partList []*db.Part
+	locations, secondSources := reader.parseMainSheetV2(wb, "SMD", "SMD", partMap, &partList)
 
-	if len(parts) != 1 {
-		t.Errorf("Expected 1 Main Source part, got %d", len(parts))
+	if len(partList) != 1 {
+		t.Errorf("Expected 1 Main Source part, got %d", len(partList))
 	}
 	if len(secondSources) != 1 {
 		t.Errorf("Expected 1 Second Source, got %d", len(secondSources))
 	}
+	if len(locations) != 3 {
+		t.Errorf("Expected 3 locations, got %d", len(locations))
+	}
 
-	if parts[0].Supplier != "Samsung" {
-		t.Errorf("Expected Main Source supplier 'Samsung', got '%s'", parts[0].Supplier)
+	if partList[0].Supplier != "Samsung" {
+		t.Errorf("Expected Main Source supplier 'Samsung', got '%s'", partList[0].Supplier)
 	}
 	if secondSources[0].secondSource.Supplier != "Murata" {
 		t.Errorf("Expected Second Source supplier 'Murata', got '%s'", secondSources[0].secondSource.Supplier)
@@ -149,24 +154,27 @@ func TestMainVsSecondSource(t *testing.T) {
 
 // TestAtomizeLocation tests location atomization
 func TestAtomizeLocation(t *testing.T) {
-	reader := &EBOMReader{}
-
 	tests := []struct {
 		input    string
-		expected string
+		expected []string
 	}{
-		{"C1,C2,C3", "C1,C2,C3"},
-		{"C1, C2, C3", "C1,C2,C3"},
-		{"C1  ,  C2  ,  C3", "C1,C2,C3"},
-		{"C1", "C1"},
-		{"", ""},
-		{"C1,C2, C3,C4", "C1,C2,C3,C4"},
+		{"C1,C2,C3", []string{"C1", "C2", "C3"}},
+		{"C1, C2, C3", []string{"C1", "C2", "C3"}},
+		{"C1  ,  C2  ,  C3", []string{"C1", "C2", "C3"}},
+		{"C1", []string{"C1"}},
+		{"", []string{}},
 	}
 
 	for _, test := range tests {
-		result := reader.atomizeLocation(test.input)
-		if result != test.expected {
-			t.Errorf("atomizeLocation(%q) = %q, expected %q", test.input, result, test.expected)
+		result := atomizeLocations(test.input)
+		if len(result) != len(test.expected) {
+			t.Errorf("atomizeLocations(%q) len = %d, expected %d", test.input, len(result), len(test.expected))
+			continue
+		}
+		for i := range result {
+			if result[i] != test.expected[i] {
+				t.Errorf("atomizeLocations(%q)[%d] = %q, expected %q", test.input, i, result[i], test.expected[i])
+			}
 		}
 	}
 }
@@ -552,48 +560,17 @@ func TestImportMatrixSelections(t *testing.T) {
 	}
 }
 
-// TestParsePartRow tests part row parsing
-func TestParsePartRow(t *testing.T) {
-	reader := &EBOMReader{}
-
-	row := []string{
-		"1",              // A: Item
-		"HHPN-001",       // B: HHPN
-		"",               // C: (unused)
-		"",               // D: (unused)
-		"CAPACITOR 10uF", // E: Description
-		"Samsung",        // F: Supplier
-		"CL10A106MQ8NNNC", // G: Supplier PN
-		"",               // H: (unused)
-		"C1,C2,C3",      // I: Location
-		"Y",              // J: CCL
-		"",               // K: (unused)
-		"Note here",      // L: Remark
+// TestSafeGetCol tests row helper function
+func TestSafeGetCol(t *testing.T) {
+	row := []string{"1", "HHPN-001", "", "", "CAPACITOR 10uF", "Samsung"}
+	if safeGetCol(row, 0) != "1" {
+		t.Errorf("Expected '1', got '%s'", safeGetCol(row, 0))
 	}
-
-	part := reader.parsePartRow(row, "SMD")
-
-	// Note: Item and Hhpn are not stored in the Part model anymore
-	if part.Description != "CAPACITOR 10uF" {
-		t.Errorf("Expected Description 'CAPACITOR 10uF', got '%s'", part.Description)
+	if safeGetCol(row, 5) != "Samsung" {
+		t.Errorf("Expected 'Samsung', got '%s'", safeGetCol(row, 5))
 	}
-	if part.Supplier != "Samsung" {
-		t.Errorf("Expected Supplier 'Samsung', got '%s'", part.Supplier)
-	}
-	if part.SupplierPN != "CL10A106MQ8NNNC" {
-		t.Errorf("Expected SupplierPN 'CL10A106MQ8NNNC', got '%s'", part.SupplierPN)
-	}
-	if part.Location != "C1,C2,C3" {
-		t.Errorf("Expected Location 'C1,C2,C3', got '%s'", part.Location)
-	}
-	if part.CCL != "Y" {
-		t.Errorf("Expected CCL 'Y', got '%s'", part.CCL)
-	}
-	if part.Type != "SMD" {
-		t.Errorf("Expected Type 'SMD', got '%s'", part.Type)
-	}
-	if part.BOMStatus != "I" {
-		t.Errorf("Expected BOMStatus 'I', got '%s'", part.BOMStatus)
+	if safeGetCol(row, 10) != "" {
+		t.Errorf("Expected '', got '%s'", safeGetCol(row, 10))
 	}
 }
 
@@ -628,15 +605,9 @@ func TestParseStatusSheet(t *testing.T) {
 	f.SetCellValue("NI", "J7", "N")
 
 	reader := &EBOMReader{}
-	parts := reader.parseStatusSheet(wb, "NI", "X")
+	locations := reader.parsePhase2Sheet(wb, "NI")
 
-	if len(parts) != 2 {
-		t.Errorf("Expected 2 parts, got %d", len(parts))
-	}
-
-	for _, part := range parts {
-		if part.BOMStatus != "X" {
-			t.Errorf("Expected BOMStatus 'X', got '%s'", part.BOMStatus)
-		}
+	if len(locations) != 4 {
+		t.Errorf("Expected 4 locations, got %d", len(locations))
 	}
 }

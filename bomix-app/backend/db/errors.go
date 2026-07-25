@@ -4,12 +4,13 @@ import "errors"
 
 // Database errors
 var (
-	ErrSeriesNotFound      = errors.New("series not found")
-	ErrProjectNotFound     = errors.New("project not found")
-	ErrRevisionNotFound    = errors.New("revision not found")
-	ErrPartNotFound        = errors.New("part not found")
-	ErrSecondSourceNotFound = errors.New("second source not found")
-	ErrMatrixModelNotFound  = errors.New("matrix model not found")
+	ErrSeriesNotFound          = errors.New("series not found")
+	ErrProjectNotFound         = errors.New("project not found")
+	ErrRevisionNotFound        = errors.New("revision not found")
+	ErrPartNotFound            = errors.New("part not found")
+	ErrPartLocationNotFound    = errors.New("part location not found")
+	ErrSecondSourceNotFound    = errors.New("second source not found")
+	ErrMatrixModelNotFound     = errors.New("matrix model not found")
 	ErrMatrixSelectionNotFound = errors.New("matrix selection not found")
 )
 

@@ -16,13 +16,22 @@ func NewAggregator() *Aggregator {
 	return &Aggregator{}
 }
 
-// Aggregate aggregates parts by (supplier, supplier_pn) and merges them.
-// It groups parts with the same supplier and supplier_pn, merges locations into a comma-separated string,
-// calculates quantity as the count of locations, and attaches second sources.
-func (a *Aggregator) Aggregate(parts []db.Part, secondSources []db.SecondSource) []types.AggregatedPart {
+// Aggregate aggregates parts by (supplier, supplier_pn) and merges them with partLocations.
+func (a *Aggregator) Aggregate(parts []db.Part, locations []db.PartLocation, secondSources []db.SecondSource) []types.AggregatedPart {
+	// Build partID -> Part lookup
+	partByID := make(map[int64]db.Part)
+	for _, p := range parts {
+		partByID[p.ID] = p
+	}
+
+	// Group locations by partID
+	locsByPartID := make(map[int64][]db.PartLocation)
+	for _, loc := range locations {
+		locsByPartID[loc.PartID] = append(locsByPartID[loc.PartID], loc)
+	}
+
 	// Group parts by (supplier, supplier_pn)
 	groups := make(map[string][]db.Part)
-
 	for _, part := range parts {
 		key := a.makeGroupKey(part.Supplier, part.SupplierPN)
 		groups[key] = append(groups[key], part)
@@ -35,33 +44,43 @@ func (a *Aggregator) Aggregate(parts []db.Part, secondSources []db.SecondSource)
 	var result []types.AggregatedPart
 
 	for key, groupParts := range groups {
-		// Collect unique locations and find first part for metadata
 		locationSet := make(map[string]bool)
 		var firstPart db.Part
+		hasCCL := false
+		bomStatus := ""
 
 		for _, p := range groupParts {
-			if p.Location != "" {
-				locationSet[p.Location] = true
-			}
 			if firstPart.Supplier == "" {
 				firstPart = p
 			}
+			partLocs := locsByPartID[p.ID]
+			for _, loc := range partLocs {
+				if loc.Location != "" {
+					locationSet[loc.Location] = true
+				}
+				if loc.CCL {
+					hasCCL = true
+				}
+				if bomStatus == "" {
+					bomStatus = loc.BomStatus
+				}
+			}
+		}
+
+		if bomStatus == "" {
+			bomStatus = "I"
 		}
 
 		// Sort locations for consistent output
-		locations := make([]string, 0, len(locationSet))
+		locList := make([]string, 0, len(locationSet))
 		for loc := range locationSet {
-			locations = append(locations, loc)
+			locList = append(locList, loc)
 		}
-		sort.Strings(locations)
+		sort.Strings(locList)
 
-		// Calculate quantity as number of locations
-		quantity := len(locations)
-
-		// Parse the key to get supplier and supplier_pn
+		quantity := len(locList)
 		supplier, supplierPN := a.parseGroupKey(key)
 
-		// Build second sources for this group
 		var ssDTOs []types.SecondSourceDTO
 		if groupSS, ok := ssByGroup[key]; ok {
 			for _, ss := range groupSS {
@@ -82,9 +101,9 @@ func (a *Aggregator) Aggregate(parts []db.Part, secondSources []db.SecondSource)
 			Description:    firstPart.Description,
 			Type:           firstPart.Type,
 			Qty:            quantity,
-			Locations:      strings.Join(locations, ","),
-			BOMStatus:      firstPart.BOMStatus,
-			CCL:            firstPart.CCL,
+			Locations:      strings.Join(locList, ","),
+			BOMStatus:      bomStatus,
+			CCL:            hasCCL,
 			Remark:         firstPart.Remark,
 			SecondSources:  ssDTOs,
 		}

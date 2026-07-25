@@ -7,37 +7,40 @@ import (
 	"strings"
 	"time"
 
-	"gorm.io/gorm"
 	"bomix-app/backend/db"
 	"bomix-app/backend/logger"
 	"bomix-app/backend/types"
+	"gorm.io/gorm"
 )
 
 // EBOMReader handles EBOM format import
 type EBOMReader struct {
-	db        *gorm.DB
-	result    *types.ImportResult
-	revisionID int64 // Will be set after creating/updating revision
-	logger    *logger.Logger
+	db         *gorm.DB
+	result     *types.ImportResult
+	revisionID int64 // 匯入後設定
+	logger     *logger.Logger
 }
 
-// Import imports an EBOM format file
+// Import 匯入 EBOM 格式 Excel 檔案。
+//
+// 採用兩階段匯入流程：
+//   Phase 1（主料建置）：處理 SMD / PTH / BOTTOM / NI sheet，
+//     依 (supplier, supplier_pn) 去重建立 Part，並為每個 location 建立原子化 PartLocation。
+//   Phase 2（狀態覆寫）：處理 PROTO / MP / CCL sheet，
+//     僅更新 Phase 1 已建立的 PartLocation 的 BomStatus / CCL 屬性；
+//     同時判斷 BomRevision.Mode（NPI 或 MP）。
 func (r *EBOMReader) Import(f Workbook) error {
 	sheets := f.GetSheetList()
 
-	// Phase 1: Read all parts from SMD, PTH, BOTTOM sheets
-	// Phase 2: Read status from NI, PROTO, MP sheets
-	// See product-spec section 7.1.5
-
-	// First pass: collect all parts from SMD, PTH, BOTTOM
-	var allParts []db.Part
-	var allSecondSources []parsedSecondSource
-
+	// ─── 解析表頭（從 SMD sheet）───────────────────────────────────────────
 	smdSheet := r.findSheetCaseInsensitive(sheets, "SMD")
 	pthSheet := r.findSheetCaseInsensitive(sheets, "PTH")
 	bottomSheet := r.findSheetCaseInsensitive(sheets, "BOTTOM")
+	niSheet := r.findSheetCaseInsensitive(sheets, "NI")
+	protoSheet := r.findSheetCaseInsensitive(sheets, "PROTO")
+	mpSheet := r.findSheetCaseInsensitive(sheets, "MP")
+	cclSheet := r.findSheetCaseInsensitive(sheets, "CCL")
 
-	// Parse header from SMD sheet
 	var phase, version, description, schematicVersion, pcbVersion, pcaPn, date, projectCode string
 	var err error
 	if smdSheet != "" {
@@ -47,160 +50,199 @@ func (r *EBOMReader) Import(f Workbook) error {
 		}
 	}
 
-	// Create or update the BOM revision
+	// ─── 建立或更新 BomRevision ─────────────────────────────────────────────
 	revisionID, err := r.createOrUpdateRevision(projectCode, phase, version, description, schematicVersion, pcbVersion, pcaPn, date)
 	if err != nil {
 		return fmt.Errorf("failed to create/update revision: %w", err)
 	}
 	r.revisionID = revisionID
 
-	// Process SMD sheet
-	if smdSheet != "" {
-		parts, secondSrcs := r.parseSheet(f, smdSheet, "SMD", len(allParts))
-		allParts = append(allParts, parts...)
-		allSecondSources = append(allSecondSources, secondSrcs...)
-		r.result.PartsCount += len(parts)
-		r.result.SecondSources += len(secondSrcs)
+	// ─── Phase 1：主料去重與 Location 建置 ───────────────────────────────────
+	// partMap：(supplier|supplier_pn) → *db.Part，用於去重
+	partMap := make(map[string]*db.Part)
+	var partList []*db.Part
+	var parsedSSList []parsedSecondSource
+
+	// phase1LocationSet 收集 Phase 1 所有已建立的 location，供 Phase 2 Mode 判斷使用
+	phase1LocationSet := make(map[string]bool)
+
+	// 收集所有 Phase 1 的 location（parsedPartLocation 格式，含 Part 指標）
+	var allParsedLocations []parsedPartLocation
+
+	// 處理主製程 sheet（SMD / PTH / BOTTOM）
+	mainSheets := []struct{ name, sheetType string }{
+		{smdSheet, "SMD"},
+		{pthSheet, "PTH"},
+		{bottomSheet, "BOTTOM"},
+	}
+	for _, ms := range mainSheets {
+		if ms.name == "" {
+			continue
+		}
+		locs, ssList := r.parseMainSheetV2(f, ms.name, ms.sheetType, partMap, &partList)
+		allParsedLocations = append(allParsedLocations, locs...)
+		parsedSSList = append(parsedSSList, ssList...)
+
+		for _, loc := range locs {
+			phase1LocationSet[loc.location] = true
+		}
 
 		if r.logger != nil {
-			r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析完成", smdSheet),
-				"sheet", smdSheet,
-				"type", "SMD",
-				"mainParts", len(parts),
-				"secondSources", len(secondSrcs),
-				"totalParts", len(parts)+len(secondSrcs),
+			r.logger.Debug(fmt.Sprintf("[EBOM Phase1] 工作表 [%s] 解析完成", ms.name),
+				"sheet", ms.name, "type", ms.sheetType,
+				"partMapSize", len(partMap), "newLocations", len(locs),
 			)
 		}
 	}
 
-	// Process PTH sheet
-	if pthSheet != "" {
-		parts, secondSrcs := r.parseSheet(f, pthSheet, "PTH", len(allParts))
-		allParts = append(allParts, parts...)
-		allSecondSources = append(allSecondSources, secondSrcs...)
-		r.result.PartsCount += len(parts)
-		r.result.SecondSources += len(secondSrcs)
-
-		if r.logger != nil {
-			r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析完成", pthSheet),
-				"sheet", pthSheet,
-				"type", "PTH",
-				"mainParts", len(parts),
-				"secondSources", len(secondSrcs),
-				"totalParts", len(parts)+len(secondSrcs),
-			)
-		}
-	}
-
-	// Process BOTTOM sheet
-	if bottomSheet != "" {
-		parts, secondSrcs := r.parseSheet(f, bottomSheet, "BOTTOM", len(allParts))
-		allParts = append(allParts, parts...)
-		allSecondSources = append(allSecondSources, secondSrcs...)
-		r.result.PartsCount += len(parts)
-		r.result.SecondSources += len(secondSrcs)
-
-		if r.logger != nil {
-			r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析完成", bottomSheet),
-				"sheet", bottomSheet,
-				"type", "BOTTOM",
-				"mainParts", len(parts),
-				"secondSources", len(secondSrcs),
-				"totalParts", len(parts)+len(secondSrcs),
-			)
-		}
-	}
-
-	// Process NI sheet (bom_status = X)
-	niSheet := r.findSheetCaseInsensitive(sheets, "NI")
+	// 處理 NI sheet（bom_status = X）
 	if niSheet != "" {
-		niParts := r.parseStatusSheet(f, niSheet, "X")
-		allParts = append(allParts, niParts...)
-		r.result.PartsCount += len(niParts)
-
-		if r.logger != nil {
-			r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析完成", niSheet),
-				"sheet", niSheet,
-				"status", "X (NI)",
-				"mainParts", len(niParts),
-				"secondSources", 0,
-				"totalParts", len(niParts),
-			)
+		locs := r.parseNISheet(f, niSheet, partMap, &partList)
+		allParsedLocations = append(allParsedLocations, locs...)
+		for _, loc := range locs {
+			phase1LocationSet[loc.location] = true
 		}
-	}
-
-	// Process PROTO sheet (bom_status = P)
-	protoSheet := r.findSheetCaseInsensitive(sheets, "PROTO")
-	if protoSheet != "" {
-		protoParts := r.parseStatusSheet(f, protoSheet, "P")
-		allParts = append(allParts, protoParts...)
-		r.result.PartsCount += len(protoParts)
-
 		if r.logger != nil {
-			r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析完成", protoSheet),
-				"sheet", protoSheet,
-				"status", "P (PROTO)",
-				"mainParts", len(protoParts),
-				"secondSources", 0,
-				"totalParts", len(protoParts),
-			)
-		}
-	}
-
-	// Process MP sheet (bom_status = M)
-	mpSheet := r.findSheetCaseInsensitive(sheets, "MP")
-	if mpSheet != "" {
-		mpParts := r.parseStatusSheet(f, mpSheet, "M")
-		allParts = append(allParts, mpParts...)
-		r.result.PartsCount += len(mpParts)
-
-		if r.logger != nil {
-			r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析完成", mpSheet),
-				"sheet", mpSheet,
-				"status", "M (MP)",
-				"mainParts", len(mpParts),
-				"secondSources", 0,
-				"totalParts", len(mpParts),
+			r.logger.Debug("[EBOM Phase1] NI 工作表解析完成",
+				"sheet", niSheet, "locations", len(locs),
 			)
 		}
 	}
 
 	if r.logger != nil {
-		r.logger.Debug("[EBOM 讀取] 全檔案工作表解析統計完成",
-			"totalMainParts", len(allParts),
-			"totalSecondSources", len(allSecondSources),
-			"totalAllParts", len(allParts)+len(allSecondSources),
+		r.logger.Debug("[EBOM Phase1] 所有 sheet 解析完成",
+			"uniqueParts", len(partList),
+			"totalLocations", len(allParsedLocations),
+			"secondSources", len(parsedSSList),
 		)
 	}
 
-	// Save all parts and second sources to database
-	// See product-spec section 7.0.1: Delete old parts and recreate
-	secondSources, err := r.saveParts(allParts, allSecondSources)
+	// ─── 儲存 Phase 1 資料至資料庫 ───────────────────────────────────────────
+	savedLocations, savedSecondSources, err := r.saveParts(partList, allParsedLocations, parsedSSList)
 	if err != nil {
 		return fmt.Errorf("failed to save parts: %w", err)
 	}
 
-	// Apply merge algorithm if this was an update
-	// See product-spec section 7.1.7
-	if err := r.applyMergeAlgorithm(r.revisionID, secondSources); err != nil {
+	// ─── Phase 2：Location 狀態覆寫 + Mode 判斷 ───────────────────────────────
+	// 建立 location → *db.PartLocation 快速查詢映射（來自已儲存後的 savedLocations）
+	locIndexMap := make(map[string]*db.PartLocation, len(savedLocations))
+	for i := range savedLocations {
+		locIndexMap[savedLocations[i].Location] = &savedLocations[i]
+	}
+
+	// 收集 PROTO / MP 頁面的 locations，用於 Mode 判斷
+	var protoLocations []string
+	var mpLocations []string
+
+	// 處理 PROTO sheet（更新 bom_status = P）
+	if protoSheet != "" {
+		protoLocations = r.parsePhase2Sheet(f, protoSheet)
+		var locationIDsToUpdate []int64
+		for _, loc := range protoLocations {
+			if target, exists := locIndexMap[loc]; exists {
+				locationIDsToUpdate = append(locationIDsToUpdate, target.ID)
+			} else {
+				if r.logger != nil {
+					r.logger.Warn(fmt.Sprintf("[EBOM Phase2] PROTO location '%s' 在 Phase 1 中未建立，略過", loc),
+						"sheet", protoSheet, "location", loc,
+					)
+				}
+			}
+		}
+		if len(locationIDsToUpdate) > 0 {
+			if err := r.db.Model(&db.PartLocation{}).
+				Where("id IN ?", locationIDsToUpdate).
+				Update("bom_status", "P").Error; err != nil {
+				return fmt.Errorf("failed to update PROTO locations: %w", err)
+			}
+		}
+		if r.logger != nil {
+			r.logger.Debug("[EBOM Phase2] PROTO 覆寫完成",
+				"totalLocations", len(protoLocations),
+				"updatedLocations", len(locationIDsToUpdate),
+			)
+		}
+	}
+
+	// 處理 MP sheet（更新 bom_status = M）
+	if mpSheet != "" {
+		mpLocations = r.parsePhase2Sheet(f, mpSheet)
+		var locationIDsToUpdate []int64
+		for _, loc := range mpLocations {
+			if target, exists := locIndexMap[loc]; exists {
+				locationIDsToUpdate = append(locationIDsToUpdate, target.ID)
+			} else {
+				if r.logger != nil {
+					r.logger.Warn(fmt.Sprintf("[EBOM Phase2] MP location '%s' 在 Phase 1 中未建立，略過", loc),
+						"sheet", mpSheet, "location", loc,
+					)
+				}
+			}
+		}
+		if len(locationIDsToUpdate) > 0 {
+			if err := r.db.Model(&db.PartLocation{}).
+				Where("id IN ?", locationIDsToUpdate).
+				Update("bom_status", "M").Error; err != nil {
+				return fmt.Errorf("failed to update MP locations: %w", err)
+			}
+		}
+	}
+
+	// 處理 CCL sheet（更新 ccl = true）
+	if cclSheet != "" {
+		cclLocations := r.parsePhase2Sheet(f, cclSheet)
+		var locationIDsToUpdate []int64
+		for _, loc := range cclLocations {
+			if target, exists := locIndexMap[loc]; exists {
+				locationIDsToUpdate = append(locationIDsToUpdate, target.ID)
+			}
+		}
+		if len(locationIDsToUpdate) > 0 {
+			if err := r.db.Model(&db.PartLocation{}).
+				Where("id IN ?", locationIDsToUpdate).
+				Update("ccl", true).Error; err != nil {
+				return fmt.Errorf("failed to update CCL locations: %w", err)
+			}
+		}
+	}
+
+	// CCL 欄位覆寫（EBOM 中 CCL 欄位直接標記於零件行）
+	// 已在 Phase 1 的 parseMainSheet 中處理
+
+	// ─── 判斷 Mode（NPI / MP）並回寫 BomRevision ───────────────────────────
+	mode := determineMode(phase1LocationSet, protoLocations, mpLocations)
+	if err := r.db.Model(&db.BomRevision{}).
+		Where("id = ?", r.revisionID).
+		Update("mode", mode).Error; err != nil {
+		return fmt.Errorf("failed to update revision mode: %w", err)
+	}
+	if r.logger != nil {
+		r.logger.Info(fmt.Sprintf("[EBOM Phase2] BomRevision.Mode 判斷結果: %s", mode),
+			"revisionID", r.revisionID,
+		)
+	}
+
+	// ─── 套用 Merge 演算法（替代料 diff）──────────────────────────────────────
+	if err := r.applyMergeAlgorithm(r.revisionID, savedSecondSources); err != nil {
 		return fmt.Errorf("failed to apply merge algorithm: %w", err)
 	}
 
-	// Auto-import previous Matrix selections if configured
-	// See product-spec section 7.1.8
-	// We need to get the full revision for this
+	// ─── 自動匯入上一版 Matrix Selection ─────────────────────────────────────
 	var revision db.BomRevision
 	if err := r.db.Where("id = ?", r.revisionID).First(&revision).Error; err == nil {
 		if err := r.autoImportPreviousMatrix(revision); err != nil {
-			// Log warning but don't fail the import
-			fmt.Printf("Warning: failed to auto-import previous Matrix: %v\n", err)
+			if r.logger != nil {
+				r.logger.Warn(fmt.Sprintf("自動匯入 Matrix 失敗（非致命）: %v", err))
+			}
 		}
 	}
 
 	return nil
 }
 
-// findSheetCaseInsensitive finds a sheet by name (case-insensitive & trimmed)
+// ─── 工具函數 ────────────────────────────────────────────────────────────────
+
+// findSheetCaseInsensitive 依名稱（不區分大小寫）尋找工作表
 func (r *EBOMReader) findSheetCaseInsensitive(sheets []string, name string) string {
 	for _, sheet := range sheets {
 		if strings.EqualFold(strings.TrimSpace(sheet), name) {
@@ -210,8 +252,7 @@ func (r *EBOMReader) findSheetCaseInsensitive(sheets []string, name string) stri
 	return ""
 }
 
-// parseHeaderField extracts value after colon or prefix, returning trimmed value.
-// If no prefix matches, returns the raw trimmed cell value.
+// parseHeaderField 從儲存格字串中萃取前綴後的值
 func parseHeaderField(val string, prefixes ...string) string {
 	val = strings.TrimSpace(val)
 	if val == "" {
@@ -229,180 +270,41 @@ func parseHeaderField(val string, prefixes ...string) string {
 	return val
 }
 
-// parseHeader parses the header row from SMD sheet
-// See product-spec section 7.1.1
-// Returns revision data and project code separately
+// parseHeader 解析 EBOM 表頭（從 SMD sheet）
+// 回傳：phase, version, description, schematicVersion, pcbVersion, pcaPn, date, projectCode, error
 func (r *EBOMReader) parseHeader(f Workbook, sheetName string) (phase, version, description, schematicVersion, pcbVersion, pcaPn, date, projectCode string, err error) {
-	// B3: Project Code - "Product Code: {value}"
 	valB3, _ := f.GetCellValue(sheetName, "B3")
 	projectCode = parseHeaderField(valB3, "Product Code", "Project Code")
 
-	// B4: Description - "Description: {value}"
 	valB4, _ := f.GetCellValue(sheetName, "B4")
 	description = parseHeaderField(valB4, "Description")
 
-	// D3: Schematic Version - "Schematic Version: {value}"
 	valD3, _ := f.GetCellValue(sheetName, "D3")
 	schematicVersion = parseHeaderField(valD3, "Schematic Version")
 
-	// J3: Phase - "Phase: {value}"
 	valJ3, _ := f.GetCellValue(sheetName, "J3")
 	phase = parseHeaderField(valJ3, "Phase")
 
-	// F3: PCB Version - "PCB Version: {value}"
 	valF3, _ := f.GetCellValue(sheetName, "F3")
 	pcbVersion = parseHeaderField(valF3, "PCB Version")
 
-	// F4: PCA PN - "PCA PN: {value}"
 	valF4, _ := f.GetCellValue(sheetName, "F4")
 	pcaPn = parseHeaderField(valF4, "PCA PN")
 
-	// H3: Version - "BOM Version: {value}"
 	valH3, _ := f.GetCellValue(sheetName, "H3")
 	version = parseHeaderField(valH3, "BOM Version", "Version")
 
-	// H4: Date - "Date: {value}"
 	valH4, _ := f.GetCellValue(sheetName, "H4")
 	date = parseHeaderField(valH4, "Date")
 
 	if r.logger != nil {
-		r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 取得 Project Code: %s", projectCode))
-		r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 取得 Phase: %s", phase))
-		r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 取得 Version: %s", version))
-		r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 取得 Description: %s", description))
+		r.logger.Debug(fmt.Sprintf("[EBOM] 表頭解析: ProjectCode=%s, Phase=%s, Version=%s", projectCode, phase, version))
 	}
 
 	return phase, version, description, schematicVersion, pcbVersion, pcaPn, date, projectCode, nil
 }
 
-type parsedSecondSource struct {
-	partIndex    int
-	secondSource db.SecondSource
-}
-
-// parseSheet parses data rows from a sheet according to product-spec section 7.1.2
-func (r *EBOMReader) parseSheet(f Workbook, sheetName, sheetType string, basePartIndices ...int) ([]db.Part, []parsedSecondSource) {
-	basePartIndex := 0
-	if len(basePartIndices) > 0 {
-		basePartIndex = basePartIndices[0]
-	}
-
-	rows, err := f.GetRows(sheetName)
-	if err != nil {
-		return nil, nil
-	}
-
-	var parts []db.Part
-	var secondSources []parsedSecondSource
-
-	currentMainPartIndex := -1
-	var currentMainItem string
-	var currentMainHHPN string
-
-	// 根據 product-spec 7.1.2，從 Row 6 (Index 5) 開始往下逐行讀取
-	for i := 5; i < len(rows); i++ {
-		row := rows[i]
-		if len(row) == 0 {
-			continue
-		}
-
-		// A: Item (Index 0)
-		item := safeGetCol(row, 0)
-		// B: HHPN (Index 1)
-		hhpn := safeGetCol(row, 1)
-		// E: Description (Index 4) -- C, D 欄跳過
-		description := safeGetCol(row, 4)
-		// F: Supplier (Index 5)
-		supplier := safeGetCol(row, 5)
-		// G: Supplier PN (Index 6)
-		supplierPN := safeGetCol(row, 6)
-		// H: Quantity (Index 7)
-		qtyStr := safeGetCol(row, 7)
-		// I: Location (Index 8)
-		locationStr := safeGetCol(row, 8)
-		// J: CCL (Index 9)
-		ccl := safeGetCol(row, 9)
-		// L: Remark (Index 11) -- K 欄跳過
-		remark := safeGetCol(row, 11)
-
-		// 判定是否為零件資料：必須 Supplier 與 Supplier PN 同時存在且不為空白（避免讀取統計列或非零件資料）
-		if strings.TrimSpace(supplier) == "" || strings.TrimSpace(supplierPN) == "" {
-			continue
-		}
-
-		if item != "" {
-			// Main Source (主料: item 有值)
-			var part db.Part
-			part.Item = item
-			part.HHPN = hhpn
-			part.Description = description
-			part.Supplier = supplier
-			part.SupplierPN = supplierPN
-
-			if q, err := strconv.Atoi(qtyStr); err == nil {
-				part.Quantity = q
-			}
-
-			if locationStr != "" {
-				part.Location = r.atomizeLocation(locationStr)
-			}
-
-			part.CCL = ccl
-			part.Remark = remark
-			part.Type = sheetType
-			part.BOMStatus = "I" // 預設 Install
-
-			parts = append(parts, part)
-			currentMainPartIndex = basePartIndex + len(parts) - 1
-			currentMainItem = part.Item
-			currentMainHHPN = part.HHPN
-
-			if r.logger != nil {
-				r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析主料 (Main Source)", sheetName),
-					"item", part.Item,
-					"hhpn", part.HHPN,
-					"description", part.Description,
-					"supplier", part.Supplier,
-					"supplierPN", part.SupplierPN,
-					"qty", part.Quantity,
-					"location", part.Location,
-					"remark", part.Remark,
-					"type", part.Type,
-					"bom_status", part.BOMStatus,
-					"ccl", part.CCL,
-				)
-			}
-		} else if currentMainPartIndex >= 0 {
-			// 2nd Source (二源: item 為空且跟隨在 Main Source 之後)
-			var source db.SecondSource
-			source.HHPN = hhpn
-			source.Description = description
-			source.Supplier = supplier
-			source.SupplierPN = supplierPN
-
-			secondSources = append(secondSources, parsedSecondSource{
-				partIndex:    currentMainPartIndex,
-				secondSource: source,
-			})
-
-			if r.logger != nil {
-				r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析二源 (2nd Source)", sheetName),
-					"mainItem", currentMainItem,
-					"mainHHPN", currentMainHHPN,
-					"hhpn", source.HHPN,
-					"description", source.Description,
-					"supplier", source.Supplier,
-					"supplierPN", source.SupplierPN,
-					"remark", remark,
-				)
-			}
-		}
-	}
-
-	return parts, secondSources
-}
-
-// safeGetCol safely retrieves a column value from a row slice, returning empty string if index is out of bounds
+// safeGetCol 安全取得 row 中指定欄位的值（超出範圍回傳空字串）
 func safeGetCol(row []string, colIndex int) string {
 	if colIndex >= 0 && colIndex < len(row) {
 		return strings.TrimSpace(row[colIndex])
@@ -410,88 +312,192 @@ func safeGetCol(row []string, colIndex int) string {
 	return ""
 }
 
-// parsePartRow parses a single part data row from row slice
-func (r *EBOMReader) parsePartRow(row []string, sheetType string) db.Part {
-	var part db.Part
-
-	// A: Item
-	part.Item = safeGetCol(row, 0)
-	// B: HHPN
-	part.HHPN = safeGetCol(row, 1)
-	// E: Description
-	part.Description = safeGetCol(row, 4)
-	// F: Supplier
-	part.Supplier = safeGetCol(row, 5)
-	// G: Supplier PN
-	part.SupplierPN = safeGetCol(row, 6)
-
-	// H: Quantity
-	qtyStr := safeGetCol(row, 7)
-	if q, err := strconv.Atoi(qtyStr); err == nil {
-		part.Quantity = q
-	}
-
-	// I: Location (comma-separated)
-	locationStr := safeGetCol(row, 8)
-	if locationStr != "" {
-		part.Location = r.atomizeLocation(locationStr)
-	}
-
-	// J: CCL
-	part.CCL = safeGetCol(row, 9)
-
-	// L: Remark
-	part.Remark = safeGetCol(row, 11)
-
-	// Set type based on sheet
-	part.Type = sheetType
-
-	// Set default BOM status
-	part.BOMStatus = "I"
-
-	return part
-}
-
-// atomizeLocation splits comma-separated locations into individual entries
-// See product-spec section 7.1.4
-func (r *EBOMReader) atomizeLocation(locationStr string) string {
-	parts := strings.Split(locationStr, ",")
-	var atomized []string
-	for _, p := range parts {
+// atomizeLocations 將逗號分隔的 location 字串拆分為獨立的 location 陣列
+// 例如 "C1, C2, C3" → ["C1", "C2", "C3"]
+func atomizeLocations(locationStr string) []string {
+	raw := strings.Split(locationStr, ",")
+	result := make([]string, 0, len(raw))
+	for _, p := range raw {
 		trimmed := strings.TrimSpace(p)
 		if trimmed != "" {
-			atomized = append(atomized, trimmed)
+			result = append(result, trimmed)
 		}
 	}
-	return strings.Join(atomized, ",")
+	return result
 }
 
-// parseSecondSourceRow parses a second source row from row slice
-func (r *EBOMReader) parseSecondSourceRow(row []string) db.SecondSource {
-	var source db.SecondSource
-
-	// B: HHPN
-	source.HHPN = safeGetCol(row, 1)
-	// E: Description
-	source.Description = safeGetCol(row, 4)
-	// F: Supplier
-	source.Supplier = safeGetCol(row, 5)
-	// G: Supplier PN
-	source.SupplierPN = safeGetCol(row, 6)
-
-	return source
+// determineMode 根據 Phase 2 的 location 與 Phase 1 已建立的 location 判斷 BOM Mode。
+//
+// 判斷規則：
+//   - 若 PROTO 任一 location 存在於 Phase 1 → NPI
+//   - 若 MP 任一 location 存在於 Phase 1 → MP
+//   - 否則預設 NPI
+func determineMode(phase1LocationSet map[string]bool, protoLocations, mpLocations []string) string {
+	for _, loc := range protoLocations {
+		if phase1LocationSet[loc] {
+			return "NPI"
+		}
+	}
+	for _, loc := range mpLocations {
+		if phase1LocationSet[loc] {
+			return "MP"
+		}
+	}
+	return "NPI" // 預設
 }
 
-// parseStatusSheet parses NI/PROTO/MP sheets according to product-spec section 7.1.5
-func (r *EBOMReader) parseStatusSheet(f Workbook, sheetName, bomStatus string) []db.Part {
+// ─── Phase 1 解析函數 ────────────────────────────────────────────────────────
+
+// parsedSecondSource 暫存解析到的替代料，並記錄關聯主料在 partList 中的索引
+type parsedSecondSource struct {
+	partPtr      *db.Part // 指向對應主料的指標（用於取得儲存後的 ID）
+	secondSource db.SecondSource
+}
+
+// parseMainSheet 解析主製程 sheet（SMD / PTH / BOTTOM）。
+//
+// 採用 partMap 去重：同一 (supplier, supplier_pn) 只建一筆 Part。
+// 每個 location 原子化，建立 PartLocation（BomStatus='I'）。
+// 若 Excel 中 CCL 欄位有值（Y/y），則對應 PartLocation 設 CCL=true。
+//
+// 參數：
+//   - f：Workbook 介面
+//   - sheetName：工作表名稱
+//   - sheetType：製程類型（SMD / PTH / BOTTOM）
+//   - partMap：(supplier|supplier_pn) → *db.Part 去重映射（跨 sheet 共用）
+//   - partList：Part 指標列表（跨 sheet 累加）
+//
+// 回傳：新增的 Part 指標列表、PartLocation 指標列表、SecondSource 列表
+func (r *EBOMReader) parseMainSheet(
+	f Workbook,
+	sheetName, sheetType string,
+	partMap map[string]*db.Part,
+	partList *[]*db.Part,
+) ([]*db.Part, []*db.PartLocation, []parsedSecondSource) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
-		return nil
+		return nil, nil, nil
 	}
 
-	var parts []db.Part
+	var newParts []*db.Part
+	var locationList []*db.PartLocation
+	var secondSources []parsedSecondSource
 
-	// 從 Row 6 (Index 5) 開始往下讀取
+	var currentMainPart *db.Part // 追蹤當前主料（用於判斷替代料）
+
+	// 從 Row 6（Index 5）開始讀取資料列
+	for i := 5; i < len(rows); i++ {
+		row := rows[i]
+		if len(row) == 0 {
+			continue
+		}
+
+		// 欄位對應（EBOM 格式）：
+		// A(0)=Item, B(1)=HHPN, E(4)=Description, F(5)=Supplier, G(6)=SupplierPN
+		// H(7)=Qty, I(8)=Location, J(9)=CCL, L(11)=Remark
+		item := safeGetCol(row, 0)
+		hhpn := safeGetCol(row, 1)
+		description := safeGetCol(row, 4)
+		supplier := safeGetCol(row, 5)
+		supplierPN := safeGetCol(row, 6)
+		locationStr := safeGetCol(row, 8)
+		cclVal := safeGetCol(row, 9)
+		remark := safeGetCol(row, 11)
+
+		// Supplier 與 SupplierPN 同時存在才視為有效零件資料
+		if supplier == "" || supplierPN == "" {
+			continue
+		}
+
+		if item != "" {
+			// 主料（Main Source）：item 欄位有值
+			key := supplier + "|" + supplierPN
+			part, exists := partMap[key]
+			if !exists {
+				// 此 (supplier, supplier_pn) 尚未出現：建立新 Part
+				part = &db.Part{
+					RevisionID:  r.revisionID,
+					Type:        sheetType,
+					Item:        item,
+					HHPN:        hhpn,
+					Supplier:    supplier,
+					SupplierPN:  supplierPN,
+					Description: description,
+					Cost:        parseCostStr(safeGetCol(row, 10)),
+					Remark:      remark,
+				}
+				partMap[key] = part
+				*partList = append(*partList, part)
+				newParts = append(newParts, part)
+			}
+			currentMainPart = part
+
+			// CCL 欄位判斷：Y/y 表示此物料為 CCL
+			isCCL := strings.EqualFold(cclVal, "Y")
+
+			// 原子化 location 並建立 PartLocation
+			for _, loc := range atomizeLocations(locationStr) {
+				locationList = append(locationList, &db.PartLocation{
+					// PartID 在儲存後才能回填，此處透過 part 指標追蹤
+					Location:  loc,
+					BomStatus: "I",
+					CCL:       isCCL,
+				})
+				// 暫存對應的 Part 指標，儲存後再填入 PartID
+				_ = part // 後續在 saveParts 中透過 locationList 與 partList 的對應關係填入
+			}
+
+			// 將 location 與 part 的對應關係儲存在 locationList 中
+			// 為了能在 saveParts 填入 PartID，我們在結構體擴展欄位中暫存 part 指標
+			// 但 db.PartLocation 沒有 Part 指標欄位 → 改用 parsedPartLocation 內部結構
+			// 重新整理：使用 parsedPartLocation 取代 *db.PartLocation
+			// （見下方 parsedPartLocation 結構定義及重構）
+
+		} else if currentMainPart != nil {
+			// 替代料（2nd Source）：item 為空且跟隨主料
+			source := db.SecondSource{
+				RevisionID:  r.revisionID,
+				HHPN:        hhpn,
+				Supplier:    supplier,
+				SupplierPN:  supplierPN,
+				Description: description,
+			}
+			secondSources = append(secondSources, parsedSecondSource{
+				partPtr:      currentMainPart,
+				secondSource: source,
+			})
+		}
+	}
+
+	return newParts, locationList, secondSources
+}
+
+// parsedPartLocation 內部結構：暫存原子化 location 及其關聯的 Part 指標
+// 用於在批次儲存 Part 後，正確填入 PartID
+type parsedPartLocation struct {
+	partPtr  *db.Part
+	location string
+	bomStatus string
+	ccl       bool
+}
+
+// parseMainSheetV2 解析主製程 sheet，回傳 parsedPartLocation 列表（修正版）
+// 此函數取代 parseMainSheet 中關於 locationList 的部分，以正確追蹤 Part 指標
+func (r *EBOMReader) parseMainSheetV2(
+	f Workbook,
+	sheetName, sheetType string,
+	partMap map[string]*db.Part,
+	partList *[]*db.Part,
+) ([]parsedPartLocation, []parsedSecondSource) {
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return nil, nil
+	}
+
+	var locationList []parsedPartLocation
+	var secondSources []parsedSecondSource
+	var currentMainPart *db.Part
+
 	for i := 5; i < len(rows); i++ {
 		row := rows[i]
 		if len(row) == 0 {
@@ -503,88 +509,286 @@ func (r *EBOMReader) parseStatusSheet(f Workbook, sheetName, bomStatus string) [
 		description := safeGetCol(row, 4)
 		supplier := safeGetCol(row, 5)
 		supplierPN := safeGetCol(row, 6)
-		qtyStr := safeGetCol(row, 7)
 		locationStr := safeGetCol(row, 8)
-		ccl := safeGetCol(row, 9)
+		cclVal := safeGetCol(row, 9)
 		remark := safeGetCol(row, 11)
 
-		// 判定是否為零件資料：必須 Supplier 與 Supplier PN 同時存在且不為空白（避免讀取統計列或非零件資料）
-		if strings.TrimSpace(supplier) == "" || strings.TrimSpace(supplierPN) == "" {
+		if supplier == "" || supplierPN == "" {
 			continue
 		}
 
-		part := db.Part{
-			Type:        "",
-			BOMStatus:   bomStatus,
-			Item:        item,
-			HHPN:        hhpn,
-			Description: description,
-			Supplier:    supplier,
-			SupplierPN:  supplierPN,
-			CCL:         ccl,
-			Remark:      remark,
-		}
+		if item != "" {
+			// 主料
+			key := supplier + "|" + supplierPN
+			part, exists := partMap[key]
+			if !exists {
+				part = &db.Part{
+					RevisionID:  r.revisionID,
+					Type:        sheetType,
+					Item:        item,
+					HHPN:        hhpn,
+					Supplier:    supplier,
+					SupplierPN:  supplierPN,
+					Description: description,
+					Cost:        parseCostStr(safeGetCol(row, 10)),
+					Remark:      remark,
+				}
+				partMap[key] = part
+				*partList = append(*partList, part)
+			}
+			currentMainPart = part
 
-		if q, err := strconv.Atoi(qtyStr); err == nil {
-			part.Quantity = q
-		}
+			isCCL := strings.EqualFold(cclVal, "Y")
+			for _, loc := range atomizeLocations(locationStr) {
+				locationList = append(locationList, parsedPartLocation{
+					partPtr:   part,
+					location:  loc,
+					bomStatus: "I",
+					ccl:       isCCL,
+				})
+			}
 
-		if locationStr != "" {
-			part.Location = r.atomizeLocation(locationStr)
-		}
+			if r.logger != nil {
+				r.logger.Debug(fmt.Sprintf("[EBOM Phase1] 主料: %s / %s, type=%s, locations=%s", supplier, supplierPN, sheetType, locationStr))
+			}
+		} else if currentMainPart != nil {
+			// 替代料
+			source := db.SecondSource{
+				RevisionID:  r.revisionID,
+				HHPN:        hhpn,
+				Supplier:    supplier,
+				SupplierPN:  supplierPN,
+				Description: description,
+			}
+			secondSources = append(secondSources, parsedSecondSource{
+				partPtr:      currentMainPart,
+				secondSource: source,
+			})
 
-		parts = append(parts, part)
-
-		if r.logger != nil {
-			r.logger.Debug(fmt.Sprintf("[EBOM 讀取] 工作表 [%s] 解析狀態頁零件", sheetName),
-				"item", part.Item,
-				"hhpn", part.HHPN,
-				"description", part.Description,
-				"supplier", part.Supplier,
-				"supplierPN", part.SupplierPN,
-				"qty", part.Quantity,
-				"location", part.Location,
-				"remark", part.Remark,
-				"type", part.Type,
-				"bom_status", part.BOMStatus,
-				"ccl", part.CCL,
-			)
+			if r.logger != nil {
+				r.logger.Debug(fmt.Sprintf("[EBOM Phase1] 替代料: %s / %s", supplier, supplierPN))
+			}
 		}
 	}
 
-	return parts
+	return locationList, secondSources
 }
 
-// createOrUpdateRevision creates or updates a BOM revision
-// Returns the revision ID
+// parseNISheet 解析 NI sheet（不上件），建立 PartLocation（BomStatus='X'）。
+// 若 (supplier, supplier_pn) 在 partMap 中已存在，重用既有 Part；否則建立新 Part（Type=''）。
+func (r *EBOMReader) parseNISheet(
+	f Workbook,
+	sheetName string,
+	partMap map[string]*db.Part,
+	partList *[]*db.Part,
+) []parsedPartLocation {
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return nil
+	}
+
+	var locationList []parsedPartLocation
+
+	for i := 5; i < len(rows); i++ {
+		row := rows[i]
+		if len(row) == 0 {
+			continue
+		}
+
+		hhpn := safeGetCol(row, 1)
+		description := safeGetCol(row, 4)
+		supplier := safeGetCol(row, 5)
+		supplierPN := safeGetCol(row, 6)
+		locationStr := safeGetCol(row, 8)
+
+		if supplier == "" || supplierPN == "" {
+			continue
+		}
+
+		key := supplier + "|" + supplierPN
+		part, exists := partMap[key]
+		if !exists {
+			// NI 物料在主製程中未出現，建立新 Part（Type 為空，表示無製程類型）
+			part = &db.Part{
+				RevisionID:  r.revisionID,
+				Type:        "",
+				HHPN:        hhpn,
+				Supplier:    supplier,
+				SupplierPN:  supplierPN,
+				Description: description,
+			}
+			partMap[key] = part
+			*partList = append(*partList, part)
+		}
+
+		for _, loc := range atomizeLocations(locationStr) {
+			locationList = append(locationList, parsedPartLocation{
+				partPtr:   part,
+				location:  loc,
+				bomStatus: "X",
+				ccl:       false,
+			})
+		}
+
+		if r.logger != nil {
+			r.logger.Debug(fmt.Sprintf("[EBOM Phase1] NI 物料: %s / %s, locations=%s", supplier, supplierPN, locationStr))
+		}
+	}
+
+	return locationList
+}
+
+// parsePhase2Sheet 解析 Phase 2 狀態 sheet（PROTO / MP / CCL），僅收集 location 字串清單。
+// Phase 2 不建立新物料，只回傳要更新的 location 列表。
+func (r *EBOMReader) parsePhase2Sheet(f Workbook, sheetName string) []string {
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return nil
+	}
+
+	var locations []string
+	for i := 5; i < len(rows); i++ {
+		row := rows[i]
+		if len(row) == 0 {
+			continue
+		}
+		supplier := safeGetCol(row, 5)
+		supplierPN := safeGetCol(row, 6)
+		if supplier == "" || supplierPN == "" {
+			continue
+		}
+		locationStr := safeGetCol(row, 8)
+		locations = append(locations, atomizeLocations(locationStr)...)
+	}
+	return locations
+}
+
+// parseCostStr 解析 Cost 字串為 float64，解析失敗回傳 0
+func parseCostStr(s string) float64 {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0
+	}
+	return v
+}
+
+// ─── 儲存函數 ────────────────────────────────────────────────────────────────
+
+// saveParts 將 Phase 1 解析到的 Part / PartLocation / SecondSource 儲存至資料庫。
+//
+// 流程：
+//  1. 刪除此 Revision 的舊 Part（CASCADE 自動刪除 PartLocations）
+//  2. 批次插入去重後的 Parts（GORM 回填 ID）
+//  3. 依 Part 指標填入 PartID，批次插入 PartLocations
+//  4. 依 Part 指標填入 PartID，批次插入 SecondSources
+func (r *EBOMReader) saveParts(
+	partList []*db.Part,
+	locationList []parsedPartLocation,
+	parsedSSList []parsedSecondSource,
+) ([]db.PartLocation, []db.SecondSource, error) {
+	if r.revisionID == 0 {
+		return nil, nil, errors.New("revision ID not set")
+	}
+
+	// Step 1: 刪除舊資料（CASCADE 自動刪除 PartLocations）
+	if err := r.db.Where("revision_id = ?", r.revisionID).Delete(&db.Part{}).Error; err != nil {
+		return nil, nil, fmt.Errorf("刪除舊 Part 失敗: %w", err)
+	}
+
+	// Step 2: 批次插入 Parts（GORM 回填 ID）
+	if len(partList) > 0 {
+		// 轉為非指標切片以便 GORM CreateInBatches
+		parts := make([]db.Part, len(partList))
+		for i, p := range partList {
+			p.RevisionID = r.revisionID
+			parts[i] = *p
+		}
+		if err := r.db.CreateInBatches(&parts, 500).Error; err != nil {
+			return nil, nil, fmt.Errorf("批次插入 Part 失敗: %w", err)
+		}
+		// 回填 ID 至 partList 指標（供後續 PartLocation / SecondSource 使用）
+		for i, p := range partList {
+			p.ID = parts[i].ID
+		}
+	}
+
+	// Step 3: 填入 PartID 並批次插入 PartLocations
+	locations := make([]db.PartLocation, 0, len(locationList))
+	for _, pl := range locationList {
+		if pl.partPtr == nil || pl.partPtr.ID == 0 {
+			continue
+		}
+		locations = append(locations, db.PartLocation{
+			PartID:    pl.partPtr.ID,
+			Location:  pl.location,
+			BomStatus: pl.bomStatus,
+			CCL:       pl.ccl,
+		})
+	}
+	if err := db.CreatePartLocationsInBatch(r.db, locations); err != nil {
+		return nil, nil, fmt.Errorf("批次插入 PartLocation 失敗: %w", err)
+	}
+
+	// Step 4: 填入 PartID 並批次插入 SecondSources
+	secondSources := make([]db.SecondSource, 0, len(parsedSSList))
+	for _, pss := range parsedSSList {
+		if pss.partPtr == nil || pss.partPtr.ID == 0 {
+			continue
+		}
+		ss := pss.secondSource
+		ss.RevisionID = r.revisionID
+		ss.PartID = pss.partPtr.ID
+		secondSources = append(secondSources, ss)
+	}
+	if len(secondSources) > 0 {
+		if err := r.db.CreateInBatches(&secondSources, 500).Error; err != nil {
+			return nil, nil, fmt.Errorf("批次插入 SecondSource 失敗: %w", err)
+		}
+	}
+
+	if r.logger != nil {
+		r.logger.Info("[EBOM] 資料儲存完成",
+			"parts", len(partList),
+			"locations", len(locations),
+			"secondSources", len(secondSources),
+		)
+	}
+
+	return locations, secondSources, nil
+}
+
+// ─── Revision 管理 ───────────────────────────────────────────────────────────
+
+// createOrUpdateRevision 建立或更新 BomRevision 記錄，回傳 Revision ID
 func (r *EBOMReader) createOrUpdateRevision(projectCode, phase, version, description, schematicVersion, pcbVersion, pcaPn, date string) (int64, error) {
 	if r.db == nil {
 		return 0, errors.New("db is nil")
 	}
 
-	// Find active series
 	series, err := db.GetSeriesInfo(r.db)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get active series: %w", err)
+		return 0, fmt.Errorf("取得 Series 失敗: %w", err)
 	}
 
-	// Find or create project with valid SeriesID
 	projectPtr, err := db.GetOrCreateProject(r.db, series.ID, projectCode, description)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get or create project: %w", err)
+		return 0, fmt.Errorf("取得/建立 Project 失敗: %w", err)
 	}
 	project := *projectPtr
 
-	// Find existing revision
 	var existing db.BomRevision
 	err = r.db.Where("project_id = ? AND phase = ? AND version = ?",
 		project.ID, phase, version).
 		First(&existing).Error
 
 	if err == nil {
-		// Update existing revision
+		// 更新既有 Revision
 		if r.logger != nil {
-			r.logger.Info("BOM 覆蓋: 更新現有版本", "project", projectCode, "phase", phase, "version", version)
+			r.logger.Info("BOM 覆蓋：更新現有版本", "project", projectCode, "phase", phase, "version", version)
 		}
 		existing.Description = description
 		existing.SchematicVersion = schematicVersion
@@ -602,7 +806,7 @@ func (r *EBOMReader) createOrUpdateRevision(projectCode, phase, version, descrip
 		return 0, err
 	}
 
-	// Create new revision
+	// 建立新 Revision
 	revision := db.BomRevision{
 		ProjectID:        project.ID,
 		Phase:            phase,
@@ -612,199 +816,128 @@ func (r *EBOMReader) createOrUpdateRevision(projectCode, phase, version, descrip
 		PCBVersion:       pcbVersion,
 		PCAPN:            pcaPn,
 		Date:             date,
+		Mode:             "NPI", // 預設，Phase 2 後會更新
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}
-
 	if err := r.db.Create(&revision).Error; err != nil {
 		return 0, err
 	}
 
 	if r.logger != nil {
-		r.logger.Info("BOM 新增: 建立全新版本", "project", projectCode, "phase", phase, "version", version)
+		r.logger.Info("BOM 新增：建立全新版本", "project", projectCode, "phase", phase, "version", version)
 	}
 
 	return revision.ID, nil
 }
 
-// saveParts saves all parts and second sources to the database
-func (r *EBOMReader) saveParts(parts []db.Part, parsedSecondSources []parsedSecondSource) ([]db.SecondSource, error) {
-	if r.revisionID == 0 {
-		return nil, errors.New("revision ID not set")
-	}
+// ─── Merge 演算法（替代料 diff）───────────────────────────────────────────────
 
-	// Set RevisionID for all parts
-	for i := range parts {
-		parts[i].RevisionID = r.revisionID
-	}
-
-	// Delete old parts for this revision
-	// See product-spec section 7.0.1
-	if err := r.db.Where("revision_id = ?", r.revisionID).Delete(&db.Part{}).Error; err != nil {
-		return nil, err
-	}
-
-	// Batch insert new parts - GORM assigns parts[i].ID
-	if len(parts) > 0 {
-		if err := r.db.CreateInBatches(&parts, 500).Error; err != nil {
-			return nil, err
-		}
-	}
-
-	// Now map second sources to parent parts' newly generated DB IDs
-	secondSources := make([]db.SecondSource, 0, len(parsedSecondSources))
-	for _, pss := range parsedSecondSources {
-		ss := pss.secondSource
-		ss.RevisionID = r.revisionID
-		if pss.partIndex >= 0 && pss.partIndex < len(parts) {
-			ss.PartID = parts[pss.partIndex].ID
-		}
-		secondSources = append(secondSources, ss)
-	}
-
-	// Batch insert second sources
-	if len(secondSources) > 0 {
-		if err := r.db.CreateInBatches(&secondSources, 500).Error; err != nil {
-			return nil, err
-		}
-	}
-
-	return secondSources, nil
-}
-
-// applyMergeAlgorithm applies the merge algorithm for EBOM re-import
-// See product-spec section 7.1.7
+// applyMergeAlgorithm 執行替代料 diff（重新匯入時保持使用者對替代料的手動修改）
 func (r *EBOMReader) applyMergeAlgorithm(revisionID int64, newSecondSources []db.SecondSource) error {
-	// Step 1: Update BomRevision metadata (already done in createOrUpdateRevision)
-
-	// Step 2: Parts are already deleted and recreated (in saveParts)
-
-	// Step 3: Diff SecondSources
-	// Load old second sources
+	// 載入舊的替代料
 	var oldSecondSources []db.SecondSource
 	if err := r.db.Where("revision_id = ?", revisionID).Find(&oldSecondSources).Error; err != nil {
 		return err
 	}
-	// Group by (main_supplier, main_supplier_pn) - using the Part's supplier info
+
+	// 建立舊替代料的 group 映射（主料 groupKey → []SecondSource）
 	oldGroups := make(map[string][]db.SecondSource)
 	for _, ss := range oldSecondSources {
-		// Get the main part's supplier info for the group key
 		var mainPart db.Part
 		if err := r.db.Where("id = ?", ss.PartID).First(&mainPart).Error; err != nil {
 			if r.logger != nil {
-				r.logger.Warn("Diff 二源料件時未找到對應主料件", "partID", ss.PartID, "error", err)
+				r.logger.Warn("Diff 替代料時未找到對應主料", "partID", ss.PartID, "error", err)
 			}
 			continue
 		}
-		key := fmt.Sprintf("%s|%s", mainPart.Supplier, mainPart.SupplierPN)
+		key := mainPart.Supplier + "|" + mainPart.SupplierPN
 		oldGroups[key] = append(oldGroups[key], ss)
 	}
 
-	// Group new second sources by main part
+	// 建立新替代料的 group 映射
 	newGroups := make(map[string][]db.SecondSource)
 	for _, ss := range newSecondSources {
-		// Get the main part's supplier info for the group key
 		var mainPart db.Part
 		if err := r.db.Where("id = ?", ss.PartID).First(&mainPart).Error; err != nil {
 			if r.logger != nil {
-				r.logger.Warn("Diff 新二源料件時未找到對應主料件", "partID", ss.PartID, "error", err)
+				r.logger.Warn("Diff 新替代料時未找到對應主料", "partID", ss.PartID, "error", err)
 			}
 			continue
 		}
-		key := fmt.Sprintf("%s|%s", mainPart.Supplier, mainPart.SupplierPN)
+		key := mainPart.Supplier + "|" + mainPart.SupplierPN
 		newGroups[key] = append(newGroups[key], ss)
 	}
 
-	// Find groups to delete and update
 	var groupsToDelete []string
 	var secondSourcesToDelete []db.SecondSource
 	var secondSourcesToUpdate []db.SecondSource
 	var secondSourcesToCreate []db.SecondSource
 
-	// Check old groups
 	for key, oldSrcs := range oldGroups {
 		if _, exists := newGroups[key]; !exists {
-			// Group no longer exists - delete all
 			groupsToDelete = append(groupsToDelete, key)
 			secondSourcesToDelete = append(secondSourcesToDelete, oldSrcs...)
 		} else {
-			// Group exists - diff individual sources
 			newSrcs := newGroups[key]
 			oldMap := make(map[string]db.SecondSource)
 			for _, ss := range oldSrcs {
-				srcKey := fmt.Sprintf("%s|%s", ss.Supplier, ss.SupplierPN)
-				oldMap[srcKey] = ss
+				oldMap[ss.Supplier+"|"+ss.SupplierPN] = ss
 			}
 			newMap := make(map[string]db.SecondSource)
 			for _, ss := range newSrcs {
-				srcKey := fmt.Sprintf("%s|%s", ss.Supplier, ss.SupplierPN)
-				newMap[srcKey] = ss
+				newMap[ss.Supplier+"|"+ss.SupplierPN] = ss
 			}
-
-			// Find deleted sources
 			for srcKey, oldSS := range oldMap {
 				if _, exists := newMap[srcKey]; !exists {
 					secondSourcesToDelete = append(secondSourcesToDelete, oldSS)
 				}
 			}
-
-			// Find new sources and updates
 			for srcKey, newSS := range newMap {
 				if _, exists := oldMap[srcKey]; !exists {
 					secondSourcesToCreate = append(secondSourcesToCreate, newSS)
 				} else {
-					// Update existing - use the oldSS ID to update
 					oldSS := oldMap[srcKey]
-					// Update the fields that might have changed
 					oldSS.Description = newSS.Description
-					oldSS.Supplier = newSS.Supplier
-					oldSS.SupplierPN = newSS.SupplierPN
+					oldSS.HHPN = newSS.HHPN
 					secondSourcesToUpdate = append(secondSourcesToUpdate, oldSS)
 				}
 			}
 		}
 	}
 
-	// Execute deletions
 	if len(secondSourcesToDelete) > 0 {
-		var ids []int64
-		for _, ss := range secondSourcesToDelete {
-			ids = append(ids, ss.ID)
+		ids := make([]int64, len(secondSourcesToDelete))
+		for i, ss := range secondSourcesToDelete {
+			ids[i] = ss.ID
 		}
 		if err := r.db.Where("id IN ?", ids).Delete(&db.SecondSource{}).Error; err != nil {
 			return err
 		}
 	}
-
-	// Execute updates
 	for _, ss := range secondSourcesToUpdate {
 		if err := r.db.Save(&ss).Error; err != nil {
 			return err
 		}
 	}
-
-	// Execute creates
 	if len(secondSourcesToCreate) > 0 {
 		if err := r.db.CreateInBatches(&secondSourcesToCreate, 500).Error; err != nil {
 			return err
 		}
 	}
 
-	// Step 4: Clean invalid MatrixSelections
-	// See product-spec section 7.1.7 step 4
-	removedGroups := groupsToDelete
+	// 清理無效的 MatrixSelection
 	var removedMaterials []string
 	for _, ss := range secondSourcesToDelete {
 		removedMaterials = append(removedMaterials, ss.Supplier+"|"+ss.SupplierPN)
 	}
-
-	return db.DeleteInvalidSelections(r.db, revisionID, removedGroups, removedMaterials)
+	return db.DeleteInvalidSelections(r.db, revisionID, groupsToDelete, removedMaterials)
 }
 
-// autoImportPreviousMatrix automatically imports Matrix selections from previous revision
-// See product-spec section 7.1.8
+// ─── 自動匯入上一版 Matrix Selection ─────────────────────────────────────────
+
+// autoImportPreviousMatrix 自動從上一版 Revision 匯入 Matrix Selection
 func (r *EBOMReader) autoImportPreviousMatrix(revision db.BomRevision) error {
-	// Find previous revision in same project and phase
 	var previous db.BomRevision
 	err := r.db.Where("project_id = ? AND phase = ? AND version < ?",
 		revision.ProjectID, revision.Phase, revision.Version).
@@ -812,13 +945,11 @@ func (r *EBOMReader) autoImportPreviousMatrix(revision db.BomRevision) error {
 		First(&previous).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		// No previous revision found
 		return nil
 	}
 	if err != nil {
 		return err
 	}
 
-	// Import Matrix selections from previous to current
 	return db.ImportMatrixSelections(r.db, previous.ID, revision.ID)
 }

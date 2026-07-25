@@ -207,17 +207,20 @@ func colToCell(col int, row int) string {
 
 // getOrCreateBOMRevision gets or creates a BOM revision in the database
 func (r *BigMatrixReader) getOrCreateBOMRevision(config BOMConfig) (int64, error) {
-	// Find existing revision
-	var revision db.BomRevision
-	err := r.db.Where("project_code = ? AND phase = ? AND version = ?",
-		config.ProjectCode, config.Phase, config.Version).
-		First(&revision).Error
-
+	// Find existing project first
+	var project db.Project
+	err := r.db.Where("code = ?", config.ProjectCode).First(&project).Error
 	if err == nil {
-		return revision.ID, nil
-	}
-
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		var revision db.BomRevision
+		err = r.db.Where("project_id = ? AND phase = ? AND version = ?",
+			project.ID, config.Phase, config.Version).First(&revision).Error
+		if err == nil {
+			return revision.ID, nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, err
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return 0, err
 	}
 
@@ -231,13 +234,14 @@ func (r *BigMatrixReader) getOrCreateBOMRevision(config BOMConfig) (int64, error
 		return 0, fmt.Errorf("failed to get active series: %w", err)
 	}
 
-	projectPtr, err := db.GetOrCreateProject(r.db, series.ID, config.ProjectCode, "Imported from BigMatrix")
+	var projectPtr *db.Project
+	projectPtr, err = db.GetOrCreateProject(r.db, series.ID, config.ProjectCode, "Imported from BigMatrix")
 	if err != nil {
 		return 0, fmt.Errorf("failed to get or create project: %w", err)
 	}
-	project := *projectPtr
+	project = *projectPtr
 
-	revision = db.BomRevision{
+	newRevision := db.BomRevision{
 		ProjectID: project.ID,
 		Phase:     config.Phase,
 		Version:   config.Version,
@@ -245,11 +249,11 @@ func (r *BigMatrixReader) getOrCreateBOMRevision(config BOMConfig) (int64, error
 		UpdatedAt: time.Now(),
 	}
 
-	if err := r.db.Create(&revision).Error; err != nil {
+	if err := r.db.Create(&newRevision).Error; err != nil {
 		return 0, err
 	}
 
-	return revision.ID, nil
+	return newRevision.ID, nil
 }
 
 // parsePartsAndSelections parses parts and their selections across multiple BOMs
@@ -274,8 +278,8 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 		}
 	}
 
-	// Process data rows (starting from row 6)
-	for i := 6; i < len(rows); i++ {
+	// Process data rows (starting from row 6, 0-indexed is 5)
+	for i := 5; i < len(rows); i++ {
 		row := rows[i]
 		if len(row) == 0 {
 			continue
@@ -298,8 +302,8 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 
 				if strings.EqualFold(strings.TrimSpace(cellValue), "V") {
 					// This model selected this part
-					// Find or create the part in database
-					partID, err := r.findOrCreatePart(config.RevisionID, partData)
+					// Find existing part in database (BigMatrix does NOT create parts)
+					partID, err := r.findExistingPart(config.RevisionID, partData.supplier, partData.supplierPN)
 					if err != nil {
 						// Log but continue
 						continue
@@ -427,40 +431,17 @@ func (r *BigMatrixReader) updateModelQty(config BOMConfig) error {
 	return nil
 }
 
-// findOrCreatePart finds or creates a part in the database
-func (r *BigMatrixReader) findOrCreatePart(revisionID int64, data *partData) (int64, error) {
-	// Try to find existing part
+// findExistingPart 依 revisionID, supplier, supplierPN 尋找既有 Part。
+// BigMatrix 匯入不更新/新增任何 Part 資料，若找不到 Part 則回傳錯誤。
+func (r *BigMatrixReader) findExistingPart(revisionID int64, supplier, supplierPN string) (int64, error) {
 	var part db.Part
 	err := r.db.Where("revision_id = ? AND supplier = ? AND supplier_pn = ?",
-		revisionID, data.supplier, data.supplierPN).
+		revisionID, supplier, supplierPN).
 		First(&part).Error
 
-	if err == nil {
-		return part.ID, nil
-	}
-
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil {
 		return 0, err
 	}
-
-	// Create new part
-	part = db.Part{
-		RevisionID:  revisionID,
-		Item:        data.item,
-		HHPN:        data.hhpn,
-		Type:        "Main",
-		Supplier:    data.supplier,
-		SupplierPN:  data.supplierPN,
-		Description: data.description,
-		Location:    data.location,
-		Quantity:    data.qty,
-		BOMStatus:   "I",
-	}
-
-	if err := r.db.Create(&part).Error; err != nil {
-		return 0, err
-	}
-
 	return part.ID, nil
 }
 

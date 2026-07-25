@@ -91,7 +91,7 @@ func TestFilterMatrixParts(t *testing.T) {
 		{
 			Supplier:    "Samsung",
 			SupplierPn:  "CL05B104KO5NNNC",
-			CCL:         "Y",
+			CCL:         true,
 			BOMStatus:   "I",
 			Type:        "SMD",
 			Description: "Test Part 1",
@@ -99,7 +99,7 @@ func TestFilterMatrixParts(t *testing.T) {
 		{
 			Supplier:    "Murata",
 			SupplierPn:  "GRM155B81C105KE19D",
-			CCL:         "Y",
+			CCL:         true,
 			BOMStatus:   "P",
 			Type:        "SMD",
 			Description: "Test Part 2 (NPI)",
@@ -107,7 +107,7 @@ func TestFilterMatrixParts(t *testing.T) {
 		{
 			Supplier:    "Taiyo Yuden",
 			SupplierPn:  "UMK105B7105KV-F",
-			CCL:         "Y",
+			CCL:         true,
 			BOMStatus:   "M",
 			Type:        "PTH",
 			Description: "Test Part 3 (MP)",
@@ -115,7 +115,7 @@ func TestFilterMatrixParts(t *testing.T) {
 		{
 			Supplier:    "Yageo",
 			SupplierPn:  "CC0402KRX7R9BB104",
-			CCL:         "Y",
+			CCL:         true,
 			BOMStatus:   "X",
 			Type:        "SMD",
 			Description: "Test Part 4 (Not Installed)",
@@ -123,7 +123,7 @@ func TestFilterMatrixParts(t *testing.T) {
 		{
 			Supplier:    "Kemet",
 			SupplierPn:  "C0603C104K5RACTU",
-			CCL:         "N",
+			CCL:         false,
 			BOMStatus:   "I",
 			Type:        "SMD",
 			Description: "Test Part 5 (Not CCL)",
@@ -132,7 +132,7 @@ func TestFilterMatrixParts(t *testing.T) {
 
 	// Test filterMatrixParts
 	filtered := filterMatrixParts(parts)
-	// CCL=Y, status!=X: Part 1(I), Part 2(P), Part 3(M) => 3 parts
+	// CCL=true, status!=X: Part 1(I), Part 2(P), Part 3(M) => 3 parts
 	if len(filtered) != 3 {
 		t.Errorf("filterMatrixParts: expected 3 parts, got %d", len(filtered))
 	}
@@ -140,7 +140,7 @@ func TestFilterMatrixParts(t *testing.T) {
 		if p.BOMStatus == "X" {
 			t.Errorf("filterMatrixParts: part %s has invalid status X", p.SupplierPn)
 		}
-		if p.CCL != "Y" {
+		if !p.CCL {
 			t.Errorf("filterMatrixParts: part %s is not CCL", p.SupplierPn)
 		}
 	}
@@ -176,7 +176,7 @@ func TestExportMatrix_Integration(t *testing.T) {
 				Location:    "C1,C2,C3,C4",
 				Type:        "SMD",
 				BOMStatus:   "I",
-				CCL:         "Y",
+				CCL:         true,
 				Remark:      "",
 				Selections: map[string]string{
 					"A": "CL05B104KO5NNNC",
@@ -193,7 +193,7 @@ func TestExportMatrix_Integration(t *testing.T) {
 				Location:    "R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12",
 				Type:        "SMD",
 				BOMStatus:   "I",
-				CCL:         "Y",
+				CCL:         true,
 				Remark:      "",
 				Selections: map[string]string{
 					"A": "RC0603FR-0710KL",
@@ -210,7 +210,7 @@ func TestExportMatrix_Integration(t *testing.T) {
 				Location:    "C5,C6,C7,C8,C9,C10,C11,C12",
 				Type:        "SMD",
 				BOMStatus:   "I",
-				CCL:         "Y",
+				CCL:         true,
 				Remark:      "",
 				Selections: map[string]string{
 					"A": "GRM155B71H104KA12D",

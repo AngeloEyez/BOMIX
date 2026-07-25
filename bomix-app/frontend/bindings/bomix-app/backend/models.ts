@@ -14,6 +14,7 @@ export interface BomRevision {
     "pcbVersion": string;
     "pcaPn": string;
     "date": string;
+    "mode": string;
     "sourceFile": string;
     "modelCount": number;
     "createdAt": string;

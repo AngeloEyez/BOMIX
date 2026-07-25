@@ -559,8 +559,8 @@ func FilterPartsByCriteria(parts []PartData) []PartData {
 	var filtered []PartData
 
 	for _, part := range parts {
-		// Filter by CCL = Y
-		if part.CCL != "Y" {
+		// Filter by CCL = true
+		if !part.CCL {
 			continue
 		}
 

@@ -46,7 +46,7 @@ func makeTestRawData(revID int64) map[int64]*rawRevisionData {
 }
 
 // makeTestPart 快速建立 ViewPartGroup 測試資料
-func makeTestPart(supplier, supplierPN, partType, bomStatus, ccl string, revIDs []int64) ViewPartGroup {
+func makeTestPart(supplier, supplierPN, partType, bomStatus string, ccl bool, revIDs []int64) ViewPartGroup {
 	return ViewPartGroup{
 		MainSupplier:      supplier,
 		MainSupplierPN:    supplierPN,
@@ -62,10 +62,10 @@ func TestFilter_Apply_ALL(t *testing.T) {
 	filter := NewFilter()
 
 	parts := []ViewPartGroup{
-		makeTestPart("S1", "P1", "SMD", "I", "N", []int64{1}),
-		makeTestPart("S2", "P2", "SMD", "P", "N", []int64{1}),
-		makeTestPart("S3", "P3", "SMD", "X", "N", []int64{1}),
-		makeTestPart("S4", "P4", "SMD", "M", "N", []int64{1}),
+		makeTestPart("S1", "P1", "SMD", "I", false, []int64{1}),
+		makeTestPart("S2", "P2", "SMD", "P", false, []int64{1}),
+		makeTestPart("S3", "P3", "SMD", "X", false, []int64{1}),
+		makeTestPart("S4", "P4", "SMD", "M", false, []int64{1}),
 	}
 
 	query := ViewQuery{
@@ -89,10 +89,10 @@ func TestFilter_Apply_TypeFilter(t *testing.T) {
 	filter := NewFilter()
 
 	parts := []ViewPartGroup{
-		makeTestPart("S1", "P1", "SMD", "I", "N", []int64{1}),
-		makeTestPart("S2", "P2", "PTH", "I", "N", []int64{1}),
-		makeTestPart("S3", "P3", "BOTTOM", "I", "N", []int64{1}),
-		makeTestPart("S4", "P4", "SMD", "I", "N", []int64{1}),
+		makeTestPart("S1", "P1", "SMD", "I", false, []int64{1}),
+		makeTestPart("S2", "P2", "PTH", "I", false, []int64{1}),
+		makeTestPart("S3", "P3", "BOTTOM", "I", false, []int64{1}),
+		makeTestPart("S4", "P4", "SMD", "I", false, []int64{1}),
 	}
 
 	cases := []struct {
@@ -123,10 +123,10 @@ func TestFilter_Apply_NI(t *testing.T) {
 	filter := NewFilter()
 
 	parts := []ViewPartGroup{
-		makeTestPart("S1", "P1", "", "I", "N", []int64{1}),
-		makeTestPart("S2", "P2", "", "X", "N", []int64{1}),
-		makeTestPart("S3", "P3", "", "P", "N", []int64{1}),
-		makeTestPart("S4", "P4", "", "M", "N", []int64{1}),
+		makeTestPart("S1", "P1", "", "I", false, []int64{1}),
+		makeTestPart("S2", "P2", "", "X", false, []int64{1}),
+		makeTestPart("S3", "P3", "", "P", false, []int64{1}),
+		makeTestPart("S4", "P4", "", "M", false, []int64{1}),
 	}
 
 	query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewNI}
@@ -145,19 +145,19 @@ func TestFilter_Apply_CCL(t *testing.T) {
 	filter := NewFilter()
 
 	parts := []ViewPartGroup{
-		makeTestPart("S1", "P1", "SMD", "I", "Y", []int64{1}),
-		makeTestPart("S2", "P2", "SMD", "I", "N", []int64{1}),
-		makeTestPart("S3", "P3", "SMD", "I", "Y", []int64{1}),
+		makeTestPart("S1", "P1", "SMD", "I", true, []int64{1}),
+		makeTestPart("S2", "P2", "SMD", "I", false, []int64{1}),
+		makeTestPart("S3", "P3", "SMD", "I", true, []int64{1}),
 	}
 	query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewCCL}
 
 	result := filter.Apply(parts, query)
 	if len(result) != 2 {
-		t.Errorf("CCL 過濾期望 2 個（CCL=Y），實際得到 %d 個", len(result))
+		t.Errorf("CCL 過濾期望 2 個（CCL=true），實際得到 %d 個", len(result))
 	}
 	for _, p := range result {
-		if p.CCL != "Y" {
-			t.Errorf("CCL 視圖不應包含 CCL=%s 的物料", p.CCL)
+		if !p.CCL {
+			t.Errorf("CCL 視圖不應包含 CCL=%v 的物料", p.CCL)
 		}
 	}
 }
@@ -167,8 +167,8 @@ func TestFilter_Apply_EmptyViewType(t *testing.T) {
 	filter := NewFilter()
 
 	parts := []ViewPartGroup{
-		makeTestPart("S1", "P1", "SMD", "I", "N", []int64{1}),
-		makeTestPart("S2", "P2", "SMD", "X", "N", []int64{1}), // X 應被排除
+		makeTestPart("S1", "P1", "SMD", "I", false, []int64{1}),
+		makeTestPart("S2", "P2", "SMD", "X", false, []int64{1}), // X 應被排除
 	}
 	query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ""}
 
@@ -326,8 +326,14 @@ func TestMergeRevisions_LocationAndQtyAggregation(t *testing.T) {
 	rev1Data := &rawRevisionData{
 		revision: db.BomRevision{ID: 1},
 		parts: []db.Part{
-			{ID: 101, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", BOMStatus: "I", CCL: "N", Location: "C1, C2", Item: "1"},
-			{ID: 102, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "PTH", BOMStatus: "I", CCL: "Y", Location: "C2, C3", Item: "1"},
+			{ID: 101, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", Item: "1"},
+			{ID: 102, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "PTH", Item: "1"},
+		},
+		partLocations: []db.PartLocation{
+			{ID: 1, PartID: 101, Location: "C1", BomStatus: "I", CCL: false},
+			{ID: 2, PartID: 101, Location: "C2", BomStatus: "I", CCL: false},
+			{ID: 3, PartID: 102, Location: "C2", BomStatus: "I", CCL: true},
+			{ID: 4, PartID: 102, Location: "C3", BomStatus: "I", CCL: true},
 		},
 	}
 
@@ -358,7 +364,10 @@ func TestMergeRevisions_MultipleRevisionsAnd2ndSources(t *testing.T) {
 	rev1Data := &rawRevisionData{
 		revision: db.BomRevision{ID: 1},
 		parts: []db.Part{
-			{ID: 1, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", BOMStatus: "I", Location: "C1", Item: "1"},
+			{ID: 1, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", Item: "1"},
+		},
+		partLocations: []db.PartLocation{
+			{ID: 1, PartID: 1, Location: "C1", BomStatus: "I", CCL: false},
 		},
 		secondSources: []db.SecondSource{
 			{ID: 10, RevisionID: 1, PartID: 1, Supplier: "Yageo", SupplierPN: "CC0402KRX7R9BB104", HHPN: "HH1001"},
@@ -369,8 +378,12 @@ func TestMergeRevisions_MultipleRevisionsAnd2ndSources(t *testing.T) {
 	rev2Data := &rawRevisionData{
 		revision: db.BomRevision{ID: 2},
 		parts: []db.Part{
-			{ID: 2, RevisionID: 2, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", BOMStatus: "I", Location: "C1", Item: "1"},
-			{ID: 3, RevisionID: 2, Supplier: "Murata", SupplierPN: "GRM155R71C104KA88D", Type: "SMD", BOMStatus: "I", Location: "C5", Item: "2"},
+			{ID: 2, RevisionID: 2, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", Item: "1"},
+			{ID: 3, RevisionID: 2, Supplier: "Murata", SupplierPN: "GRM155R71C104KA88D", Type: "SMD", Item: "2"},
+		},
+		partLocations: []db.PartLocation{
+			{ID: 2, PartID: 2, Location: "C1", BomStatus: "I", CCL: false},
+			{ID: 3, PartID: 3, Location: "C5", BomStatus: "I", CCL: false},
 		},
 		secondSources: []db.SecondSource{
 			{ID: 11, RevisionID: 2, PartID: 2, Supplier: "Yageo", SupplierPN: "CC0402KRX7R9BB104", HHPN: "HH1001"},

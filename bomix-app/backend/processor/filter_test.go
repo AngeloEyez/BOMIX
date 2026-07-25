@@ -18,7 +18,7 @@ func TestFilter_FilterByView(t *testing.T) {
 			MainSupplierPn: "CL05B104KO5NNNC",
 			Type:           "SMD",
 			BOMStatus:      "I",
-			CCL:            "Y",
+			CCL:            true,
 			Locations:      "C1,C2",
 			Qty:            2,
 		},
@@ -27,7 +27,7 @@ func TestFilter_FilterByView(t *testing.T) {
 			MainSupplierPn: "GRM155R71H104KA88D",
 			Type:           "SMD",
 			BOMStatus:      "P",
-			CCL:            "N",
+			CCL:            false,
 			Locations:      "C3",
 			Qty:            1,
 		},
@@ -36,7 +36,7 @@ func TestFilter_FilterByView(t *testing.T) {
 			MainSupplierPn: "CC0603KRX7R9BB224",
 			Type:           "SMD",
 			BOMStatus:      "M",
-			CCL:            "N",
+			CCL:            false,
 			Locations:      "C4",
 			Qty:            1,
 		},
@@ -45,7 +45,7 @@ func TestFilter_FilterByView(t *testing.T) {
 			MainSupplierPn: "C1005X7R1H104K",
 			Type:           "SMD",
 			BOMStatus:      "X",
-			CCL:            "N",
+			CCL:            false,
 			Locations:      "C5",
 			Qty:            1,
 		},
@@ -55,7 +55,7 @@ func TestFilter_FilterByView(t *testing.T) {
 			MainSupplierPn: "T491A105K016AT",
 			Type:           "PTH",
 			BOMStatus:      "I",
-			CCL:            "N",
+			CCL:            false,
 			Locations:      "C6",
 			Qty:            1,
 		},
@@ -64,7 +64,7 @@ func TestFilter_FilterByView(t *testing.T) {
 			MainSupplierPn: "TAJA105K016RNJ",
 			Type:           "PTH",
 			BOMStatus:      "P",
-			CCL:            "N",
+			CCL:            false,
 			Locations:      "C7",
 			Qty:            1,
 		},
@@ -74,7 +74,7 @@ func TestFilter_FilterByView(t *testing.T) {
 			MainSupplierPn: "LUW W5AM",
 			Type:           "BOTTOM",
 			BOMStatus:      "I",
-			CCL:            "Y",
+			CCL:            true,
 			Locations:      "LED1",
 			Qty:            1,
 		},
@@ -83,7 +83,7 @@ func TestFilter_FilterByView(t *testing.T) {
 			MainSupplierPn: "XLamp XP-G",
 			Type:           "BOTTOM",
 			BOMStatus:      "M",
-			CCL:            "N",
+			CCL:            false,
 			Locations:      "LED2",
 			Qty:            1,
 		},
@@ -184,7 +184,7 @@ func TestFilter_FilterByView(t *testing.T) {
 		assert.Len(t, result, 2)
 
 		for _, p := range result {
-			assert.Equal(t, "Y", p.CCL)
+			assert.True(t, p.CCL)
 			assert.NotEqual(t, "X", p.BOMStatus)
 		}
 	})

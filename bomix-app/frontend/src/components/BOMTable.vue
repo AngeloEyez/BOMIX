@@ -94,7 +94,7 @@
       <Column field="ccl" header="CCL" style="width: 80px" sortable>
         <template #body="slotProps">
           <span v-if="slotProps.data.ccl" :class="getCCLClass(slotProps.data.ccl)">
-            {{ slotProps.data.ccl }}
+            Y
           </span>
         </template>
       </Column>
@@ -150,7 +150,7 @@ export interface BOMDisplayRow {
   supplier_pn: string
   qty: string | number
   locations: string
-  ccl: string
+  ccl: boolean
   remark: string
   selections: Record<string, string>
 }
@@ -235,8 +235,8 @@ const sortedAggregatedParts = computed<ViewPartGroup[]>(() => {
       valA = a.qty ?? 0
       valB = b.qty ?? 0
     } else if (field === 'ccl') {
-      valA = a.ccl || ''
-      valB = b.ccl || ''
+      valA = a.ccl ? 1 : 0
+      valB = b.ccl ? 1 : 0
     } else if (field === 'description') {
       valA = a.description || ''
       valB = b.description || ''
@@ -257,6 +257,8 @@ const sortedAggregatedParts = computed<ViewPartGroup[]>(() => {
       } else {
         compareRes = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' })
       }
+    } else if (field === 'ccl') {
+      compareRes = (Number(valA) - Number(valB))
     } else {
       compareRes = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: 'base' })
     }
@@ -310,7 +312,7 @@ const displayRows = computed<BOMDisplayRow[]>(() => {
       supplier_pn: part.main_supplier_pn || '',
       qty: part.qty ?? '',
       locations: part.locations || '',
-      ccl: part.ccl || '',
+      ccl: Boolean(part.ccl),
       remark: part.remark || '',
       selections: selectionsMap,
     })
@@ -331,7 +333,7 @@ const displayRows = computed<BOMDisplayRow[]>(() => {
           supplier_pn: ss.supplier_pn || '',
           qty: '',
           locations: '',
-          ccl: '',
+          ccl: false,
           remark: '',
           selections: selectionsMap,
         })
@@ -415,8 +417,8 @@ function onViewChange(): void {
   }
 }
 
-function getCCLClass(ccl: string): string {
-  return ccl === 'Y' ? 'ccl-critical' : 'ccl-normal'
+function getCCLClass(ccl: boolean): string {
+  return ccl ? 'ccl-critical' : 'ccl-normal'
 }
 
 // Watch for revision changes
