@@ -57,7 +57,7 @@ func makeTestPart(supplier, supplierPN, partType, bomStatus string, ccl bool, re
 	}
 }
 
-// TestFilter_Apply_ALL 測試 ALL 視圖過濾
+// TestFilter_Apply_ALL 測試 ALL 視圖過濾（依據 Mode 包含 I+P 或 I+M）
 func TestFilter_Apply_ALL(t *testing.T) {
 	filter := NewFilter()
 
@@ -68,20 +68,40 @@ func TestFilter_Apply_ALL(t *testing.T) {
 		makeTestPart("S4", "P4", "SMD", "M", false, []int64{1}),
 	}
 
-	query := ViewQuery{
-		RevisionIDs: []int64{1},
-		ViewType:    ViewAll,
-	}
-	result := filter.Apply(parts, query)
-	// ALL 應包含 I, P, M，排除 X (共3個)
-	if len(result) != 3 {
-		t.Errorf("ALL 視圖期望 3 個結果（包含 I, P, M），實際得到 %d 個", len(result))
-	}
-	for _, p := range result {
-		if p.BOMStatus == "X" {
-			t.Errorf("ALL 視圖不應包含 bom_status=X 的物料")
+	t.Run("NPI 模式 (預設)", func(t *testing.T) {
+		query := ViewQuery{
+			RevisionIDs: []int64{1},
+			ViewType:    ViewAll,
 		}
-	}
+		result := filter.Apply(parts, query, "NPI")
+		// NPI 模式下 ALL 應包含 I, P，排除 X, M (共 2 個)
+		if len(result) != 2 {
+			t.Errorf("ALL 視圖 (NPI) 期望 2 個結果（包含 I, P），實際得到 %d 個", len(result))
+		}
+		for _, p := range result {
+			if p.BOMStatus != "I" && p.BOMStatus != "P" {
+				t.Errorf("ALL 視圖 (NPI) 不應包含 bom_status=%s 的物料", p.BOMStatus)
+			}
+		}
+	})
+
+	t.Run("MP 模式", func(t *testing.T) {
+		query := ViewQuery{
+			RevisionIDs:  []int64{1},
+			ViewType:     ViewAll,
+			ModeOverride: "MP",
+		}
+		result := filter.Apply(parts, query)
+		// MP 模式下 ALL 應包含 I, M，排除 X, P (共 2 個)
+		if len(result) != 2 {
+			t.Errorf("ALL 視圖 (MP) 期望 2 個結果（包含 I, M），實際得到 %d 個", len(result))
+		}
+		for _, p := range result {
+			if p.BOMStatus != "I" && p.BOMStatus != "M" {
+				t.Errorf("ALL 視圖 (MP) 不應包含 bom_status=%s 的物料", p.BOMStatus)
+			}
+		}
+	})
 }
 
 // TestFilter_Apply_TypeFilter 測試製程類型過濾

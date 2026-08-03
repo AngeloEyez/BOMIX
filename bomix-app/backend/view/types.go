@@ -35,8 +35,9 @@ const (
 //     傳入多個 ID → 多 revision 整合聯集視圖。
 //   - ViewType：視圖過濾類型，空字串預設為 ALL。
 type ViewQuery struct {
-	RevisionIDs []int64 // 要查詢的 BOM Revision ID 列表（1個=單一視圖，多個=整合視圖）
-	ViewType    string  // 視圖類型：ALL, SMD, PTH, BOTTOM, NI, PROTO, MP, CCL
+	RevisionIDs  []int64 // 要查詢的 BOM Revision ID 列表（1個=單一視圖，多個=整合視圖）
+	ViewType     string  // 視圖類型：ALL, SMD, PTH, BOTTOM, NI, PROTO, MP, CCL
+	ModeOverride string  // 選填：覆寫 BOM 模式 (NPI 或 MP)
 }
 
 // ViewSecondSource 替代料（2nd Source）的視圖 DTO。

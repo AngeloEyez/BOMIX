@@ -112,6 +112,11 @@ export interface ViewQuery {
      * 視圖類型：ALL, SMD, PTH, BOTTOM, NI, PROTO, MP, CCL
      */
     "ViewType": string;
+
+    /**
+     * 選填：覆寫 BOM 模式 (NPI 或 MP)
+     */
+    "ModeOverride": string;
 }
 
 /**

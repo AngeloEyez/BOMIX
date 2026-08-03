@@ -97,9 +97,19 @@ func (s *Service) Query(query ViewQuery) (*ViewResult, error) {
 	// 執行多 revision 聯集合併，建立 ViewPartGroup 列表
 	partGroups := s.mergeRevisions(rawData, query)
 
+	// 取得 Mode（優先使用 query.ModeOverride，若無則從第一份 Revision 取得）
+	mode := "NPI"
+	if query.ModeOverride != "" {
+		mode = strings.ToUpper(strings.TrimSpace(query.ModeOverride))
+	} else if len(query.RevisionIDs) > 0 {
+		if firstData, ok := rawData[query.RevisionIDs[0]]; ok && firstData.revision.Mode != "" {
+			mode = strings.ToUpper(strings.TrimSpace(firstData.revision.Mode))
+		}
+	}
+
 	// 套用視圖過濾
 	filter := NewFilter()
-	partGroups = filter.Apply(partGroups, query)
+	partGroups = filter.Apply(partGroups, query, mode)
 
 	return &ViewResult{
 		Query:      query,
@@ -337,17 +347,15 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			partByID[p.ID] = p
 		}
 
-		// --- 1. 按 Part 收集有效 (bom_status != 'X') 的 PartLocation ---
-		validLocsByPartID := make(map[int64][]db.PartLocation)
+		// --- 1. 按 Part 收集所有 PartLocation（包含 I, X, P, M） ---
+		allLocsByPartID := make(map[int64][]db.PartLocation)
 		for _, loc := range data.partLocations {
-			if isEffectiveBOMStatus(loc.BomStatus) {
-				validLocsByPartID[loc.PartID] = append(validLocsByPartID[loc.PartID], loc)
-			}
+			allLocsByPartID[loc.PartID] = append(allLocsByPartID[loc.PartID], loc)
 		}
 
-		// 找出在此 revision 中含有有效 location 的 Parts
+		// 找出在此 revision 中含有 location 的 Parts
 		validParts := make([]db.Part, 0, len(data.parts))
-		for partID, locs := range validLocsByPartID {
+		for partID, locs := range allLocsByPartID {
 			if len(locs) > 0 {
 				if p, exists := partByID[partID]; exists {
 					validParts = append(validParts, p)
@@ -355,15 +363,15 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			}
 		}
 
-		// --- 2. 處理此 revision 有效主料對應的 SecondSources ---
+		// --- 2. 處理此 revision 主料對應的 SecondSources ---
 		ssByMainKey := make(map[string][]db.SecondSource) // 主料 groupKey → []SecondSource
 		for _, ss := range data.secondSources {
 			mainPart, exists := partByID[ss.PartID]
 			if !exists {
 				continue
 			}
-			// 僅當主料存在有效 Location 時採納替代料
-			if len(validLocsByPartID[mainPart.ID]) > 0 {
+			// 只要主料存在 Location 即採納替代料
+			if len(allLocsByPartID[mainPart.ID]) > 0 {
 				key := groupKey(mainPart.Supplier, mainPart.SupplierPN)
 				ssByMainKey[key] = append(ssByMainKey[key], ss)
 			}
@@ -404,14 +412,19 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				locationsByGroup[key] = make(map[string]bool)
 			}
 
-			locs := validLocsByPartID[p.ID]
+			locs := allLocsByPartID[p.ID]
 			for _, loc := range locs {
 				locationsByGroup[key][loc.Location] = true
 				if loc.CCL {
 					cclByGroup[key] = true
 				}
-				if statusByGroup[key] == "" {
-					statusByGroup[key] = loc.BomStatus
+				// BOMStatus 優先層級：P / M > I > X
+				curStatus := statusByGroup[key]
+				newStatus := loc.BomStatus
+				if curStatus == "" || curStatus == "X" {
+					statusByGroup[key] = newStatus
+				} else if newStatus == "P" || newStatus == "M" {
+					statusByGroup[key] = newStatus
 				}
 			}
 

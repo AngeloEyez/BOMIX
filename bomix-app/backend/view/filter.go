@@ -19,23 +19,31 @@ func NewFilter() *Filter {
 // Apply 根據 ViewQuery 中的 ViewType 過濾 ViewPartGroup 列表。
 //
 // 若 ViewType 為空字串，預設行為等同於 "ALL"。
-// 物料的上件狀態 bom_status（I, X, P, M）獨立過濾，解除對 BOM Mode (NPI/MP) 的依賴。
+// 支援傳入可選的 BOM Mode（NPI 或 MP），用於精確控制 ALL 視圖下包含的狀態（I+P 或 I+M）。
 //
 // 參數：
 //   - parts：待過濾的 ViewPartGroup 列表
-//   - query：查詢參數（包含 ViewType）
+//   - query：查詢參數（包含 ViewType 與可選 ModeOverride）
+//   - modes：可選的 BOM Mode（若 query.ModeOverride 為空，則取第一個 mode）
 //
 // 回傳：
 //   - []ViewPartGroup：過濾後的 ViewPartGroup 列表
-func (f *Filter) Apply(parts []ViewPartGroup, query ViewQuery) []ViewPartGroup {
+func (f *Filter) Apply(parts []ViewPartGroup, query ViewQuery, modes ...string) []ViewPartGroup {
 	viewType := strings.ToUpper(strings.TrimSpace(query.ViewType))
 	if viewType == "" {
 		viewType = ViewAll
 	}
 
+	mode := "NPI"
+	if query.ModeOverride != "" {
+		mode = strings.ToUpper(strings.TrimSpace(query.ModeOverride))
+	} else if len(modes) > 0 && modes[0] != "" {
+		mode = strings.ToUpper(strings.TrimSpace(modes[0]))
+	}
+
 	switch viewType {
 	case ViewAll:
-		return f.filterAll(parts)
+		return f.filterAll(parts, mode)
 	case ViewSMD:
 		return f.filterByType(parts, "SMD")
 	case ViewPTH:
@@ -58,19 +66,29 @@ func (f *Filter) Apply(parts []ViewPartGroup, query ViewQuery) []ViewPartGroup {
 
 // filterAll 過濾出 ALL 視圖的物料。
 //
-// 排除 bom_status = X 的所有物料（即保留 I, P, M）。
-// See product-spec section 6.4.2
+// 根據 BOM Mode (NPI 或 MP) 決定有效的 bom_status 組合：
+//   - Mode = "MP"：包含 bom_status 為 'I' 和 'M' 的物料（排除 'X' 和 'P'）
+//   - Mode = "NPI"（預設）：包含 bom_status 為 'I' 和 'P' 的物料（排除 'X' 和 'M'）
 //
 // 參數：
 //   - parts：待過濾列表
+//   - mode：當前 BOM 模式（NPI 或 MP）
 //
 // 回傳：
 //   - []ViewPartGroup：過濾後的列表
-func (f *Filter) filterAll(parts []ViewPartGroup) []ViewPartGroup {
+func (f *Filter) filterAll(parts []ViewPartGroup, mode string) []ViewPartGroup {
 	result := make([]ViewPartGroup, 0, len(parts))
+	mode = strings.ToUpper(strings.TrimSpace(mode))
+
 	for _, part := range parts {
-		if part.BOMStatus != "X" {
-			result = append(result, part)
+		if mode == "MP" {
+			if part.BOMStatus == "I" || part.BOMStatus == "M" {
+				result = append(result, part)
+			}
+		} else {
+			if part.BOMStatus == "I" || part.BOMStatus == "P" {
+				result = append(result, part)
+			}
 		}
 	}
 	return result
@@ -141,11 +159,9 @@ func (f *Filter) filterByBOMStatus(parts []ViewPartGroup, status string) []ViewP
 // filterCCL 過濾出關鍵零件 (CCL = true) 且 bom_status != X 的有效物料。
 // See product-spec section 6.4.2 & 8.1.6
 func (f *Filter) filterCCL(parts []ViewPartGroup) []ViewPartGroup {
-	validParts := f.filterAll(parts)
-
 	result := make([]ViewPartGroup, 0)
-	for _, part := range validParts {
-		if part.CCL {
+	for _, part := range parts {
+		if part.CCL && part.BOMStatus != "X" {
 			result = append(result, part)
 		}
 	}
