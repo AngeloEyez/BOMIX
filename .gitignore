@@ -70,3 +70,12 @@ bomix-app/build/android/overlay.json
 bomix-app/build/android/gen/
 bomix-app/build/linux/appimage/build
 bomix-app/build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+.gradle/
+**/.gradle/
+
+# SQLite temporary files
+*-wal
+*-shm
+*.db-wal
+*.db-shm
+
