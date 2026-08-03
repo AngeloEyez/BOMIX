@@ -29,18 +29,18 @@ func OpenWorkbook(filePath string, l *logger.Logger) (Workbook, error) {
 		return wb, err
 	} else if ext == ".xls" {
 		if l != nil {
-			l.Debug("嘗試使用 extrame/xls 開啟 .xls 檔案", "file", filePath)
+			l.Debug("嘗試使用 shakinm/xlsReader 開啟 .xls 檔案", "file", filePath)
 		}
-		wb, err := newExtrameXlsWorkbook(filePath)
+		wb, err := newShakinmXlsWorkbook(filePath)
 		if err == nil {
 			return wb, nil
 		}
 
 		if l != nil {
-			l.Warn("extrame/xls 解析失敗，進行 Fallback，嘗試使用 shakinm/xlsReader 開啟", "file", filePath, "error", err)
+			l.Warn("shakinm/xlsReader 解析失敗，進行 Fallback，嘗試使用 extrame/xls 開啟", "file", filePath, "error", err)
 		}
 
-		wb2, err2 := newShakinmXlsWorkbook(filePath)
+		wb2, err2 := newExtrameXlsWorkbook(filePath)
 		if err2 == nil {
 			return wb2, nil
 		}

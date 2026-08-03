@@ -1,6 +1,7 @@
 package excel
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/xuri/excelize/v2"
@@ -611,3 +612,114 @@ func TestParseStatusSheet(t *testing.T) {
 		t.Errorf("Expected 4 locations, got %d", len(locations))
 	}
 }
+
+// isValidLocationFormat checks if locationStr looks like valid component locations
+func isValidLocationFormat(locStr string) bool {
+	locStr = strings.TrimSpace(locStr)
+	if locStr == "" {
+		return true // empty location is ok for 2nd source or items without location
+	}
+
+	// Descriptions often contain commas, Ohm, ROHS, uF, +/- etc.
+	lower := strings.ToLower(locStr)
+	if len(locStr) > 35 ||
+		strings.Contains(lower, "ohm") ||
+		strings.Contains(lower, "rohs") ||
+		strings.Contains(lower, "+/-") ||
+		strings.Contains(lower, "uf") ||
+		strings.Contains(lower, "pf") ||
+		strings.Contains(lower, "khz") ||
+		strings.Contains(lower, "mhz") ||
+		strings.Contains(lower, "dip") ||
+		strings.Contains(lower, "smd") {
+		return false
+	}
+	return true
+}
+
+func TestCompareXlsLibrariesOnEBOMShort(t *testing.T) {
+	filePath := "testdata/EBOM-Short.xls"
+
+	t.Logf("=== 1. Testing extrame/xls ===")
+	wbExtrame, err := newExtrameXlsWorkbook(filePath)
+	if err != nil {
+		t.Fatalf("newExtrameXlsWorkbook failed: %v", err)
+	}
+	defer wbExtrame.Close()
+
+	rowsExtrame, err := wbExtrame.GetRows("BOTTOM")
+	if err == nil && len(rowsExtrame) >= 6 {
+		t.Logf("extrame/xls BOTTOM Row 6: %v", rowsExtrame[5])
+	}
+
+	t.Logf("\n=== 2. Testing shakinm/xlsReader ===")
+	wbShakinm, err := newShakinmXlsWorkbook(filePath)
+	if err != nil {
+		t.Fatalf("newShakinmXlsWorkbook failed: %v", err)
+	}
+	defer wbShakinm.Close()
+
+	rowsShakinm, err := wbShakinm.GetRows("BOTTOM")
+	if err == nil && len(rowsShakinm) >= 6 {
+		t.Logf("shakinm/xlsReader BOTTOM Row 6: %v", rowsShakinm[5])
+	}
+}
+
+
+
+
+
+
+
+
+// TestInspectSERENNO inspects actual column alignment for testdata XLS file
+func TestInspectSERENNO(t *testing.T) {
+	filePath := "testdata/EBOM-Short.xls"
+	
+	wb, err := OpenWorkbook(filePath, nil)
+	if err != nil {
+		t.Fatalf("OpenWorkbook failed: %v", err)
+	}
+	defer wb.Close()
+
+	for _, sheetName := range wb.GetSheetList() {
+		rows, err := wb.GetRows(sheetName)
+		if err != nil {
+			t.Logf("GetRows(%s) failed: %v", sheetName, err)
+			continue
+		}
+
+		if sheetName != "SMD" {
+			continue
+		}
+		t.Logf("=== Sheet %s (Total rows: %d) ===", sheetName, len(rows))
+		if len(rows) >= 5 {
+			t.Logf("[%s] Header Row 5: %v", sheetName, rows[4])
+		}
+		for i := 5; i < len(rows); i++ {
+			t.Logf("[%s] Row %d:", sheetName, i+1)
+			for j, val := range rows[i] {
+				if val != "" {
+					headerName := ""
+					if len(rows) >= 5 && j < len(rows[4]) {
+						headerName = rows[4][j]
+					}
+					t.Logf("   Col %d [%s / %s]: %q", j, colToLetter(j), headerName, val)
+				}
+			}
+		}
+	}
+}
+
+
+func colToLetter(col int) string {
+	result := ""
+	for col >= 0 {
+		result = string(rune('A'+col%26)) + result
+		col = col/26 - 1
+	}
+	return result
+}
+
+
+
