@@ -37,11 +37,15 @@
               v-for="file in recentFiles"
               :key="file.path"
               class="recent-link"
-              @click.prevent="openRecentFile(file.path)"
-              :title="file.path"
+              :class="{ 'is-corrupted': file.isCorrupted }"
+              @click.prevent="openRecentFile(file)"
+              :title="file.isCorrupted ? `${file.path} (檔案損毀或無法開啟)` : file.path"
             >
               <div class="recent-file-main">
-                <span class="file-name">{{ file.name }}</span>
+                <span class="file-name">
+                  <i v-if="file.isCorrupted" class="pi pi-exclamation-triangle mr-1"></i>
+                  {{ file.name }}
+                </span>
                 <span class="file-date">{{ formatDate(file.lastOpened) }}</span>
               </div>
               <div class="file-path">{{ file.path }}</div>
@@ -69,6 +73,7 @@ interface RecentFile {
   path: string
   name: string
   lastOpened: string
+  isCorrupted?: boolean
 }
 
 const recentFiles = ref<RecentFile[]>([])
@@ -141,9 +146,13 @@ async function browseFile(): Promise<void> {
 }
 
 // 點擊最近項目開啟
-async function openRecentFile(path: string): Promise<void> {
+async function openRecentFile(file: RecentFile): Promise<void> {
+  if (file.isCorrupted) {
+    logStore.addLogEntry('WARN', `檔案【${file.name}】損毀或格式不符，無法開啟。`)
+    return
+  }
   try {
-    await appStore.openSeries(path)
+    await appStore.openSeries(file.path)
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     logStore.addLogEntry('ERROR', `無法開啟最近使用的系列：${msg}`)
@@ -294,6 +303,14 @@ async function openRecentFile(path: string): Promise<void> {
   color: var(--text-color-secondary);
   font-style: italic;
   font-size: 13px;
+}
+
+.recent-link.is-corrupted .file-name {
+  color: #ef4444;
+}
+
+.recent-link.is-corrupted {
+  opacity: 0.85;
 }
 </style>
 

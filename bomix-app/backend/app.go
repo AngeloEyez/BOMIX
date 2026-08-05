@@ -229,20 +229,56 @@ func (a *App) GetSeriesInfo() (*SeriesInfo, error) {
 	}, nil
 }
 
-// GetRecentSeries returns the list of recently opened series
+// GetRecentSeries 傳回最近開啟的系列清單
+// 1. 若檔案不存在：清理 TOML 設定檔紀錄，不顯示在 UI
+// 2. 若檔案存在但無法開啟/讀取（格式不合或損毀）：保留 TOML 紀錄，但回傳標示 IsCorrupted = true 供 UI 顯示
 func (a *App) GetRecentSeries() ([]*RecentFile, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	validPaths := make([]string, 0, len(a.cfg.RecentFiles.RecentFiles))
 	recentFiles := make([]*RecentFile, 0, len(a.cfg.RecentFiles.RecentFiles))
+	removedMissing := false
 
 	for _, path := range a.cfg.RecentFiles.RecentFiles {
-		info, err := a.getSeriesInfoFromPath(path)
-		if err != nil {
-			continue // Skip files that don't exist
+		// 1. 先檢查檔案是否存在
+		info, err := os.Stat(path)
+		if err != nil || info.IsDir() {
+			// 檔案不存在或為目錄：從 TOML 中清理，不保留此筆紀錄
+			removedMissing = true
+			continue
 		}
+
+		// 檔案存在：保留在 validPaths (保留 TOML 紀錄)
+		validPaths = append(validPaths, path)
+
+		// 2. 檔案存在，嘗試開啟資料庫讀取系列資訊
+		seriesInfo, err := a.getSeriesInfoFromPath(path)
+		if err != nil {
+			// 檔案存在但無法成功讀取（損毀或格式不合）：保留 TOML 紀錄，標記 IsCorrupted = true
+			baseName := filepath.Base(path)
+			recentFiles = append(recentFiles, &RecentFile{
+				Path:        path,
+				Name:        fmt.Sprintf("%s (損毀或無法開啟)", baseName),
+				LastOpened:  info.ModTime().Format(time.RFC3339),
+				IsCorrupted: true,
+			})
+			continue
+		}
+
+		// 3. 正常讀取成功
 		recentFiles = append(recentFiles, &RecentFile{
-			Path:       path,
-			Name:       info.Name,
-			LastOpened: info.LastOpened,
+			Path:        path,
+			Name:        seriesInfo.Name,
+			LastOpened:  seriesInfo.LastOpened,
+			IsCorrupted: false,
 		})
+	}
+
+	// 若有不存在的檔案被刪除，更新記憶體設定檔並寫回 TOML
+	if removedMissing {
+		a.cfg.RecentFiles.RecentFiles = validPaths
+		_ = config.Save(config.GetConfigPath(), a.cfg)
 	}
 
 	return recentFiles, nil
@@ -846,9 +882,19 @@ func (a *App) addToRecentFiles(path string) {
 	_ = config.Save(config.GetConfigPath(), a.cfg)
 }
 
-// getSeriesInfoFromPath gets series info from a file path
+// getSeriesInfoFromPath 從檔案路徑取得系列資訊
+// 會先檢查檔案是否存在且非目錄，確認存在後才嘗試開啟資料庫進行讀取，避免 SQLite 自動建立空檔案
 func (a *App) getSeriesInfoFromPath(path string) (*SeriesInfoWithTime, error) {
-	// Open database temporarily
+	// 1. 先檢查檔案是否存在且非目錄
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("路徑為目錄而非檔案: %s", path)
+	}
+
+	// 2. 檔案存在時，才嘗試開啟資料庫讀取系列資訊
 	database, err := db.Open(path)
 	if err != nil {
 		return nil, err
@@ -856,12 +902,6 @@ func (a *App) getSeriesInfoFromPath(path string) (*SeriesInfoWithTime, error) {
 	defer db.Close(database)
 
 	series, err := db.GetSeriesInfo(database)
-	if err != nil {
-		return nil, err
-	}
-
-	// Get file info for last opened time
-	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
 	}

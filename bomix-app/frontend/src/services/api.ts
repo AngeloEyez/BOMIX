@@ -122,6 +122,7 @@ export interface ImportResult {
   message: string
   partsCount: number
   error?: string
+  taskID?: string
 }
 
 export interface ExportOptions {
@@ -451,6 +452,37 @@ export async function OpenFileDialog(options: FileDialogOptions): Promise<string
     return Array.isArray(result) ? result[0] : (result || '')
   } catch (error) {
     handleApiError(error, 'OpenFileDialog')
+  }
+}
+
+/**
+ * 開啟多檔案選擇對話框
+ * @param options 對話框設定選項
+ * @returns 選取的檔案路徑陣列
+ */
+export async function OpenMultipleFilesDialog(options: FileDialogOptions): Promise<string[]> {
+  try {
+    const filters = options.filters?.map(f => ({
+      DisplayName: f.name,
+      Pattern: f.extensions.map(ext => `*.${ext}`).join(';')
+    }))
+
+    const result = await Dialogs.OpenFile({
+      Title: options.title,
+      Filters: filters,
+      AllowsMultipleSelection: true,
+    })
+    
+    if (Array.isArray(result)) {
+      return result.filter((item): item is string => typeof item === 'string' && item.length > 0)
+    } else if (typeof result === 'string') {
+      const s = result as string
+      return s.length > 0 ? [s] : []
+    }
+    return []
+  } catch (error) {
+    handleApiError(error, 'OpenMultipleFilesDialog')
+    return []
   }
 }
 

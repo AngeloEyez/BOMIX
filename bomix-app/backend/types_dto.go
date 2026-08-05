@@ -15,11 +15,12 @@ type SeriesInfoWithTime struct {
 	LastOpened string `json:"lastOpened"`
 }
 
-// RecentFile represents a recently opened file
+// RecentFile 代表最近開啟的檔案紀錄
 type RecentFile struct {
-	Path       string `json:"path"`
-	Name       string `json:"name"`
-	LastOpened string `json:"lastOpened"`
+	Path        string `json:"path"`
+	Name        string `json:"name"`
+	LastOpened  string `json:"lastOpened"`
+	IsCorrupted bool   `json:"isCorrupted"`
 }
 
 // Project represents a project for the frontend

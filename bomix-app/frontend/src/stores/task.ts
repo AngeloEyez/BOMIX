@@ -44,6 +44,18 @@ export const useTaskStore = defineStore('task', () => {
     const index = tasks.value.findIndex(t => t.id === taskId)
     if (index !== -1) {
       tasks.value[index] = { ...tasks.value[index], ...updates }
+    } else {
+      tasks.value.push({
+        id: taskId,
+        name: updates.name || 'Import Task',
+        type: updates.type || 'Import',
+        status: updates.status || 'queued',
+        progress: updates.progress || 0,
+        message: updates.message || '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...updates
+      })
     }
   }
 
@@ -69,48 +81,95 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   // Listen to task events from backend
+  let isListening = false
+
   function startListening(): void {
+    if (isListening) return
+    isListening = true
+
+    ListenToEvents('task:created', (data) => {
+      const payload = data as any
+      const id = payload.taskID || payload.id
+      if (!id) return
+      const existing = getTask(id)
+      if (!existing) {
+        addTask({
+          id,
+          name: payload.name || 'Task',
+          type: payload.type || 'Import',
+          status: payload.status || 'queued',
+          progress: Math.round((payload.progress || 0) * 100),
+          message: payload.message || 'Queued',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+      } else {
+        updateTask(id, {
+          status: payload.status || 'queued',
+          updatedAt: new Date().toISOString(),
+        })
+      }
+    })
+
+    ListenToEvents('task:running', (data) => {
+      const payload = data as any
+      const id = payload.taskID || payload.id
+      if (!id) return
+      updateTask(id, {
+        status: 'running',
+        message: payload.message || 'Running...',
+        updatedAt: new Date().toISOString(),
+      })
+    })
+
     ListenToEvents('task:progress', (data) => {
-      const task = data as Task
-      updateTask(task.id, {
-        status: task.status,
-        progress: task.progress,
-        message: task.message,
-        updatedAt: task.updatedAt,
+      const payload = data as any
+      const id = payload.taskID || payload.id
+      if (!id) return
+      const rawProg = payload.progress || 0
+      const progressVal = rawProg <= 1.0 ? Math.round(rawProg * 100) : Math.round(rawProg)
+      updateTask(id, {
+        status: payload.status || 'running',
+        progress: progressVal,
+        message: payload.message || '',
+        updatedAt: new Date().toISOString(),
       })
     })
 
     ListenToEvents('task:complete', (data) => {
-      const task = data as Task
-      updateTask(task.id, {
+      const payload = data as any
+      const id = payload.taskID || payload.id
+      if (!id) return
+      updateTask(id, {
         status: 'completed',
         progress: 100,
-        message: task.message || 'Completed',
-        updatedAt: task.updatedAt,
+        message: payload.message || 'Completed',
+        updatedAt: new Date().toISOString(),
       })
     })
 
     ListenToEvents('task:failed', (data) => {
-      const task = data as Task
-      updateTask(task.id, {
-        status: 'failed',
-        error: task.error || 'Unknown error',
-        updatedAt: task.updatedAt,
+      const payload = data as any
+      const id = payload.taskID || payload.id
+      if (!id) return
+      const status = payload.status === 'warning' ? 'warning' : 'failed'
+      updateTask(id, {
+        status,
+        error: payload.error || 'Task Failed',
+        message: payload.error || 'Task Failed',
+        updatedAt: new Date().toISOString(),
       })
     })
 
     ListenToEvents('task:cancelled', (data) => {
-      const task = data as Task
-      updateTask(task.id, {
+      const payload = data as any
+      const id = payload.taskID || payload.id
+      if (!id) return
+      updateTask(id, {
         status: 'cancelled',
         message: 'Cancelled',
-        updatedAt: task.updatedAt,
+        updatedAt: new Date().toISOString(),
       })
-    })
-
-    ListenToEvents('task:created', (data) => {
-      const task = data as Task
-      addTask(task)
     })
   }
 

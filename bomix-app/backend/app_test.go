@@ -1,0 +1,94 @@
+package backend
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"bomix-app/backend/config"
+	"bomix-app/backend/db"
+	"bomix-app/backend/logger"
+)
+
+// TestGetRecentSeries_MissingAndCorruptedFiles 測試最近開啟檔案的過濾與損毀標記邏輯
+func TestGetRecentSeries_MissingAndCorruptedFiles(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// 1. 建立一個正常的 BOMIX 資料庫檔案
+	validPath := filepath.Join(tempDir, "valid.bomx")
+	validDB, err := db.Open(validPath)
+	if err != nil {
+		t.Fatalf("無法建立測試資料庫: %v", err)
+	}
+	if err := db.AutoMigrate(validDB); err != nil {
+		db.Close(validDB)
+		t.Fatalf("無法初始化資料庫結構: %v", err)
+	}
+	_, err = db.CreateSeries(validDB, "測試系列 A", "描述 A")
+	if err != nil {
+		db.Close(validDB)
+		t.Fatalf("無法建立系列資訊: %v", err)
+	}
+	db.Close(validDB)
+
+	// 2. 建立一個損毀/無效的檔案 (純文字檔，非 SQLite 資料庫)
+	corruptedPath := filepath.Join(tempDir, "corrupted.bomx")
+	if err := os.WriteFile(corruptedPath, []byte("this is not a sqlite db"), 0644); err != nil {
+		t.Fatalf("無法建立損毀測試檔: %v", err)
+	}
+
+	// 3. 設定一個不存在的檔案路徑
+	missingPath := filepath.Join(tempDir, "non_existent_file.bomx")
+
+	// 初始化測試 App 與 Config
+	log := logger.NewLogger(100)
+	cfg := &config.Config{
+		RecentFiles: config.RecentFilesConfig{
+			MaxRecentFiles: 10,
+			RecentFiles:    []string{missingPath, corruptedPath, validPath},
+		},
+	}
+	app := NewApp(nil, log, cfg)
+
+	// 執行 GetRecentSeries
+	recentFiles, err := app.GetRecentSeries()
+	if err != nil {
+		t.Fatalf("GetRecentSeries 傳回非預期錯誤: %v", err)
+	}
+
+	// 檢查 1：不存在的檔案路徑是否已被排除在 TOML/Config 的 RecentFiles 清單中
+	if len(cfg.RecentFiles.RecentFiles) != 2 {
+		t.Errorf("記憶體設定中的 RecentFiles 長度 = %d，預期為 2 (應該只保留存在的兩個檔案)", len(cfg.RecentFiles.RecentFiles))
+	}
+
+	// 檢查 2：絕對不能在 missingPath 上自動建立空檔案！
+	if _, err := os.Stat(missingPath); !os.IsNotExist(err) {
+		t.Errorf("GetRecentSeries() 建立了空檔案: %s，預期該檔案不應被建立", missingPath)
+	}
+
+	// 檢查 3：回傳給 UI 的 RecentFile 列表應為 2 筆
+	if len(recentFiles) != 2 {
+		t.Fatalf("GetRecentSeries() 回傳筆數 = %d，預期為 2", len(recentFiles))
+	}
+
+	// 驗證損毀檔案項目
+	corruptedItem := recentFiles[0]
+	if corruptedItem.Path != corruptedPath {
+		t.Errorf("第 1 筆檔案路徑 = %q, 預期 %q", corruptedItem.Path, corruptedPath)
+	}
+	if !corruptedItem.IsCorrupted {
+		t.Errorf("損毀檔案的 IsCorrupted 應為 true，實際為 false")
+	}
+
+	// 驗證正常檔案項目
+	validItem := recentFiles[1]
+	if validItem.Path != validPath {
+		t.Errorf("第 2 筆檔案路徑 = %q, 預期 %q", validItem.Path, validPath)
+	}
+	if validItem.IsCorrupted {
+		t.Errorf("正常檔案的 IsCorrupted 應為 false，實際為 true")
+	}
+	if validItem.Name != "測試系列 A" {
+		t.Errorf("正常檔案的 Name = %q, 預期 %q", validItem.Name, "測試系列 A")
+	}
+}

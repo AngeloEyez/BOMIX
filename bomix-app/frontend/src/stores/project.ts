@@ -79,14 +79,14 @@ export const useProjectStore = defineStore('project', () => {
   // Actions
   async function loadProjects(seriesId: number): Promise<void> {
     const logStore = useLogStore()
-    logStore.addLogEntry('DEBUG', `[loadProjects] 開始載入專案列表 (seriesId: ${seriesId})`)
+    //logStore.addLogEntry('DEBUG', `[loadProjects] 開始載入專案列表 (seriesId: ${seriesId})`)
     isLoading.value = true
     error.value = null
     try {
       const data = await GetProjects(seriesId)
-      logStore.addLogEntry('DEBUG', `[loadProjects] 成功查詢專案 (seriesId: ${seriesId})，共 ${data?.length || 0} 個專案`)
+      //logStore.addLogEntry('DEBUG', `[loadProjects] 成功查詢專案 (seriesId: ${seriesId})，共 ${data?.length || 0} 個專案`)
       projects.value = data || []
-      
+
       // Auto-load revisions for each project to populate the tree
       for (const p of projects.value) {
         await loadRevisions(p.id)
@@ -105,7 +105,7 @@ export const useProjectStore = defineStore('project', () => {
     const logStore = useLogStore()
     try {
       const revisions = await GetRevisions(projectId)
-      logStore.addLogEntry('DEBUG', `[loadRevisions] 專案 (ID: ${projectId}) 載入 ${revisions?.length || 0} 個版本`)
+      //logStore.addLogEntry('DEBUG', `[loadRevisions] 專案 (ID: ${projectId}) 載入 ${revisions?.length || 0} 個版本`)
       // Update the project with revisions
       const project = projects.value.find(p => p.id === projectId)
       if (project) {
@@ -127,7 +127,7 @@ export const useProjectStore = defineStore('project', () => {
 
   function selectRevision(revisionId: number): void {
     selectedRevisionId.value = revisionId
-    
+
     // Find which project owns this revision
     for (const p of projects.value) {
       if (p.revisions?.some(r => r.id === revisionId)) {
@@ -135,7 +135,7 @@ export const useProjectStore = defineStore('project', () => {
         break
       }
     }
-    
+
     const logStore = useLogStore()
     logStore.addLogEntry('DEBUG', `已選擇 BOM Revision ID: ${revisionId}, 所屬 Project ID: ${selectedProjectId.value}`)
   }

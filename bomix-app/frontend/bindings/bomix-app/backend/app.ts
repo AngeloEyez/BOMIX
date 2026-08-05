@@ -109,7 +109,9 @@ export function GetProjects(seriesID: number): $CancellablePromise<($models.Proj
 }
 
 /**
- * GetRecentSeries returns the list of recently opened series
+ * GetRecentSeries 傳回最近開啟的系列清單
+ * 1. 若檔案不存在：清理 TOML 設定檔紀錄，不顯示在 UI
+ * 2. 若檔案存在但無法開啟/讀取（格式不合或損毀）：保留 TOML 紀錄，但回傳標示 IsCorrupted = true 供 UI 顯示
  */
 export function GetRecentSeries(): $CancellablePromise<($models.RecentFile | null)[] | null> {
     return $Call.ByID(2788415008);

@@ -75,33 +75,43 @@
     <Dialog
       v-model:visible="importDialogVisible"
       modal
-      header="Import BOM"
-      :style="{ width: '500px' }"
+      header="Import BOM Files (多檔案匯入)"
+      :style="{ width: '560px' }"
     >
       <div class="import-dialog-content">
         <p class="drag-hint">
-          Select Excel files to import (EBOM, BigMatrix formats)
+          選擇要匯入的 Excel 檔案（支援 EBOM, BigMatrix, Matrix 格式，可按住 Ctrl/Shift 選擇多個檔案）
         </p>
 
-        <InputText
-          v-model="importFilePath"
-          placeholder="Select files..."
-          class="file-path-input"
-          readonly
-        />
-
-        <div class="button-group">
+        <div class="button-group flex gap-2">
           <Button
-            label="Browse Files"
+            label="瀏覽選取檔案..."
             icon="pi pi-folder-open"
             @click="browseFiles"
           />
+          <Button
+            v-if="importFilePaths.length > 0"
+            label="清除全部"
+            icon="pi pi-trash"
+            class="p-button-outlined p-button-danger"
+            @click="clearImportFiles"
+          />
         </div>
 
-        <div v-if="importFilePaths.length > 0" class="file-list">
-          <div class="file-item" v-for="(path, idx) in importFilePaths" :key="idx">
-            <i class="pi pi-file"></i>
-            <span>{{ path }}</span>
+        <div v-if="importFilePaths.length > 0" class="file-list-container">
+          <div class="file-list-header">
+            已選取 {{ importFilePaths.length }} 個檔案：
+          </div>
+          <div class="file-list">
+            <div class="file-item" v-for="(path, idx) in importFilePaths" :key="idx" :title="path">
+              <i
+                class="pi pi-times remove-icon"
+                @click="removeImportFile(idx)"
+                title="移除此檔案"
+              ></i>
+              <i class="pi pi-file-excel file-type-icon text-green-500"></i>
+              <span class="file-name">{{ getFileName(path) }}</span>
+            </div>
           </div>
         </div>
 
@@ -111,20 +121,20 @@
             inputId="confirmOverwrite"
             :binary="true"
           />
-          <label for="confirmOverwrite">Confirm before overwriting existing BOM</label>
+          <label for="confirmOverwrite">匯入覆蓋現有 BOM 前提示確認</label>
         </div>
       </div>
 
       <template #footer>
         <Button
-          label="Cancel"
+          label="取消"
           icon="pi pi-times"
           text
           @click="importDialogVisible = false"
         />
         <Button
-          label="Import"
-          icon="pi pi-check"
+          label="開始匯入"
+          icon="pi pi-upload"
           @click="executeImport"
           :disabled="importFilePaths.length === 0"
         />
@@ -135,33 +145,47 @@
     <Dialog
       v-model:visible="importResultDialogVisible"
       modal
-      header="Import Results"
-      :style="{ width: '600px' }"
+      header="Import Results (匯入結果與即時 Task 狀態)"
+      :style="{ width: '640px' }"
     >
       <div class="import-results">
         <div v-if="importResults.length > 0" class="results-list">
           <div
             v-for="(result, idx) in importResults"
-            :key="idx"
+            :key="result.taskID || idx"
             class="result-item"
-            :class="{ 'result-error': result.status === 'failed' }"
+            :class="getResultClass(result)"
           >
-            <i :class="['pi', result.status === 'completed' ? 'pi-check-circle' : 'pi-times-circle']"></i>
-            <span class="result-name">{{ result.fileName }}</span>
-            <span class="result-status">{{ result.status }}</span>
-            <span v-if="result.partsCount" class="result-count">
-              {{ result.partsCount }} parts
-            </span>
+            <div class="result-header">
+              <div class="result-name-group">
+                <i :class="['result-status-icon', getResultIcon(result)]"></i>
+                <span class="result-name" :title="result.fileName">{{ result.fileName }}</span>
+              </div>
+              <Tag :value="getResultStatusTag(result).label" :severity="getResultStatusTag(result).severity" />
+            </div>
+
+            <!-- 執行中動態進度條 -->
+            <div v-if="getResultStatus(result) === 'running'" class="result-progress-container">
+              <ProgressBar :value="getResultProgress(result)" :showValue="true" style="height: 14px; margin-top: 6px;" />
+              <div class="result-message text-xs mt-1 text-blue-400">
+                {{ getResultMessage(result) }}
+              </div>
+            </div>
+
+            <!-- 排隊 / 完成 / 失敗訊息 -->
+            <div v-else class="result-footer-msg mt-1">
+              <span class="result-msg text-xs text-color-secondary">{{ getResultMessage(result) }}</span>
+            </div>
           </div>
         </div>
         <div v-else class="no-results">
-          No results to display
+          目前沒有匯入作業結果
         </div>
       </div>
 
       <template #footer>
         <Button
-          label="Close"
+          label="關閉"
           icon="pi pi-check"
           @click="importResultDialogVisible = false"
         />
@@ -309,12 +333,15 @@ import Select from 'primevue/select'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Checkbox from 'primevue/checkbox'
-import { useAppStore, useProjectStore, useLogStore } from '../stores'
+import Tag from 'primevue/tag'
+import ProgressBar from 'primevue/progressbar'
+import { useAppStore, useProjectStore, useLogStore, useTaskStore } from '../stores'
 import BOMTable from '../components/BOMTable.vue'
 import {
   ImportExcel,
   ExportExcel,
   OpenFileDialog,
+  OpenMultipleFilesDialog,
   SelectFolderDialog,
   SaveFileDialog,
   type ImportResult as BackendImportResult,
@@ -374,7 +401,10 @@ const exportFormatOptions = [
   { label: 'Matrix', value: 'Matrix' }
 ]
 
+const taskStore = useTaskStore()
+
 onMounted(() => {
+  taskStore.startListening()
   if (appStore.isOpen) {
     loadProjects()
   }
@@ -498,10 +528,29 @@ function openImportDialog(): void {
   importDialogVisible.value = true
 }
 
+function getFileName(filePath: string): string {
+  if (!filePath) return ''
+  return filePath.split(/[\\/]/).pop() || filePath
+}
+
+function removeImportFile(index: number): void {
+  importFilePaths.value.splice(index, 1)
+  if (importFilePaths.value.length === 0) {
+    importFilePath.value = ''
+  } else {
+    importFilePath.value = `已選取 ${importFilePaths.value.length} 個檔案`
+  }
+}
+
+function clearImportFiles(): void {
+  importFilePaths.value = []
+  importFilePath.value = ''
+}
+
 async function browseFiles(): Promise<void> {
   try {
-    const filePath = await OpenFileDialog({
-      title: 'Select BOM files to import',
+    const selectedPaths = await OpenMultipleFilesDialog({
+      title: '選擇要匯入的 BOM Excel 檔案 (可按住 Ctrl/Shift 多選)',
       filters: [
         { name: 'Excel Files', extensions: ['xlsx', 'xls'] }
       ],
@@ -509,10 +558,14 @@ async function browseFiles(): Promise<void> {
       multiSelect: true
     })
 
-    if (filePath) {
-      importFilePath.value = filePath
-      importFilePaths.value = [filePath]
-      logStore.addLogEntry('DEBUG', `已選取匯入檔案：${filePath}`)
+    if (selectedPaths && selectedPaths.length > 0) {
+      const currentSet = new Set(importFilePaths.value)
+      for (const p of selectedPaths) {
+        currentSet.add(p)
+      }
+      importFilePaths.value = Array.from(currentSet)
+      importFilePath.value = `已選取 ${importFilePaths.value.length} 個檔案`
+      logStore.addLogEntry('DEBUG', `已選取 ${selectedPaths.length} 個匯入檔案`)
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -524,12 +577,136 @@ async function executeImport(): Promise<void> {
   try {
     const results = await ImportExcel(importFilePaths.value)
     importResults.value = results
+    
+    // 初始化或向 taskStore 登記任務狀態
+    for (const r of results) {
+      if (r.taskID) {
+        taskStore.updateTask(r.taskID, {
+          id: r.taskID,
+          name: `Import: ${r.fileName}`,
+          type: 'Import',
+          status: 'queued',
+          message: 'Task created',
+          progress: 0,
+        })
+      }
+    }
+
     importResultDialogVisible.value = true
     importDialogVisible.value = false
+    logStore.addLogEntry('INFO', `已提交 ${results.length} 個匯入作業任務`)
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     logStore.addLogEntry('ERROR', `匯入作業失敗：${msg}`)
   }
+}
+
+// 取得即時 Task 物件
+function getResultTask(result: BackendImportResult) {
+  if (result.taskID) {
+    return taskStore.getTask(result.taskID)
+  }
+  return null
+}
+
+// 取得 Task 即時狀態
+function getResultStatus(result: BackendImportResult): string {
+  const task = getResultTask(result)
+  if (task) {
+    return task.status
+  }
+  return result.status || 'queued'
+}
+
+// 取得 Task 即時進度 (0 ~ 100)
+function getResultProgress(result: BackendImportResult): number {
+  const task = getResultTask(result)
+  if (task) {
+    return task.progress || 0
+  }
+  return 0
+}
+
+// 取得 Task 即時說明訊息
+function getResultMessage(result: BackendImportResult): string {
+  const task = getResultTask(result)
+  if (task) {
+    if (task.status === 'completed') {
+      return task.message || '匯入完成'
+    }
+    if (task.status === 'failed') {
+      return task.error || task.message || '匯入失敗'
+    }
+    if (task.status === 'warning') {
+      return task.error || task.message || '需進行業務與格式確認'
+    }
+    if (task.status === 'running') {
+      return task.message || '正在進行匯入解析...'
+    }
+    if (task.status === 'queued' || task.status === 'created') {
+      return '佇列中 (排隊中)'
+    }
+    return task.message || ''
+  }
+  return result.message || ''
+}
+
+// 取得 Status Tag 標籤與 Severity
+function getResultStatusTag(result: BackendImportResult): { label: string; severity: 'secondary' | 'info' | 'success' | 'warn' | 'danger' | 'contrast' } {
+  const status = getResultStatus(result)
+  switch (status) {
+    case 'created':
+    case 'queued':
+      return { label: '排隊中 (Queued)', severity: 'secondary' }
+    case 'running':
+      return { label: '處理中 (Running)', severity: 'info' }
+    case 'completed':
+    case 'done':
+      return { label: '已完成 (Completed)', severity: 'success' }
+    case 'warning':
+      return { label: '警告 (Warning)', severity: 'warn' }
+    case 'failed':
+    case 'error':
+      return { label: '失敗 (Failed)', severity: 'danger' }
+    case 'cancelled':
+      return { label: '已取消 (Cancelled)', severity: 'contrast' }
+    default:
+      return { label: status, severity: 'info' }
+  }
+}
+
+// 取得即時圖示
+function getResultIcon(result: BackendImportResult): string {
+  const status = getResultStatus(result)
+  switch (status) {
+    case 'created':
+    case 'queued':
+      return 'pi pi-clock text-gray-400'
+    case 'running':
+      return 'pi pi-spin pi-spinner text-blue-500'
+    case 'completed':
+    case 'done':
+      return 'pi pi-check-circle text-green-500'
+    case 'warning':
+      return 'pi pi-exclamation-triangle text-amber-500'
+    case 'failed':
+    case 'error':
+      return 'pi pi-times-circle text-red-500'
+    case 'cancelled':
+      return 'pi pi-ban text-gray-500'
+    default:
+      return 'pi pi-info-circle'
+  }
+}
+
+// 取得列表項 CSS 樣式
+function getResultClass(result: BackendImportResult): string {
+  const status = getResultStatus(result)
+  if (status === 'failed' || status === 'error') return 'result-error'
+  if (status === 'warning') return 'result-warning'
+  if (status === 'completed' || status === 'done') return 'result-success'
+  if (status === 'running') return 'result-running'
+  return 'result-queued'
 }
 
 // Export functions
@@ -888,29 +1065,66 @@ async function executeExport(): Promise<void> {
   font-size: 0.875rem;
 }
 
-.file-path-input {
-  flex: 1;
-}
-
-.button-group {
+.file-list-container {
   display: flex;
+  flex-direction: column;
   gap: 0.5rem;
 }
 
+.file-list-header {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-color-secondary);
+}
+
 .file-list {
-  max-height: 150px;
+  max-height: 160px;
   overflow-y: auto;
   border: 1px solid var(--surface-border);
-  border-radius: 4px;
-  padding: 0.5rem;
+  border-radius: 6px;
+  padding: 0.35rem 0.4rem;
+  background: var(--surface-ground);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
 }
 
 .file-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.25rem 0;
-  font-size: 0.875rem;
+  gap: 0.35rem;
+  padding: 0.2rem 0.45rem;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.remove-icon {
+  font-size: 0.75rem;
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.remove-icon:hover {
+  color: #ef4444;
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.file-type-icon {
+  font-size: 0.8rem;
+}
+
+.file-item .file-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.78rem;
 }
 
 .import-options {
@@ -921,27 +1135,62 @@ async function executeExport(): Promise<void> {
 
 /* Import Results */
 .import-results {
-  max-height: 300px;
+  max-height: 380px;
   overflow-y: auto;
 }
 
 .results-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
 .result-item {
   display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--surface-ground);
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.result-name-group {
+  display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.5rem;
-  background: var(--surface-ground);
-  border-radius: 4px;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.result-status-icon {
+  font-size: 1.1rem;
 }
 
 .result-error {
-  background: #fee2e2;
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.result-warning {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.result-success {
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.result-running {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.03);
 }
 
 .result-name {

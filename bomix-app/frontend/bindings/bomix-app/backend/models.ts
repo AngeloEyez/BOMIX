@@ -87,12 +87,13 @@ export interface Project {
 }
 
 /**
- * RecentFile represents a recently opened file
+ * RecentFile 代表最近開啟的檔案紀錄
  */
 export interface RecentFile {
     "path": string;
     "name": string;
     "lastOpened": string;
+    "isCorrupted": boolean;
 }
 
 /**

@@ -125,7 +125,7 @@ func (tm *TaskManager) SubmitWithID(taskID, name, taskType string, fn TaskFunc) 
 	tm.tasks[taskID] = task
 	tm.mu.Unlock()
 
-	// Log task creation
+	// Log and emit task creation event
 	if tm.logger != nil {
 		tm.logger.Info("任務已建立",
 			"taskID", taskID,
@@ -134,6 +134,15 @@ func (tm *TaskManager) SubmitWithID(taskID, name, taskType string, fn TaskFunc) 
 			"taskStatus", "queued",
 		)
 	}
+
+	tm.emitEvent(EventTaskCreated, map[string]interface{}{
+		"taskID":   taskID,
+		"name":     name,
+		"type":     taskType,
+		"status":   string(types.TaskCreated),
+		"message":  "Queued",
+		"progress": 0.0,
+	})
 
 	// Start task in a goroutine
 	go func() {
