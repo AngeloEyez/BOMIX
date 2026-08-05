@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -8,11 +9,12 @@ import (
 )
 
 // Load reads the configuration from a TOML file and merges with defaults
-// If the file doesn't exist, returns DefaultConfig without creating the file
+// If the file doesn't exist, returns a copy of DefaultConfig without creating the file
 func Load(path string) (*Config, error) {
 	// Check if file exists
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return DefaultConfig, nil
+		cfgCopy := *DefaultConfig
+		return &cfgCopy, nil
 	}
 
 	// Read the TOML file
@@ -37,6 +39,24 @@ func Load(path string) (*Config, error) {
 // Save writes the configuration to a TOML file
 // Only writes fields that differ from DefaultConfig (delta save)
 func Save(path string, cfg *Config) error {
+	if cfg == nil {
+		return errors.New("invalid configuration")
+	}
+
+	// Sanity check: Ensure critical fields have valid fallback default values before saving
+	if cfg.Theme == "" {
+		cfg.Theme = DefaultConfig.Theme
+	}
+	if cfg.Logger.Level == "" {
+		cfg.Logger.Level = DefaultConfig.Logger.Level
+	}
+	if cfg.Logger.MaxEntries <= 0 {
+		cfg.Logger.MaxEntries = DefaultConfig.Logger.MaxEntries
+	}
+	if cfg.RecentFiles.MaxRecentFiles <= 0 {
+		cfg.RecentFiles.MaxRecentFiles = DefaultConfig.RecentFiles.MaxRecentFiles
+	}
+
 	// Ensure directory exists
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {

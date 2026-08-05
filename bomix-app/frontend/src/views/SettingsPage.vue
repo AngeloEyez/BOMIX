@@ -152,9 +152,11 @@ const logLevelOptions = [
   { label: 'Error', value: 'error' },
 ]
 
-async function loadSettings(): Promise<void> {
+async function loadSettings(): Promise<boolean> {
   try {
     const data = await GetSettings()
+    if (!data) return false
+
     settings.value = {
       ...data,
       import: {
@@ -173,8 +175,10 @@ async function loadSettings(): Promise<void> {
     
     // 初始化同步至 logStore
     logStore.globalLogLevel = settings.value.logger.level
+    return true
   } catch (error) {
     console.error('Failed to load settings:', error)
+    return false
   }
 }
 
@@ -184,6 +188,12 @@ let isLoaded = false
 
 watch(settings, (newVal) => {
   if (!isLoaded) return
+
+  // 前護邏輯：過濾不完整或零值的 payload
+  if (!newVal.theme || !newVal.logger?.level || !newVal.logger?.maxEntries) {
+    console.warn('Ignore auto-save: invalid or incomplete settings payload', newVal)
+    return
+  }
 
   // Apply theme immediately on change
   appStore.applyTheme(newVal.theme)
@@ -202,9 +212,11 @@ watch(settings, (newVal) => {
 }, { deep: true })
 
 onMounted(async () => {
-  await loadSettings()
-  // Allow time for initial reactive trigger to settle before enabling auto-save
-  setTimeout(() => { isLoaded = true }, 100)
+  const success = await loadSettings()
+  if (success) {
+    // Allow time for initial reactive trigger to settle before enabling auto-save
+    setTimeout(() => { isLoaded = true }, 200)
+  }
 })
 </script>
 

@@ -831,7 +831,19 @@ func (a *App) GetSettings() (*Settings, error) {
 
 // UpdateSettings updates the settings
 func (a *App) UpdateSettings(settings *Settings) error {
-	// Update config
+	if settings == nil {
+		return errors.New("settings payload cannot be nil")
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Ensure config is initialized
+	if a.cfg == nil {
+		a.cfg = config.DefaultConfig
+	}
+
+	// Update config only with valid non-zero values
 	if settings.Theme != "" {
 		a.cfg.Theme = settings.Theme
 	}
@@ -840,12 +852,20 @@ func (a *App) UpdateSettings(settings *Settings) error {
 		a.cfg.Import.AutoImportPreviousMatrix = settings.Import.AutoImportPreviousMatrix
 	}
 	if settings.Logger != nil {
-		a.cfg.Logger.Level = settings.Logger.Level
-		a.cfg.Logger.MaxEntries = settings.Logger.MaxEntries
+		if settings.Logger.Level != "" {
+			a.cfg.Logger.Level = settings.Logger.Level
+		}
+		if settings.Logger.MaxEntries > 0 {
+			a.cfg.Logger.MaxEntries = settings.Logger.MaxEntries
+		}
 	}
 	if settings.RecentFiles != nil {
-		a.cfg.RecentFiles.MaxRecentFiles = settings.RecentFiles.MaxRecentFiles
-		a.cfg.RecentFiles.RecentFiles = settings.RecentFiles.RecentFiles
+		if settings.RecentFiles.MaxRecentFiles > 0 {
+			a.cfg.RecentFiles.MaxRecentFiles = settings.RecentFiles.MaxRecentFiles
+		}
+		if settings.RecentFiles.RecentFiles != nil {
+			a.cfg.RecentFiles.RecentFiles = settings.RecentFiles.RecentFiles
+		}
 	}
 	a.cfg.AutoOpenLastFile = settings.AutoOpenLastFile
 	a.cfg.LastOpenedFile = settings.LastOpenedFile
