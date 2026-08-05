@@ -13,6 +13,19 @@
           class="view-dropdown"
           @change="onViewChange"
         />
+        <div class="search-input-wrapper">
+          <InputText
+            v-model="searchQuery"
+            placeholder="Filter"
+            class="search-input"
+          />
+          <i
+            v-if="searchQuery"
+            class="pi pi-times clear-btn"
+            title="Clear filter"
+            @click="searchQuery = ''"
+          />
+        </div>
       </div>
 
       <div class="view-actions">
@@ -70,25 +83,56 @@
       <Column field="hhpn" header="HHPN" style="width: 170px" sortable>
         <template #body="slotProps">
           <div :class="{'ss-indented': slotProps.data.isSecondSource}">
-            <span>{{ slotProps.data.hhpn }}</span>
+            <template v-for="(part, idx) in getHighlightedParts(slotProps.data.hhpn, searchQuery)" :key="idx">
+              <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
+              <span v-else>{{ part.text }}</span>
+            </template>
           </div>
         </template>
       </Column>
 
       <!-- Description -->
-      <Column field="description" header="Description" style="width: 220px" />
+      <Column field="description" header="Description" style="width: 220px">
+        <template #body="slotProps">
+          <template v-for="(part, idx) in getHighlightedParts(slotProps.data.description, searchQuery)" :key="idx">
+            <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
+            <span v-else>{{ part.text }}</span>
+          </template>
+        </template>
+      </Column>
 
       <!-- Supplier -->
-      <Column field="supplier" header="Supplier" style="width: 150px" sortable />
+      <Column field="supplier" header="Supplier" style="width: 150px" sortable>
+        <template #body="slotProps">
+          <template v-for="(part, idx) in getHighlightedParts(slotProps.data.supplier, searchQuery)" :key="idx">
+            <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
+            <span v-else>{{ part.text }}</span>
+          </template>
+        </template>
+      </Column>
 
       <!-- Supplier PN -->
-      <Column field="supplier_pn" header="Supplier PN" style="width: 180px" sortable />
+      <Column field="supplier_pn" header="Supplier PN" style="width: 180px" sortable>
+        <template #body="slotProps">
+          <template v-for="(part, idx) in getHighlightedParts(slotProps.data.supplier_pn, searchQuery)" :key="idx">
+            <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
+            <span v-else>{{ part.text }}</span>
+          </template>
+        </template>
+      </Column>
 
       <!-- Qty -->
       <Column field="qty" header="Qty" style="width: 80px" sortable />
 
       <!-- Location -->
-      <Column field="locations" header="Location" style="width: 150px" />
+      <Column field="locations" header="Location" style="width: 150px">
+        <template #body="slotProps">
+          <template v-for="(part, idx) in getHighlightedParts(slotProps.data.locations, searchQuery)" :key="idx">
+            <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
+            <span v-else>{{ part.text }}</span>
+          </template>
+        </template>
+      </Column>
 
       <!-- CCL -->
       <Column field="ccl" header="CCL" style="width: 80px" sortable>
@@ -100,7 +144,14 @@
       </Column>
 
       <!-- Remark -->
-      <Column field="remark" header="Remark" style="width: 150px" />
+      <Column field="remark" header="Remark" style="width: 150px">
+        <template #body="slotProps">
+          <template v-for="(part, idx) in getHighlightedParts(slotProps.data.remark, searchQuery)" :key="idx">
+            <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
+            <span v-else>{{ part.text }}</span>
+          </template>
+        </template>
+      </Column>
 
       <!-- Dynamic Model Columns -->
       <Column
@@ -131,6 +182,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import DataTable, { type DataTableSortEvent } from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'
+import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useProjectStore, useLogStore } from '../stores'
@@ -183,6 +235,7 @@ const selectedView = ref('all')
 const collapsedParents = ref<Set<string>>(new Set())
 const sortField = ref('item')
 const sortOrder = ref(1)
+const searchQuery = ref('')
 
 // Computed properties
 const currentRevisionId = computed(() => props.revisionId || 0)
@@ -211,7 +264,37 @@ const currentRevisionModels = computed(() => {
 const sortedAggregatedParts = computed<ViewPartGroup[]>(() => {
   if (!aggregatedParts.value || aggregatedParts.value.length === 0) return []
 
-  const list = [...aggregatedParts.value]
+  let list = [...aggregatedParts.value]
+
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase()
+    list = list.filter((part: any) => {
+      // 檢查主料
+      const mainMatch = 
+        (part.hhpn && part.hhpn.toLowerCase().includes(q)) ||
+        (part.description && part.description.toLowerCase().includes(q)) ||
+        (part.main_supplier && part.main_supplier.toLowerCase().includes(q)) ||
+        (part.main_supplier_pn && part.main_supplier_pn.toLowerCase().includes(q)) ||
+        (part.locations && part.locations.toLowerCase().includes(q)) ||
+        (part.remark && part.remark.toLowerCase().includes(q))
+
+      if (mainMatch) return true
+
+      // 檢查替代料 (只要任一替代料符合，整個 Group 都會顯示)
+      if (part.second_sources && part.second_sources.length > 0) {
+        return part.second_sources.some((ss: any) => 
+          (ss.hhpn && ss.hhpn.toLowerCase().includes(q)) ||
+          (ss.description && ss.description.toLowerCase().includes(q)) ||
+          (ss.supplier && ss.supplier.toLowerCase().includes(q)) ||
+          (ss.supplier_pn && ss.supplier_pn.toLowerCase().includes(q)) ||
+          (ss.remark && ss.remark.toLowerCase().includes(q))
+        )
+      }
+
+      return false
+    })
+  }
+
   const field = sortField.value
   const order = sortOrder.value
 
@@ -334,7 +417,7 @@ const displayRows = computed<BOMDisplayRow[]>(() => {
           qty: '',
           locations: '',
           ccl: false,
-          remark: '',
+          remark: ss.remark || '',
           selections: selectionsMap,
         })
       })
@@ -392,6 +475,48 @@ function collapseAll(): void {
 
 function getRowClass(data: BOMDisplayRow) {
   return data.isSecondSource ? 'second-source-row' : 'main-source-row'
+}
+
+/**
+ * 將文字依據關鍵字切割為符合與不符合的片段，用於高亮顯示關鍵字
+ */
+function getHighlightedParts(text: string | number | null | undefined, query: string): { text: string; isMatch: boolean }[] {
+  const str = String(text ?? '')
+  if (!query || !query.trim() || !str) {
+    return [{ text: str, isMatch: false }]
+  }
+
+  const parts: { text: string; isMatch: boolean }[] = []
+  const q = query.trim()
+  const lowerStr = str.toLowerCase()
+  const lowerQ = q.toLowerCase()
+
+  let startIndex = 0
+  let matchIndex = lowerStr.indexOf(lowerQ, startIndex)
+
+  while (matchIndex !== -1) {
+    if (matchIndex > startIndex) {
+      parts.push({
+        text: str.substring(startIndex, matchIndex),
+        isMatch: false,
+      })
+    }
+    parts.push({
+      text: str.substring(matchIndex, matchIndex + q.length),
+      isMatch: true,
+    })
+    startIndex = matchIndex + q.length
+    matchIndex = lowerStr.indexOf(lowerQ, startIndex)
+  }
+
+  if (startIndex < str.length) {
+    parts.push({
+      text: str.substring(startIndex),
+      isMatch: false,
+    })
+  }
+
+  return parts
 }
 
 function getModelQty(modelName: string): number {
@@ -495,6 +620,31 @@ onMounted(() => {
   min-width: 150px;
 }
 
+.search-input-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5rem;
+}
+
+.search-input {
+  width: 250px;
+  padding-right: 2rem !important;
+}
+
+.clear-btn {
+  position: absolute;
+  right: 0.6rem;
+  cursor: pointer;
+  color: var(--text-color-secondary);
+  font-size: 0.85rem;
+  transition: color 0.2s;
+}
+
+.clear-btn:hover {
+  color: var(--text-color);
+}
+
 .view-actions {
   display: flex;
   gap: 0.25rem;
@@ -579,5 +729,13 @@ onMounted(() => {
 
 .ccl-normal {
   color: var(--text-color-secondary);
+}
+
+.highlight-text {
+  background-color: #fef08a;
+  color: #854d0e;
+  font-weight: 700;
+  padding: 0 2px;
+  border-radius: 2px;
 }
 </style>
