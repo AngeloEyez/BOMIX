@@ -164,6 +164,7 @@ export interface ViewSecondSource {
     "supplier": string;
     "supplier_pn": string;
     "description": string;
+    "remark": string;
 
     /**
      * 包含此替代料的 Revision ID 列表

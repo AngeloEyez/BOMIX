@@ -461,6 +461,7 @@ func (r *EBOMReader) parseMainSheet(
 				Supplier:    supplier,
 				SupplierPN:  supplierPN,
 				Description: description,
+				Remark:      remark,
 			}
 			secondSources = append(secondSources, parsedSecondSource{
 				partPtr:      currentMainPart,
@@ -559,6 +560,7 @@ func (r *EBOMReader) parseMainSheetV2(
 				Supplier:    supplier,
 				SupplierPN:  supplierPN,
 				Description: description,
+				Remark:      remark,
 			}
 			secondSources = append(secondSources, parsedSecondSource{
 				partPtr:      currentMainPart,

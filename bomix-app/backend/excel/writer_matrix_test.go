@@ -405,3 +405,184 @@ func TestWriteModelSelections(t *testing.T) {
 		t.Errorf("Expected empty M6, got '%s'", valC)
 	}
 }
+
+// TestExportMatrix_GroupZebraStriping 驗證 Matrix 匯出時斑馬紋是依據「物料 Group」切換
+func TestExportMatrix_GroupZebraStriping(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bomix-matrix-zebra-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("Failed to create writer: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:     types.FormatMatrix,
+		OutputPath: filepath.Join(tmpDir, "matrix_zebra_test.xlsx"),
+		PartData: []PartData{
+			// Group 0: Main Part 1 + 1 Second Source -> Rows 6 and 7 in SMD sheet
+			{
+				Item:        "1",
+				HHPN:        "MAIN_1",
+				Description: "Resistor 10K",
+				Supplier:    "YAGEO",
+				SupplierPn:  "R10K",
+				Qty:         1,
+				Type:        "SMD",
+				CCL:         true,
+				SecondSources: []SecondSourceData{
+					{
+						HHPN:        "ALT_1",
+						Supplier:    "UNI-ROYAL",
+						SupplierPn:  "R10K_ALT",
+						Description: "Resistor 10K Alt",
+					},
+				},
+			},
+			// Group 1: Main Part 2 -> Row 8 in SMD sheet
+			{
+				Item:        "2",
+				HHPN:        "MAIN_2",
+				Description: "Capacitor 10uF",
+				Supplier:    "MURATA",
+				SupplierPn:  "C10U",
+				Qty:         1,
+				Type:        "SMD",
+				CCL:         true,
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open file: %v", err)
+	}
+	defer f.Close()
+
+	// In Matrix template, A6 (styleRow6) and A7 (styleRow7) are alternating styles
+	styleRow6, err6 := f.GetCellStyle("SMD", "A6")
+	styleRow7, err7 := f.GetCellStyle("SMD", "A7")
+	styleRow8, err8 := f.GetCellStyle("SMD", "A8")
+
+	if err6 != nil || err7 != nil || err8 != nil {
+		t.Fatalf("Failed to get cell styles: %v, %v, %v", err6, err7, err8)
+	}
+
+	// 1. Group 0 的主料 (Row 6) 與二源料 (Row 7) 樣式應完全一致
+	if styleRow6 != styleRow7 {
+		t.Errorf("Group 0 main part (A6, style %d) and second source (A7, style %d) should have the SAME style", styleRow6, styleRow7)
+	}
+
+	// 2. 不同 Group (Group 0 vs Group 1) 的樣式應不相同
+	if styleRow6 == styleRow8 {
+		t.Errorf("Group 0 (A6, style %d) and Group 1 (A8, style %d) should have DIFFERENT styles", styleRow6, styleRow8)
+	}
+}
+
+// TestExportMatrix_PhaseAndVersionTagReplacement 驗證 Matrix 匯出時 {{.Phase}} 與 {{.Version}} 標籤正確被替換
+func TestExportMatrix_PhaseAndVersionTagReplacement(t *testing.T) {
+	f := excelize.NewFile()
+	defer f.Close()
+
+	// 模擬範本，在 B2 填入 Phase: {{.Phase}}, 在 B3 填入 Version: {{.Version}}
+	_ = f.SetCellValue("Sheet1", "B2", "Phase: {{.Phase}}")
+	_ = f.SetCellValue("Sheet1", "B3", "Ver: {{.Version}}")
+
+	tags := map[string]string{
+		"{{.Phase}}":   "EVT",
+		"{{.Version}}": "1.2",
+	}
+
+	err := applyTagReplacement(f, tags)
+	if err != nil {
+		t.Fatalf("applyTagReplacement failed: %v", err)
+	}
+
+	valB2, _ := f.GetCellValue("Sheet1", "B2")
+	valB3, _ := f.GetCellValue("Sheet1", "B3")
+
+	if valB2 != "Phase: EVT" {
+		t.Errorf("Expected B2 to be 'Phase: EVT', got '%s'", valB2)
+	}
+	if valB3 != "Ver: 1.2" {
+		t.Errorf("Expected B3 to be 'Ver: 1.2', got '%s'", valB3)
+	}
+}
+
+// TestExportMatrix_MainAndSecondSourceRemark 驗證主料與 2nd Source 的 Remark 是否精確寫入 Matrix 的 Remark 欄 (R 欄)
+func TestExportMatrix_MainAndSecondSourceRemark(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bomix-remark-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("Failed to create writer: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:     types.FormatMatrix,
+		OutputPath: filepath.Join(tmpDir, "remark_test_matrix.xlsx"),
+		PartData: []PartData{
+			{
+				Item:        "1",
+				HHPN:        "MAIN_PN_01",
+				Description: "Resistor 100K",
+				Supplier:    "YAGEO",
+				SupplierPn:  "R100K",
+				Qty:         2,
+				Type:        "SMD",
+				CCL:         true,
+				Remark:      "Main Part Remark 01",
+				SecondSources: []SecondSourceData{
+					{
+						HHPN:        "ALT_PN_01",
+						Supplier:    "UNI-ROYAL",
+						SupplierPn:  "R100K_ALT",
+						Description: "Resistor 100K Alt",
+						Remark:      "Second Source Remark 01",
+					},
+				},
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open file: %v", err)
+	}
+	defer f.Close()
+
+	// 7 models -> Remark is column R (col 17)
+	// Row 6: Main Part -> R6
+	// Row 7: Second Source -> R7
+	mainRemark, err1 := f.GetCellValue("SMD", "R6")
+	ssRemark, err2 := f.GetCellValue("SMD", "R7")
+
+	if err1 != nil || err2 != nil {
+		t.Fatalf("Failed to read R6/R7: %v, %v", err1, err2)
+	}
+
+	if mainRemark != "Main Part Remark 01" {
+		t.Errorf("Expected R6 (Main Part Remark) to be 'Main Part Remark 01', got '%s'", mainRemark)
+	}
+
+	if ssRemark != "Second Source Remark 01" {
+		t.Errorf("Expected R7 (Second Source Remark) to be 'Second Source Remark 01', got '%s'", ssRemark)
+	}
+}

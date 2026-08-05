@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"bomix-app/backend/types"
+	"github.com/xuri/excelize/v2"
 )
 
 // exportMatrix exports data to Matrix format
@@ -26,18 +27,49 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 	}
 	defer f.Close()
 
-	// In a real implementation, we would fetch revision data from DB
-	// For now, use placeholder data
+	// 取得 Revision metadata（優先取用傳入的 options.Revisions[0]）
 	rev := RevisionData{
-		ProjectCode:     "DEMO",
-		Description:     "Demo Project",
+		ProjectCode:      "BOMIX",
+		Description:      options.Description,
 		SchematicVersion: "1.0",
-		PCBVersion:      "1.0",
-		PCAPN:           "DEMO-001",
-		Phase:           "DB",
-		Version:         "0.1",
-		Date:            generateTimestamp(),
-		ModelQty:        map[string]int{"A": 1, "B": 1, "C": 1, "D": 1, "E": 1, "F": 1},
+		PCBVersion:       "1.0",
+		PCAPN:            "",
+		Phase:            "DB",
+		Version:          "0.1",
+		Date:             generateTimestamp(),
+		ModelQty:         map[string]int{"A": 1, "B": 1, "C": 1, "D": 1, "E": 1, "F": 1, "G": 1},
+	}
+
+	if len(options.Revisions) > 0 {
+		r0 := options.Revisions[0]
+		if r0.ProjectCode != "" {
+			rev.ProjectCode = r0.ProjectCode
+		}
+		if r0.Description != "" {
+			rev.Description = r0.Description
+		}
+		if r0.SchematicVersion != "" {
+			rev.SchematicVersion = r0.SchematicVersion
+		}
+		if r0.PCBVersion != "" {
+			rev.PCBVersion = r0.PCBVersion
+		}
+		if r0.PCAPN != "" {
+			rev.PCAPN = r0.PCAPN
+		}
+		if r0.Phase != "" {
+			rev.Phase = r0.Phase
+		}
+		if r0.Version != "" {
+			rev.Version = r0.Version
+		}
+		if len(r0.ModelQty) > 0 {
+			for k, v := range r0.ModelQty {
+				rev.ModelQty[k] = v
+			}
+		}
+	} else if options.Description != "" {
+		rev.ProjectCode = options.Description
 	}
 
 	date := generateTimestamp()
@@ -49,6 +81,8 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		"{{.SchematicVersion}}":  rev.SchematicVersion,
 		"{{.PCBVersion}}":        rev.PCBVersion,
 		"{{.PCAPN}}":             rev.PCAPN,
+		"{{.Phase}}":             rev.Phase,
+		"{{.Version}}":           rev.Version,
 		"{{.Date}}":              date,
 		"{{.ModelQtyA}}":         fmt.Sprintf("%d", rev.ModelQty["A"]),
 		"{{.ModelQtyB}}":         fmt.Sprintf("%d", rev.ModelQty["B"]),
@@ -56,17 +90,26 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		"{{.ModelQtyD}}":         fmt.Sprintf("%d", rev.ModelQty["D"]),
 		"{{.ModelQtyE}}":         fmt.Sprintf("%d", rev.ModelQty["E"]),
 		"{{.ModelQtyF}}":         fmt.Sprintf("%d", rev.ModelQty["F"]),
+		"{{.ModelQtyG}}":         fmt.Sprintf("%d", rev.ModelQty["G"]),
 	}
 	if err := applyTagReplacement(f, tags); err != nil {
 		return nil, err
 	}
 
-	// 8.2.4 - Dynamic Model column generation (minimum 6 models)
+	// 8.2.4 - Dynamic Model column generation (minimum 7 models)
 	modelStartCol := 10 // K
-	minModelCount := 6
+	minModelCount := 7
 	actualModelCount := len(rev.ModelQty)
 	if actualModelCount < minModelCount {
 		actualModelCount = minModelCount
+	}
+
+	// Ensure SMD, PTH, BOTTOM sheets exist
+	sheets := []string{"SMD", "PTH", "BOTTOM"}
+	for _, s := range sheets {
+		if idx, _ := f.GetSheetIndex(s); idx < 0 {
+			f.NewSheet(s)
+		}
 	}
 
 	// Write Model names and quantities
@@ -93,12 +136,67 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 	// Calculate Remark column position (after all Model columns)
 	remarkCol := getColName(modelStartCol + actualModelCount)
 
-	// Get style IDs for alternating rows
-	styleRow6, _ := f.GetCellStyle("SMD", "A6")
-	styleRow7, _ := f.GetCellStyle("SMD", "A7")
+	// 讀取 A~J 欄位、Model 欄位 (K6, K7) 與 Remark 欄位在 Row 6 (偶數群組) 與 Row 7 (奇數群組) 的 Archetype Style ID
+	styleCol6 := make(map[string]int)
+	styleCol7 := make(map[string]int)
+	for c := 'A'; c <= 'J'; c++ {
+		colStr := string(c)
+		styleCol6[colStr], _ = f.GetCellStyle("SMD", colStr+"6")
+		styleCol7[colStr], _ = f.GetCellStyle("SMD", colStr+"7")
+	}
+
+	styleModel6, _ := f.GetCellStyle("SMD", "K6")
+	styleModel7, _ := f.GetCellStyle("SMD", "K7")
+
+	styleRemark6, _ := f.GetCellStyle("SMD", "Q6")
+	styleRemark7, _ := f.GetCellStyle("SMD", "Q7")
+	if styleRemark6 == 0 {
+		styleRemark6 = styleModel6
+	}
+	if styleRemark7 == 0 {
+		styleRemark7 = styleModel7
+	}
+
+	// 建立套用全列樣式 (A-R 欄) 的輔助函數
+	applyFullMatrixRowStyle := func(f *excelize.File, sheet string, row int, isEven bool) {
+		// 1. 套用 A ~ J 欄位範本原生樣式 (保留各欄對齊方式、數字格式與邊框格線)
+		for c := 'A'; c <= 'J'; c++ {
+			colStr := string(c)
+			cell := fmt.Sprintf("%s%d", colStr, row)
+			var st int
+			if isEven {
+				st = styleCol6[colStr]
+			} else {
+				st = styleCol7[colStr]
+			}
+			_ = f.SetCellStyle(sheet, cell, cell, st)
+		}
+
+		// 2. 套用 Model 欄位 (K 到 Q 欄) 的 Model Archetype 樣式 (含 "V" 置中、斑馬紋底色與格線邊框)
+		for i := 0; i < actualModelCount; i++ {
+			colStr := getColName(modelStartCol + i)
+			cell := fmt.Sprintf("%s%d", colStr, row)
+			var st int
+			if isEven {
+				st = styleModel6
+			} else {
+				st = styleModel7
+			}
+			_ = f.SetCellStyle(sheet, cell, cell, st)
+		}
+
+		// 3. 套用 Remark 欄位 (R 欄) 的 Remark Archetype 樣式 (含對齊、斑馬紋底色與格線邊框)
+		remarkCell := fmt.Sprintf("%s%d", remarkCol, row)
+		var remarkSt int
+		if isEven {
+			remarkSt = styleRemark6
+		} else {
+			remarkSt = styleRemark7
+		}
+		_ = f.SetCellStyle(sheet, remarkCell, remarkCell, remarkSt)
+	}
 
 	// 8.2.5 - Write part data to each sheet
-	sheets := []string{"SMD", "PTH", "BOTTOM"}
 	for _, sheet := range sheets {
 		rowIndex := 6
 
@@ -110,20 +208,10 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 			}
 		}
 
-		for _, part := range sheetParts {
-			// Alternate row styles
-			var rowStyle int
-			if rowIndex%2 == 0 {
-				rowStyle = styleRow6
-			} else {
-				rowStyle = styleRow7
-			}
-
-			// Apply style to columns A-J
-			for col := 'A'; col <= 'J'; col++ {
-				cell := fmt.Sprintf("%c%d", col, rowIndex)
-				f.SetCellStyle(sheet, cell, cell, rowStyle)
-			}
+		for groupIdx, part := range sheetParts {
+			// Alternate row styles by material group (Row 6 for even groups, Row 7 for odd groups)
+			isEven := (groupIdx%2 == 0)
+			applyFullMatrixRowStyle(f, sheet, rowIndex, isEven)
 
 			// Write basic part data (columns A, B, D, E, F, G, H)
 			// Column C is empty per spec 8.2.5.1
@@ -163,18 +251,8 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 
 			// Write second sources
 			for _, ss := range part.SecondSources {
-				// Apply alternating style
-				var rowStyle int
-				if rowIndex%2 == 0 {
-					rowStyle = styleRow6
-				} else {
-					rowStyle = styleRow7
-				}
-
-				for col := 'A'; col <= 'J'; col++ {
-					cell := fmt.Sprintf("%c%d", col, rowIndex)
-					f.SetCellStyle(sheet, cell, cell, rowStyle)
-				}
+				// Apply same group rowStyle for second sources
+				applyFullMatrixRowStyle(f, sheet, rowIndex, isEven)
 
 				// Second sources don't have Item or Location
 				f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIndex), ss.HHPN)
@@ -203,7 +281,7 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 				}
 
 				// Remark for second source
-				f.SetCellValue(sheet, fmt.Sprintf("%s%d", remarkCol, rowIndex), ss.Description)
+				f.SetCellValue(sheet, fmt.Sprintf("%s%d", remarkCol, rowIndex), ss.Remark)
 
 				rowIndex++
 			}
@@ -266,11 +344,13 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 		"{{.SchematicVersion}}":  rev.SchematicVersion,
 		"{{.PCBVersion}}":        rev.PCBVersion,
 		"{{.PCAPN}}":             rev.PCAPN,
+		"{{.Phase}}":             rev.Phase,
+		"{{.Version}}":           rev.Version,
 		"{{.Date}}":              date,
 	}
 
 	// Add model quantities
-	modelNames := []string{"A", "B", "C", "D", "E", "F"}
+	modelNames := []string{"A", "B", "C", "D", "E", "F", "G"}
 	for _, modelName := range modelNames {
 		qty := rev.ModelQty[modelName]
 		if qty == 0 {
@@ -283,16 +363,23 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 		return nil, err
 	}
 
-	// 8.2.4 - Dynamic Model column generation (minimum 6 models)
+	// 8.2.4 - Dynamic Model column generation (minimum 7 models)
 	modelStartCol := 10 // K
-	minModelCount := 6
+	minModelCount := 7
 	actualModelCount := len(rev.ModelQty)
 	if actualModelCount < minModelCount {
 		actualModelCount = minModelCount
 	}
 
-	// Write Model names and quantities for all sheets
+	// Ensure SMD, PTH, BOTTOM sheets exist
 	sheets := []string{"SMD", "PTH", "BOTTOM"}
+	for _, s := range sheets {
+		if idx, _ := f.GetSheetIndex(s); idx < 0 {
+			f.NewSheet(s)
+		}
+	}
+
+	// Write Model names and quantities for all sheets
 	for _, sheet := range sheets {
 		for i := 0; i < actualModelCount; i++ {
 			col := getColName(modelStartCol + i)
@@ -311,9 +398,68 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 		}
 	}
 
-	// Get style IDs for alternating rows
-	styleRow6, _ := f.GetCellStyle("SMD", "A6")
-	styleRow7, _ := f.GetCellStyle("SMD", "A7")
+	// 讀取 A~J 欄位、Model 欄位 (K6, K7) 與 Remark 欄位在 Row 6 (偶數群組) 與 Row 7 (奇數群組) 的 Archetype Style ID
+	styleCol6 := make(map[string]int)
+	styleCol7 := make(map[string]int)
+	for c := 'A'; c <= 'J'; c++ {
+		colStr := string(c)
+		styleCol6[colStr], _ = f.GetCellStyle("SMD", colStr+"6")
+		styleCol7[colStr], _ = f.GetCellStyle("SMD", colStr+"7")
+	}
+
+	styleModel6, _ := f.GetCellStyle("SMD", "K6")
+	styleModel7, _ := f.GetCellStyle("SMD", "K7")
+
+	styleRemark6, _ := f.GetCellStyle("SMD", "Q6")
+	styleRemark7, _ := f.GetCellStyle("SMD", "Q7")
+	if styleRemark6 == 0 {
+		styleRemark6 = styleModel6
+	}
+	if styleRemark7 == 0 {
+		styleRemark7 = styleModel7
+	}
+
+	// Calculate Remark column position
+	remarkCol := getColName(modelStartCol + actualModelCount)
+
+	// 建立套用全列樣式 (A-R 欄) 的輔助函數
+	applyFullMatrixRowStyle := func(f *excelize.File, sheet string, row int, isEven bool) {
+		// 1. 套用 A ~ J 欄位範本原生樣式 (保留各欄對齊方式、數字格式與邊框格線)
+		for c := 'A'; c <= 'J'; c++ {
+			colStr := string(c)
+			cell := fmt.Sprintf("%s%d", colStr, row)
+			var st int
+			if isEven {
+				st = styleCol6[colStr]
+			} else {
+				st = styleCol7[colStr]
+			}
+			_ = f.SetCellStyle(sheet, cell, cell, st)
+		}
+
+		// 2. 套用 Model 欄位 (K 到 Q 欄) 的 Model Archetype 樣式 (含 "V" 置中、斑馬紋底色與格線邊框)
+		for i := 0; i < actualModelCount; i++ {
+			colStr := getColName(modelStartCol + i)
+			cell := fmt.Sprintf("%s%d", colStr, row)
+			var st int
+			if isEven {
+				st = styleModel6
+			} else {
+				st = styleModel7
+			}
+			_ = f.SetCellStyle(sheet, cell, cell, st)
+		}
+
+		// 3. 套用 Remark 欄位 (R 欄) 的 Remark Archetype 樣式 (含對齊、斑馬紋底色與格線邊框)
+		remarkCell := fmt.Sprintf("%s%d", remarkCol, row)
+		var remarkSt int
+		if isEven {
+			remarkSt = styleRemark6
+		} else {
+			remarkSt = styleRemark7
+		}
+		_ = f.SetCellStyle(sheet, remarkCell, remarkCell, remarkSt)
+	}
 
 	// 8.2.6 - Filter parts by criteria
 	filteredParts := filterMatrixParts(parts)
@@ -330,20 +476,10 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 			}
 		}
 
-		for _, part := range sheetParts {
-			// Alternate row styles
-			var rowStyle int
-			if rowIndex%2 == 0 {
-				rowStyle = styleRow6
-			} else {
-				rowStyle = styleRow7
-			}
-
-			// Apply style to columns A-J
-			for col := 'A'; col <= 'J'; col++ {
-				cell := fmt.Sprintf("%c%d", col, rowIndex)
-				f.SetCellStyle(sheet, cell, cell, rowStyle)
-			}
+		for groupIdx, part := range sheetParts {
+			// Alternate row styles by material group (Row 6 for even groups, Row 7 for odd groups)
+			isEven := (groupIdx%2 == 0)
+			applyFullMatrixRowStyle(f, sheet, rowIndex, isEven)
 
 			// Write basic part data (columns A, B, D, E, F, G, H)
 			// Column C is empty per spec 8.2.5.1
@@ -377,25 +513,14 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 			}
 
 			// 8.2.5.5 - Write Remark (column after all Model columns)
-			remarkCol := getColName(modelStartCol + actualModelCount)
 			f.SetCellValue(sheet, fmt.Sprintf("%s%d", remarkCol, rowIndex), part.Remark)
 
 			rowIndex++
 
 			// Write second sources
 			for _, ss := range part.SecondSources {
-				// Apply alternating style
-				var rowStyle int
-				if rowIndex%2 == 0 {
-					rowStyle = styleRow6
-				} else {
-					rowStyle = styleRow7
-				}
-
-				for col := 'A'; col <= 'J'; col++ {
-					cell := fmt.Sprintf("%c%d", col, rowIndex)
-					f.SetCellStyle(sheet, cell, cell, rowStyle)
-				}
+				// Apply same group rowStyle for second sources
+				applyFullMatrixRowStyle(f, sheet, rowIndex, isEven)
 
 				// Second sources don't have Item or Location
 				f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIndex), ss.HHPN)
@@ -424,7 +549,7 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 				}
 
 				// Remark for second source
-				f.SetCellValue(sheet, fmt.Sprintf("%s%d", remarkCol, rowIndex), ss.Description)
+				f.SetCellValue(sheet, fmt.Sprintf("%s%d", remarkCol, rowIndex), ss.Remark)
 
 				rowIndex++
 			}

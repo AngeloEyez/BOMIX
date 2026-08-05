@@ -49,6 +49,7 @@ type ViewSecondSource struct {
 	Supplier          string  `json:"supplier"`
 	SupplierPN        string  `json:"supplier_pn"`
 	Description       string  `json:"description"`
+	Remark            string  `json:"remark"`
 	SourceRevisionIDs []int64 `json:"source_revision_ids"` // 包含此替代料的 Revision ID 列表
 }
 

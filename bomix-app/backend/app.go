@@ -699,6 +699,7 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 				Supplier:    ss.Supplier,
 				SupplierPn:  ss.SupplierPN,
 				Description: ss.Description,
+				Remark:      ss.Remark,
 			})
 		}
 

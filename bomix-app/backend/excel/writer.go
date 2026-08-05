@@ -62,10 +62,11 @@ type PartData struct {
 
 // SecondSourceData represents second source data for export
 type SecondSourceData struct {
-	HHPN      string
-	Supplier  string
-	SupplierPn string
+	HHPN        string
+	Supplier    string
+	SupplierPn  string
 	Description string
+	Remark      string
 }
 
 // RevisionData contains BOM revision metadata for export
@@ -172,8 +173,20 @@ func generateBigMatrixFileName(seriesName string, revisions []RevisionData, date
 // generateMatrixFileName generates the output filename for Matrix
 // Format: {project code}_EZBOM_{phase}_{version}_MatrixBOM_{date}.xlsx
 func generateMatrixFileName(rev RevisionData, date string) string {
+	projCode := strings.TrimSpace(rev.ProjectCode)
+	if projCode == "" {
+		projCode = "BOMIX"
+	}
+	phase := strings.TrimSpace(rev.Phase)
+	if phase == "" {
+		phase = "DB"
+	}
+	version := strings.TrimSpace(rev.Version)
+	if version == "" {
+		version = "0.1"
+	}
 	return fmt.Sprintf("%s_EZBOM_%s_%s_MatrixBOM_%s.xlsx",
-		rev.ProjectCode, rev.Phase, rev.Version, date)
+		projCode, phase, version, date)
 }
 
 // resolveOutputPath 解析並確定 Excel 檔案的最終儲存路徑。

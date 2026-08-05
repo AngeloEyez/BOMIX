@@ -171,6 +171,17 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	styleJ6, _ := f.GetCellStyle("BigMatrix", "J6")
 	styleJ7, _ := f.GetCellStyle("BigMatrix", "J7")
 
+	// Read archetype style IDs for A-G columns in data rows
+	styleAG6 := make(map[string]int)
+	styleAG7 := make(map[string]int)
+	for c := 'A'; c <= 'G'; c++ {
+		colStr := string(c)
+		s6, _ := f.GetCellStyle("BigMatrix", colStr+"6")
+		s7, _ := f.GetCellStyle("BigMatrix", colStr+"7")
+		styleAG6[colStr] = s6
+		styleAG7[colStr] = s7
+	}
+
 	// Helper to get archetype style for a model column based on index and total count
 	getModelStyle := func(row int, colIdx int, totalCount int) int {
 		if row == 6 || row == 7 {
@@ -362,12 +373,16 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			refRow = 7
 		}
 
-		// Apply A-G styles from template refRow
+		// Apply A-G styles from cached archetype styles
 		for c := 'A'; c <= 'G'; c++ {
 			colStr := string(c)
 			cell := fmt.Sprintf("%s%d", colStr, row)
-			refCell := fmt.Sprintf("%s%d", colStr, refRow)
-			st, _ := f.GetCellStyle(sheet, refCell)
+			var st int
+			if isEven {
+				st = styleAG6[colStr]
+			} else {
+				st = styleAG7[colStr]
+			}
 			_ = f.SetCellStyle(sheet, cell, cell, st)
 		}
 
@@ -430,8 +445,9 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 
 	// 8.1.4 - Write part data
 	rowIndex := 6
-	for _, part := range parts {
-		isEven := (rowIndex%2 == 0)
+	for groupIdx, part := range parts {
+		// 依物料群組 (groupIdx) 切換斑馬紋樣式 (Row 6 / Row 7)
+		isEven := (groupIdx%2 == 0)
 		applyFullRowStyle(f, "BigMatrix", rowIndex, isEven)
 
 		// Write basic part data (columns A-G)
@@ -487,7 +503,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 
 		// Write second sources
 		for _, ss := range part.SecondSources {
-			isEvenSS := (rowIndex%2 == 0)
+			isEvenSS := isEven
 			applyFullRowStyle(f, "BigMatrix", rowIndex, isEvenSS)
 
 			f.SetCellValue("BigMatrix", fmt.Sprintf("B%d", rowIndex), ss.HHPN)

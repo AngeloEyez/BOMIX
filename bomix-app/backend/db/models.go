@@ -116,6 +116,7 @@ type SecondSource struct {
 	Supplier    string    `gorm:"not null"`
 	SupplierPN  string    `gorm:"not null"`
 	Description string
+	Remark      string
 	Cost        float64
 	CreatedAt   time.Time
 	UpdatedAt   time.Time

@@ -897,5 +897,109 @@ func TestExportBigMatrix_EmptyQtyAndSelection(t *testing.T) {
 	}
 }
 
+// TestExportBigMatrix_GroupZebraStriping 驗證匯出時斑馬紋是依據「物料 Group」切換，而非依據行號 (Row) 切換
+func TestExportBigMatrix_GroupZebraStriping(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bomix-group-zebra-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("Failed to create writer: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:      types.FormatBigMatrix,
+		OutputPath:  filepath.Join(tmpDir, "group_zebra_test.xlsx"),
+		Description: "Group Zebra Test",
+		Revisions: []RevisionData{
+			{
+				ID:          "10",
+				ProjectCode: "ZEBRA_PROJ",
+				Phase:       "EVT",
+				Version:     "1.0",
+				ModelQty:    map[string]int{"A": 1},
+			},
+		},
+		PartData: []PartData{
+			// Group 0: Main Part 1 + 1 Second Source -> Rows 6 and 7
+			{
+				Item:        "1",
+				HHPN:        "MAIN_1",
+				Description: "Resistor 10K",
+				Supplier:    "YAGEO",
+				SupplierPn:  "R10K",
+				Qty:         1,
+				Location:    "R1",
+				SecondSources: []SecondSourceData{
+					{
+						HHPN:        "ALT_1",
+						Supplier:    "UNI-ROYAL",
+						SupplierPn:  "R10K_ALT",
+						Description: "Resistor 10K Alt",
+					},
+				},
+			},
+			// Group 1: Main Part 2 -> Row 8
+			{
+				Item:        "2",
+				HHPN:        "MAIN_2",
+				Description: "Capacitor 10uF",
+				Supplier:    "MURATA",
+				SupplierPn:  "C10U",
+				Qty:         1,
+				Location:    "C1",
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open file: %v", err)
+	}
+	defer f.Close()
+
+	// Verify H column (dynamic Model column)
+	styleH6, errH6 := f.GetCellStyle("BigMatrix", "H6")
+	styleH7, errH7 := f.GetCellStyle("BigMatrix", "H7")
+	styleH8, errH8 := f.GetCellStyle("BigMatrix", "H8")
+
+	if errH6 != nil || errH7 != nil || errH8 != nil {
+		t.Fatalf("Failed to get H cell styles: %v, %v, %v", errH6, errH7, errH8)
+	}
+
+	if styleH6 != styleH7 {
+		t.Errorf("Group 0 main part (H6, style %d) and second source (H7, style %d) should have the SAME style", styleH6, styleH7)
+	}
+
+	if styleH6 == styleH8 {
+		t.Errorf("Group 0 (H6, style %d) and Group 1 (H8, style %d) should have DIFFERENT styles", styleH6, styleH8)
+	}
+
+	// Verify A column (basic part data columns A-G)
+	styleA6, errA6 := f.GetCellStyle("BigMatrix", "A6")
+	styleA7, errA7 := f.GetCellStyle("BigMatrix", "A7")
+	styleA8, errA8 := f.GetCellStyle("BigMatrix", "A8")
+
+	if errA6 != nil || errA7 != nil || errA8 != nil {
+		t.Fatalf("Failed to get A cell styles: %v, %v, %v", errA6, errA7, errA8)
+	}
+
+	if styleA6 != styleA7 {
+		t.Errorf("Group 0 main part (A6, style %d) and second source (A7, style %d) should have the SAME style", styleA6, styleA7)
+	}
+
+	if styleA6 == styleA8 {
+		t.Errorf("Group 0 (A6, style %d) and Group 1 (A8, style %d) should have DIFFERENT styles", styleA6, styleA8)
+	}
+}
+
 
 

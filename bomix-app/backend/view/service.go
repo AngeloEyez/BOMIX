@@ -481,6 +481,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 						Supplier:          ss.Supplier,
 						SupplierPN:        ss.SupplierPN,
 						Description:       ss.Description,
+						Remark:            ss.Remark,
 						SourceRevisionIDs: []int64{revID},
 					}
 				}
