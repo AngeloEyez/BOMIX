@@ -165,6 +165,53 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		styleAG7[colStr] = s7
 	}
 
+	// unlockCache 樣式解鎖快取：以原始 styleID 為鍵，快取 Locked: false 版本的 styleID。
+	// 避免對同一基礎樣式重複呼叫 NewStyle，減少樣式表膨脹。
+	unlockCache := make(map[int]int)
+
+	// makeUnlocked 建立並快取指定樣式的解鎖（Protection.Locked: false）版本。
+	// 確保工作表保護啟用時，非灰底儲存格允許使用者自由編輯。
+	//
+	// 參數：
+	//   - styleID：原始 Excelize 樣式 ID
+	//
+	// 回傳：
+	//   - int：解鎖版本的 Excelize 樣式 ID（若失敗則回傳原始 styleID）
+	makeUnlocked := func(styleID int) int {
+		if styleID <= 0 {
+			return styleID
+		}
+		if cached, ok := unlockCache[styleID]; ok {
+			return cached
+		}
+		styleDef, err := f.GetStyle(styleID)
+		if err != nil || styleDef == nil {
+			return styleID
+		}
+		cp := *styleDef
+		cp.Protection = &excelize.Protection{Locked: false}
+		newID, err := f.NewStyle(&cp)
+		if err != nil || newID <= 0 {
+			unlockCache[styleID] = styleID
+			return styleID
+		}
+		unlockCache[styleID] = newID
+		return newID
+	}
+
+	// 解鎖 BigMatrix 範本靜態區域（行 1-7，欄 A-G）的所有儲存格。
+	// Excel 預設儲存格 Locked: true，若不明確解鎖，啟用工作表保護後這些欄位也會被鎖定。
+	for row := 1; row <= 7; row++ {
+		for c := 'A'; c <= 'G'; c++ {
+			cellAddr := fmt.Sprintf("%c%d", c, row)
+			sid, _ := f.GetCellStyle("BigMatrix", cellAddr)
+			newSid := makeUnlocked(sid)
+			if newSid != sid {
+				_ = f.SetCellStyle("BigMatrix", cellAddr, cellAddr, newSid)
+			}
+		}
+	}
+
 	// Helper to get archetype style for a model column based on index and total count
 	getModelStyle := func(row int, colIdx int, totalCount int) int {
 		if row == 6 || row == 7 {
@@ -245,10 +292,11 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		endColName := getColName(currentCol + revModelCount - 1)
 
 		// Apply archetype styles for each column in this revision (rows 2..5)
+		// 使用解鎖版樣式，確保 Header 欄在工作表保護時不被誤鎖定
 		for i := 0; i < revModelCount; i++ {
 			col := getColName(currentCol + i)
 			for r := 2; r <= 5; r++ {
-				st := getModelStyle(r, i, revModelCount)
+				st := makeUnlocked(getModelStyle(r, i, revModelCount))
 				_ = f.SetCellStyle("BigMatrix", fmt.Sprintf("%s%d", col, r), fmt.Sprintf("%s%d", col, r), st)
 			}
 
@@ -354,20 +402,21 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			refRow = 7
 		}
 
-		// Apply A-G styles from cached archetype styles
+		// A-G 欄使用解鎖版樣式：確保資料欄在工作表保護模式下仍可自由編輯
 		for c := 'A'; c <= 'G'; c++ {
 			colStr := string(c)
 			cell := fmt.Sprintf("%s%d", colStr, row)
-			var st int
+			var baseSt int
 			if isEven {
-				st = styleAG6[colStr]
+				baseSt = styleAG6[colStr]
 			} else {
-				st = styleAG7[colStr]
+				baseSt = styleAG7[colStr]
 			}
-			_ = f.SetCellStyle(sheet, cell, cell, st)
+			// makeUnlocked 確保 A-G 欄不被工作表保護鎖定
+			_ = f.SetCellStyle(sheet, cell, cell, makeUnlocked(baseSt))
 		}
 
-		// Apply dynamic Model column styles (H onwards)
+		// Model 欄先套用基礎樣式（後續由 getGrayStyle / getUnlockedModelStyle 覆蓋）
 		cIdx := bomStartCol
 		for _, rev := range revisions {
 			revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
@@ -460,32 +509,18 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		return createGrayStyle(isLeftEdge, isRightEdge, isTopEdge, isBottomEdge)
 	}
 
-	// unlockedStyleCache 快取解鎖版 (Locked: false) 的 Model 欄位樣式，允許使用者編輯
-	unlockedStyleCache := make(map[int]int)
-
-	// getUnlockedModelStyle 取得並快取解鎖 (Locked: false) 的 Model 欄位樣式
+	// getUnlockedModelStyle 取得解鎖（Locked: false）版本的 Model 欄位樣式。
+	// 由 makeUnlocked 統一處理快取（unlockCache），避免重複 NewStyle 呼叫。
+	//
+	// 參數：
+	//   - row：資料列的斑馬紋基準行（6 = 偶數群組，7 = 奇數群組）
+	//   - colIdx：此欄在當前 Revision 的 0-based 欄位索引
+	//   - totalCount：當前 Revision 的 Model 欄位總數
+	//
+	// 回傳：
+	//   - int：解鎖版本的 Excelize 樣式 ID
 	getUnlockedModelStyle := func(row int, colIdx int, totalCount int) int {
-		baseStyleID := getModelStyle(row, colIdx, totalCount)
-		if baseStyleID <= 0 {
-			return baseStyleID
-		}
-		if cachedID, ok := unlockedStyleCache[baseStyleID]; ok {
-			return cachedID
-		}
-		styleDef, err := f.GetStyle(baseStyleID)
-		if err != nil || styleDef == nil {
-			return baseStyleID
-		}
-		newStyle := *styleDef
-		newStyle.Protection = &excelize.Protection{
-			Locked: false, // 解鎖：允許使用者編輯填入 "V"
-		}
-		newID, err := f.NewStyle(&newStyle)
-		if err != nil || newID <= 0 {
-			return baseStyleID
-		}
-		unlockedStyleCache[baseStyleID] = newID
-		return newID
+		return makeUnlocked(getModelStyle(row, colIdx, totalCount))
 	}
 
 	// 建立 revision ID 字串 -> int64 的解析輔助（用於比對 SourceRevisionIDs）
