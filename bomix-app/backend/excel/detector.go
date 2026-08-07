@@ -153,7 +153,7 @@ func (d *Detector) isEBOMFormat(f Workbook, sheets []string) bool {
 // isMatrixFormat checks if the file matches Matrix format
 // Conditions:
 // 1. Has SMD sheet
-// 2. SMD header H5="Location" and J7="Total Set"
+// 2. SMD header H5="Location" and J5="Total Set"
 func (d *Detector) isMatrixFormat(f Workbook, sheets []string) bool {
 	smdSheet := ""
 	for _, sheet := range sheets {
@@ -165,20 +165,48 @@ func (d *Detector) isMatrixFormat(f Workbook, sheets []string) bool {
 	}
 
 	if smdSheet == "" {
+		if d.logger != nil {
+			d.logger.Debug("[isMatrixFormat] 判定不符: 未找到 SMD 工作表")
+		}
 		return false
 	}
 
 	// Check H5 (Location)
-	valH5, _ := f.GetCellValue(smdSheet, "H5")
+	valH5, errH5 := f.GetCellValue(smdSheet, "H5")
 	trimmedH5 := strings.TrimSpace(valH5)
-	if !strings.EqualFold(trimmedH5, "Location") {
+
+	// Check J5 (Total Set)
+	valJ5, errJ5 := f.GetCellValue(smdSheet, "J5")
+	trimmedJ5 := strings.TrimSpace(valJ5)
+
+	matchH5 := strings.EqualFold(trimmedH5, "Location")
+	matchJ5 := strings.EqualFold(trimmedJ5, "Total Set")
+
+	if d.logger != nil {
+		d.logger.Info("[isMatrixFormat] 檢查 Matrix 儲存格 (H5, J5)",
+			"sheet", smdSheet,
+			"H5_raw", valH5,
+			"H5_trimmed", trimmedH5,
+			"H5_err", errH5,
+			"H5_match", matchH5,
+			"J5_raw", valJ5,
+			"J5_trimmed", trimmedJ5,
+			"J5_err", errJ5,
+			"J5_match", matchJ5,
+		)
+	}
+
+	if !matchH5 {
+		if d.logger != nil {
+			d.logger.Debug("[isMatrixFormat] H5 判斷失敗 (期望 'Location')", "actual", trimmedH5)
+		}
 		return false
 	}
 
-	// Check J7 (Total Set)
-	valJ7, _ := f.GetCellValue(smdSheet, "J7")
-	trimmedJ7 := strings.TrimSpace(valJ7)
-	if !strings.EqualFold(trimmedJ7, "Total Set") {
+	if !matchJ5 {
+		if d.logger != nil {
+			d.logger.Debug("[isMatrixFormat] J5 判斷失敗 (期望 'Total Set')", "actual", trimmedJ5)
+		}
 		return false
 	}
 

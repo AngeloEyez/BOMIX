@@ -79,8 +79,7 @@ func (r *ReaderImpl) importFile(path string) (types.ImportResult, error) {
 	case types.FormatBigMatrix:
 		return r.importBigMatrix(f, path)
 	case types.FormatMatrix:
-		// Matrix format is not supported yet
-		return result, ErrInvalidFormat
+		return r.importMatrix(f, path)
 	default:
 		return result, ErrInvalidFormat
 	}
@@ -122,12 +121,17 @@ func (r *ReaderImpl) importBigMatrix(f Workbook, path string) (types.ImportResul
 	return result, err
 }
 
-// importMatrix imports a Matrix format file (placeholder)
+// importMatrix imports a Matrix format file
 func (r *ReaderImpl) importMatrix(f Workbook, path string) (types.ImportResult, error) {
-	return types.ImportResult{
+	result := types.ImportResult{
 		FileName: path,
 		Format:   types.FormatMatrix,
-	}, ErrInvalidFormat
+	}
+
+	// Delegate to the Matrix reader
+	matrixReader := NewMatrixReader(r.db, &result, r.logger)
+	err := matrixReader.Import(f)
+	return result, err
 }
 
 // ErrInvalidFormat is returned when the file format is invalid or not supported

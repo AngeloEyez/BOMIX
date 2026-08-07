@@ -136,8 +136,8 @@ func (r *BigMatrixReader) parseBOMConfigs(f Workbook, sheetName string) ([]BOMCo
 		var models []ModelConfig
 		colIdx := startCol
 		for {
-			modelName, _ := f.GetCellValue(sheetName, colToCell(colIdx, 4))
-			if (modelName == "" || strings.ToUpper(modelName) == "A") && len(models) > 0 {
+			modelNameCell, _ := f.GetCellValue(sheetName, colToCell(colIdx, 4))
+			if (modelNameCell == "" || strings.ToUpper(modelNameCell) == "A") && len(models) > 0 {
 				// Found start of next BOM or end of models
 				break
 			}
@@ -147,8 +147,10 @@ func (r *BigMatrixReader) parseBOMConfigs(f Workbook, sheetName string) ([]BOMCo
 			var qty int
 			fmt.Sscanf(qtyStr, "%d", &qty)
 
+			actualModelName := fmt.Sprintf("%c", 'A'+len(models))
+
 			models = append(models, ModelConfig{
-				ModelName: strings.TrimSpace(modelName),
+				ModelName: actualModelName,
 				Qty:       qty,
 				Column:    colIdx - startCol,
 			})
@@ -403,13 +405,14 @@ func (r *BigMatrixReader) parsePartDataRow(row []string) *partData {
 
 // updateModelQty updates the qty for all models in a BOM revision
 func (r *BigMatrixReader) updateModelQty(config BOMConfig) error {
-	for _, model := range config.Models {
+	for idx, model := range config.Models {
 		var matrixModel db.MatrixModel
-		err := r.db.Where("revision_id = ? AND model_name = ?", config.RevisionID, model.ModelName).
+		err := r.db.Where("revision_id = ? AND sort_order = ?", config.RevisionID, idx).
 			First(&matrixModel).Error
 
 		if err == nil {
 			// Update existing
+			matrixModel.ModelName = model.ModelName
 			matrixModel.Qty = model.Qty
 			if err := r.db.Save(&matrixModel).Error; err != nil {
 				return err
@@ -418,6 +421,7 @@ func (r *BigMatrixReader) updateModelQty(config BOMConfig) error {
 			// Create new
 			matrixModel = db.MatrixModel{
 				RevisionID: config.RevisionID,
+				SortOrder:  idx,
 				ModelName:  model.ModelName,
 				Qty:        model.Qty,
 			}

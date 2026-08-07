@@ -3,6 +3,7 @@ package excel
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"bomix-app/backend/types"
@@ -37,7 +38,7 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		Phase:            "DB",
 		Version:          "0.1",
 		Date:             generateTimestamp(),
-		ModelQty:         map[string]int{"A": 1, "B": 1, "C": 1, "D": 1, "E": 1, "F": 1, "G": 1},
+		ModelQty:         make(map[string]int),
 	}
 
 	if len(options.Revisions) > 0 {
@@ -76,21 +77,26 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 
 	// 8.2.2 - Tag replacement for header
 	tags := map[string]string{
-		"{{.ProjectCode}}":       rev.ProjectCode,
-		"{{.Description}}":       rev.Description,
-		"{{.SchematicVersion}}":  rev.SchematicVersion,
-		"{{.PCBVersion}}":        rev.PCBVersion,
-		"{{.PCAPN}}":             rev.PCAPN,
-		"{{.Phase}}":             rev.Phase,
-		"{{.Version}}":           rev.Version,
-		"{{.Date}}":              date,
-		"{{.ModelQtyA}}":         fmt.Sprintf("%d", rev.ModelQty["A"]),
-		"{{.ModelQtyB}}":         fmt.Sprintf("%d", rev.ModelQty["B"]),
-		"{{.ModelQtyC}}":         fmt.Sprintf("%d", rev.ModelQty["C"]),
-		"{{.ModelQtyD}}":         fmt.Sprintf("%d", rev.ModelQty["D"]),
-		"{{.ModelQtyE}}":         fmt.Sprintf("%d", rev.ModelQty["E"]),
-		"{{.ModelQtyF}}":         fmt.Sprintf("%d", rev.ModelQty["F"]),
-		"{{.ModelQtyG}}":         fmt.Sprintf("%d", rev.ModelQty["G"]),
+		"{{.ProjectCode}}":      rev.ProjectCode,
+		"{{.Description}}":      rev.Description,
+		"{{.SchematicVersion}}": rev.SchematicVersion,
+		"{{.PCBVersion}}":       rev.PCBVersion,
+		"{{.PCAPN}}":            rev.PCAPN,
+		"{{.Phase}}":            rev.Phase,
+		"{{.Version}}":          rev.Version,
+		"{{.Date}}":             date,
+	}
+
+	orderedModelNames := getOrderedModelNames(rev.ModelQty)
+
+	for i := 0; i < 7; i++ {
+		modelAlias := fmt.Sprintf("%c", 'A'+i)
+		qtyStr := ""
+		qty := resolveModelQty(rev, i, orderedModelNames)
+		if qty > 0 {
+			qtyStr = fmt.Sprintf("%d", qty)
+		}
+		tags[fmt.Sprintf("{{.ModelQty%s}}", modelAlias)] = qtyStr
 	}
 	if err := applyTagReplacement(f, tags); err != nil {
 		return nil, err
@@ -112,25 +118,21 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		}
 	}
 
-	// Write Model names and quantities
-	modelNames := make([]string, actualModelCount)
+	// Write Model quantities
 	for i := 0; i < actualModelCount; i++ {
-		modelNames[i] = fmt.Sprintf("Model %c", 'A'+i)
 		col := getColName(modelStartCol + i)
 
-		// Model name (row 4)
-		f.SetCellValue("SMD", fmt.Sprintf("%s4", col), modelNames[i])
-		f.SetCellValue("PTH", fmt.Sprintf("%s4", col), modelNames[i])
-		f.SetCellValue("BOTTOM", fmt.Sprintf("%s4", col), modelNames[i])
-
 		// Model quantity (row 5)
-		qty := rev.ModelQty[string(rune('A'+i))]
-		if qty == 0 {
-			qty = 1
+		qty := resolveModelQty(rev, i, orderedModelNames)
+		if qty > 0 {
+			f.SetCellValue("SMD", fmt.Sprintf("%s5", col), qty)
+			f.SetCellValue("PTH", fmt.Sprintf("%s5", col), qty)
+			f.SetCellValue("BOTTOM", fmt.Sprintf("%s5", col), qty)
+		} else {
+			f.SetCellValue("SMD", fmt.Sprintf("%s5", col), "")
+			f.SetCellValue("PTH", fmt.Sprintf("%s5", col), "")
+			f.SetCellValue("BOTTOM", fmt.Sprintf("%s5", col), "")
 		}
-		f.SetCellValue("SMD", fmt.Sprintf("%s5", col), qty)
-		f.SetCellValue("PTH", fmt.Sprintf("%s5", col), qty)
-		f.SetCellValue("BOTTOM", fmt.Sprintf("%s5", col), qty)
 	}
 
 	// Calculate Remark column position (after all Model columns)
@@ -235,12 +237,10 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 			for i := 0; i < actualModelCount; i++ {
 				col := getColName(modelStartCol + i)
 				cell := fmt.Sprintf("%s%d", col, rowIndex)
+				selectedPN := resolveSelectedPN(part, i, orderedModelNames)
 
-				modelName := fmt.Sprintf("%c", 'A'+i)
-				if selectedPN, ok := part.Selections[modelName]; ok && selectedPN != "" {
-					if part.SupplierPn == selectedPN {
-						f.SetCellValue(sheet, cell, "V")
-					}
+				if selectedPN != "" && strings.EqualFold(part.SupplierPn, selectedPN) {
+					f.SetCellValue(sheet, cell, "V")
 				}
 			}
 
@@ -271,12 +271,10 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 				for i := 0; i < actualModelCount; i++ {
 					col := getColName(modelStartCol + i)
 					cell := fmt.Sprintf("%s%d", col, rowIndex)
+					selectedPN := resolveSelectedPN(part, i, orderedModelNames)
 
-					modelName := fmt.Sprintf("%c", 'A'+i)
-					if selectedPN, ok := part.Selections[modelName]; ok && selectedPN != "" {
-						if ss.SupplierPn == selectedPN {
-							f.SetCellValue(sheet, cell, "V")
-						}
+					if selectedPN != "" && strings.EqualFold(ss.SupplierPn, selectedPN) {
+						f.SetCellValue(sheet, cell, "V")
 					}
 				}
 
@@ -309,14 +307,6 @@ func generateMatrixSelectionFormula(startCol int, modelCount int, row int, model
 
 	for i := 0; i < modelCount; i++ {
 		col := getColName(startCol + i)
-		modelName := string(rune('A' + i))
-
-		// Get the qty for this model (absolute reference to row 5)
-		qty := modelQty[modelName]
-		if qty == 0 {
-			qty = 1
-		}
-
 		// Formula: IF(EXACT(col$row,"V"),col$5,0)
 		formula := fmt.Sprintf("IF(EXACT(%s%d,\"V\"),%s$5,0)", col, row, col)
 		parts = append(parts, formula)
@@ -349,14 +339,17 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 		"{{.Date}}":              date,
 	}
 
+	orderedModelNames := getOrderedModelNames(rev.ModelQty)
+
 	// Add model quantities
-	modelNames := []string{"A", "B", "C", "D", "E", "F", "G"}
-	for _, modelName := range modelNames {
-		qty := rev.ModelQty[modelName]
-		if qty == 0 {
-			qty = 1
+	for i := 0; i < 7; i++ {
+		modelAlias := fmt.Sprintf("%c", 'A'+i)
+		qtyStr := ""
+		qty := resolveModelQty(rev, i, orderedModelNames)
+		if qty > 0 {
+			qtyStr = fmt.Sprintf("%d", qty)
 		}
-		tags[fmt.Sprintf("{{.ModelQty%s}}", modelName)] = fmt.Sprintf("%d", qty)
+		tags[fmt.Sprintf("{{.ModelQty%s}}", modelAlias)] = qtyStr
 	}
 
 	if err := applyTagReplacement(f, tags); err != nil {
@@ -379,22 +372,18 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 		}
 	}
 
-	// Write Model names and quantities for all sheets
+	// Write Model quantities for all sheets
 	for _, sheet := range sheets {
 		for i := 0; i < actualModelCount; i++ {
 			col := getColName(modelStartCol + i)
-			modelName := fmt.Sprintf("Model %c", 'A'+i)
-
-			// Model name (row 4) - always write, even if no data
-			f.SetCellValue(sheet, fmt.Sprintf("%s4", col), modelName)
 
 			// Model quantity (row 5)
-			qty := rev.ModelQty[string(rune('A'+i))]
-			if qty == 0 {
-				// Use default if not defined
-				qty = 1
+			qty := resolveModelQty(rev, i, orderedModelNames)
+			if qty > 0 {
+				f.SetCellValue(sheet, fmt.Sprintf("%s5", col), qty)
+			} else {
+				f.SetCellValue(sheet, fmt.Sprintf("%s5", col), "")
 			}
-			f.SetCellValue(sheet, fmt.Sprintf("%s5", col), qty)
 		}
 	}
 
@@ -503,12 +492,10 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 			for i := 0; i < actualModelCount; i++ {
 				col := getColName(modelStartCol + i)
 				cell := fmt.Sprintf("%s%d", col, rowIndex)
+				selectedPN := resolveSelectedPN(part, i, orderedModelNames)
 
-				modelName := fmt.Sprintf("%c", 'A'+i)
-				if selectedPN, ok := part.Selections[modelName]; ok && selectedPN != "" {
-					if part.SupplierPn == selectedPN {
-						f.SetCellValue(sheet, cell, "V")
-					}
+				if selectedPN != "" && strings.EqualFold(part.SupplierPn, selectedPN) {
+					f.SetCellValue(sheet, cell, "V")
 				}
 			}
 
@@ -539,12 +526,10 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 				for i := 0; i < actualModelCount; i++ {
 					col := getColName(modelStartCol + i)
 					cell := fmt.Sprintf("%s%d", col, rowIndex)
+					selectedPN := resolveSelectedPN(part, i, orderedModelNames)
 
-					modelName := fmt.Sprintf("%c", 'A'+i)
-					if selectedPN, ok := part.Selections[modelName]; ok && selectedPN != "" {
-						if ss.SupplierPn == selectedPN {
-							f.SetCellValue(sheet, cell, "V")
-						}
+					if selectedPN != "" && strings.EqualFold(ss.SupplierPn, selectedPN) {
+						f.SetCellValue(sheet, cell, "V")
 					}
 				}
 
@@ -592,4 +577,70 @@ func filterMatrixParts(parts []PartData) []PartData {
 	}
 
 	return filtered
+}
+
+// getOrderedModelNames 將 modelQty/Selections 中的模型名稱整理成排序後的名稱清單
+func getOrderedModelNames(modelQtyMap map[string]int) []string {
+	names := make([]string, 0, len(modelQtyMap))
+	for k := range modelQtyMap {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// resolveModelQty 彈性獲取第 index 個 Model 的 Qty (優先依據 SortOrder 索引)
+func resolveModelQty(rev RevisionData, index int, orderedNames []string) int {
+	if q, ok := rev.ModelQtyByOrder[index]; ok && q > 0 {
+		return q
+	}
+	if len(rev.ModelQty) == 0 {
+		return 0
+	}
+	alias := fmt.Sprintf("%c", 'A'+index)
+	if q, ok := rev.ModelQty[alias]; ok && q > 0 {
+		return q
+	}
+	nameWithModel := fmt.Sprintf("Model %s", alias)
+	if q, ok := rev.ModelQty[nameWithModel]; ok && q > 0 {
+		return q
+	}
+	nameWithNum := fmt.Sprintf("Model %d", index+1)
+	if q, ok := rev.ModelQty[nameWithNum]; ok && q > 0 {
+		return q
+	}
+	if index < len(orderedNames) {
+		if q, ok := rev.ModelQty[orderedNames[index]]; ok && q > 0 {
+			return q
+		}
+	}
+	return 0
+}
+
+// resolveSelectedPN 彈性獲取第 index 個 Model 在 Selections 中的選取 PartPN (優先依據 SortOrder 索引)
+func resolveSelectedPN(part PartData, index int, orderedNames []string) string {
+	if pn, ok := part.SelectionsByOrder[index]; ok && pn != "" {
+		return pn
+	}
+	if len(part.Selections) == 0 {
+		return ""
+	}
+	alias := fmt.Sprintf("%c", 'A'+index)
+	if pn, ok := part.Selections[alias]; ok && pn != "" {
+		return pn
+	}
+	nameWithModel := fmt.Sprintf("Model %s", alias)
+	if pn, ok := part.Selections[nameWithModel]; ok && pn != "" {
+		return pn
+	}
+	nameWithNum := fmt.Sprintf("Model %d", index+1)
+	if pn, ok := part.Selections[nameWithNum]; ok && pn != "" {
+		return pn
+	}
+	if index < len(orderedNames) {
+		if pn, ok := part.Selections[orderedNames[index]]; ok && pn != "" {
+			return pn
+		}
+	}
+	return ""
 }

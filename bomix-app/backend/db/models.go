@@ -126,8 +126,9 @@ type SecondSource struct {
 // Table: matrix_models
 type MatrixModel struct {
 	ID         int64             `gorm:"primaryKey"`
-	RevisionID int64             `gorm:"not null;index:idx_matrix_model_revision_name,unique"`
-	ModelName  string            `gorm:"not null;index:idx_matrix_model_revision_name,unique"`
+	RevisionID int64             `gorm:"not null;index:idx_matrix_model_revision_order,unique"`
+	SortOrder  int               `gorm:"not null;index:idx_matrix_model_revision_order,unique"` // 0-based 排序索引 (0, 1, 2...)
+	ModelName  string            // 顯示名稱 (選填)
 	Qty        int               `gorm:"not null;default:1"` // 打件數量
 	CreatedAt  time.Time
 	UpdatedAt  time.Time

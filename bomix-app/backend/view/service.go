@@ -261,9 +261,11 @@ func buildViewRevisions(rawData map[int64]*rawRevisionData) []ViewRevision {
 		// 建立 ModelNames 列表（排序）與 ModelQty 映射
 		modelNames := make([]string, 0, len(data.models))
 		modelQty := make(map[string]int, len(data.models))
+		modelQtyByOrder := make(map[int]int, len(data.models))
 		for _, m := range data.models {
 			modelNames = append(modelNames, m.ModelName)
 			modelQty[m.ModelName] = m.Qty
+			modelQtyByOrder[m.SortOrder] = m.Qty
 		}
 		sort.Strings(modelNames)
 
@@ -279,6 +281,7 @@ func buildViewRevisions(rawData map[int64]*rawRevisionData) []ViewRevision {
 			Date:             rev.Date,
 			ModelNames:       modelNames,
 			ModelQty:         modelQty,
+			ModelQtyByOrder:  modelQtyByOrder,
 		})
 	}
 	return revisions
@@ -494,6 +497,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 					selectedPN := selMap[modelName]
 					b.group.Selections = append(b.group.Selections, ViewModelSelection{
 						RevisionID: revID,
+						SortOrder:  mData.SortOrder,
 						ModelName:  modelName,
 						ModelQty:   mData.Qty,
 						SelectedPN: selectedPN,

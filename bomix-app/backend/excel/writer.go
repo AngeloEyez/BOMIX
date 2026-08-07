@@ -38,19 +38,20 @@ type ExportOptions struct {
 
 // PartData represents a single part for export
 type PartData struct {
-	Item           string
-	HHPN           string
-	Description    string
-	Supplier       string
-	SupplierPn     string
-	Qty            int
-	Location       string
-	Type           string
-	BOMStatus      string
-	CCL            bool
-	Remark         string
-	SecondSources  []SecondSourceData
-	Selections     map[string]string // Model -> Supplier PN mapping
+	Item              string
+	HHPN              string
+	Description       string
+	Supplier          string
+	SupplierPn        string
+	Qty               int
+	Location          string
+	Type              string
+	BOMStatus         string
+	CCL               bool
+	Remark            string
+	SecondSources     []SecondSourceData
+	Selections        map[string]string // Model Name -> Supplier PN mapping
+	SelectionsByOrder map[int]string    // Model SortOrder (0,1,2...) -> Supplier PN mapping
 
 	// SourceRevisionIDs 記錄此物料群組出現在哪些 BOM Revision 中。
 	// 由 View 系統的 ViewPartGroup.SourceRevisionIDs 填入。
@@ -71,16 +72,17 @@ type SecondSourceData struct {
 
 // RevisionData contains BOM revision metadata for export
 type RevisionData struct {
-	ID              string
-	ProjectCode     string
-	Description     string
+	ID               string
+	ProjectCode      string
+	Description      string
 	SchematicVersion string
-	PCBVersion      string
-	PCAPN           string
-	Phase           string
-	Version         string
-	Date            string
-	ModelQty        map[string]int // Model name -> quantity
+	PCBVersion       string
+	PCAPN            string
+	Phase            string
+	Version          string
+	Date             string
+	ModelQty         map[string]int // Model name -> quantity
+	ModelQtyByOrder  map[int]int    // Model SortOrder (0,1,2...) -> quantity
 }
 
 // WriterImpl is the main Excel writer implementation

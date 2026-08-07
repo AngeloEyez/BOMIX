@@ -471,11 +471,13 @@ func TestCascadeDeleteRevision(t *testing.T) {
 	matrixModels := []MatrixModel{
 		{
 			RevisionID: revision.ID,
+			SortOrder:  0,
 			ModelName:  "A",
 			Qty:        1,
 		},
 		{
 			RevisionID: revision.ID,
+			SortOrder:  1,
 			ModelName:  "B",
 			Qty:        2,
 		},
@@ -544,6 +546,7 @@ func TestMatrixModelOperations(t *testing.T) {
 	// Create matrix models
 	modelA := &MatrixModel{
 		RevisionID: revision.ID,
+		SortOrder:  0,
 		ModelName:  "A",
 		Qty:        1,
 	}
@@ -552,6 +555,7 @@ func TestMatrixModelOperations(t *testing.T) {
 
 	modelB := &MatrixModel{
 		RevisionID: revision.ID,
+		SortOrder:  1,
 		ModelName:  "B",
 		Qty:        2,
 	}

@@ -494,8 +494,9 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 				if len(importResults) > 0 {
 					result := importResults[0]
 
-					// 檢查是否有格式解析錯誤、Unknown 格式或 0 筆資料
-					if len(result.Errors) > 0 || result.Format == types.FormatUnknown || result.PartsCount == 0 {
+					// 檢查是否有格式解析錯誤、Unknown 格式，或是非 Matrix 格式但 PartsCount 為 0 筆
+					isWarning := len(result.Errors) > 0 || result.Format == types.FormatUnknown || (result.Format != types.FormatMatrix && result.PartsCount == 0)
+					if isWarning {
 						errMsg := fmt.Sprintf("匯入結果需要確認: 格式=%s, 成功筆數=%d", result.Format, result.PartsCount)
 						if len(result.Errors) > 0 {
 							errMsg += fmt.Sprintf(", 錯誤=%v", result.Errors)
@@ -506,7 +507,12 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 						return task.NewWarningError(errors.New(errMsg))
 					}
 
-					msg := fmt.Sprintf("成功匯入 %d 筆料件", result.PartsCount)
+					var msg string
+					if result.Format == types.FormatMatrix {
+						msg = "成功匯入 Matrix BOM 勾選資料與 Model 規格"
+					} else {
+						msg = fmt.Sprintf("成功匯入 %d 筆料件", result.PartsCount)
+					}
 					progress(0.9, msg)
 					taskLogger.Info(msg)
 				}
@@ -673,6 +679,7 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 			Version:          vr.Version,
 			Date:             vr.Date,
 			ModelQty:         vr.ModelQty,
+			ModelQtyByOrder:  vr.ModelQtyByOrder,
 		})
 	}
 
@@ -680,13 +687,17 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 	// 物料群組已由 View 系統聚合完畢（locations 已合併、qty 已計算）
 	partDataList := make([]excel.PartData, 0, len(viewResult.PartGroups))
 	for idx, pg := range viewResult.PartGroups {
-		// 整合此群組的 Model 勾選狀態為 map[modelName]selectedPN
+		// 整合此群組的 Model 勾選狀態為 map[modelName]selectedPN 與 map[sortOrder]selectedPN
 		selections := make(map[string]string)
+		selectionsByOrder := make(map[int]string)
 		for _, sel := range pg.Selections {
 			if sel.SelectedPN != "" {
 				// 若同一 model 在多個 revision 均有勾選，以第一個為主
 				if _, exists := selections[sel.ModelName]; !exists {
 					selections[sel.ModelName] = sel.SelectedPN
+				}
+				if _, exists := selectionsByOrder[sel.SortOrder]; !exists {
+					selectionsByOrder[sel.SortOrder] = sel.SelectedPN
 				}
 			}
 		}
@@ -695,7 +706,7 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 		ssData := make([]excel.SecondSourceData, 0, len(pg.SecondSources))
 		for _, ss := range pg.SecondSources {
 			ssData = append(ssData, excel.SecondSourceData{
-				HHPN:        ss.SupplierPN,
+				HHPN:        ss.HHPN,
 				Supplier:    ss.Supplier,
 				SupplierPn:  ss.SupplierPN,
 				Description: ss.Description,
@@ -717,6 +728,7 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 			Remark:            pg.Remark,
 			SecondSources:     ssData,
 			Selections:        selections,
+			SelectionsByOrder: selectionsByOrder,
 			SourceRevisionIDs: pg.SourceRevisionIDs, // 傳遞來源歸屬，供 BigMatrix 填灰色
 		})
 	}

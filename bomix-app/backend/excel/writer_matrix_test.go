@@ -586,3 +586,80 @@ func TestExportMatrix_MainAndSecondSourceRemark(t *testing.T) {
 		t.Errorf("Expected R7 (Second Source Remark) to be 'Second Source Remark 01', got '%s'", ssRemark)
 	}
 }
+
+// TestExportMatrix_ModelNameMapping 驗證 ModelName 為 "Model A" 或 "Model 1" 時，Qty 與 "V" 勾選均能正常匯出
+func TestExportMatrix_ModelNameMapping(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bomix-modelname-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("Failed to create writer: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:     types.FormatMatrix,
+		OutputPath: filepath.Join(tmpDir, "modelname_test_matrix.xlsx"),
+		Revisions: []RevisionData{
+			{
+				ProjectCode: "PROJ_M",
+				Phase:       "EVT",
+				Version:     "0.1",
+				ModelQty: map[string]int{
+					"Model A": 2,
+					"Model B": 5,
+				},
+			},
+		},
+		PartData: []PartData{
+			{
+				Item:        "1",
+				HHPN:        "MAIN_PN_01",
+				Description: "Resistor 100K",
+				Supplier:    "YAGEO",
+				SupplierPn:  "R100K",
+				Qty:         2,
+				Type:        "SMD",
+				CCL:         true,
+				Selections: map[string]string{
+					"Model A": "R100K",
+					"Model B": "R100K",
+				},
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open file: %v", err)
+	}
+	defer f.Close()
+
+	// K5 應有 Model Qty (2)，L5 應有 Model Qty (5)
+	qtyK5, _ := f.GetCellValue("SMD", "K5")
+	qtyL5, _ := f.GetCellValue("SMD", "L5")
+	if qtyK5 != "2" {
+		t.Errorf("Expected K5 (Model A Qty) to be '2', got '%s'", qtyK5)
+	}
+	if qtyL5 != "5" {
+		t.Errorf("Expected L5 (Model B Qty) to be '5', got '%s'", qtyL5)
+	}
+
+	// K6 應有 "V" 勾選，L6 應有 "V" 勾選
+	valK6, _ := f.GetCellValue("SMD", "K6")
+	valL6, _ := f.GetCellValue("SMD", "L6")
+	if valK6 != "V" {
+		t.Errorf("Expected K6 (Model A selection) to be 'V', got '%s'", valK6)
+	}
+	if valL6 != "V" {
+		t.Errorf("Expected L6 (Model B selection) to be 'V', got '%s'", valL6)
+	}
+}

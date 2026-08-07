@@ -59,6 +59,7 @@ type ViewSecondSource struct {
 // 某個 Model 中，此物料群組被選中的是哪顆料（主料或替代料）。
 type ViewModelSelection struct {
 	RevisionID int64  `json:"revision_id"`
+	SortOrder  int    `json:"sort_order"` // 0-based 排序索引
 	ModelName  string `json:"model_name"`
 	ModelQty   int    `json:"model_qty"`
 	SelectedPN string `json:"selected_pn"` // 被選中的 SupplierPN（空字串=未勾選或尚未設定）
@@ -118,7 +119,8 @@ type ViewRevision struct {
 	PCAPN            string         `json:"pca_pn"`
 	Date             string         `json:"date"`
 	ModelNames       []string       `json:"model_names"`
-	ModelQty         map[string]int `json:"model_qty"` // Model 名稱 -> 打件數量
+	ModelQty         map[string]int `json:"model_qty"`          // Model 名稱 -> 打件數量
+	ModelQtyByOrder  map[int]int    `json:"model_qty_by_order"` // Model 排序索引 (0,1,2...) -> 打件數量
 }
 
 // ViewResult 視圖查詢結果，是 Service.Query() 的回傳值。

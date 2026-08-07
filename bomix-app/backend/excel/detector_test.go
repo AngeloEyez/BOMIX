@@ -76,7 +76,7 @@ func TestDetect_Matrix(t *testing.T) {
 
 	// Set Matrix-specific header values
 	f.SetCellValue("SMD", "H5", "Location")
-	f.SetCellValue("SMD", "J7", "Total Set")
+	f.SetCellValue("SMD", "J5", "Total Set")
 
 	// Detect format
 	detector := NewDetector()

@@ -249,6 +249,7 @@ func TestMergeAlgorithm(t *testing.T) {
 	// Create MatrixModels
 	modelA := db.MatrixModel{
 		RevisionID: revision.ID,
+		SortOrder:  0,
 		ModelName:  "A",
 		Qty:        1,
 	}
@@ -258,6 +259,7 @@ func TestMergeAlgorithm(t *testing.T) {
 
 	modelB := db.MatrixModel{
 		RevisionID: revision.ID,
+		SortOrder:  1,
 		ModelName:  "B",
 		Qty:        1,
 	}
@@ -267,6 +269,7 @@ func TestMergeAlgorithm(t *testing.T) {
 
 	modelC := db.MatrixModel{
 		RevisionID: revision.ID,
+		SortOrder:  2,
 		ModelName:  "C",
 		Qty:        1,
 	}
@@ -447,11 +450,13 @@ func TestImportMatrixSelections(t *testing.T) {
 	// Create MatrixModels in source revision
 	sourceModelA := db.MatrixModel{
 		RevisionID: sourceRevision.ID,
+		SortOrder:  0,
 		ModelName:  "A",
 		Qty:        1,
 	}
 	sourceModelB := db.MatrixModel{
 		RevisionID: sourceRevision.ID,
+		SortOrder:  1,
 		ModelName:  "B",
 		Qty:        2,
 	}
@@ -504,16 +509,19 @@ func TestImportMatrixSelections(t *testing.T) {
 	// Create MatrixModels in target revision
 	targetModelA := db.MatrixModel{
 		RevisionID: targetRevision.ID,
+		SortOrder:  0,
 		ModelName:  "A",
 		Qty:        1,
 	}
 	targetModelB := db.MatrixModel{
 		RevisionID: targetRevision.ID,
+		SortOrder:  1,
 		ModelName:  "B",
 		Qty:        2,
 	}
 	targetModelC := db.MatrixModel{
 		RevisionID: targetRevision.ID,
+		SortOrder:  2,
 		ModelName:  "C",
 		Qty:        3,
 	}

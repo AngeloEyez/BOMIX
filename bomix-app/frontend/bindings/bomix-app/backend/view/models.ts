@@ -9,6 +9,11 @@
  */
 export interface ViewModelSelection {
     "revision_id": number;
+
+    /**
+     * 0-based 排序索引
+     */
+    "sort_order": number;
     "model_name": string;
     "model_qty": number;
 
@@ -151,6 +156,11 @@ export interface ViewRevision {
      * Model 名稱 -> 打件數量
      */
     "model_qty": { [_ in string]?: number } | null;
+
+    /**
+     * Model 排序索引 (0,1,2...) -> 打件數量
+     */
+    "model_qty_by_order": { [_ in `${number}`]?: number } | null;
 }
 
 /**

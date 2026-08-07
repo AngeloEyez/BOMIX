@@ -148,10 +148,10 @@ func ImportMatrixSelections(db *gorm.DB, sourceRevisionID, targetRevisionID int6
 		return err
 	}
 
-	// Create a map of model name to model ID for quick lookup
-	targetModelMap := make(map[string]int64)
+	// Create a map of model SortOrder to model ID for quick lookup
+	targetModelMap := make(map[int]int64)
 	for _, model := range targetModels {
-		targetModelMap[model.ModelName] = model.ID
+		targetModelMap[model.SortOrder] = model.ID
 	}
 
 	// Get all MatrixSelections from source revision
@@ -160,25 +160,25 @@ func ImportMatrixSelections(db *gorm.DB, sourceRevisionID, targetRevisionID int6
 		return err
 	}
 
-	// Create a map of model ID to model name
-	sourceModelMap := make(map[int64]string)
+	// Create a map of model ID to model SortOrder
+	sourceModelOrderMap := make(map[int64]int)
 
 	// Process each source selection
 	var selectionsToCreate []MatrixSelection
 	for _, sourceSel := range sourceSelections {
-		// Get the model name from sourceModelMap or fetch it
-		modelName, exists := sourceModelMap[sourceSel.ModelID]
+		// Get the model SortOrder from sourceModelOrderMap or fetch it
+		sortOrder, exists := sourceModelOrderMap[sourceSel.ModelID]
 		if !exists {
 			var model MatrixModel
 			if err := db.Where("id = ?", sourceSel.ModelID).First(&model).Error; err != nil {
 				continue
 			}
-			modelName = model.ModelName
-			sourceModelMap[sourceSel.ModelID] = modelName
+			sortOrder = model.SortOrder
+			sourceModelOrderMap[sourceSel.ModelID] = sortOrder
 		}
 
-		// Check if target has a model with the same name
-		targetModelID, exists := targetModelMap[modelName]
+		// Check if target has a model with the same SortOrder
+		targetModelID, exists := targetModelMap[sortOrder]
 		if !exists {
 			// Target doesn't have this model, skip this selection
 			continue
