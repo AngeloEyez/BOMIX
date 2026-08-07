@@ -454,3 +454,52 @@ func TestMergeRevisions_MultipleRevisionsAnd2ndSources(t *testing.T) {
 		t.Errorf("Part B 的 SourceRevisionIDs 應僅包含 Rev 2 ([2])")
 	}
 }
+
+// TestMergeRevisions_SequentialModels 驗證當多個 Model 名稱完全相同（如全為 "" 或 "Model"）時，
+// mergeRevisions 仍可依據 SortOrder 順序性正確聚合每個 Model 的 Selection，不會導致舊 Model 被覆蓋。
+func TestMergeRevisions_SequentialModels(t *testing.T) {
+	svc := &Service{}
+
+	rev1Data := &rawRevisionData{
+		revision: db.BomRevision{ID: 1},
+		project:  db.Project{Code: "PROJ1"},
+		models: []db.MatrixModel{
+			{ID: 10, RevisionID: 1, SortOrder: 0, ModelName: "Model", Qty: 2},
+			{ID: 11, RevisionID: 1, SortOrder: 1, ModelName: "Model", Qty: 5},
+			{ID: 12, RevisionID: 1, SortOrder: 2, ModelName: "Model", Qty: 10},
+		},
+		parts: []db.Part{
+			{ID: 100, RevisionID: 1, Supplier: "Yageo", SupplierPN: "R100K", Type: "SMD", Item: "1"},
+		},
+		partLocations: []db.PartLocation{
+			{ID: 1000, PartID: 100, Location: "R1", BomStatus: "I", CCL: true},
+		},
+		selections: []db.MatrixSelection{
+			{ID: 1, RevisionID: 1, ModelID: 10, PartID: 100, Group: "Yageo|R100K", SelectedSupplierPn: "R100K"},
+			{ID: 2, RevisionID: 1, ModelID: 11, PartID: 100, Group: "Yageo|R100K", SelectedSupplierPn: "R100K"},
+			{ID: 3, RevisionID: 1, ModelID: 12, PartID: 100, Group: "Yageo|R100K", SelectedSupplierPn: "R100K"},
+		},
+	}
+
+	rawData := map[int64]*rawRevisionData{1: rev1Data}
+	query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewAll}
+
+	groups := svc.mergeRevisions(rawData, query)
+	if len(groups) != 1 {
+		t.Fatalf("期望 1 個物料群組，實際得到 %d 個", len(groups))
+	}
+
+	pg := groups[0]
+	if len(pg.Selections) != 3 {
+		t.Fatalf("期望 3 個 Model Selection (依據 SortOrder 0, 1, 2)，實際得到 %d 個", len(pg.Selections))
+	}
+
+	for idx, sel := range pg.Selections {
+		if sel.SortOrder != idx {
+			t.Errorf("Selection[%d] 的 SortOrder 應為 %d，實際為 %d", idx, idx, sel.SortOrder)
+		}
+		if sel.SelectedPN != "R100K" {
+			t.Errorf("Selection[%d] (SortOrder %d) 的 SelectedPN 應為 R100K，實際為 %q", idx, idx, sel.SelectedPN)
+		}
+	}
+}

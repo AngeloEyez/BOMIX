@@ -7,7 +7,6 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"bomix-app/backend/db"
-	"bomix-app/backend/types"
 )
 
 // TestParseHeader_BigMatrix tests BigMatrix header parsing
@@ -296,8 +295,7 @@ func TestImport_BigMatrix_Integration(t *testing.T) {
 
 	// Import
 	reader := &BigMatrixReader{
-		db:     database,
-		result: &types.ImportResult{FileName: "test.xlsx"},
+		db: database,
 	}
 
 	err = reader.Import(wb)
@@ -429,8 +427,7 @@ func TestImport_BigMatrix_ClearsOldSelections(t *testing.T) {
 
 	// Import
 	reader := &BigMatrixReader{
-		db:     database,
-		result: &types.ImportResult{FileName: "test.xlsx"},
+		db: database,
 	}
 
 	err = reader.Import(wb)
@@ -452,3 +449,114 @@ func TestImport_BigMatrix_ClearsOldSelections(t *testing.T) {
 		}
 	}
 }
+
+// TestImport_BigMatrix_MultipleModelsQtyAndSelections tests that multiple models in a revision
+// maintain distinct Qtys (A:10, B:20, C:30) and their respective selections are properly populated.
+func TestImport_BigMatrix_MultipleModelsQtyAndSelections(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("Failed to connect database: %v", err)
+	}
+	if err := db.AutoMigrate(database); err != nil {
+		t.Fatalf("Failed to auto migrate: %v", err)
+	}
+
+	series := db.Series{Name: "Test Series"}
+	_ = database.Create(&series).Error
+
+	project := db.Project{
+		SeriesID: series.ID,
+		Code:     "MULTI_MODEL_PROJ",
+	}
+	if err := database.Create(&project).Error; err != nil {
+		t.Fatalf("Failed to create project: %v", err)
+	}
+
+	revision := db.BomRevision{
+		ProjectID: project.ID,
+		Phase:     "PV",
+		Version:   "0.1",
+	}
+	if err := database.Create(&revision).Error; err != nil {
+		t.Fatalf("Failed to create revision: %v", err)
+	}
+
+	// 預先建立 Parts
+	part1 := db.Part{RevisionID: revision.ID, Supplier: "SupA", SupplierPN: "PN1", Type: "SMD"}
+	part2 := db.Part{RevisionID: revision.ID, Supplier: "SupB", SupplierPN: "PN2", Type: "SMD"}
+	_ = database.Create(&part1).Error
+	_ = database.Create(&part2).Error
+
+	// 建立 Excel 檔，其中 Row 2 (H2, I2, J2) 橫向皆被填寫為專案代碼 (模擬併欄/填滿狀況)
+	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	defer f.Close()
+
+	f.NewSheet("BigMatrix")
+	f.SetCellValue("BigMatrix", "B3", "BOMs: 1")
+	f.SetCellValue("BigMatrix", "H2", "MULTI_MODEL_PROJ")
+	f.SetCellValue("BigMatrix", "I2", "MULTI_MODEL_PROJ")
+	f.SetCellValue("BigMatrix", "J2", "MULTI_MODEL_PROJ")
+
+	f.SetCellValue("BigMatrix", "H3", "PV-0.1")
+	f.SetCellValue("BigMatrix", "I3", "PV-0.1")
+	f.SetCellValue("BigMatrix", "J3", "PV-0.1")
+
+	// 3 個 Model (A:10, B:20, C:30)
+	f.SetCellValue("BigMatrix", "H4", "A")
+	f.SetCellValue("BigMatrix", "H5", "10")
+	f.SetCellValue("BigMatrix", "I4", "B")
+	f.SetCellValue("BigMatrix", "I5", "20")
+	f.SetCellValue("BigMatrix", "J4", "C")
+	f.SetCellValue("BigMatrix", "J5", "30")
+
+	// Part 1: Model A & Model C 勾選 V
+	f.SetCellValue("BigMatrix", "A6", "1")
+	f.SetCellValue("BigMatrix", "D6", "SupA")
+	f.SetCellValue("BigMatrix", "E6", "PN1")
+	f.SetCellValue("BigMatrix", "H6", "V") // Model A
+	f.SetCellValue("BigMatrix", "I6", "")  // Model B
+	f.SetCellValue("BigMatrix", "J6", "V") // Model C
+
+	// Part 2: Model B 勾選 V
+	f.SetCellValue("BigMatrix", "A7", "2")
+	f.SetCellValue("BigMatrix", "D7", "SupB")
+	f.SetCellValue("BigMatrix", "E7", "PN2")
+	f.SetCellValue("BigMatrix", "H7", "")  // Model A
+	f.SetCellValue("BigMatrix", "I7", "V") // Model B
+	f.SetCellValue("BigMatrix", "J7", "")  // Model C
+
+	reader := &BigMatrixReader{db: database}
+	if err := reader.Import(wb); err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// 1. 驗證 MatrixModel
+	var models []db.MatrixModel
+	if err := database.Where("revision_id = ?", revision.ID).Order("sort_order ASC").Find(&models).Error; err != nil {
+		t.Fatalf("Failed to query models: %v", err)
+	}
+	if len(models) != 3 {
+		t.Fatalf("Expected 3 models, got %d", len(models))
+	}
+
+	if models[0].ModelName != "A" || models[0].Qty != 10 {
+		t.Errorf("Model A mismatch: name=%s, qty=%d (expected A, 10)", models[0].ModelName, models[0].Qty)
+	}
+	if models[1].ModelName != "B" || models[1].Qty != 20 {
+		t.Errorf("Model B mismatch: name=%s, qty=%d (expected B, 20)", models[1].ModelName, models[1].Qty)
+	}
+	if models[2].ModelName != "C" || models[2].Qty != 30 {
+		t.Errorf("Model C mismatch: name=%s, qty=%d (expected C, 30)", models[2].ModelName, models[2].Qty)
+	}
+
+	// 2. 驗證 MatrixSelections 數量 (應有 3 筆: Part1在Model A與C, Part2在Model B)
+	var selections []db.MatrixSelection
+	if err := database.Where("revision_id = ?", revision.ID).Find(&selections).Error; err != nil {
+		t.Fatalf("Failed to query selections: %v", err)
+	}
+	if len(selections) != 3 {
+		t.Errorf("Expected 3 selections, got %d", len(selections))
+	}
+}
+

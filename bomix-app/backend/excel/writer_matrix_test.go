@@ -690,3 +690,90 @@ func TestValidateAndPrepareOutputPath_RemoveExisting(t *testing.T) {
 		t.Errorf("Expected target file to be removed before writing, but it still exists")
 	}
 }
+
+// TestExportMatrix_ModelQtyByOrder 驗證僅依據 ModelQtyByOrder 與 SelectionsByOrder 順序性也能正確輸出有多個 Model 的 Qty 與 V 勾選
+func TestExportMatrix_ModelQtyByOrder(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bomix-modelbyorder-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("Failed to create writer: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:     types.FormatMatrix,
+		OutputPath: filepath.Join(tmpDir, "modelbyorder_test_matrix.xlsx"),
+		Revisions: []RevisionData{
+			{
+				ProjectCode: "PROJ_ORDER",
+				Phase:       "EVT",
+				Version:     "0.1",
+				ModelQtyByOrder: map[int]int{
+					0: 3,
+					1: 5,
+					2: 7,
+				},
+			},
+		},
+		PartData: []PartData{
+			{
+				Item:        "1",
+				HHPN:        "MAIN_PN_01",
+				Description: "Resistor 100K",
+				Supplier:    "YAGEO",
+				SupplierPn:  "R100K",
+				Qty:         2,
+				Type:        "SMD",
+				CCL:         true,
+				SelectionsByOrder: map[int]string{
+					0: "R100K",
+					1: "R100K",
+					2: "R100K",
+				},
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open file: %v", err)
+	}
+	defer f.Close()
+
+	// K5 應有 Qty 3, L5 應有 Qty 5, M5 應有 Qty 7
+	qtyK5, _ := f.GetCellValue("SMD", "K5")
+	qtyL5, _ := f.GetCellValue("SMD", "L5")
+	qtyM5, _ := f.GetCellValue("SMD", "M5")
+	if qtyK5 != "3" {
+		t.Errorf("Expected K5 (Model 0 Qty) to be '3', got '%s'", qtyK5)
+	}
+	if qtyL5 != "5" {
+		t.Errorf("Expected L5 (Model 1 Qty) to be '5', got '%s'", qtyL5)
+	}
+	if qtyM5 != "7" {
+		t.Errorf("Expected M5 (Model 2 Qty) to be '7', got '%s'", qtyM5)
+	}
+
+	// K6, L6, M6 均應有 "V" 勾選
+	valK6, _ := f.GetCellValue("SMD", "K6")
+	valL6, _ := f.GetCellValue("SMD", "L6")
+	valM6, _ := f.GetCellValue("SMD", "M6")
+	if valK6 != "V" {
+		t.Errorf("Expected K6 (Model 0 selection) to be 'V', got '%s'", valK6)
+	}
+	if valL6 != "V" {
+		t.Errorf("Expected L6 (Model 1 selection) to be 'V', got '%s'", valL6)
+	}
+	if valM6 != "V" {
+		t.Errorf("Expected M6 (Model 2 selection) to be 'V', got '%s'", valM6)
+	}
+}

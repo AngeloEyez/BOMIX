@@ -327,12 +327,14 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 	// 維持插入順序的鍵列表（讓輸出順序可預期）
 	keyOrder := make([]string, 0)
 
-	// 建立 model ID → ModelName 的全局映射（跨所有 revision）
+	// 建立 model ID → ModelName 與 ModelID → SortOrder 的全局映射（跨所有 revision）
 	modelIDToName := make(map[int64]string)
+	modelIDToSortOrder := make(map[int64]int)
 	modelIDToQty := make(map[int64]int)
 	for _, data := range rawData {
 		for _, m := range data.models {
 			modelIDToName[m.ID] = m.ModelName
+			modelIDToSortOrder[m.ID] = m.SortOrder
 			modelIDToQty[m.ID] = m.Qty
 		}
 	}
@@ -392,8 +394,9 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			}
 		}
 
-		// --- 3. 建立此 revision 的 MatrixSelection 映射 ---
-		selByGroupKey := make(map[string]map[string]string)
+		// --- 3. 建立此 revision 的 MatrixSelection 映射 (優先以 SortOrder 順序匹配) ---
+		selByGroupKeyByOrder := make(map[string]map[int]string)
+		selByGroupKeyByName := make(map[string]map[string]string)
 		for _, sel := range data.selections {
 			mainKey := sel.Group
 			if mainKey == "" {
@@ -404,15 +407,25 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				mainKey = groupKey(mainPart.Supplier, mainPart.SupplierPN)
 			}
 
-			modelName, ok := modelIDToName[sel.ModelID]
-			if !ok {
+			sortOrder, okOrder := modelIDToSortOrder[sel.ModelID]
+			modelName, okName := modelIDToName[sel.ModelID]
+			if !okOrder && !okName {
 				continue
 			}
 
-			if selByGroupKey[mainKey] == nil {
-				selByGroupKey[mainKey] = make(map[string]string)
+			if okOrder {
+				if selByGroupKeyByOrder[mainKey] == nil {
+					selByGroupKeyByOrder[mainKey] = make(map[int]string)
+				}
+				selByGroupKeyByOrder[mainKey][sortOrder] = sel.SelectedSupplierPn
 			}
-			selByGroupKey[mainKey][modelName] = sel.SelectedSupplierPn
+
+			if okName && modelName != "" {
+				if selByGroupKeyByName[mainKey] == nil {
+					selByGroupKeyByName[mainKey] = make(map[string]string)
+				}
+				selByGroupKeyByName[mainKey][modelName] = sel.SelectedSupplierPn
+			}
 		}
 
 		// --- 4. 處理此 revision 的 Parts（按 (Supplier, SupplierPN) 歸類） ---
@@ -506,19 +519,25 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				}
 			}
 
-			// 蒐集此 revision 的 MatrixSelections
-			if selMap, ok := selByGroupKey[key]; ok {
-				for _, mData := range rawData[revID].models {
-					modelName := mData.ModelName
-					selectedPN := selMap[modelName]
-					b.group.Selections = append(b.group.Selections, ViewModelSelection{
-						RevisionID: revID,
-						SortOrder:  mData.SortOrder,
-						ModelName:  modelName,
-						ModelQty:   mData.Qty,
-						SelectedPN: selectedPN,
-					})
+			// 蒐集此 revision 的 MatrixSelections (優先以 SortOrder 順序匹配)
+			selOrderMap := selByGroupKeyByOrder[key]
+			selNameMap := selByGroupKeyByName[key]
+			for _, mData := range rawData[revID].models {
+				sortOrder := mData.SortOrder
+				var selectedPN string
+				if selOrderMap != nil {
+					selectedPN = selOrderMap[sortOrder]
 				}
+				if selectedPN == "" && selNameMap != nil && mData.ModelName != "" {
+					selectedPN = selNameMap[mData.ModelName]
+				}
+				b.group.Selections = append(b.group.Selections, ViewModelSelection{
+					RevisionID: revID,
+					SortOrder:  sortOrder,
+					ModelName:  mData.ModelName,
+					ModelQty:   mData.Qty,
+					SelectedPN: selectedPN,
+				})
 			}
 		}
 	}

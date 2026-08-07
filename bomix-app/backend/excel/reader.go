@@ -103,17 +103,18 @@ func (r *ReaderImpl) importEBOM(f Workbook, path string) (types.ImportResult, er
 	return result, err
 }
 
-// importBigMatrix imports a BigMatrix format file
+// importBigMatrix 將 BigMatrix 格式的 Excel 檔案委派給 BigMatrixReader 處理。
+// BigMatrix 匯入不建立新的 Project/Revision，若找不到已存在的 Revision，
+// 會以 WarningError 回傳，讓 Task Manager 將任務狀態設為 TaskWarning。
 func (r *ReaderImpl) importBigMatrix(f Workbook, path string) (types.ImportResult, error) {
 	result := types.ImportResult{
 		FileName: path,
 		Format:   types.FormatBigMatrix,
 	}
 
-	// Delegate to the BigMatrix reader
+	// 委派給 BigMatrixReader 處理
 	bigMatrixReader := &BigMatrixReader{
 		db:     r.db,
-		result: &result,
 		logger: r.logger,
 	}
 

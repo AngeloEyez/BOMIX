@@ -69,6 +69,12 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 				rev.ModelQty[k] = v
 			}
 		}
+		if len(r0.ModelQtyByOrder) > 0 {
+			rev.ModelQtyByOrder = make(map[int]int)
+			for k, v := range r0.ModelQtyByOrder {
+				rev.ModelQtyByOrder[k] = v
+			}
+		}
 	} else if options.Description != "" {
 		rev.ProjectCode = options.Description
 	}
@@ -106,6 +112,16 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 	modelStartCol := 10 // K
 	minModelCount := 7
 	actualModelCount := len(rev.ModelQty)
+	if len(rev.ModelQtyByOrder) > actualModelCount {
+		actualModelCount = len(rev.ModelQtyByOrder)
+	}
+	for _, p := range options.PartData {
+		for sortOrder, selectedPN := range p.SelectionsByOrder {
+			if selectedPN != "" && sortOrder+1 > actualModelCount {
+				actualModelCount = sortOrder + 1
+			}
+		}
+	}
 	if actualModelCount < minModelCount {
 		actualModelCount = minModelCount
 	}
@@ -360,6 +376,16 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 	modelStartCol := 10 // K
 	minModelCount := 7
 	actualModelCount := len(rev.ModelQty)
+	if len(rev.ModelQtyByOrder) > actualModelCount {
+		actualModelCount = len(rev.ModelQtyByOrder)
+	}
+	for _, p := range parts {
+		for sortOrder, selectedPN := range p.SelectionsByOrder {
+			if selectedPN != "" && sortOrder+1 > actualModelCount {
+				actualModelCount = sortOrder + 1
+			}
+		}
+	}
 	if actualModelCount < minModelCount {
 		actualModelCount = minModelCount
 	}
