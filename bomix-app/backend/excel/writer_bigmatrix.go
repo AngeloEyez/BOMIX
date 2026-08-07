@@ -381,44 +381,111 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		}
 	}
 
-	// 預先建立灰色底色樣式，用於標記「物料在此 BOM 不存在」的儲存格
-	// See product-spec section 8.1.5.3
-	grayStyleID, err := f.NewStyle(&excelize.Style{
-		Fill: excelize.Fill{
-			Type:    "pattern",
-			Color:   []string{"#D9D9D9"}, // 淺灰色
-			Pattern: 1,
+	// 預先建立 3 種位置感知的灰色底色樣式 (確保最右側欄位保留右側中粗黑邊框 Style: 2)
+	// 1. 中間欄位灰色樣式
+	grayMiddleStyleID, _ := f.NewStyle(&excelize.Style{
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"#D9D9D9"}, Pattern: 1},
+		Border: []excelize.Border{
+			{Type: "left", Color: "BFBFBF", Style: 1},
+			{Type: "right", Color: "BFBFBF", Style: 1},
+			{Type: "top", Color: "BFBFBF", Style: 1},
+			{Type: "bottom", Color: "BFBFBF", Style: 1},
 		},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
 	})
-	if err != nil {
-		// 若樣式建立失敗則略過（灰色效果無法呈現，但不影響資料正確性）
-		grayStyleID = -1
+
+	// 2. 最左欄位灰色樣式
+	grayLeftStyleID, _ := f.NewStyle(&excelize.Style{
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"#D9D9D9"}, Pattern: 1},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1},
+			{Type: "right", Color: "BFBFBF", Style: 1},
+			{Type: "top", Color: "BFBFBF", Style: 1},
+			{Type: "bottom", Color: "BFBFBF", Style: 1},
+		},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+	})
+
+	// 3. 最右欄位灰色樣式 (保留右側 Style: 2 中粗黑邊框)
+	grayRightStyleID, _ := f.NewStyle(&excelize.Style{
+		Fill: excelize.Fill{Type: "pattern", Color: []string{"#D9D9D9"}, Pattern: 1},
+		Border: []excelize.Border{
+			{Type: "left", Color: "BFBFBF", Style: 1},
+			{Type: "right", Color: "000000", Style: 2}, // 右側中粗黑邊框
+			{Type: "top", Color: "BFBFBF", Style: 1},
+			{Type: "bottom", Color: "BFBFBF", Style: 1},
+		},
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+	})
+
+	// getGrayStyle 依據 Model 欄位位置回傳具備正確邊框的灰色底色樣式
+	getGrayStyle := func(colIdx int, totalCount int) int {
+		if totalCount == 1 || colIdx == totalCount-1 {
+			if grayRightStyleID > 0 {
+				return grayRightStyleID
+			}
+		}
+		if colIdx == 0 {
+			if grayLeftStyleID > 0 {
+				return grayLeftStyleID
+			}
+		}
+		if grayMiddleStyleID > 0 {
+			return grayMiddleStyleID
+		}
+		return -1
 	}
 
 	// 建立 revision ID 字串 -> int64 的解析輔助（用於比對 SourceRevisionIDs）
-	// RevisionData.ID 為字串格式，SourceRevisionIDs 為 int64
 	revIDToInt64 := make(map[string]int64, len(revisions))
 	for _, rev := range revisions {
 		var revIDInt int64
-		if _, parseErr := fmt.Sscanf(rev.ID, "%d", &revIDInt); parseErr == nil {
+		if idVal, parseErr := strconv.ParseInt(strings.TrimSpace(rev.ID), 10, 64); parseErr == nil {
+			revIDToInt64[rev.ID] = idVal
+		} else if _, scanErr := fmt.Sscanf(rev.ID, "%d", &revIDInt); scanErr == nil {
 			revIDToInt64[rev.ID] = revIDInt
 		}
 	}
 
-	// partExistsInRevision 判斷物料是否存在於指定的 revision 中
-	// 利用 PartData.SourceRevisionIDs 進行 O(n) 查找
-	partExistsInRevision := func(part PartData, revIDStr string) bool {
+	// revisionIDInList 判斷特定 revision 是否存在於 SourceRevisionIDs 列表中
+	revisionIDInList := func(revIDStr string, sourceRevisionIDs []int64) bool {
+		if len(sourceRevisionIDs) == 0 {
+			return false
+		}
 		revIDInt, ok := revIDToInt64[revIDStr]
 		if !ok {
 			return false
 		}
-		for _, srcID := range part.SourceRevisionIDs {
+		for _, srcID := range sourceRevisionIDs {
 			if srcID == revIDInt {
 				return true
 			}
 		}
-		// 若 SourceRevisionIDs 為空（舊資料相容），視為存在於所有 revision
-		return len(part.SourceRevisionIDs) == 0
+		return false
+	}
+
+	// partExistsInRevision 判定主料是否存在於指定的 revision 主料表中
+	// (純粹比對該 Revision 的主料表 SourceRevisionIDs，與 Model 是否存在 selection 無關)
+	partExistsInRevision := func(part PartData, revID string) bool {
+		// 若全域未包含 SourceRevisionIDs (舊 DTO 或單一 Revision 測試)，視為存在
+		if len(part.SourceRevisionIDs) == 0 {
+			return true
+		}
+		return revisionIDInList(revID, part.SourceRevisionIDs)
+	}
+
+	// ssExistsInRevision 判定 2nd 物料是否存在於指定 revision 同群組的 2nd 物料表中
+	ssExistsInRevision := func(part PartData, ss SecondSourceData, revID string) bool {
+		// 規則 1：如果主料不存在於該 Revision 的主料表中，則整群組 (主料 + 2nd) 直接算不存在 (全灰底)
+		if !partExistsInRevision(part, revID) {
+			return false
+		}
+		// 規則 2：若全域 2nd 未包含 SourceRevisionIDs (舊 DTO)，視為存在
+		if len(ss.SourceRevisionIDs) == 0 {
+			return true
+		}
+		// 規則 3：檢查此 2nd 物料是否存在於該 Revision 同群組的 2nd 物料表中
+		return revisionIDInList(revID, ss.SourceRevisionIDs)
 	}
 
 	// 8.1.4 - Write part data
@@ -447,7 +514,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		for _, rev := range revisions {
 			revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
 
-			// 判斷此物料在當前 revision 中是否存在
+			// 精確判斷主料在當前 revision 中是否存在
 			partExists := partExistsInRevision(part, rev.ID)
 
 			for i := 0; i < revModelCount; i++ {
@@ -455,11 +522,13 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 				cell := fmt.Sprintf("%s%d", col, rowIndex)
 
 				if !partExists {
-					// 物料在此 BOM 不存在：填灰色底色（不填任何值）
+					// 主料在此 BOM 不存在：整組包含主料在該 rev 的所有 Model 欄均填灰底
 					// See product-spec section 8.1.5.3
-					if grayStyleID >= 0 {
-						_ = f.SetCellStyle("BigMatrix", cell, cell, grayStyleID)
+					st := getGrayStyle(i, revModelCount)
+					if st >= 0 {
+						_ = f.SetCellStyle("BigMatrix", cell, cell, st)
 					}
+					f.SetCellValue("BigMatrix", cell, "")
 				} else {
 					// 物料存在：判斷 Model 勾選狀態並填 "V"
 					mName := resolveModelName(rev, i)
@@ -485,24 +554,28 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			f.SetCellValue("BigMatrix", fmt.Sprintf("D%d", rowIndex), ss.Supplier)
 			f.SetCellValue("BigMatrix", fmt.Sprintf("E%d", rowIndex), ss.SupplierPn)
 
-			// 替代料也需要處理灰色底色（2nd source 在各 revision 中的存在性）
-			// 此處使用主料的存在性作為判斷依據（若主料不存在，替代料格也填灰色）
+			// 替代料也需要處理灰色底色
+			// 規則：當主料在當前 rev 本身不存在，或該 2nd Source 不在對應 rev 中，填入灰色底色
 			cIdx := bomStartCol
 			for _, rev := range revisions {
 				revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
 
-				partExists := partExistsInRevision(part, rev.ID)
+				// 精確判斷此 2nd Source 在當前 rev 中是否存在
+				ssExists := ssExistsInRevision(part, ss, rev.ID)
 
 				for i := 0; i < revModelCount; i++ {
 					col := getColName(cIdx + i)
 					cell := fmt.Sprintf("%s%d", col, rowIndex)
 
-					if !partExists {
-						if grayStyleID >= 0 {
-							_ = f.SetCellStyle("BigMatrix", cell, cell, grayStyleID)
+					if !ssExists {
+						// 替代料在此 Revision 的群組中不存在：填灰色底色 (保留右側邊框)
+						st := getGrayStyle(i, revModelCount)
+						if st >= 0 {
+							_ = f.SetCellStyle("BigMatrix", cell, cell, st)
 						}
+						f.SetCellValue("BigMatrix", cell, "")
 					} else {
-						// 替代料勾選：判斷此 model 是否選了這個 2nd source
+						// 替代料存在：判斷此 model 是否選了這個 2nd source
 						mName := resolveModelName(rev, i)
 						selectedPN := resolveBigMatrixSelectedPN(part, rev.ID, i, mName)
 						if selectedPN != "" && strings.EqualFold(ss.SupplierPn, selectedPN) {

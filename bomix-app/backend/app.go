@@ -725,11 +725,12 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 		ssData := make([]excel.SecondSourceData, 0, len(pg.SecondSources))
 		for _, ss := range pg.SecondSources {
 			ssData = append(ssData, excel.SecondSourceData{
-				HHPN:        ss.HHPN,
-				Supplier:    ss.Supplier,
-				SupplierPn:  ss.SupplierPN,
-				Description: ss.Description,
-				Remark:      ss.Remark,
+				HHPN:              ss.HHPN,
+				Supplier:          ss.Supplier,
+				SupplierPn:        ss.SupplierPN,
+				Description:       ss.Description,
+				Remark:            ss.Remark,
+				SourceRevisionIDs: ss.SourceRevisionIDs,
 			})
 		}
 

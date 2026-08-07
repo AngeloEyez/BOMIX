@@ -356,13 +356,25 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			allLocsByPartID[loc.PartID] = append(allLocsByPartID[loc.PartID], loc)
 		}
 
-		// 找出在此 revision 中含有 location 的 Parts
-		validParts := make([]db.Part, 0, len(data.parts))
+		// 預先追蹤每個 part 是否有至少一個「有效」location（bom_status != X）。
+		// 此資訊用於判斷主料是否真正「存在」於此 revision（用於 SourceRevisionIDs 標記），
+		// 以確保 BigMatrix 匯出灰色判斷的正確性（bom_status=X 的物料不算存在於此 revision）。
+		hasEffectiveLocByPartID := make(map[int64]bool, len(data.parts))
 		for partID, locs := range allLocsByPartID {
-			if len(locs) > 0 {
-				if p, exists := partByID[partID]; exists {
-					validParts = append(validParts, p)
+			for _, loc := range locs {
+				if strings.ToUpper(strings.TrimSpace(loc.BomStatus)) != "X" {
+					hasEffectiveLocByPartID[partID] = true
+					break
 				}
+			}
+		}
+
+		// 找出在此 revision 中含有「有效」location（bom_status != X）的 Parts。
+		// 只有這類 Part 才真正「上件」，才能影響 SourceRevisionIDs 的歸屬。
+		validParts := make([]db.Part, 0, len(data.parts))
+		for partID := range hasEffectiveLocByPartID {
+			if p, exists := partByID[partID]; exists {
+				validParts = append(validParts, p)
 			}
 		}
 
@@ -373,8 +385,8 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			if !exists {
 				continue
 			}
-			// 只要主料存在 Location 即採納替代料
-			if len(allLocsByPartID[mainPart.ID]) > 0 {
+			// 只有主料在此 revision 有效上件，才採納其替代料
+			if hasEffectiveLocByPartID[mainPart.ID] {
 				key := groupKey(mainPart.Supplier, mainPart.SupplierPN)
 				ssByMainKey[key] = append(ssByMainKey[key], ss)
 			}
@@ -415,8 +427,12 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				locationsByGroup[key] = make(map[string]bool)
 			}
 
+			// 只收集此 part 的有效 location（bom_status != X）參與聚合計算
 			locs := allLocsByPartID[p.ID]
 			for _, loc := range locs {
+				if strings.ToUpper(strings.TrimSpace(loc.BomStatus)) == "X" {
+					continue // 跳過不上件 location，不計入位置聚合與 BOMStatus 統計
+				}
 				locationsByGroup[key][loc.Location] = true
 				if loc.CCL {
 					cclByGroup[key] = true

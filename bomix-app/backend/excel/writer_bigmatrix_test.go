@@ -1204,5 +1204,168 @@ func TestExportBigMatrix_IsolationBetweenRevisions(t *testing.T) {
 	}
 }
 
+// TestExportBigMatrix_SecondSourceGrayStyleIsolation 驗證 2nd Source 替代料在不屬於的 Revision 欄位會精確填入灰色底色
+func TestExportBigMatrix_SecondSourceGrayStyleIsolation(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bigmatrix_ss_gray_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:      types.FormatBigMatrix,
+		OutputPath:  filepath.Join(tmpDir, "ss_gray_bigmatrix.xlsx"),
+		Description: "Second Source Gray Style Test",
+		Revisions: []RevisionData{
+			{
+				ID:              "1",
+				ProjectCode:     "PROJ_SS",
+				Phase:           "EVT",
+				Version:         "0.1",
+				ModelNames:      []string{"Model A"},
+				ModelQtyByOrder: map[int]int{0: 1},
+			},
+			{
+				ID:              "2",
+				ProjectCode:     "PROJ_SS",
+				Phase:           "EVT",
+				Version:         "0.2",
+				ModelNames:      []string{"Model A"},
+				ModelQtyByOrder: map[int]int{0: 1},
+			},
+		},
+		PartData: []PartData{
+			{
+				Item:              "1",
+				HHPN:              "MAIN_PN",
+				Description:       "Main Resistor",
+				Supplier:          "YAGEO",
+				SupplierPn:        "MAIN_R10K",
+				Qty:               1,
+				SourceRevisionIDs: []int64{1, 2}, // 主料在 Rev 1 與 Rev 2 均存在
+				SecondSources: []SecondSourceData{
+					{
+						HHPN:              "SS_PN_REV1_ONLY",
+						Supplier:          "MURATA",
+						SupplierPn:        "SS_MURATA_R10K",
+						Description:       "Second Source Rev 1 Only",
+						SourceRevisionIDs: []int64{1}, // 此 2nd Source 僅存在於 Rev 1！
+					},
+				},
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open exported file: %v", err)
+	}
+	defer f.Close()
+
+	// Row 6 是主料，Row 7 是 2nd Source (SS_PN_REV1_ONLY)
+	// Col H (Col 7) 對應 Rev 1，Col I (Col 8) 對應 Rev 2
+	// 2nd Source 在 Rev 1 (H7) 應該是一般樣式，在 Rev 2 (I7) 必須填入灰色底色
+	styleH7, errH7 := f.GetCellStyle("BigMatrix", "H7")
+	styleI7, errI7 := f.GetCellStyle("BigMatrix", "I7")
+
+	if errH7 != nil || errI7 != nil {
+		t.Fatalf("Failed to get cell styles H7/I7: %v, %v", errH7, errI7)
+	}
+
+	// H7 (Rev 1) 與 I7 (Rev 2, 灰色底色) 的 Style ID 必須不同
+	if styleH7 == styleI7 {
+		t.Errorf("Expected 2nd source in Rev 2 (I7, style %d) to have GRAY background different from Rev 1 (H7, style %d)", styleI7, styleH7)
+	}
+}
+
+// TestExportBigMatrix_MainPartGrayStyleIsolation 驗證主料在不屬於的 Revision 欄位會精確填入灰色底色且內容為空
+func TestExportBigMatrix_MainPartGrayStyleIsolation(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bigmatrix_main_gray_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:      types.FormatBigMatrix,
+		OutputPath:  filepath.Join(tmpDir, "main_gray_bigmatrix.xlsx"),
+		Description: "Main Part Gray Style Test",
+		Revisions: []RevisionData{
+			{
+				ID:              "1",
+				ProjectCode:     "PROJ_MAIN",
+				Phase:           "EVT",
+				Version:         "0.1",
+				ModelNames:      []string{"Model A"},
+				ModelQtyByOrder: map[int]int{0: 1},
+			},
+			{
+				ID:              "2",
+				ProjectCode:     "PROJ_MAIN",
+				Phase:           "EVT",
+				Version:         "0.2",
+				ModelNames:      []string{"Model A"},
+				ModelQtyByOrder: map[int]int{0: 1},
+			},
+		},
+		PartData: []PartData{
+			{
+				Item:              "1",
+				HHPN:              "MAIN_REV1_ONLY",
+				Description:       "Main Resistor Rev 1 Only",
+				Supplier:          "YAGEO",
+				SupplierPn:        "MAIN_R10K",
+				Qty:               1,
+				SourceRevisionIDs: []int64{1}, // 此主料僅存在於 Rev 1！在 Rev 2 不存在
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open exported file: %v", err)
+	}
+	defer f.Close()
+
+	// Row 6 是主料 (MAIN_REV1_ONLY)
+	// Col H (Col 7) 對應 Rev 1，Col I (Col 8) 對應 Rev 2
+	// 主料在 Rev 1 (H6) 是一般樣式，在 Rev 2 (I6) 必須填入灰色底色且值為空
+	styleH6, errH6 := f.GetCellStyle("BigMatrix", "H6")
+	styleI6, errI6 := f.GetCellStyle("BigMatrix", "I6")
+	valI6, _ := f.GetCellValue("BigMatrix", "I6")
+
+	if errH6 != nil || errI6 != nil {
+		t.Fatalf("Failed to get cell styles H6/I6: %v, %v", errH6, errI6)
+	}
+
+	// H6 (Rev 1) 與 I6 (Rev 2, 灰色底色) 的 Style ID 必須不同，且 I6 為空
+	if styleH6 == styleI6 {
+		t.Errorf("Expected main part in Rev 2 (I6, style %d) to have GRAY background different from Rev 1 (H6, style %d)", styleI6, styleH6)
+	}
+	if valI6 != "" {
+		t.Errorf("Expected I6 (main part selection in Rev 2) to be empty '', got '%s'", valI6)
+	}
+}
+
 
 

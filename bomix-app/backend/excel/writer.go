@@ -65,11 +65,12 @@ type PartData struct {
 
 // SecondSourceData represents second source data for export
 type SecondSourceData struct {
-	HHPN        string
-	Supplier    string
-	SupplierPn  string
-	Description string
-	Remark      string
+	HHPN              string
+	Supplier          string
+	SupplierPn        string
+	Description       string
+	Remark            string
+	SourceRevisionIDs []int64 // 包含此替代料的 Revision ID 列表
 }
 
 // RevisionData contains BOM revision metadata for export
