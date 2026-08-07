@@ -433,6 +433,9 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 				{Type: "bottom", Color: bottomColor, Style: 1},
 			},
 			Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+			Protection: &excelize.Protection{
+				Locked: true, // 鎖定：灰底儲存格禁止使用者修改
+			},
 		})
 		if id < 0 {
 			return -1
@@ -455,6 +458,34 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		isLeftEdge  := (colIdx == 0)
 		isRightEdge := (totalCount == 1 || colIdx == totalCount-1)
 		return createGrayStyle(isLeftEdge, isRightEdge, isTopEdge, isBottomEdge)
+	}
+
+	// unlockedStyleCache 快取解鎖版 (Locked: false) 的 Model 欄位樣式，允許使用者編輯
+	unlockedStyleCache := make(map[int]int)
+
+	// getUnlockedModelStyle 取得並快取解鎖 (Locked: false) 的 Model 欄位樣式
+	getUnlockedModelStyle := func(row int, colIdx int, totalCount int) int {
+		baseStyleID := getModelStyle(row, colIdx, totalCount)
+		if baseStyleID <= 0 {
+			return baseStyleID
+		}
+		if cachedID, ok := unlockedStyleCache[baseStyleID]; ok {
+			return cachedID
+		}
+		styleDef, err := f.GetStyle(baseStyleID)
+		if err != nil || styleDef == nil {
+			return baseStyleID
+		}
+		newStyle := *styleDef
+		newStyle.Protection = &excelize.Protection{
+			Locked: false, // 解鎖：允許使用者編輯填入 "V"
+		}
+		newID, err := f.NewStyle(&newStyle)
+		if err != nil || newID <= 0 {
+			return baseStyleID
+		}
+		unlockedStyleCache[baseStyleID] = newID
+		return newID
 	}
 
 	// 建立 revision ID 字串 -> int64 的解析輔助（用於比對 SourceRevisionIDs）
@@ -543,7 +574,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 				cell := fmt.Sprintf("%s%d", col, rowIndex)
 
 				if !partExists {
-					// 主料在此 BOM 不存在：整組包含主料在該 rev 的所有 Model 欄均填灰底
+					// 主料在此 BOM Revision 不存在：設定灰色底色，且禁止寫入任何資料（清空儲存格內容）
 					// isTopEdge=true：主料列永遠是群組的第一列
 					// isBottomEdge：若無 2nd Source，主料列同時也是群組最後列
 					// See product-spec section 8.1.5.3
@@ -552,13 +583,25 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 					if st >= 0 {
 						_ = f.SetCellStyle("BigMatrix", cell, cell, st)
 					}
+					// 灰底儲存格禁止寫入任何資料，強制設為空字串
 					f.SetCellValue("BigMatrix", cell, "")
 				} else {
-					// 物料存在：判斷 Model 勾選狀態並填 "V"
+					// 物料存在：解鎖此儲存格 (Locked: false) 允許編輯，並判斷 Model 勾選狀態
+					refRow := 6
+					if !isEven {
+						refRow = 7
+					}
+					st := getUnlockedModelStyle(refRow, i, revModelCount)
+					if st >= 0 {
+						_ = f.SetCellStyle("BigMatrix", cell, cell, st)
+					}
+
 					mName := resolveModelName(rev, i)
 					selectedPN := resolveBigMatrixSelectedPN(part, rev.ID, i, mName)
 					if selectedPN != "" && strings.EqualFold(part.SupplierPn, selectedPN) {
 						f.SetCellValue("BigMatrix", cell, "V")
+					} else {
+						f.SetCellValue("BigMatrix", cell, "")
 					}
 				}
 			}
@@ -595,18 +638,30 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 					cell := fmt.Sprintf("%s%d", col, rowIndex)
 
 					if !ssExists {
-						// 替代料在此 Revision 的群組中不存在：填灰色底色
+						// 替代料在此 Revision 的群組中不存在：設定灰色底色，且禁止寫入任何資料（清空儲存格內容）
 						st := getGrayStyle(i, revModelCount, false, ssIsBottomEdge)
 						if st >= 0 {
 							_ = f.SetCellStyle("BigMatrix", cell, cell, st)
 						}
+						// 灰底儲存格禁止寫入任何資料，強制設為空字串
 						f.SetCellValue("BigMatrix", cell, "")
 					} else {
-						// 替代料存在：判斷此 model 是否選了這個 2nd source
+						// 替代料存在：解鎖此儲存格 (Locked: false) 允許編輯，並判斷 Model 勾選狀態
+						refRow := 6
+						if !isEvenSS {
+							refRow = 7
+						}
+						st := getUnlockedModelStyle(refRow, i, revModelCount)
+						if st >= 0 {
+							_ = f.SetCellStyle("BigMatrix", cell, cell, st)
+						}
+
 						mName := resolveModelName(rev, i)
 						selectedPN := resolveBigMatrixSelectedPN(part, rev.ID, i, mName)
 						if selectedPN != "" && strings.EqualFold(ss.SupplierPn, selectedPN) {
 							f.SetCellValue("BigMatrix", cell, "V")
+						} else {
+							f.SetCellValue("BigMatrix", cell, "")
 						}
 					}
 				}
@@ -616,6 +671,17 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			rowIndex++
 		}
 	}
+
+	// 啟用 Excel 工作表保護（不設定密碼 / 空密碼，供使用者需要時自由取消保護）
+	// 效果：灰底儲存格 (Locked: true) 禁止修改，可編輯儲存格 (Locked: false) 允許修改
+	_ = f.ProtectSheet("BigMatrix", &excelize.SheetProtectionOptions{
+		AlgorithmName:       "SHA-512",
+		Password:            "",
+		SelectLockedCells:   true,  // 允許點選鎖定儲存格 (唯讀)
+		SelectUnlockedCells: true,  // 允許點選並編輯解鎖儲存格
+		EditObjects:         true,
+		EditScenarios:       true,
+	})
 
 	// Save to output path using validateAndPrepareOutputPath
 	seriesName := "BOMIX"
@@ -740,16 +806,22 @@ func NormalizeLocationCount(loc string) int {
 	return len(parts)
 }
 
-// resolveModelName 彈性取得第 index 個 Model 的名稱
-func resolveModelName(rev RevisionData, index int) string {
-	if index < len(rev.ModelNames) && rev.ModelNames[index] != "" {
-		return rev.ModelNames[index]
-	}
-	orderedNames := getOrderedModelNames(rev.ModelQty)
-	if index < len(orderedNames) && orderedNames[index] != "" {
-		return orderedNames[index]
-	}
-	return string(rune('A' + index))
+// resolveModelName 取得第 index 個 Model 的字母代號（A, B, C...）。
+//
+// BigMatrix 的設計原則是以匯入順序（SortOrder）決定 Model 排列順序，
+// 資料庫的 ModelName 欄位為選填且不作為識別用途。
+// 因此匯出時統一以 A, B, C... 的字母序號表示 Model 欄位，
+// 不再讀取資料庫中儲存的 ModelName。
+//
+// 參數：
+//   - rev：RevisionData（保留參數以維持介面一致性，本函式中不使用 ModelNames）
+//   - index：Model 的 0-based 排序索引
+//
+// 回傳：
+//   - string：字母代號，例如 index=0 → "A"，index=1 → "B"，index=25 → "Z"，index=26 → "AA"
+func resolveModelName(_ RevisionData, index int) string {
+	// 直接依 0-based 索引轉換為 Excel 欄名風格的字母序號
+	return getColName(index)
 }
 
 // getRevisionModelCount 計算 BOM Revision 實際存在的 Model 數量
