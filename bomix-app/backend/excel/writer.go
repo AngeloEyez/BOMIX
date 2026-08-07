@@ -125,6 +125,9 @@ func (w *WriterImpl) ExportExcel(options ExportOptions) ([]string, error) {
 		if w.logger != nil {
 			w.logger.Info("[Writer] 比對成功 -> 執行 Matrix 匯出")
 		}
+		if len(options.Revisions) > 0 && len(options.PartData) > 0 {
+			return w.exportMatrixDetailed(options, options.Revisions[0], options.PartData)
+		}
 		return w.exportMatrix(options)
 	default:
 		if w.logger != nil {

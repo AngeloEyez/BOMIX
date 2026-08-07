@@ -175,6 +175,15 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		styleRemark7 = styleModel7
 	}
 
+	// 清空範本檔在 Row 6 與 Row 7 殘留的預設範例文字 (避免替代料列殘留範本舊文字)
+	for _, sheet := range sheets {
+		for r := 6; r <= 7; r++ {
+			for c := 'A'; c <= 'J'; c++ {
+				_ = f.SetCellValue(sheet, fmt.Sprintf("%c%d", c, r), nil)
+			}
+		}
+	}
+
 	// 建立套用全列樣式 (A-R 欄) 的輔助函數
 	applyFullMatrixRowStyle := func(f *excelize.File, sheet string, row int, isEven bool) {
 		// 1. 套用 A ~ J 欄位範本原生樣式 (保留各欄對齊方式、數字格式與邊框格線)
@@ -270,11 +279,15 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 				// Apply same group rowStyle for second sources
 				applyFullMatrixRowStyle(f, sheet, rowIndex, isEven)
 
-				// Second sources don't have Item or Location
+				// Second sources don't have Item, Qty or Location. Clear template residue by setting cell value to nil.
+				f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIndex), nil)
 				f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIndex), ss.HHPN)
+				f.SetCellValue(sheet, fmt.Sprintf("C%d", rowIndex), nil)
 				f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIndex), ss.Description)
 				f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIndex), ss.Supplier)
 				f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIndex), ss.SupplierPn)
+				f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), nil)
+				f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), nil)
 
 				// Formulas for second sources
 				formulaI := fmt.Sprintf("=G%d*J%d", rowIndex, rowIndex)
@@ -434,6 +447,15 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 		styleRemark7 = styleModel7
 	}
 
+	// 清空範本檔在 Row 6 與 Row 7 殘留的預設範例文字 (避免替代料列殘留範本舊文字)
+	for _, sheet := range sheets {
+		for r := 6; r <= 7; r++ {
+			for c := 'A'; c <= 'J'; c++ {
+				_ = f.SetCellValue(sheet, fmt.Sprintf("%c%d", c, r), nil)
+			}
+		}
+	}
+
 	// Calculate Remark column position
 	remarkCol := getColName(modelStartCol + actualModelCount)
 
@@ -535,11 +557,15 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 				// Apply same group rowStyle for second sources
 				applyFullMatrixRowStyle(f, sheet, rowIndex, isEven)
 
-				// Second sources don't have Item or Location
+				// Second sources don't have Item, Qty or Location. Clear template residue by setting cell value to nil.
+				f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIndex), nil)
 				f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIndex), ss.HHPN)
+				f.SetCellValue(sheet, fmt.Sprintf("C%d", rowIndex), nil)
 				f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIndex), ss.Description)
 				f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIndex), ss.Supplier)
 				f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIndex), ss.SupplierPn)
+				f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), nil)
+				f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), nil)
 
 				// Formulas for second sources
 				formulaI := fmt.Sprintf("=G%d*J%d", rowIndex, rowIndex)
