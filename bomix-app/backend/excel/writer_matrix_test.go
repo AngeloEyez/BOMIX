@@ -663,3 +663,30 @@ func TestExportMatrix_ModelNameMapping(t *testing.T) {
 		t.Errorf("Expected L6 (Model B selection) to be 'V', got '%s'", valL6)
 	}
 }
+
+func TestValidateAndPrepareOutputPath_RemoveExisting(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "export_overwrite_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	targetPath := filepath.Join(tmpDir, "test_existing.xlsx")
+	err = os.WriteFile(targetPath, []byte("old content"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create dummy existing file: %v", err)
+	}
+
+	finalPath, err := validateAndPrepareOutputPath(nil, targetPath, "", "default.xlsx")
+	if err != nil {
+		t.Fatalf("validateAndPrepareOutputPath failed: %v", err)
+	}
+	if finalPath != targetPath {
+		t.Errorf("Expected finalPath to be %s, got %s", targetPath, finalPath)
+	}
+
+	// 驗證原本的舊檔案是否已被刪除
+	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
+		t.Errorf("Expected target file to be removed before writing, but it still exists")
+	}
+}

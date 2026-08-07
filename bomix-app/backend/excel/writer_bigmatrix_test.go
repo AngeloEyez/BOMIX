@@ -1074,13 +1074,13 @@ func TestExportBigMatrix_DynamicModelCountAndSelections(t *testing.T) {
 	defer f.Close()
 
 	// Rev 1 (ID 101): 有 2 個 Model -> 佔用 H, I (Col 7, 8)
-	// H4 = Model 1, I4 = Model 2
+	// H4 = A, I4 = B
 	// H5 = 5, I5 = 10
 	// H6 = V, I6 = V
 	nameH4, _ := f.GetCellValue("BigMatrix", "H4")
 	nameI4, _ := f.GetCellValue("BigMatrix", "I4")
-	if nameH4 != "Model 1" || nameI4 != "Model 2" {
-		t.Errorf("Expected H4/I4 to be Model 1 / Model 2, got %s / %s", nameH4, nameI4)
+	if nameH4 != "A" || nameI4 != "B" {
+		t.Errorf("Expected H4/I4 to be A / B, got %s / %s", nameH4, nameI4)
 	}
 
 	qtyH5, _ := f.GetCellValue("BigMatrix", "H5")
@@ -1096,12 +1096,12 @@ func TestExportBigMatrix_DynamicModelCountAndSelections(t *testing.T) {
 	}
 
 	// Rev 2 (ID 102): 有 1 個 Model -> 佔用 J (Col 9)
-	// J4 = Model X, J5 = 3, J6 = V
+	// J4 = A, J5 = 3, J6 = V
 	nameJ4, _ := f.GetCellValue("BigMatrix", "J4")
 	qtyJ5, _ := f.GetCellValue("BigMatrix", "J5")
 	selJ6, _ := f.GetCellValue("BigMatrix", "J6")
-	if nameJ4 != "Model X" || qtyJ5 != "3" || selJ6 != "V" {
-		t.Errorf("Expected J4/J5/J6 to be Model X / 3 / V, got %s / %s / %s", nameJ4, qtyJ5, selJ6)
+	if nameJ4 != "A" || qtyJ5 != "3" || selJ6 != "V" {
+		t.Errorf("Expected J4/J5/J6 to be A / 3 / V, got %s / %s / %s", nameJ4, qtyJ5, selJ6)
 	}
 }
 

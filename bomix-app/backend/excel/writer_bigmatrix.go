@@ -689,7 +689,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		seriesName = revisions[0].ProjectCode
 	}
 	defaultFileName := generateBigMatrixFileName(seriesName, revisions, date)
-	outputPath, err := validateAndPrepareOutputPath(options.OutputPath, options.OutputDir, defaultFileName)
+	outputPath, err := validateAndPrepareOutputPath(w.logger, options.OutputPath, options.OutputDir, defaultFileName)
 	if err != nil {
 		return nil, err
 	}

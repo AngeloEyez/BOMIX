@@ -229,8 +229,9 @@ func resolveOutputPath(outputPath, outputDir, defaultFileName string) string {
 
 // validateAndPrepareOutputPath 驗證並準備輸出檔案路徑。
 // 寫入檔案前確認目標資料夾路徑是否有效、能否成功創建以及是否具備存取權限。
+// 若目標檔案已存在，會先將其刪除以確保輸出檔案完整性，並留下 Debug log。
 // 若路徑無效或無法存取，回傳 ErrInvalidOutputPath 與詳細錯誤。
-func validateAndPrepareOutputPath(outputPath, outputDir, defaultFileName string) (string, error) {
+func validateAndPrepareOutputPath(lg *logger.Logger, outputPath, outputDir, defaultFileName string) (string, error) {
 	finalPath := resolveOutputPath(outputPath, outputDir, defaultFileName)
 	dir := filepath.Dir(finalPath)
 
@@ -244,6 +245,22 @@ func validateAndPrepareOutputPath(outputPath, outputDir, defaultFileName string)
 		fi, err := os.Stat(dir)
 		if err != nil || !fi.IsDir() {
 			return finalPath, fmt.Errorf("%w: 目錄不存在或無法存取 '%s'", ErrInvalidOutputPath, dir)
+		}
+	}
+
+	// 檢查目標檔案是否存在，若存在則先予以刪除
+	if fi, err := os.Stat(finalPath); err == nil && !fi.IsDir() {
+		if lg != nil {
+			lg.Debug(fmt.Sprintf("[validateAndPrepareOutputPath] 目標檔案已存在，準備刪除舊檔: %s", finalPath))
+		}
+		if removeErr := os.Remove(finalPath); removeErr != nil {
+			if lg != nil {
+				lg.Error(fmt.Sprintf("[validateAndPrepareOutputPath] 無法刪除已存在的舊檔 '%s': %v", finalPath, removeErr))
+			}
+			return finalPath, fmt.Errorf("failed to remove existing export output file '%s': %w", finalPath, removeErr)
+		}
+		if lg != nil {
+			lg.Debug(fmt.Sprintf("[validateAndPrepareOutputPath] 成功刪除已存在的舊檔: %s", finalPath))
 		}
 	}
 

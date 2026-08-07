@@ -288,7 +288,7 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 
 	// Save to output path using validateAndPrepareOutputPath
 	fileName := generateMatrixFileName(rev, date)
-	outputPath, err := validateAndPrepareOutputPath(options.OutputPath, options.OutputDir, fileName)
+	outputPath, err := validateAndPrepareOutputPath(w.logger, options.OutputPath, options.OutputDir, fileName)
 	if err != nil {
 		return nil, err
 	}
