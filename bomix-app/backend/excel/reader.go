@@ -115,6 +115,7 @@ func (r *ReaderImpl) importBigMatrix(f Workbook, path string) (types.ImportResul
 	// 委派給 BigMatrixReader 處理
 	bigMatrixReader := &BigMatrixReader{
 		db:     r.db,
+		result: &result,
 		logger: r.logger,
 	}
 

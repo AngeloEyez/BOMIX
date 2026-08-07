@@ -25,6 +25,10 @@ func TestEndToEnd_ImportExport(t *testing.T) {
 		t.Fatalf("Failed to auto migrate: %v", err)
 	}
 
+	if _, err := db.CreateSeries(database, "FY27", "Test Series"); err != nil {
+		t.Fatalf("Failed to create series: %v", err)
+	}
+
 	// Create a test EBOM xlsx file
 	testXlsxPath := filepath.Join(t.TempDir(), "test_ebom.xlsx")
 	if err := createTestEBOMFile(testXlsxPath); err != nil {
@@ -60,8 +64,9 @@ func TestEndToEnd_ImportExport(t *testing.T) {
 		t.Errorf("Expected format EBOM, got %s", results[0].Format)
 	}
 
-	// Note: PartsCount may be 0 due to existing bug in second source parsing
-	// where PartID is not set correctly before saving
+	if results[0].PartsCount == 0 {
+		t.Errorf("Expected PartsCount > 0, got %d", results[0].PartsCount)
+	}
 	t.Logf("Import result: %d parts, format: %s", results[0].PartsCount, results[0].Format)
 
 	// Query parts from database

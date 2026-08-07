@@ -123,6 +123,11 @@ func (r *EBOMReader) Import(f Workbook) error {
 		return fmt.Errorf("failed to save parts: %w", err)
 	}
 
+	if r.result != nil {
+		r.result.PartsCount = len(partList)
+		r.result.SecondSources = len(savedSecondSources)
+	}
+
 	// ─── Phase 2：Location 狀態覆寫 + Mode 判斷 ───────────────────────────────
 	// 建立 location → *db.PartLocation 快速查詢映射（來自已儲存後的 savedLocations）
 	locIndexMap := make(map[string]*db.PartLocation, len(savedLocations))

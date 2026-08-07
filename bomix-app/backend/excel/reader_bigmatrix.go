@@ -9,11 +9,13 @@ import (
 	"bomix-app/backend/db"
 	"bomix-app/backend/logger"
 	"bomix-app/backend/task"
+	"bomix-app/backend/types"
 )
 
 // BigMatrixReader handles BigMatrix format import
 type BigMatrixReader struct {
 	db       *gorm.DB
+	result   *types.ImportResult
 	logger   *logger.Logger
 	warnings []string // 累積所有非致命性警告訊息，供最終回傳 WarningError 使用
 }
@@ -368,6 +370,7 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 	currentMainPartMap := make(map[int64]*db.Part)
 	currentGroupKeyMap := make(map[int64]string)
 
+	validPartCount := 0
 	// 從 Row 6 開始逐行讀取零件與 Model 勾選 (0-indexed 為 5)
 	for i := 5; i < len(rows); i++ {
 		row := rows[i]
@@ -379,6 +382,7 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 		if partData == nil {
 			continue
 		}
+		validPartCount++
 
 		rowSupplierKey := fmt.Sprintf("%s|%s", partData.supplier, partData.supplierPN)
 
@@ -458,6 +462,10 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 		if err := r.db.Create(&selectionsToCreate).Error; err != nil {
 			return fmt.Errorf("批次建立 MatrixSelections 失敗: %w", err)
 		}
+	}
+
+	if r.result != nil {
+		r.result.PartsCount = validPartCount
 	}
 
 	return nil
