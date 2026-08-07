@@ -1,12 +1,15 @@
 package excel
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/xuri/excelize/v2"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"bomix-app/backend/db"
+	"bomix-app/backend/view"
 )
 
 // TestParseHeader_BigMatrix tests BigMatrix header parsing
@@ -600,6 +603,312 @@ func TestDDDBomx_ImportExportCycle(t *testing.T) {
 		t.Logf("After Import DB Revision ID=%d (Phase=%s, Version=%s) Selections: %d", rev.ID, rev.Phase, rev.Version, cnt)
 	}
 }
+
+// TestInspect_AZ5125 inspects AMAZING_AZ5125-01H.R7G in testdata/ddd.bomx
+func TestInspect_AZ5125(t *testing.T) {
+	dbPath := "testdata/ddd.bomx"
+	database, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Skipf("Skipping test: testdata/ddd.bomx not accessible: %v", err)
+	}
+
+	// 1. 查詢 Parts 表中包含 AZ5125 的記錄
+	var parts []db.Part
+	database.Where("supplier_pn LIKE ?", "%AZ5125%").Find(&parts)
+	t.Logf("Parts count matching AZ5125: %d", len(parts))
+	partIDs := make([]int64, 0, len(parts))
+	for _, p := range parts {
+		t.Logf("Part ID=%d, RevID=%d, Supplier=%s, SupplierPN=%s, HHPN=%s", p.ID, p.RevisionID, p.Supplier, p.SupplierPN, p.HHPN)
+		partIDs = append(partIDs, p.ID)
+	}
+
+	// 2. 查詢 SecondSources 表中關聯此 PartID 的記錄
+	var ssources []db.SecondSource
+	if len(partIDs) > 0 {
+		database.Where("part_id IN ?", partIDs).Find(&ssources)
+	}
+	t.Logf("SecondSources count for AZ5125 parts: %d", len(ssources))
+	for _, ss := range ssources {
+		t.Logf("SecondSource ID=%d, PartID=%d, RevID=%d, SS_Supplier=%s, SS_SupplierPN=%s", ss.ID, ss.PartID, ss.RevisionID, ss.Supplier, ss.SupplierPN)
+	}
+
+	// 3. 查詢 PartLocations 表中關聯此 PartID 的記錄
+	var locs []db.PartLocation
+	if len(partIDs) > 0 {
+		database.Where("part_id IN ?", partIDs).Find(&locs)
+	}
+	t.Logf("PartLocations count for AZ5125 parts: %d", len(locs))
+	for _, l := range locs {
+		t.Logf("PartLocation ID=%d, PartID=%d, Loc=%s, BomStatus=%s, CCL=%v", l.ID, l.PartID, l.Location, l.BomStatus, l.CCL)
+	}
+
+	// 4. 呼叫 View Service
+	viewSvc := view.NewService(database)
+	res, err := viewSvc.Query(view.ViewQuery{
+		RevisionIDs: []int64{1, 2, 3},
+		ViewType:    "ALL",
+	})
+	if err != nil {
+		t.Fatalf("View query failed: %v", err)
+	}
+
+	for _, pg := range res.PartGroups {
+		if strings.Contains(pg.MainSupplierPN, "AZ5125") {
+			t.Logf("ViewPartGroup: Supplier=%s, MainSupplierPN=%s, SS Count=%d", pg.MainSupplier, pg.MainSupplierPN, len(pg.SecondSources))
+			for _, ss := range pg.SecondSources {
+				t.Logf("   -> SS Supplier=%s, SS SupplierPN=%s", ss.Supplier, ss.SupplierPN)
+			}
+		}
+	}
+}
+
+// TestInspect_AZ5125_ExportedMatrix inspects how AZ5125 is converted for export in app.go logic
+func TestInspect_AZ5125_ExportedMatrix(t *testing.T) {
+	dbPath := "testdata/ddd.bomx"
+	database, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Skipf("Skipping test: testdata/ddd.bomx not accessible: %v", err)
+	}
+
+	viewSvc := view.NewService(database)
+	res, err := viewSvc.Query(view.ViewQuery{
+		RevisionIDs: []int64{1},
+		ViewType:    "ALL",
+	})
+	if err != nil {
+		t.Fatalf("View query failed: %v", err)
+	}
+
+	// 模擬 app.go 轉換 PartData 過程
+	partDataList := make([]PartData, 0, len(res.PartGroups))
+	for idx, pg := range res.PartGroups {
+		ssData := make([]SecondSourceData, 0, len(pg.SecondSources))
+		for _, ss := range pg.SecondSources {
+			ssData = append(ssData, SecondSourceData{
+				HHPN:              ss.HHPN,
+				Supplier:          ss.Supplier,
+				SupplierPn:        ss.SupplierPN,
+				Description:       ss.Description,
+				Remark:            ss.Remark,
+				SourceRevisionIDs: ss.SourceRevisionIDs,
+			})
+		}
+		partDataList = append(partDataList, PartData{
+			Item:          fmt.Sprintf("%d", idx+1),
+			HHPN:          pg.HHPN,
+			Description:   pg.Description,
+			Supplier:      pg.MainSupplier,
+			SupplierPn:    pg.MainSupplierPN,
+			Qty:           pg.Qty,
+			Location:      pg.Locations,
+			Type:          pg.Type,
+			BOMStatus:     pg.BOMStatus,
+			CCL:           pg.CCL,
+			Remark:        pg.Remark,
+			SecondSources: ssData,
+		})
+	}
+
+	// 印出 AZ5125 的 PartData
+	for _, pd := range partDataList {
+		if strings.Contains(pd.SupplierPn, "AZ5125") {
+			t.Logf("PartData: Supplier=%s, SupplierPN=%s, Type=%s, SS Count=%d", pd.Supplier, pd.SupplierPn, pd.Type, len(pd.SecondSources))
+			for _, ss := range pd.SecondSources {
+				t.Logf("   PartData SS: Supplier=%s, SupplierPN=%s", ss.Supplier, ss.SupplierPn)
+			}
+		}
+	}
+
+	// 呼叫 exportBigMatrixDetailed
+	writer, _ := NewWriter(nil)
+	revDataList := []RevisionData{
+		{
+			ID:          "1",
+			ProjectCode: "TEST_PROJ",
+			Phase:       "SI1",
+			Version:     "0.1",
+		},
+	}
+	outPaths, err := writer.exportBigMatrixDetailed(ExportOptions{
+		OutputPath: t.TempDir() + "/test_bm.xlsx",
+	}, revDataList, partDataList)
+	if err != nil {
+		t.Fatalf("exportBigMatrixDetailed failed: %v", err)
+	}
+
+	fBM, err := excelize.OpenFile(outPaths[0])
+	if err != nil {
+		t.Fatalf("OpenFile failed: %v", err)
+	}
+	defer fBM.Close()
+
+	bmRows, _ := fBM.GetRows("BigMatrix")
+	t.Logf("BigMatrix Sheet total rows: %d", len(bmRows))
+	for rIdx, r := range bmRows {
+		if len(r) > 4 {
+			supplierPN := r[4]
+			if strings.Contains(supplierPN, "AZ5125") || strings.Contains(supplierPN, "SYT21M05ANO") || strings.Contains(supplierPN, "AU0521D5-F") {
+				t.Logf("BigMatrix Row %d: Item='%s', Supplier='%s', SupplierPN='%s'", rIdx+1, safeGetCol(r, 0), safeGetCol(r, 3), safeGetCol(r, 4))
+			}
+		}
+	}
+
+	// 呼叫 exportMatrixDetailed
+	matrixPaths, err := writer.exportMatrixDetailed(ExportOptions{
+		OutputDir: t.TempDir(),
+	}, revDataList[0], partDataList)
+	if err != nil {
+		t.Fatalf("exportMatrixDetailed failed: %v", err)
+	}
+
+	fMat, err := excelize.OpenFile(matrixPaths[0])
+	if err != nil {
+		t.Fatalf("OpenFile Matrix failed: %v", err)
+	}
+	defer fMat.Close()
+
+	smdRows, _ := fMat.GetRows("SMD")
+	t.Logf("SMD Sheet total rows: %d", len(smdRows))
+	for rIdx, r := range smdRows {
+		if len(r) > 5 {
+			supplierPN := r[5]
+			if strings.Contains(supplierPN, "AZ5125") || strings.Contains(supplierPN, "SYT21M05ANO") || strings.Contains(supplierPN, "AU0521D5-F") {
+				t.Logf("Matrix SMD Row %d: Item='%s', Supplier='%s', SupplierPN='%s'", rIdx+1, safeGetCol(r, 0), safeGetCol(r, 4), safeGetCol(r, 5))
+			}
+		}
+	}
+}
+
+// TestAZ5125_FullRoundtripVerify tests export -> import -> export roundtrip for AZ5125 second sources
+func TestAZ5125_FullRoundtripVerify(t *testing.T) {
+	dbPath := "testdata/ddd.bomx"
+	database, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Skipf("Skipping test: testdata/ddd.bomx not accessible: %v", err)
+	}
+
+	// 1. 第一次匯出 BigMatrix
+	viewSvc := view.NewService(database)
+	res1, err := viewSvc.Query(view.ViewQuery{RevisionIDs: []int64{1}, ViewType: "ALL"})
+	if err != nil {
+		t.Fatalf("View query 1 failed: %v", err)
+	}
+
+	partDataList1 := convertToPartDataList(res1.PartGroups)
+	writer, _ := NewWriter(nil)
+	revData1 := RevisionData{ID: "1", ProjectCode: "TEST", Phase: "SI1", Version: "0.1"}
+
+	tmpDir := t.TempDir()
+	bmPath1, err := writer.exportBigMatrixDetailed(ExportOptions{OutputPath: tmpDir + "/BM1.xlsx"}, []RevisionData{revData1}, partDataList1)
+	if err != nil {
+		t.Fatalf("Export BM1 failed: %v", err)
+	}
+
+	// 2. 執行匯入 BM1 到 DB
+	fBM1, _ := excelize.OpenFile(bmPath1[0])
+	wb1 := &ExcelizeWorkbook{f: fBM1}
+	reader := &BigMatrixReader{db: database}
+	if err := reader.Import(wb1); err != nil {
+		t.Fatalf("Import BM1 failed: %v", err)
+	}
+	fBM1.Close()
+
+	// 3. 第二次從 DB 匯出 BigMatrix 與 Matrix
+	res2, err := viewSvc.Query(view.ViewQuery{RevisionIDs: []int64{1}, ViewType: "ALL"})
+	if err != nil {
+		t.Fatalf("View query 2 failed: %v", err)
+	}
+
+	partDataList2 := convertToPartDataList(res2.PartGroups)
+	bmPath2, err := writer.exportBigMatrixDetailed(ExportOptions{OutputPath: tmpDir + "/BM2.xlsx"}, []RevisionData{revData1}, partDataList2)
+	if err != nil {
+		t.Fatalf("Export BM2 failed: %v", err)
+	}
+
+	matPath2, err := writer.exportMatrixDetailed(ExportOptions{OutputDir: tmpDir}, revData1, partDataList2)
+	if err != nil {
+		t.Fatalf("Export Matrix2 failed: %v", err)
+	}
+
+	// 4. 檢驗 BM2 中 AZ5125 的 2nd sources 數量
+	fBM2, _ := excelize.OpenFile(bmPath2[0])
+	defer fBM2.Close()
+	bm2Rows, _ := fBM2.GetRows("BigMatrix")
+
+	az2ndSourceCountBM2 := 0
+	for _, r := range bm2Rows {
+		if len(r) > 4 {
+			supplierPN := r[4]
+			item := safeGetCol(r, 0)
+			if item == "" && (strings.Contains(supplierPN, "SYT21M05ANO") || strings.Contains(supplierPN, "AU0521D5-F") || strings.Contains(supplierPN, "LESD5Z5") || strings.Contains(supplierPN, "WE1119K95") || strings.Contains(supplierPN, "ESD5471S")) {
+				az2ndSourceCountBM2++
+			}
+		}
+	}
+	t.Logf("BM2 AZ5125 2nd source rows count: %d", az2ndSourceCountBM2)
+
+	// 5. 檢驗 Matrix2 中 AZ5125 的 2nd sources 數量
+	fMat2, _ := excelize.OpenFile(matPath2[0])
+	defer fMat2.Close()
+	mat2Rows, _ := fMat2.GetRows("SMD")
+
+	az2ndSourceCountMat2 := 0
+	for _, r := range mat2Rows {
+		if len(r) > 5 {
+			supplierPN := r[5]
+			item := safeGetCol(r, 0)
+			if item == "" && (strings.Contains(supplierPN, "SYT21M05ANO") || strings.Contains(supplierPN, "AU0521D5-F") || strings.Contains(supplierPN, "LESD5Z5") || strings.Contains(supplierPN, "WE1119K95") || strings.Contains(supplierPN, "ESD5471S")) {
+				az2ndSourceCountMat2++
+			}
+		}
+	}
+	t.Logf("Matrix2 AZ5125 2nd source rows count: %d", az2ndSourceCountMat2)
+
+	if az2ndSourceCountBM2 == 0 || az2ndSourceCountMat2 == 0 {
+		t.Errorf("AZ5125 2nd sources lost after roundtrip! BM2 count=%d, Matrix2 count=%d", az2ndSourceCountBM2, az2ndSourceCountMat2)
+	}
+}
+
+// convertToPartDataList 輔助函數
+func convertToPartDataList(groups []view.ViewPartGroup) []PartData {
+	list := make([]PartData, 0, len(groups))
+	for idx, pg := range groups {
+		ssData := make([]SecondSourceData, 0, len(pg.SecondSources))
+		for _, ss := range pg.SecondSources {
+			ssData = append(ssData, SecondSourceData{
+				HHPN:              ss.HHPN,
+				Supplier:          ss.Supplier,
+				SupplierPn:        ss.SupplierPN,
+				Description:       ss.Description,
+				Remark:            ss.Remark,
+				SourceRevisionIDs: ss.SourceRevisionIDs,
+			})
+		}
+		list = append(list, PartData{
+			Item:          fmt.Sprintf("%d", idx+1),
+			HHPN:          pg.HHPN,
+			Description:   pg.Description,
+			Supplier:      pg.MainSupplier,
+			SupplierPn:    pg.MainSupplierPN,
+			Qty:           pg.Qty,
+			Location:      pg.Locations,
+			Type:          pg.Type,
+			BOMStatus:     pg.BOMStatus,
+			CCL:           pg.CCL,
+			Remark:        pg.Remark,
+			SecondSources: ssData,
+		})
+	}
+	return list
+}
+
+
+
+
+
+
+
+
 
 
 

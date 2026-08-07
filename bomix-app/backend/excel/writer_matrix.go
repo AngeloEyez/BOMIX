@@ -253,7 +253,7 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 			for i := 0; i < actualModelCount; i++ {
 				col := getColName(modelStartCol + i)
 				cell := fmt.Sprintf("%s%d", col, rowIndex)
-				selectedPN := resolveSelectedPN(part, i, orderedModelNames)
+				selectedPN := resolveSelectedPN(part, "", i, orderedModelNames)
 
 				if selectedPN != "" && strings.EqualFold(part.SupplierPn, selectedPN) {
 					f.SetCellValue(sheet, cell, "V")
@@ -287,7 +287,7 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 				for i := 0; i < actualModelCount; i++ {
 					col := getColName(modelStartCol + i)
 					cell := fmt.Sprintf("%s%d", col, rowIndex)
-					selectedPN := resolveSelectedPN(part, i, orderedModelNames)
+					selectedPN := resolveSelectedPN(part, "", i, orderedModelNames)
 
 					if selectedPN != "" && strings.EqualFold(ss.SupplierPn, selectedPN) {
 						f.SetCellValue(sheet, cell, "V")
@@ -518,7 +518,7 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 			for i := 0; i < actualModelCount; i++ {
 				col := getColName(modelStartCol + i)
 				cell := fmt.Sprintf("%s%d", col, rowIndex)
-				selectedPN := resolveSelectedPN(part, i, orderedModelNames)
+				selectedPN := resolveSelectedPN(part, rev.ID, i, orderedModelNames)
 
 				if selectedPN != "" && strings.EqualFold(part.SupplierPn, selectedPN) {
 					f.SetCellValue(sheet, cell, "V")
@@ -552,7 +552,7 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 				for i := 0; i < actualModelCount; i++ {
 					col := getColName(modelStartCol + i)
 					cell := fmt.Sprintf("%s%d", col, rowIndex)
-					selectedPN := resolveSelectedPN(part, i, orderedModelNames)
+					selectedPN := resolveSelectedPN(part, rev.ID, i, orderedModelNames)
 
 					if selectedPN != "" && strings.EqualFold(ss.SupplierPn, selectedPN) {
 						f.SetCellValue(sheet, cell, "V")
@@ -644,7 +644,13 @@ func resolveModelQty(rev RevisionData, index int, orderedNames []string) int {
 }
 
 // resolveSelectedPN 彈性獲取第 index 個 Model 在 Selections 中的選取 PartPN (優先依據 SortOrder 索引)
-func resolveSelectedPN(part PartData, index int, orderedNames []string) string {
+func resolveSelectedPN(part PartData, revID string, index int, orderedNames []string) string {
+	if revSelections, ok := part.SelectionsByRevAndOrder[revID]; ok {
+		if pn, exists := revSelections[index]; exists && pn != "" {
+			return pn
+		}
+	}
+
 	if pn, ok := part.SelectionsByOrder[index]; ok && pn != "" {
 		return pn
 	}
