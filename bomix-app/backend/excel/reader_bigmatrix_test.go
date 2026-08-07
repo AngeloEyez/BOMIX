@@ -560,3 +560,46 @@ func TestImport_BigMatrix_MultipleModelsQtyAndSelections(t *testing.T) {
 	}
 }
 
+// TestDDDBomx_ImportExportCycle tests the exact roundtrip scenario with testdata/ddd.bomx
+func TestDDDBomx_ImportExportCycle(t *testing.T) {
+	// 檢查 testdata/ddd.bomx 是否存在
+	dbPath := "testdata/ddd.bomx"
+	database, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Skipf("Skipping test: testdata/ddd.bomx not accessible: %v", err)
+	}
+
+	// 統計匯入前原始 DB 各 Revision 的 MatrixSelection 筆數
+	var revisions []db.BomRevision
+	database.Find(&revisions)
+	for _, rev := range revisions {
+		var cnt int64
+		database.Model(&db.MatrixSelection{}).Where("revision_id = ?", rev.ID).Count(&cnt)
+		t.Logf("Original DB Revision ID=%d (Phase=%s, Version=%s) Selections: %d", rev.ID, rev.Phase, rev.Version, cnt)
+	}
+
+	// 讀取既有 BigMatrix xlsx (若有)
+	f, err := excelize.OpenFile("testdata/ddd_BigMatrix_SI1_0.1_20260807.xlsx")
+	if err != nil {
+		t.Skipf("Skipping import test: testdata/ddd_BigMatrix_SI1_0.1_20260807.xlsx not found: %v", err)
+	}
+	defer f.Close()
+
+	wb := &ExcelizeWorkbook{f: f}
+	reader := &BigMatrixReader{db: database}
+
+	// 執行匯入
+	if err := reader.Import(wb); err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// 統計匯入後 DB 各 Revision 的 MatrixSelection 筆數
+	for _, rev := range revisions {
+		var cnt int64
+		database.Model(&db.MatrixSelection{}).Where("revision_id = ?", rev.ID).Count(&cnt)
+		t.Logf("After Import DB Revision ID=%d (Phase=%s, Version=%s) Selections: %d", rev.ID, rev.Phase, rev.Version, cnt)
+	}
+}
+
+
+
