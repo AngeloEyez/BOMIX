@@ -130,23 +130,6 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		return nil, err
 	}
 
-	// 8.1.3 - Dynamic column generation for multiple BOMs and Models
-	maxModelCount := 0
-	for _, rev := range revisions {
-		if len(rev.ModelQty) > maxModelCount {
-			maxModelCount = len(rev.ModelQty)
-		}
-	}
-	if maxModelCount == 0 {
-		maxModelCount = 3 // Default
-	}
-
-	// Model names (A, B, C, ...)
-	modelNames := make([]string, maxModelCount)
-	for i := 0; i < maxModelCount; i++ {
-		modelNames[i] = string(rune('A' + i))
-	}
-
 	// Read archetype style IDs from template for H, I, J columns (Header rows 2-5)
 	styleH2, _ := f.GetCellStyle("BigMatrix", "H2")
 	styleH3, _ := f.GetCellStyle("BigMatrix", "H3")
@@ -253,11 +236,9 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	// Write dynamic Model columns and header info for each revision
 	currentCol := bomStartCol
 	for _, rev := range revisions {
-		revModelCount := len(rev.ModelQty)
-		if override, ok := options.ModelCountOverrides[rev.ID]; ok && override > 0 {
-			revModelCount = override
-		} else if revModelCount == 0 {
-			revModelCount = maxModelCount
+		revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
+		if revModelCount <= 0 {
+			continue
 		}
 
 		startColName := getColName(currentCol)
@@ -272,10 +253,13 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			}
 
 			// Model name (row 4)
-			f.SetCellValue("BigMatrix", fmt.Sprintf("%s4", col), modelNames[i])
+			mName := resolveModelName(rev, i)
+			f.SetCellValue("BigMatrix", fmt.Sprintf("%s4", col), mName)
 
 			// Model quantity (row 5)
-			if qty, ok := rev.ModelQty[modelNames[i]]; ok && qty > 0 {
+			orderedNames := getOrderedModelNames(rev.ModelQty)
+			qty := resolveModelQty(rev, i, orderedNames)
+			if qty > 0 {
 				f.SetCellValue("BigMatrix", fmt.Sprintf("%s5", col), qty)
 			} else {
 				f.SetCellValue("BigMatrix", fmt.Sprintf("%s5", col), "")
@@ -314,14 +298,9 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	padding := 2.0
 
 	for _, rev := range revisions {
-		revModelCount := len(rev.ModelQty)
-		if override, ok := options.ModelCountOverrides[rev.ID]; ok && override > 0 {
-			revModelCount = override
-		} else if revModelCount == 0 {
-			revModelCount = maxModelCount
-		}
+		revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
 		if revModelCount <= 0 {
-			revModelCount = 1
+			continue
 		}
 
 		// 1. Project Code (Row 2) width requirement per column (considering merged columns)
@@ -349,8 +328,10 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		}
 
 		// 3. Model Qty (Row 5) width requirement per column (single cell)
+		orderedNames := getOrderedModelNames(rev.ModelQty)
 		for i := 0; i < revModelCount; i++ {
-			if qty, ok := rev.ModelQty[modelNames[i]]; ok && qty > 0 {
+			qty := resolveModelQty(rev, i, orderedNames)
+			if qty > 0 {
 				req := float64(len(fmt.Sprintf("%d", qty))) + padding
 				if req > maxColWidthReq {
 					maxColWidthReq = req
@@ -389,10 +370,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		// Apply dynamic Model column styles (H onwards)
 		cIdx := bomStartCol
 		for _, rev := range revisions {
-			revModelCount := len(rev.ModelQty)
-			if revModelCount == 0 {
-				revModelCount = maxModelCount
-			}
+			revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
 			for i := 0; i < revModelCount; i++ {
 				colStr := getColName(cIdx + i)
 				cell := fmt.Sprintf("%s%d", colStr, row)
@@ -467,10 +445,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		// 若物料在某 BOM Revision 中不存在，將對應的所有 Model 欄位填入灰色底色
 		currentCol = bomStartCol
 		for _, rev := range revisions {
-			revModelCount := len(rev.ModelQty)
-			if revModelCount == 0 {
-				revModelCount = maxModelCount
-			}
+			revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
 
 			// 判斷此物料在當前 revision 中是否存在
 			partExists := partExistsInRevision(part, rev.ID)
@@ -487,11 +462,10 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 					}
 				} else {
 					// 物料存在：判斷 Model 勾選狀態並填 "V"
-					modelName := modelNames[i]
-					if selectedPN, ok := part.Selections[modelName]; ok && selectedPN != "" {
-						if part.SupplierPn == selectedPN {
-							f.SetCellValue("BigMatrix", cell, "V")
-						}
+					mName := resolveModelName(rev, i)
+					selectedPN := resolveBigMatrixSelectedPN(part, rev.ID, i, mName)
+					if selectedPN != "" && strings.EqualFold(part.SupplierPn, selectedPN) {
+						f.SetCellValue("BigMatrix", cell, "V")
 					}
 				}
 			}
@@ -515,10 +489,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			// 此處使用主料的存在性作為判斷依據（若主料不存在，替代料格也填灰色）
 			cIdx := bomStartCol
 			for _, rev := range revisions {
-				revModelCount := len(rev.ModelQty)
-				if revModelCount == 0 {
-					revModelCount = maxModelCount
-				}
+				revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
 
 				partExists := partExistsInRevision(part, rev.ID)
 
@@ -532,11 +503,10 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 						}
 					} else {
 						// 替代料勾選：判斷此 model 是否選了這個 2nd source
-						modelName := modelNames[i]
-						if selectedPN, ok := part.Selections[modelName]; ok && selectedPN != "" {
-							if ss.SupplierPn == selectedPN {
-								f.SetCellValue("BigMatrix", cell, "V")
-							}
+						mName := resolveModelName(rev, i)
+						selectedPN := resolveBigMatrixSelectedPN(part, rev.ID, i, mName)
+						if selectedPN != "" && strings.EqualFold(ss.SupplierPn, selectedPN) {
+							f.SetCellValue("BigMatrix", cell, "V")
 						}
 					}
 				}
@@ -668,4 +638,76 @@ func NormalizeLocationCount(loc string) int {
 	}
 	parts := strings.Split(loc, ",")
 	return len(parts)
+}
+
+// resolveModelName 彈性取得第 index 個 Model 的名稱
+func resolveModelName(rev RevisionData, index int) string {
+	if index < len(rev.ModelNames) && rev.ModelNames[index] != "" {
+		return rev.ModelNames[index]
+	}
+	orderedNames := getOrderedModelNames(rev.ModelQty)
+	if index < len(orderedNames) && orderedNames[index] != "" {
+		return orderedNames[index]
+	}
+	return string(rune('A' + index))
+}
+
+// getRevisionModelCount 計算 BOM Revision 實際存在的 Model 數量
+// 判斷原則：有 selection 或有 qty 就算存在
+func getRevisionModelCount(rev RevisionData, parts []PartData, override int) int {
+	if override > 0 {
+		return override
+	}
+
+	count := len(rev.ModelNames)
+	if len(rev.ModelQtyByOrder) > count {
+		count = len(rev.ModelQtyByOrder)
+	}
+	if len(rev.ModelQty) > count {
+		count = len(rev.ModelQty)
+	}
+
+	// 檢查所有物料在該 Revision 中的 Selection 最大 SortOrder
+	for _, p := range parts {
+		if revOrderMap, ok := p.SelectionsByRevAndOrder[rev.ID]; ok {
+			for sortOrder, selectedPN := range revOrderMap {
+				if selectedPN != "" {
+					if sortOrder+1 > count {
+						count = sortOrder + 1
+					}
+				}
+			}
+		}
+	}
+
+	return count
+}
+
+// resolveBigMatrixSelectedPN 獲取特定 Revision 下、特定 Model 的選取 PN
+func resolveBigMatrixSelectedPN(part PartData, revID string, sortOrder int, modelName string) string {
+	if revID != "" {
+		if revOrderMap, ok := part.SelectionsByRevAndOrder[revID]; ok {
+			if pn, ok2 := revOrderMap[sortOrder]; ok2 && pn != "" {
+				return pn
+			}
+		}
+		if revNameMap, ok := part.SelectionsByRevAndName[revID]; ok {
+			if pn, ok2 := revNameMap[modelName]; ok2 && pn != "" {
+				return pn
+			}
+		}
+		// 若已提供多 Revision 映射 (SelectionsByRevAndOrder 或 SelectionsByRevAndName)，說明具有精確的跨 Revision 勾選集
+		// 此時若該 revID 內無勾選，代表此 Revision 確實未勾選，絕不可降級 (防止多 Revision 輸出相同勾選)
+		if len(part.SelectionsByRevAndOrder) > 0 || len(part.SelectionsByRevAndName) > 0 {
+			return ""
+		}
+	}
+
+	if pn, ok := part.SelectionsByOrder[sortOrder]; ok && pn != "" {
+		return pn
+	}
+	if pn, ok := part.Selections[modelName]; ok && pn != "" {
+		return pn
+	}
+	return ""
 }

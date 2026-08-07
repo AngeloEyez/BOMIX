@@ -678,6 +678,7 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 			Phase:            vr.Phase,
 			Version:          vr.Version,
 			Date:             vr.Date,
+			ModelNames:       vr.ModelNames,
 			ModelQty:         vr.ModelQty,
 			ModelQtyByOrder:  vr.ModelQtyByOrder,
 		})
@@ -687,18 +688,36 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 	// 物料群組已由 View 系統聚合完畢（locations 已合併、qty 已計算）
 	partDataList := make([]excel.PartData, 0, len(viewResult.PartGroups))
 	for idx, pg := range viewResult.PartGroups {
-		// 整合此群組的 Model 勾選狀態為 map[modelName]selectedPN 與 map[sortOrder]selectedPN
+		// 整合此群組的 Model 勾選狀態：
+		// 1. 單一 Revision 相容: map[modelName]selectedPN 與 map[sortOrder]selectedPN
+		// 2. BigMatrix 多 Revision 精確: map[revIDStr]map[sortOrder]selectedPN 與 map[revIDStr]map[modelName]selectedPN
 		selections := make(map[string]string)
 		selectionsByOrder := make(map[int]string)
+		selectionsByRevAndOrder := make(map[string]map[int]string)
+		selectionsByRevAndName := make(map[string]map[string]string)
+
 		for _, sel := range pg.Selections {
 			if sel.SelectedPN != "" {
-				// 若同一 model 在多個 revision 均有勾選，以第一個為主
+				revIDStr := fmt.Sprintf("%d", sel.RevisionID)
+
+				// 單一 Revision 相容
 				if _, exists := selections[sel.ModelName]; !exists {
 					selections[sel.ModelName] = sel.SelectedPN
 				}
 				if _, exists := selectionsByOrder[sel.SortOrder]; !exists {
 					selectionsByOrder[sel.SortOrder] = sel.SelectedPN
 				}
+
+				// 多 Revision 精確映射
+				if selectionsByRevAndOrder[revIDStr] == nil {
+					selectionsByRevAndOrder[revIDStr] = make(map[int]string)
+				}
+				selectionsByRevAndOrder[revIDStr][sel.SortOrder] = sel.SelectedPN
+
+				if selectionsByRevAndName[revIDStr] == nil {
+					selectionsByRevAndName[revIDStr] = make(map[string]string)
+				}
+				selectionsByRevAndName[revIDStr][sel.ModelName] = sel.SelectedPN
 			}
 		}
 
@@ -715,21 +734,23 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 		}
 
 		partDataList = append(partDataList, excel.PartData{
-			Item:              fmt.Sprintf("%d", idx+1), // 流水號
-			HHPN:              pg.HHPN,
-			Description:       pg.Description,
-			Supplier:          pg.MainSupplier,
-			SupplierPn:        pg.MainSupplierPN,
-			Qty:               pg.Qty,
-			Location:          pg.Locations,
-			Type:              pg.Type,
-			BOMStatus:         pg.BOMStatus,
-			CCL:               pg.CCL,
-			Remark:            pg.Remark,
-			SecondSources:     ssData,
-			Selections:        selections,
-			SelectionsByOrder: selectionsByOrder,
-			SourceRevisionIDs: pg.SourceRevisionIDs, // 傳遞來源歸屬，供 BigMatrix 填灰色
+			Item:                    fmt.Sprintf("%d", idx+1), // 流水號
+			HHPN:                    pg.HHPN,
+			Description:             pg.Description,
+			Supplier:                pg.MainSupplier,
+			SupplierPn:              pg.MainSupplierPN,
+			Qty:                     pg.Qty,
+			Location:                pg.Locations,
+			Type:                    pg.Type,
+			BOMStatus:               pg.BOMStatus,
+			CCL:                     pg.CCL,
+			Remark:                  pg.Remark,
+			SecondSources:           ssData,
+			Selections:              selections,
+			SelectionsByOrder:       selectionsByOrder,
+			SelectionsByRevAndOrder: selectionsByRevAndOrder,
+			SelectionsByRevAndName:  selectionsByRevAndName,
+			SourceRevisionIDs:       pg.SourceRevisionIDs, // 傳遞來源歸屬，供 BigMatrix 填灰色
 		})
 	}
 

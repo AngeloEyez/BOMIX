@@ -1001,5 +1001,208 @@ func TestExportBigMatrix_GroupZebraStriping(t *testing.T) {
 	}
 }
 
+// TestExportBigMatrix_DynamicModelCountAndSelections 驗證 BigMatrix 匯出依據實際存在 Model 數量動態寫入 Model Qty 與 V 勾選
+func TestExportBigMatrix_DynamicModelCountAndSelections(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bigmatrix_dynamic_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:      types.FormatBigMatrix,
+		OutputPath:  filepath.Join(tmpDir, "dynamic_bigmatrix.xlsx"),
+		Description: "Dynamic BigMatrix Test",
+		Revisions: []RevisionData{
+			{
+				ID:          "101",
+				ProjectCode: "PROJ_A",
+				Phase:       "PV",
+				Version:     "0.1",
+				ModelNames:  []string{"Model 1", "Model 2"},
+				ModelQtyByOrder: map[int]int{
+					0: 5,
+					1: 10,
+				},
+			},
+			{
+				ID:          "102",
+				ProjectCode: "PROJ_A",
+				Phase:       "PV",
+				Version:     "0.2",
+				ModelNames:  []string{"Model X"},
+				ModelQtyByOrder: map[int]int{
+					0: 3,
+				},
+			},
+		},
+		PartData: []PartData{
+			{
+				Item:        "1",
+				HHPN:        "PN_001",
+				Description: "Chip Resistor",
+				Supplier:    "YAGEO",
+				SupplierPn:  "R10K",
+				Qty:         2,
+				SelectionsByRevAndOrder: map[string]map[int]string{
+					"101": {
+						0: "R10K",
+						1: "R10K",
+					},
+					"102": {
+						0: "R10K",
+					},
+				},
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open exported file: %v", err)
+	}
+	defer f.Close()
+
+	// Rev 1 (ID 101): 有 2 個 Model -> 佔用 H, I (Col 7, 8)
+	// H4 = Model 1, I4 = Model 2
+	// H5 = 5, I5 = 10
+	// H6 = V, I6 = V
+	nameH4, _ := f.GetCellValue("BigMatrix", "H4")
+	nameI4, _ := f.GetCellValue("BigMatrix", "I4")
+	if nameH4 != "Model 1" || nameI4 != "Model 2" {
+		t.Errorf("Expected H4/I4 to be Model 1 / Model 2, got %s / %s", nameH4, nameI4)
+	}
+
+	qtyH5, _ := f.GetCellValue("BigMatrix", "H5")
+	qtyI5, _ := f.GetCellValue("BigMatrix", "I5")
+	if qtyH5 != "5" || qtyI5 != "10" {
+		t.Errorf("Expected H5/I5 to be 5 / 10, got %s / %s", qtyH5, qtyI5)
+	}
+
+	selH6, _ := f.GetCellValue("BigMatrix", "H6")
+	selI6, _ := f.GetCellValue("BigMatrix", "I6")
+	if selH6 != "V" || selI6 != "V" {
+		t.Errorf("Expected H6/I6 to be V / V, got %s / %s", selH6, selI6)
+	}
+
+	// Rev 2 (ID 102): 有 1 個 Model -> 佔用 J (Col 9)
+	// J4 = Model X, J5 = 3, J6 = V
+	nameJ4, _ := f.GetCellValue("BigMatrix", "J4")
+	qtyJ5, _ := f.GetCellValue("BigMatrix", "J5")
+	selJ6, _ := f.GetCellValue("BigMatrix", "J6")
+	if nameJ4 != "Model X" || qtyJ5 != "3" || selJ6 != "V" {
+		t.Errorf("Expected J4/J5/J6 to be Model X / 3 / V, got %s / %s / %s", nameJ4, qtyJ5, selJ6)
+	}
+}
+
+// TestExportBigMatrix_IsolationBetweenRevisions 驗證 3 個 Revision 中只有 1 個有 Selection 時，其餘 2 個 Revision 的 Model 勾選為空白，不會跨 Revision 誤複製
+func TestExportBigMatrix_IsolationBetweenRevisions(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bigmatrix_iso_test_*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:      types.FormatBigMatrix,
+		OutputPath:  filepath.Join(tmpDir, "iso_bigmatrix.xlsx"),
+		Description: "Isolation Test",
+		Revisions: []RevisionData{
+			{
+				ID:              "10",
+				ProjectCode:     "PROJ_ISO",
+				Phase:           "EVT",
+				Version:         "0.1",
+				ModelNames:      []string{"Model A"},
+				ModelQtyByOrder: map[int]int{0: 1},
+			},
+			{
+				ID:              "20",
+				ProjectCode:     "PROJ_ISO",
+				Phase:           "EVT",
+				Version:         "0.2",
+				ModelNames:      []string{"Model A"},
+				ModelQtyByOrder: map[int]int{0: 1},
+			},
+			{
+				ID:              "30",
+				ProjectCode:     "PROJ_ISO",
+				Phase:           "EVT",
+				Version:         "0.3",
+				ModelNames:      []string{"Model A"},
+				ModelQtyByOrder: map[int]int{0: 1},
+			},
+		},
+		PartData: []PartData{
+			{
+				Item:        "1",
+				HHPN:        "ISO_PN_001",
+				Description: "Resistor",
+				Supplier:    "YAGEO",
+				SupplierPn:  "R10K_ISO",
+				Qty:         1,
+				// 全域相容 Selections (模擬 app.go 第一個 Revision 寫入的全域相容 Selection)
+				Selections: map[string]string{
+					"Model A": "R10K_ISO",
+				},
+				SelectionsByOrder: map[int]string{
+					0: "R10K_ISO",
+				},
+				// 只有 Rev 10 有實際的 SelectionsByRevAndOrder
+				SelectionsByRevAndOrder: map[string]map[int]string{
+					"10": {
+						0: "R10K_ISO",
+					},
+					// Rev 20 與 Rev 30 為空 (無勾選)
+				},
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open exported file: %v", err)
+	}
+	defer f.Close()
+
+	// Rev 10 (Col H / Col 7): H6 應為 "V"
+	selH6, _ := f.GetCellValue("BigMatrix", "H6")
+	if selH6 != "V" {
+		t.Errorf("Expected H6 (Rev 10 Selection) to be 'V', got '%s'", selH6)
+	}
+
+	// Rev 20 (Col I / Col 8): I6 應為 "" (空白，不得被複製為 V)
+	selI6, _ := f.GetCellValue("BigMatrix", "I6")
+	if selI6 != "" {
+		t.Errorf("Expected I6 (Rev 20 Selection) to be empty '', got '%s'", selI6)
+	}
+
+	// Rev 30 (Col J / Col 9): J6 應為 "" (空白，不得被複製為 V)
+	selJ6, _ := f.GetCellValue("BigMatrix", "J6")
+	if selJ6 != "" {
+		t.Errorf("Expected J6 (Rev 30 Selection) to be empty '', got '%s'", selJ6)
+	}
+}
+
 
 

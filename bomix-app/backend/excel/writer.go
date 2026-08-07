@@ -38,20 +38,22 @@ type ExportOptions struct {
 
 // PartData represents a single part for export
 type PartData struct {
-	Item              string
-	HHPN              string
-	Description       string
-	Supplier          string
-	SupplierPn        string
-	Qty               int
-	Location          string
-	Type              string
-	BOMStatus         string
-	CCL               bool
-	Remark            string
-	SecondSources     []SecondSourceData
-	Selections        map[string]string // Model Name -> Supplier PN mapping
-	SelectionsByOrder map[int]string    // Model SortOrder (0,1,2...) -> Supplier PN mapping
+	Item                    string
+	HHPN                    string
+	Description             string
+	Supplier                string
+	SupplierPn              string
+	Qty                     int
+	Location                string
+	Type                    string
+	BOMStatus               string
+	CCL                     bool
+	Remark                  string
+	SecondSources           []SecondSourceData
+	Selections              map[string]string            // Model Name -> Supplier PN mapping (單一 Revision)
+	SelectionsByOrder       map[int]string               // Model SortOrder (0,1,2...) -> Supplier PN mapping (單一 Revision)
+	SelectionsByRevAndOrder map[string]map[int]string    // RevisionID -> (Model SortOrder -> Selected Supplier PN) (BigMatrix 多 Revision)
+	SelectionsByRevAndName  map[string]map[string]string // RevisionID -> (Model Name -> Selected Supplier PN) (BigMatrix 多 Revision)
 
 	// SourceRevisionIDs 記錄此物料群組出現在哪些 BOM Revision 中。
 	// 由 View 系統的 ViewPartGroup.SourceRevisionIDs 填入。
@@ -81,6 +83,7 @@ type RevisionData struct {
 	Phase            string
 	Version          string
 	Date             string
+	ModelNames       []string       // 該 Revision 的 Model 名稱列表
 	ModelQty         map[string]int // Model name -> quantity
 	ModelQtyByOrder  map[int]int    // Model SortOrder (0,1,2...) -> quantity
 }
