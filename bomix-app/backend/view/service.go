@@ -542,6 +542,13 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 
 		result = append(result, b.group)
 	}
+
+	// 依物料群組的聚合後 Location 欄位排序（以群組為單位，主料+2nd sources 一起移動）。
+	// 採自然排序（Natural Sort）正確處理 C1 < C2 < C10 的字母數字混合格式。
+	sort.SliceStable(result, func(i, j int) bool {
+		return compareLocStr(result[i].Locations, result[j].Locations)
+	})
+
 	return result
 }
 
@@ -576,4 +583,97 @@ func appendUnique(ids []int64, id int64) []int64 {
 		}
 	}
 	return append(ids, id)
+}
+
+// compareLocStr 比較兩個逗號分隔的 Location 字串大小，用於物料群組排序。
+//
+// 排序邏輯：
+//  1. 取各字串的第一個 token（第一個位置編號）作為排序鍵。
+//  2. 對每個 token 套用自然排序（naturalSortKey），正確處理字母數字混合
+//     的位置格式（例如 C1 < C2 < C10，而非字典序的 C1 < C10 < C2）。
+//  3. 空字串排在最後。
+//
+// 參數：
+//   - a, b：逗號分隔的 Location 字串（例如 "C1,C2,R3" 或 "R10"）
+//
+// 回傳：
+//   - bool：若 a 應排在 b 之前則回傳 true
+func compareLocStr(a, b string) bool {
+	// 空字串排在最後
+	if a == "" && b == "" {
+		return false
+	}
+	if a == "" {
+		return false
+	}
+	if b == "" {
+		return true
+	}
+
+	// 取第一個 token（第一個逗號前的位置編號）作為主要排序鍵
+	firstA := a
+	if idx := strings.IndexByte(a, ','); idx >= 0 {
+		firstA = a[:idx]
+	}
+	firstB := b
+	if idx := strings.IndexByte(b, ','); idx >= 0 {
+		firstB = b[:idx]
+	}
+
+	// 套用自然排序鍵比較
+	keysA := naturalSortKey(firstA)
+	keysB := naturalSortKey(firstB)
+
+	for i := 0; i < len(keysA) && i < len(keysB); i++ {
+		if keysA[i] != keysB[i] {
+			return keysA[i] < keysB[i]
+		}
+	}
+	return len(keysA) < len(keysB)
+}
+
+// naturalSortKey 將位置字串拆解為字母與數字交替的 token 片段，
+// 用於自然排序比較（例如 "C10" → ["C", "000000010"]）。
+//
+// 數字部分以零填充至固定寬度（9位），確保字典序與數值序一致。
+//
+// 參數：
+//   - s：位置編號字串（例如 "C1"、"R10"、"U5A"）
+//
+// 回傳：
+//   - []string：字母與數字交替的 token 片段列表
+func naturalSortKey(s string) []string {
+	var tokens []string
+	var cur []byte
+	isDigit := false
+
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		curIsDigit := c >= '0' && c <= '9'
+		if i == 0 {
+			isDigit = curIsDigit
+		}
+		if curIsDigit != isDigit {
+			// 類型切換：儲存當前 token，開始新 token
+			if isDigit {
+				// 數字 token：零填充至 9 位確保字典序與數值序一致
+				tokens = append(tokens, fmt.Sprintf("%09s", string(cur)))
+			} else {
+				tokens = append(tokens, string(cur))
+			}
+			cur = cur[:0]
+			isDigit = curIsDigit
+		}
+		cur = append(cur, c)
+	}
+
+	// 儲存最後一個 token
+	if len(cur) > 0 {
+		if isDigit {
+			tokens = append(tokens, fmt.Sprintf("%09s", string(cur)))
+		} else {
+			tokens = append(tokens, string(cur))
+		}
+	}
+	return tokens
 }
