@@ -778,6 +778,65 @@ func TestExportMatrix_ModelQtyByOrder(t *testing.T) {
 	}
 }
 
+func TestEnsureMatrixSheets_MissingSMD(t *testing.T) {
+	f := excelize.NewFile()
+	// NewFile 預設包含 "Sheet1"，沒有 "SMD"
+	w, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("Failed to create writer: %v", err)
+	}
+
+	sheets, err := w.ensureMatrixSheets(f)
+	if err == nil {
+		t.Fatalf("Expected error when SMD sheet is missing, got nil")
+	}
+	if !strings.Contains(err.Error(), "missing required 'SMD' sheet") {
+		t.Errorf("Expected 'missing required 'SMD' sheet' error, got: %v", err)
+	}
+	_ = sheets
+}
+
+func TestEnsureMatrixSheets_FallbackCopySMD(t *testing.T) {
+	f := excelize.NewFile()
+	f.NewSheet("SMD")
+	f.DeleteSheet("Sheet1") // 只保留 SMD
+
+	_ = f.SetCellValue("SMD", "A5", "Item")
+	_ = f.SetCellValue("SMD", "A6", "TestItem")
+
+	w, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("Failed to create writer: %v", err)
+	}
+
+	sheets, err := w.ensureMatrixSheets(f)
+	if err != nil {
+		t.Fatalf("ensureMatrixSheets failed: %v", err)
+	}
+
+	expectedSheets := []string{"SMD", "PTH", "BOTTOM"}
+	if len(sheets) != 3 {
+		t.Fatalf("Expected 3 sheets, got %d", len(sheets))
+	}
+	for i, s := range expectedSheets {
+		if sheets[i] != s {
+			t.Errorf("Expected sheet %d to be '%s', got '%s'", i, s, sheets[i])
+		}
+	}
+
+	// 驗證 PTH 與 BOTTOM 是否成功複製了 SMD 內容
+	for _, sheetName := range []string{"PTH", "BOTTOM"} {
+		idx, err := f.GetSheetIndex(sheetName)
+		if err != nil || idx < 0 {
+			t.Errorf("Expected sheet '%s' to exist", sheetName)
+		}
+		val, _ := f.GetCellValue(sheetName, "A6")
+		if val != "TestItem" {
+			t.Errorf("Expected sheet '%s' A6 to inherit 'TestItem' from SMD, got '%s'", sheetName, val)
+		}
+	}
+}
+
 
 
 

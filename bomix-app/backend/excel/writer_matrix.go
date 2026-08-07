@@ -126,12 +126,10 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		actualModelCount = minModelCount
 	}
 
-	// Ensure SMD, PTH, BOTTOM sheets exist
-	sheets := []string{"SMD", "PTH", "BOTTOM"}
-	for _, s := range sheets {
-		if idx, _ := f.GetSheetIndex(s); idx < 0 {
-			f.NewSheet(s)
-		}
+	// Ensure SMD, PTH, BOTTOM sheets exist, falling back to copying SMD if PTH/BOTTOM missing
+	sheets, err := w.ensureMatrixSheets(f)
+	if err != nil {
+		return nil, err
 	}
 
 	// Write Model quantities
@@ -403,12 +401,10 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 		actualModelCount = minModelCount
 	}
 
-	// Ensure SMD, PTH, BOTTOM sheets exist
-	sheets := []string{"SMD", "PTH", "BOTTOM"}
-	for _, s := range sheets {
-		if idx, _ := f.GetSheetIndex(s); idx < 0 {
-			f.NewSheet(s)
-		}
+	// Ensure SMD, PTH, BOTTOM sheets exist, falling back to copying SMD if PTH/BOTTOM missing
+	sheets, err := w.ensureMatrixSheets(f)
+	if err != nil {
+		return nil, err
 	}
 
 	// Write Model quantities for all sheets
@@ -701,4 +697,73 @@ func resolveSelectedPN(part PartData, revID string, index int, orderedNames []st
 		}
 	}
 	return ""
+}
+
+// ensureMatrixSheets 確保範本檔中包含 "SMD", "PTH", "BOTTOM" 三個工作頁面。
+// 1. 若找不到 SMD 頁面 (不區分大小寫)，輸出 Error Log 並返回錯誤。
+// 2. 若找不到 PTH 或 BOTTOM 等其餘頁面，自動退回使用 SMD 頁面當作輸出樣板，
+//    並複製創立正確的頁面名稱 (PTH 或 BOTTOM)。
+func (w *WriterImpl) ensureMatrixSheets(f *excelize.File) ([]string, error) {
+	sheets := []string{"SMD", "PTH", "BOTTOM"}
+
+	// 1. 尋找 SMD 頁面 (不區分大小寫)
+	smdRealName := ""
+	for _, name := range f.GetSheetList() {
+		if strings.EqualFold(name, "SMD") {
+			smdRealName = name
+			break
+		}
+	}
+
+	if smdRealName == "" {
+		if w.logger != nil {
+			w.logger.Error("[Matrix] 範本檔缺少必要的 'SMD' 工作頁面，無法進行 Matrix 匯出", "availableSheets", f.GetSheetList())
+		}
+		return nil, fmt.Errorf("template missing required 'SMD' sheet")
+	}
+
+	// 確保 SMD 頁面名稱更名為標準大寫 "SMD"
+	if smdRealName != "SMD" {
+		_ = f.SetSheetName(smdRealName, "SMD")
+	}
+
+	smdIdx, err := f.GetSheetIndex("SMD")
+	if err != nil || smdIdx < 0 {
+		if w.logger != nil {
+			w.logger.Error("[Matrix] 取得 'SMD' 工作頁面索引失敗", "error", err)
+		}
+		return nil, fmt.Errorf("failed to get 'SMD' sheet index: %w", err)
+	}
+
+	// 2. 處理 PTH 與 BOTTOM 頁面
+	for _, target := range sheets[1:] {
+		targetRealName := ""
+		for _, name := range f.GetSheetList() {
+			if strings.EqualFold(name, target) {
+				targetRealName = name
+				break
+			}
+		}
+
+		if targetRealName != "" {
+			// 若存在舊頁面，確保名稱更名為標準大寫名稱
+			if targetRealName != target {
+				_ = f.SetSheetName(targetRealName, target)
+			}
+		} else {
+			// 若不存在目標頁面，自動退回使用 SMD 頁面作為樣板
+			if w.logger != nil {
+				w.logger.Warn(fmt.Sprintf("[Matrix] 範本檔中未找到 '%s' 頁面，自動複製 'SMD' 頁面作為樣板並建立 '%s' 頁面", target, target))
+			}
+			newIdx, err := f.NewSheet(target)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create sheet '%s': %w", target, err)
+			}
+			if err := f.CopySheet(smdIdx, newIdx); err != nil {
+				return nil, fmt.Errorf("failed to copy 'SMD' sheet to '%s': %w", target, err)
+			}
+		}
+	}
+
+	return sheets, nil
 }
