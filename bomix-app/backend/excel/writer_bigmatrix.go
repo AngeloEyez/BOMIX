@@ -381,59 +381,80 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		}
 	}
 
-	// 預先建立 3 種位置感知的灰色底色樣式 (確保最右側欄位保留右側中粗黑邊框 Style: 2)
-	// 1. 中間欄位灰色樣式
-	grayMiddleStyleID, _ := f.NewStyle(&excelize.Style{
-		Fill: excelize.Fill{Type: "pattern", Color: []string{"#D9D9D9"}, Pattern: 1},
-		Border: []excelize.Border{
-			{Type: "left", Color: "BFBFBF", Style: 1},
-			{Type: "right", Color: "BFBFBF", Style: 1},
-			{Type: "top", Color: "BFBFBF", Style: 1},
-			{Type: "bottom", Color: "BFBFBF", Style: 1},
-		},
-		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
-	})
+	// 灰色底色樣式快取：以 [4]bool{左粗黑, 右粗黑, 頂細黑, 底細黑} 為鍵，動態建立並快取。
+	//
+	// 邊框規則說明：
+	//   - 左/右（Revision 邊界）：粗黑（Style: 2, Color: 000000）區隔不同 Revision
+	//   - 頂/底（群組邊界）：  細黑（Style: 1, Color: 000000）區隔不同物料群組
+	//   - 群組內部邊框：       淡灰細線（Style: 1, Color: BFBFBF）
+	grayStyleCache := make(map[[4]bool]int)
 
-	// 2. 最左欄位灰色樣式
-	grayLeftStyleID, _ := f.NewStyle(&excelize.Style{
-		Fill: excelize.Fill{Type: "pattern", Color: []string{"#D9D9D9"}, Pattern: 1},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1},
-			{Type: "right", Color: "BFBFBF", Style: 1},
-			{Type: "top", Color: "BFBFBF", Style: 1},
-			{Type: "bottom", Color: "BFBFBF", Style: 1},
-		},
-		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
-	})
+	// createGrayStyle 依據 [左粗, 右粗, 頂黑, 底黑] 四個邊框旗標，動態建立並快取灰色底色樣式。
+	//
+	// 參數：
+	//   - leftThick：true = 左側粗黑邊框（Revision 最左欄），false = 淡灰細線
+	//   - rightThick：true = 右側粗黑邊框（Revision 最右欄），false = 淡灰細線
+	//   - topBlack：true = 頂部細黑邊框（群組第一列），false = 淡灰細線
+	//   - bottomBlack：true = 底部細黑邊框（群組最後列），false = 淡灰細線
+	//
+	// 回傳：
+	//   - int：Excelize 樣式 ID（-1 表示建立失敗）
+	createGrayStyle := func(leftThick, rightThick, topBlack, bottomBlack bool) int {
+		key := [4]bool{leftThick, rightThick, topBlack, bottomBlack}
+		if id, ok := grayStyleCache[key]; ok {
+			return id
+		}
+		// 左側邊框：Revision 最左欄用粗黑（Style: 2），其餘用淡灰細線
+		leftColor, leftStyle := "BFBFBF", 1
+		if leftThick {
+			leftColor, leftStyle = "000000", 2
+		}
+		// 右側邊框：Revision 最右欄用粗黑（Style: 2），其餘用淡灰細線
+		rightColor, rightStyle := "BFBFBF", 1
+		if rightThick {
+			rightColor, rightStyle = "000000", 2
+		}
+		// 頂側邊框：群組第一列用細黑（Color: 000000），其餘用淡灰細線
+		topColor := "BFBFBF"
+		if topBlack {
+			topColor = "000000"
+		}
+		// 底側邊框：群組最後列用細黑（Color: 000000），其餘用淡灰細線
+		bottomColor := "BFBFBF"
+		if bottomBlack {
+			bottomColor = "000000"
+		}
+		id, _ := f.NewStyle(&excelize.Style{
+			Fill: excelize.Fill{Type: "pattern", Color: []string{"#D9D9D9"}, Pattern: 1},
+			Border: []excelize.Border{
+				{Type: "left",   Color: leftColor,   Style: leftStyle},
+				{Type: "right",  Color: rightColor,  Style: rightStyle},
+				{Type: "top",    Color: topColor,    Style: 1},
+				{Type: "bottom", Color: bottomColor, Style: 1},
+			},
+			Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		})
+		if id < 0 {
+			return -1
+		}
+		grayStyleCache[key] = id
+		return id
+	}
 
-	// 3. 最右欄位灰色樣式 (保留右側 Style: 2 中粗黑邊框)
-	grayRightStyleID, _ := f.NewStyle(&excelize.Style{
-		Fill: excelize.Fill{Type: "pattern", Color: []string{"#D9D9D9"}, Pattern: 1},
-		Border: []excelize.Border{
-			{Type: "left", Color: "BFBFBF", Style: 1},
-			{Type: "right", Color: "000000", Style: 2}, // 右側中粗黑邊框
-			{Type: "top", Color: "BFBFBF", Style: 1},
-			{Type: "bottom", Color: "BFBFBF", Style: 1},
-		},
-		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
-	})
-
-	// getGrayStyle 依據 Model 欄位位置回傳具備正確邊框的灰色底色樣式
-	getGrayStyle := func(colIdx int, totalCount int) int {
-		if totalCount == 1 || colIdx == totalCount-1 {
-			if grayRightStyleID > 0 {
-				return grayRightStyleID
-			}
-		}
-		if colIdx == 0 {
-			if grayLeftStyleID > 0 {
-				return grayLeftStyleID
-			}
-		}
-		if grayMiddleStyleID > 0 {
-			return grayMiddleStyleID
-		}
-		return -1
+	// getGrayStyle 依據欄位位置與列位置，回傳具備正確邊框組合的灰色底色樣式。
+	//
+	// 參數：
+	//   - colIdx：此欄在當前 Revision 的 0-based 欄位索引
+	//   - totalCount：當前 Revision 的 Model 欄位總數
+	//   - isTopEdge：此列是否為物料群組的第一列（主料列）
+	//   - isBottomEdge：此列是否為物料群組的最後列（最後一筆 2nd source 列，或無 2nd source 的主料列）
+	//
+	// 回傳：
+	//   - int：Excelize 樣式 ID（-1 表示建立失敗）
+	getGrayStyle := func(colIdx, totalCount int, isTopEdge, isBottomEdge bool) int {
+		isLeftEdge  := (colIdx == 0)
+		isRightEdge := (totalCount == 1 || colIdx == totalCount-1)
+		return createGrayStyle(isLeftEdge, isRightEdge, isTopEdge, isBottomEdge)
 	}
 
 	// 建立 revision ID 字串 -> int64 的解析輔助（用於比對 SourceRevisionIDs）
@@ -523,8 +544,11 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 
 				if !partExists {
 					// 主料在此 BOM 不存在：整組包含主料在該 rev 的所有 Model 欄均填灰底
+					// isTopEdge=true：主料列永遠是群組的第一列
+					// isBottomEdge：若無 2nd Source，主料列同時也是群組最後列
 					// See product-spec section 8.1.5.3
-					st := getGrayStyle(i, revModelCount)
+					isBottomEdge := len(part.SecondSources) == 0
+					st := getGrayStyle(i, revModelCount, true, isBottomEdge)
 					if st >= 0 {
 						_ = f.SetCellStyle("BigMatrix", cell, cell, st)
 					}
@@ -545,7 +569,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		rowIndex++
 
 		// Write second sources
-		for _, ss := range part.SecondSources {
+		for ssIdx, ss := range part.SecondSources {
 			isEvenSS := isEven
 			applyFullRowStyle(f, "BigMatrix", rowIndex, isEvenSS)
 
@@ -556,6 +580,9 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 
 			// 替代料也需要處理灰色底色
 			// 規則：當主料在當前 rev 本身不存在，或該 2nd Source 不在對應 rev 中，填入灰色底色
+			// isTopEdge=false：替代料列永遠不是群組第一列（主料列才是）
+			// isBottomEdge：若為最後一筆替代料，則此列為群組最後列
+			ssIsBottomEdge := ssIdx == len(part.SecondSources)-1
 			cIdx := bomStartCol
 			for _, rev := range revisions {
 				revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
@@ -568,8 +595,8 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 					cell := fmt.Sprintf("%s%d", col, rowIndex)
 
 					if !ssExists {
-						// 替代料在此 Revision 的群組中不存在：填灰色底色 (保留右側邊框)
-						st := getGrayStyle(i, revModelCount)
+						// 替代料在此 Revision 的群組中不存在：填灰色底色
+						st := getGrayStyle(i, revModelCount, false, ssIsBottomEdge)
 						if st >= 0 {
 							_ = f.SetCellStyle("BigMatrix", cell, cell, st)
 						}
