@@ -20,6 +20,13 @@
           class="p-button-warning"
           @click="openExportDialog"
         />
+        <Button
+          label="複製 Matrix"
+          icon="pi pi-copy"
+          class="p-button-outlined p-button-info"
+          @click="openCopyMatrixDialog"
+          title="手動從指定版本複製 Matrix Selection 到另一版本"
+        />
       </div>
     </div>
 
@@ -321,6 +328,67 @@
         />
       </template>
     </Dialog>
+
+    <!-- Copy Matrix Dialog -->
+    <Dialog
+      v-model:visible="copyMatrixDialogVisible"
+      modal
+      header="Matrix Selection 版本複製"
+      :style="{ width: '520px' }"
+    >
+      <div class="copy-matrix-dialog-content">
+        <div class="copy-matrix-warning mb-4 flex items-center gap-2 p-3 rounded" style="background: var(--p-yellow-50, #fffbeb); border: 1px solid var(--p-yellow-300, #fcd34d);">
+          <i class="pi pi-exclamation-triangle text-amber-500"></i>
+          <span>此操作將<strong>覆蓋</strong>目標版本的現有 Matrix Model 與 Selection！</span>
+        </div>
+
+        <div class="form-group">
+          <label for="copyMatrixSource">來源版本 (Source)</label>
+          <Select
+            v-model="copyMatrixSourceId"
+            :options="allRevisions"
+            option-label="label"
+            option-value="id"
+            placeholder="選擇來源版本..."
+            id="copyMatrixSource"
+            class="w-full"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="copyMatrixTarget">目標版本 (Target)</label>
+          <Select
+            v-model="copyMatrixTargetId"
+            :options="allRevisions"
+            option-label="label"
+            option-value="id"
+            placeholder="選擇目標版本..."
+            id="copyMatrixTarget"
+            class="w-full"
+          />
+        </div>
+
+        <p v-if="copyMatrixSourceId === copyMatrixTargetId && copyMatrixSourceId !== null" class="text-red-500 text-sm">
+          來源版本與目標版本不可相同
+        </p>
+      </div>
+
+      <template #footer>
+        <Button
+          label="取消"
+          icon="pi pi-times"
+          text
+          @click="copyMatrixDialogVisible = false"
+        />
+        <Button
+          label="開始複製"
+          icon="pi pi-copy"
+          severity="warning"
+          @click="executeCopyMatrix"
+          :disabled="!copyMatrixSourceId || !copyMatrixTargetId || copyMatrixSourceId === copyMatrixTargetId"
+        />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -340,6 +408,7 @@ import BOMTable from '../components/BOMTable.vue'
 import {
   ImportExcel,
   ExportExcel,
+  CopyMatrixSelections,
   OpenFileDialog,
   OpenMultipleFilesDialog,
   SelectFolderDialog,
@@ -400,6 +469,11 @@ const exportFormatOptions = [
   { label: 'BigMatrix', value: 'BigMatrix' },
   { label: 'Matrix', value: 'Matrix' }
 ]
+
+// Copy Matrix Dialog state
+const copyMatrixDialogVisible = ref(false)
+const copyMatrixSourceId = ref<number | null>(null)
+const copyMatrixTargetId = ref<number | null>(null)
 
 const taskStore = useTaskStore()
 
@@ -518,6 +592,47 @@ function onDrop(event: DragEvent, dropIndex: number): void {
   exportRevisions.value = selectedCards.value.map(c => c.id)
   draggedIndex.value = null
   updateBigMatrixFilenameIfNeed()
+}
+
+// ==================== Copy Matrix ====================
+
+/**
+ * 開啟 Matrix 複製對話框
+ */
+function openCopyMatrixDialog(): void {
+  copyMatrixSourceId.value = null
+  copyMatrixTargetId.value = null
+  copyMatrixDialogVisible.value = true
+}
+
+/**
+ * 執行 Matrix Selection 複製任務
+ */
+async function executeCopyMatrix(): Promise<void> {
+  if (!copyMatrixSourceId.value || !copyMatrixTargetId.value) return
+  if (copyMatrixSourceId.value === copyMatrixTargetId.value) {
+    logStore.addLogEntry('WARN', '來源版本與目標版本不可相同')
+    return
+  }
+
+  try {
+    const taskId = await CopyMatrixSelections(copyMatrixSourceId.value, copyMatrixTargetId.value)
+    if (taskId) {
+      taskStore.updateTask(taskId, {
+        id: taskId,
+        name: 'Copy Matrix',
+        type: 'CopyMatrix',
+        status: 'queued',
+        message: '複製任務已建立',
+        progress: 0,
+      })
+      logStore.addLogEntry('INFO', `Matrix 複製任務已提交 (taskID: ${taskId})`)
+    }
+    copyMatrixDialogVisible.value = false
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    logStore.addLogEntry('ERROR', `Matrix 複製失敗：${msg}`)
+  }
 }
 
 // Import functions

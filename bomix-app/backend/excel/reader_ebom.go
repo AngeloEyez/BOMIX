@@ -9,6 +9,7 @@ import (
 
 	"bomix-app/backend/db"
 	"bomix-app/backend/logger"
+	"bomix-app/backend/task"
 	"bomix-app/backend/types"
 	"gorm.io/gorm"
 )
@@ -943,20 +944,74 @@ func (r *EBOMReader) applyMergeAlgorithm(revisionID int64, newSecondSources []db
 
 // ─── 自動匯入上一版 Matrix Selection ─────────────────────────────────────────
 
-// autoImportPreviousMatrix 自動從上一版 Revision 匯入 Matrix Selection
+// autoImportPreviousMatrix 自動從上一版 BOM Revision 匯入 Matrix Selection。
+//
+// 執行流程：
+//  1. 呼叫 FindPreviousRevisionSmart 以數值方式尋找前一版 BOM Revision。
+//  2. 若版本號包含文字字元（無法數值排序），輸出警告 log 並回傳 WarningError 提醒使用者手動複製。
+//  3. 若找到前一版，呼叫 ImportMatrixSelections 執行覆蓋式 Matrix 匯入。
+//  4. 匯入完成後輸出詳細統計 log（model 數、複製數、忽略主料數、忽略 2nd 數）。
+//
+// 參數：
+//   - revision: 當前已匯入完成的 BomRevision（作為 target）
+//
+// 回傳：
+//   - error: 若版本含文字則為 WarningError；若資料庫操作失敗則為一般 error
 func (r *EBOMReader) autoImportPreviousMatrix(revision db.BomRevision) error {
-	var previous db.BomRevision
-	err := r.db.Where("project_id = ? AND phase = ? AND version < ?",
-		revision.ProjectID, revision.Phase, revision.Version).
-		Order("version DESC").
-		First(&previous).Error
+	// 步驟 1：使用智慧版本排序尋找前一版
+	previous, hasNonNumeric, err := db.FindPreviousRevisionSmart(r.db, revision.ProjectID, revision.Phase, revision.Version)
+	if err != nil {
+		return fmt.Errorf("查詢前一版 Revision 失敗: %w", err)
+	}
 
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	// 步驟 2：若版本號含文字字元，無法自動排序，輸出警告並告知使用者手動處理
+	if hasNonNumeric {
+		warnMsg := fmt.Sprintf(
+			"[autoImportPreviousMatrix] 版本號包含非數字字元，無法自動進行版本排序比對。"+
+				"跳過自動 Matrix 匯入，請手動使用「複製 Matrix」功能選擇版本進行複製 "+
+				"(ProjectID=%d, Phase=%s, Version=%s)",
+				revision.ProjectID, revision.Phase, revision.Version,
+		)
+		if r.logger != nil {
+			r.logger.Warn(warnMsg)
+		}
+		return task.NewWarningError(errors.New(warnMsg))
+	}
+
+	// 步驟 3：若無前一版，直接返回（此版本為同 phase 的第一版）
+	if previous == nil {
+		if r.logger != nil {
+			r.logger.Debug(fmt.Sprintf(
+				"[autoImportPreviousMatrix] 同 Phase 無前一版可繼承 (ProjectID=%d, Phase=%s, Version=%s)",
+				revision.ProjectID, revision.Phase, revision.Version,
+			))
+		}
 		return nil
 	}
-	if err != nil {
-		return err
+
+	if r.logger != nil {
+		r.logger.Info(fmt.Sprintf(
+			"[autoImportPreviousMatrix] 找到前一版 Revision ID=%d (Version=%s)，開始自動匯入 Matrix Selection",
+			previous.ID, previous.Version,
+		))
 	}
 
-	return db.ImportMatrixSelections(r.db, previous.ID, revision.ID)
+	// 步驟 4：執行 Matrix Selection 複製（覆蓋模式）
+	stats, err := db.ImportMatrixSelections(r.db, previous.ID, revision.ID, r.logger)
+	if err != nil {
+		return fmt.Errorf("自動匯入 Matrix Selection 失敗: %w", err)
+	}
+
+	// 步驟 5：輸出完整統計 log
+	if r.logger != nil {
+		r.logger.Info(fmt.Sprintf(
+			"[autoImportPreviousMatrix] 自動繼承完成 | 來源 Version=%s → 目標 Version=%s | "+
+				"有效 Model 數=%d, 複製 Selection 數=%d, 忽略主料數=%d, 忽略 2nd 替代料數=%d",
+			previous.Version, revision.Version,
+			stats.SourceModelCount, stats.CopiedSelectionsCount,
+			stats.IgnoredMainParts, stats.IgnoredSecondParts,
+		))
+	}
+
+	return nil
 }

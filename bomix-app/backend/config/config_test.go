@@ -136,8 +136,8 @@ func TestSave_Load_RoundTrip(t *testing.T) {
 	originalCfg := &Config{
 		Theme: "dark",
 		Import: ImportConfig{
-			ConfirmOverwrite:       false, // Different from default (true)
-			AutoImportPreviousMatrix: true,  // Different from default (false)
+			ConfirmOverwrite:         false, // Different from default (true)
+			AutoImportPreviousMatrix: false, // Different from default (true)
 		},
 		Logger: LoggerConfig{
 			Level:      "debug",
@@ -147,9 +147,9 @@ func TestSave_Load_RoundTrip(t *testing.T) {
 			MaxRecentFiles: 20,
 			RecentFiles:    []string{"/path/to/file1.bomx", "/path/to/file2.bomx"},
 		},
-		AutoOpenLastFile:       true,
-		LastOpenedFile:         "/path/to/last.bomx",
-		AutoImportPreviousMatrix: true,
+		AutoOpenLastFile:         true,
+		LastOpenedFile:           "/path/to/last.bomx",
+		AutoImportPreviousMatrix: false, // Different from default (true)
 	}
 
 	// Save the config

@@ -1,14 +1,3 @@
-// Package view 提供 BOMIX 的 BOM 視圖查詢與整合服務。
-//
-// View 系統是所有資料消費者（前端 UI、Excel 匯出）的統一資料入口。
-// 其設計為完全無狀態（stateless），每次查詢攜帶完整的 ViewQuery 參數，
-// 天然支援前端顯示與後端匯出以不同條件同時查詢而互不干擾。
-//
-// 核心能力：
-//   - 單一 BOM Revision 查詢
-//   - 多 BOM Revision 整合（主料與替代料聯集）
-//   - 視圖過濾（ALL/SMD/PTH/BOTTOM/NI/PROTO/MP/CCL）
-//   - 物料來源歸屬標記（SourceRevisionIDs）
 package view
 
 // ViewType 視圖類型常數

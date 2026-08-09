@@ -533,6 +533,73 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 	return results, nil
 }
 
+
+// CopyMatrixSelections 以異步任務形式，手動將指定 source revision 的 Matrix Model 與 Selection 複製到 target revision。
+//
+// 此函數為手動版本複製的 Wails 綁定入口，會以 Task 形式提交至背景執行，
+// 讓 UI 可透過 Task ID 追蹤執行進度與結果。
+//
+// 參數：
+//   - sourceRevisionID: 來源版本 ID（Matrix 資料的來源）
+//   - targetRevisionID: 目標版本 ID（Matrix 資料的目的地）
+//
+// 回傳：
+//   - string: 任務 ID（taskID），可用於前端 Task 追蹤
+//   - error: 若資料庫未開啟或 revision 不存在則回傳錯誤
+func (a *App) CopyMatrixSelections(sourceRevisionID, targetRevisionID int64) (string, error) {
+	a.mu.RLock()
+	dbConn := a.db
+	a.mu.RUnlock()
+
+	if dbConn == nil {
+		return "", fmt.Errorf("no series is currently open")
+	}
+
+	// 預先讀取 source 與 target revision 資訊，供 Task Log 使用
+	var sourceRev, targetRev db.BomRevision
+	if err := dbConn.First(&sourceRev, sourceRevisionID).Error; err != nil {
+		return "", fmt.Errorf("找不到來源 Revision ID=%d: %w", sourceRevisionID, err)
+	}
+	if err := dbConn.First(&targetRev, targetRevisionID).Error; err != nil {
+		return "", fmt.Errorf("找不到目標 Revision ID=%d: %w", targetRevisionID, err)
+	}
+
+	taskName := fmt.Sprintf("Copy Matrix: %s → %s", sourceRev.Version, targetRev.Version)
+
+	taskID := a.taskMgr.Submit(
+		taskName,
+		"CopyMatrix",
+		func(ctx context.Context, progress func(float64, string), taskLogger *logger.Logger) error {
+			progress(0.1, fmt.Sprintf("開始複製 Matrix Selection（%s → %s）", sourceRev.Version, targetRev.Version))
+			taskLogger.Info(fmt.Sprintf("[CopyMatrix] 開始執行 | 來源 RevisionID=%d (Version=%s) → 目標 RevisionID=%d (Version=%s)",
+				sourceRevisionID, sourceRev.Version, targetRevisionID, targetRev.Version))
+
+			progress(0.3, "正在複製 Matrix Model 與 Selection...")
+
+			// 執行覆蓋式 Matrix 複製
+			stats, err := db.ImportMatrixSelections(dbConn, sourceRevisionID, targetRevisionID, taskLogger)
+			if err != nil {
+				taskLogger.Error(fmt.Sprintf("[CopyMatrix] 複製失敗: %v", err))
+				return fmt.Errorf("複製 Matrix Selection 失敗: %w", err)
+			}
+
+			// 輸出完整統計結果
+			resultMsg := fmt.Sprintf(
+				"Matrix 複製完成 | 有效 Model 數=%d, 複製 Selection 數=%d, 忽略主料數=%d, 忽略 2nd 替代料數=%d",
+				stats.SourceModelCount, stats.CopiedSelectionsCount,
+				stats.IgnoredMainParts, stats.IgnoredSecondParts,
+			)
+			taskLogger.Info(fmt.Sprintf("[CopyMatrix] %s", resultMsg))
+			progress(1.0, resultMsg)
+
+			return nil
+		},
+	)
+
+	a.logger.Info(fmt.Sprintf("[CopyMatrixSelections] 已提交任務 %s (taskID=%s)", taskName, taskID))
+	return taskID, nil
+}
+
 // ExportExcel exports data from the database to Excel files
 func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 	formatStr := strings.TrimSpace(options.Format)

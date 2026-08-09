@@ -43,6 +43,24 @@ export function CloseSeries(): $CancellablePromise<void> {
 }
 
 /**
+ * CopyMatrixSelections 以異步任務形式，手動將指定 source revision 的 Matrix Model 與 Selection 複製到 target revision。
+ * 
+ * 此函數為手動版本複製的 Wails 綁定入口，會以 Task 形式提交至背景執行，
+ * 讓 UI 可透過 Task ID 追蹤執行進度與結果。
+ * 
+ * 參數：
+ *   - sourceRevisionID: 來源版本 ID（Matrix 資料的來源）
+ *   - targetRevisionID: 目標版本 ID（Matrix 資料的目的地）
+ * 
+ * 回傳：
+ *   - string: 任務 ID（taskID），可用於前端 Task 追蹤
+ *   - error: 若資料庫未開啟或 revision 不存在則回傳錯誤
+ */
+export function CopyMatrixSelections(sourceRevisionID: number, targetRevisionID: number): $CancellablePromise<string> {
+    return $Call.ByID(453441525, sourceRevisionID, targetRevisionID);
+}
+
+/**
  * CreateSeries creates a new series at the specified path
  */
 export function CreateSeries(path: string, name: string, description: string): $CancellablePromise<void> {

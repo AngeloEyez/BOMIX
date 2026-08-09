@@ -47,7 +47,7 @@ var DefaultConfig = &Config{
 	Theme: "light",
 	Import: ImportConfig{
 		ConfirmOverwrite:       true,
-		AutoImportPreviousMatrix: false,
+		AutoImportPreviousMatrix: true,
 	},
 	Logger: LoggerConfig{
 		Level:      "info",
@@ -59,5 +59,5 @@ var DefaultConfig = &Config{
 	},
 	AutoOpenLastFile:       false,
 	LastOpenedFile:         "",
-	AutoImportPreviousMatrix: false,
+	AutoImportPreviousMatrix: true,
 }

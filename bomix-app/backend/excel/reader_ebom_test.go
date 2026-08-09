@@ -536,7 +536,7 @@ func TestImportMatrixSelections(t *testing.T) {
 	}
 
 	// Import Matrix selections from source to target
-	if err := db.ImportMatrixSelections(database, sourceRevision.ID, targetRevision.ID); err != nil {
+	if _, err := db.ImportMatrixSelections(database, sourceRevision.ID, targetRevision.ID, nil); err != nil {
 		t.Fatalf("ImportMatrixSelections failed: %v", err)
 	}
 

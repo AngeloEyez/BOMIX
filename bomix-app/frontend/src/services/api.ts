@@ -331,6 +331,24 @@ export async function ExportExcel(options: ExportOptions): Promise<string[]> {
   }
 }
 
+
+/**
+ * ¥H²§¨B¥ô°È§Î¦¡¡A¤â°Ê±N source revision ªº Matrix Model »P Selection ½Æ»s¨ì target revision¡C
+ * @param sourceRevisionId - ¨Ó·½ª©¥» ID
+ * @param targetRevisionId - ¥Ø¼Ðª©¥» ID
+ * @returns ¥ô°È ID¡]taskID¡^¡A¥i¥Î©ó Task ­±ªO°lÂÜ¶i«×
+ */
+export async function CopyMatrixSelections(
+  sourceRevisionId: number,
+  targetRevisionId: number
+): Promise<string> {
+  try {
+    const res = await App.CopyMatrixSelections(sourceRevisionId, targetRevisionId)
+    return (res || '') as string
+  } catch (error) {
+    handleApiError(error, 'CopyMatrixSelections')
+  }
+}
 // ==================== Task Management ====================
 
 export async function ListTasks(): Promise<Task[]> {
@@ -456,9 +474,9 @@ export async function OpenFileDialog(options: FileDialogOptions): Promise<string
 }
 
 /**
- * 開啟多檔案選擇對話框
- * @param options 對話框設定選項
- * @returns 選取的檔案路徑陣列
+ * ?å?å¤æ?æ¡é¸?å?è©±æ?
+ * @param options å°è©±æ¡è¨­å®é¸??
+ * @returns ?¸å??æ?æ¡è·¯å¾é£??
  */
 export async function OpenMultipleFilesDialog(options: FileDialogOptions): Promise<string[]> {
   try {
