@@ -10,7 +10,7 @@ export interface LogEntry {
   message: string
   timestamp: string
   attrs?: Record<string, string>
-  
+
   // Task Tracker extensions
   isTaskTracker?: boolean
   status?: string // 'queued', 'running', 'error', 'done'
@@ -78,11 +78,11 @@ export const useLogStore = defineStore('log', () => {
   // Actions
   function addLog(entry: LogEntry): void {
     const taskId = entry.attrs?.taskID
-    
+
     // 如果是 Task 相關的 log，則進行群組化處理
     if (taskId) {
       let tracker = taskMap.get(taskId)
-      
+
       if (!tracker) {
         // 建立一個全新的 Task Tracker Row，並加入主要 logs 陣列中
         tracker = {
@@ -98,14 +98,14 @@ export const useLogStore = defineStore('log', () => {
         taskMap.set(taskId, tracker)
         logs.value.push(tracker)
       }
-      
+
       // 將原始 Log 記錄在 Task 的 history 裡 (包含它原本的時間與內容)
       tracker.history?.push({ ...entry, id: entry.id || crypto.randomUUID() })
-      
+
       // 更新 Tracker 的狀態與最新訊息
       tracker.message = entry.message
       tracker.timestamp = entry.timestamp
-      
+
       // 根據 Log 內容更新狀態 (完全由確定的 taskStatus 變數與 entry.level 辨識，不使用文字關鍵字比對)
       if (entry.attrs?.taskStatus) {
         const ts = entry.attrs.taskStatus.toLowerCase()
@@ -135,7 +135,7 @@ export const useLogStore = defineStore('log', () => {
           tracker.level = entry.level
         }
       }
-      
+
       return // 不再將 Task 的子日誌放進 main logs 陣列
     }
 
