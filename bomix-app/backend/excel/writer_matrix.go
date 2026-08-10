@@ -182,8 +182,42 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		}
 	}
 
+	// protoStyleCache 樣式快取：以原始 styleID 為鍵，快取 Font.Color: "#8080C0" 版本的 styleID。
+	protoStyleCache := make(map[int]int)
+
+	// makeProtoStyle 建立並快取指定樣式的 PROTO 物料文字顏色（Font.Color: "#8080C0"）版本。
+	makeProtoStyle := func(styleID int) int {
+		if styleID <= 0 {
+			return styleID
+		}
+		if cached, ok := protoStyleCache[styleID]; ok {
+			return cached
+		}
+		styleDef, err := f.GetStyle(styleID)
+		if err != nil || styleDef == nil {
+			return styleID
+		}
+		cp := *styleDef
+		if cp.Font != nil {
+			fontCopy := *cp.Font
+			fontCopy.Color = "#8080C0"
+			cp.Font = &fontCopy
+		} else {
+			cp.Font = &excelize.Font{
+				Color: "#8080C0",
+			}
+		}
+		newID, err := f.NewStyle(&cp)
+		if err != nil || newID <= 0 {
+			protoStyleCache[styleID] = styleID
+			return styleID
+		}
+		protoStyleCache[styleID] = newID
+		return newID
+	}
+
 	// 建立套用全列樣式 (A-R 欄) 的輔助函數
-	applyFullMatrixRowStyle := func(f *excelize.File, sheet string, row int, isEven bool) {
+	applyFullMatrixRowStyle := func(f *excelize.File, sheet string, row int, isEven bool, isProto bool) {
 		// 1. 套用 A ~ J 欄位範本原生樣式 (保留各欄對齊方式、數字格式與邊框格線)
 		for c := 'A'; c <= 'J'; c++ {
 			colStr := string(c)
@@ -193,6 +227,9 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 				st = styleCol6[colStr]
 			} else {
 				st = styleCol7[colStr]
+			}
+			if isProto {
+				st = makeProtoStyle(st)
 			}
 			_ = f.SetCellStyle(sheet, cell, cell, st)
 		}
@@ -207,6 +244,9 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 			} else {
 				st = styleModel7
 			}
+			if isProto {
+				st = makeProtoStyle(st)
+			}
 			_ = f.SetCellStyle(sheet, cell, cell, st)
 		}
 
@@ -217,6 +257,9 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 			remarkSt = styleRemark6
 		} else {
 			remarkSt = styleRemark7
+		}
+		if isProto {
+			remarkSt = makeProtoStyle(remarkSt)
 		}
 		_ = f.SetCellStyle(sheet, remarkCell, remarkCell, remarkSt)
 	}
@@ -236,7 +279,8 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		for groupIdx, part := range sheetParts {
 			// Alternate row styles by material group (Row 6 for even groups, Row 7 for odd groups)
 			isEven := (groupIdx%2 == 0)
-			applyFullMatrixRowStyle(f, sheet, rowIndex, isEven)
+			isProtoGroup := strings.EqualFold(part.BOMStatus, "P")
+			applyFullMatrixRowStyle(f, sheet, rowIndex, isEven, isProtoGroup)
 
 			// Write basic part data (columns A, B, D, E, F, G, H)
 			// Column C is empty per spec 8.2.5.1
@@ -275,7 +319,7 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 			// Write second sources
 			for _, ss := range part.SecondSources {
 				// Apply same group rowStyle for second sources
-				applyFullMatrixRowStyle(f, sheet, rowIndex, isEven)
+				applyFullMatrixRowStyle(f, sheet, rowIndex, isEven, isProtoGroup)
 
 				// Second sources don't have Item, Qty or Location. Clear template residue by setting cell value to nil.
 				f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIndex), nil)
@@ -455,8 +499,42 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 	// Calculate Remark column position
 	remarkCol := getColName(modelStartCol + actualModelCount)
 
+	// protoStyleCacheDetailed 樣式快取
+	protoStyleCacheDetailed := make(map[int]int)
+
+	// makeProtoStyleDetailed 建立並快取指定樣式的 PROTO 物料文字顏色（Font.Color: "#8080C0"）版本。
+	makeProtoStyleDetailed := func(styleID int) int {
+		if styleID <= 0 {
+			return styleID
+		}
+		if cached, ok := protoStyleCacheDetailed[styleID]; ok {
+			return cached
+		}
+		styleDef, err := f.GetStyle(styleID)
+		if err != nil || styleDef == nil {
+			return styleID
+		}
+		cp := *styleDef
+		if cp.Font != nil {
+			fontCopy := *cp.Font
+			fontCopy.Color = "#8080C0"
+			cp.Font = &fontCopy
+		} else {
+			cp.Font = &excelize.Font{
+				Color: "#8080C0",
+			}
+		}
+		newID, err := f.NewStyle(&cp)
+		if err != nil || newID <= 0 {
+			protoStyleCacheDetailed[styleID] = styleID
+			return styleID
+		}
+		protoStyleCacheDetailed[styleID] = newID
+		return newID
+	}
+
 	// 建立套用全列樣式 (A-R 欄) 的輔助函數
-	applyFullMatrixRowStyle := func(f *excelize.File, sheet string, row int, isEven bool) {
+	applyFullMatrixRowStyle := func(f *excelize.File, sheet string, row int, isEven bool, isProto bool) {
 		// 1. 套用 A ~ J 欄位範本原生樣式 (保留各欄對齊方式、數字格式與邊框格線)
 		for c := 'A'; c <= 'J'; c++ {
 			colStr := string(c)
@@ -466,6 +544,9 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 				st = styleCol6[colStr]
 			} else {
 				st = styleCol7[colStr]
+			}
+			if isProto {
+				st = makeProtoStyleDetailed(st)
 			}
 			_ = f.SetCellStyle(sheet, cell, cell, st)
 		}
@@ -480,6 +561,9 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 			} else {
 				st = styleModel7
 			}
+			if isProto {
+				st = makeProtoStyleDetailed(st)
+			}
 			_ = f.SetCellStyle(sheet, cell, cell, st)
 		}
 
@@ -490,6 +574,9 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 			remarkSt = styleRemark6
 		} else {
 			remarkSt = styleRemark7
+		}
+		if isProto {
+			remarkSt = makeProtoStyleDetailed(remarkSt)
 		}
 		_ = f.SetCellStyle(sheet, remarkCell, remarkCell, remarkSt)
 	}
@@ -512,7 +599,8 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 		for groupIdx, part := range sheetParts {
 			// Alternate row styles by material group (Row 6 for even groups, Row 7 for odd groups)
 			isEven := (groupIdx%2 == 0)
-			applyFullMatrixRowStyle(f, sheet, rowIndex, isEven)
+			isProtoGroup := strings.EqualFold(part.BOMStatus, "P")
+			applyFullMatrixRowStyle(f, sheet, rowIndex, isEven, isProtoGroup)
 
 			// Write basic part data (columns A, B, D, E, F, G, H)
 			// Column C is empty per spec 8.2.5.1
@@ -551,7 +639,7 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 			// Write second sources
 			for _, ss := range part.SecondSources {
 				// Apply same group rowStyle for second sources
-				applyFullMatrixRowStyle(f, sheet, rowIndex, isEven)
+				applyFullMatrixRowStyle(f, sheet, rowIndex, isEven, isProtoGroup)
 
 				// Second sources don't have Item, Qty or Location. Clear template residue by setting cell value to nil.
 				f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIndex), nil)

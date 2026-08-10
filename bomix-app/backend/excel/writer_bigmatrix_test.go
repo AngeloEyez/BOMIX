@@ -2,6 +2,7 @@ package excel
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1366,6 +1367,119 @@ func TestExportBigMatrix_MainPartGrayStyleIsolation(t *testing.T) {
 		t.Errorf("Expected I6 (main part selection in Rev 2) to be empty '', got '%s'", valI6)
 	}
 }
+
+// TestExportBigMatrix_ProtoGroupRowTextColor 測試當物料群組 BOMStatus == "P" 時，
+// 主料與 2nd source 整個 row 的文字顏色是否被正確設定為 #8080C0
+func TestExportBigMatrix_ProtoGroupRowTextColor(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:      types.FormatBigMatrix,
+		OutputPath:  filepath.Join(tmpDir, "proto_color_test.xlsx"),
+		Description: "Proto Color Test",
+		Revisions: []RevisionData{
+			{
+				ID:              "1",
+				ProjectCode:     "PROJ_PROTO",
+				Phase:           "EVT",
+				Version:         "0.1",
+				ModelNames:      []string{"Model A"},
+				ModelQtyByOrder: map[int]int{0: 1},
+			},
+		},
+		PartData: []PartData{
+			{
+				Item:        "1",
+				HHPN:        "PROTO_HHPN_01",
+				Description: "Proto Resistor 10K",
+				Supplier:    "YAGEO",
+				SupplierPn:  "PROTO_R10K",
+				Qty:         2,
+				Location:    "C1,C2",
+				BOMStatus:   "P", // PROTO 物料群組！
+				SecondSources: []SecondSourceData{
+					{
+						HHPN:        "PROTO_HHPN_01_SS",
+						Supplier:    "WALSIN",
+						SupplierPn:  "PROTO_R10K_SS",
+						Description: "Proto Resistor 10K 2nd Source",
+					},
+				},
+				SelectionsByRevAndOrder: map[string]map[int]string{
+					"1": {0: "PROTO_R10K"},
+				},
+			},
+			{
+				Item:        "2",
+				HHPN:        "NORMAL_HHPN_02",
+				Description: "Normal Resistor 10K",
+				Supplier:    "YAGEO",
+				SupplierPn:  "NORMAL_R10K",
+				Qty:         1,
+				Location:    "C3",
+				BOMStatus:   "I", // 一般物料群組 (非 PROTO)
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open exported file: %v", err)
+	}
+	defer f.Close()
+
+	// Row 6: PROTO 主料
+	// Row 7: PROTO 2nd source
+	// Row 8: 一般物料 (BOMStatus = "I")
+	rowsToCheck := []struct {
+		row           int
+		col           string
+		expectProto   bool
+		description   string
+	}{
+		{6, "A", true, "PROTO 主料 A 欄"},
+		{6, "B", true, "PROTO 主料 B 欄 (HHPN)"},
+		{6, "H", true, "PROTO 主料 H 欄 (Model Selection)"},
+		{7, "B", true, "PROTO 2nd Source B 欄 (HHPN)"},
+		{7, "H", true, "PROTO 2nd Source H 欄 (Model Selection)"},
+		{8, "B", false, "一般物料 B 欄 (HHPN)"},
+	}
+
+	for _, tc := range rowsToCheck {
+		cellAddr := fmt.Sprintf("%s%d", tc.col, tc.row)
+		styleID, err := f.GetCellStyle("BigMatrix", cellAddr)
+		if err != nil {
+			t.Fatalf("Failed to get style for %s: %v", cellAddr, err)
+		}
+		styleDef, err := f.GetStyle(styleID)
+		if err != nil || styleDef == nil {
+			t.Fatalf("Failed to inspect style for %s: %v", cellAddr, err)
+		}
+
+		if tc.expectProto {
+			if styleDef.Font == nil {
+				t.Errorf("[%s] Expect font color #8080C0, but Font is nil", tc.description)
+			} else if !strings.EqualFold(styleDef.Font.Color, "#8080C0") && !strings.EqualFold(styleDef.Font.Color, "8080C0") {
+				t.Errorf("[%s] Expect font color #8080C0, got %q", tc.description, styleDef.Font.Color)
+			}
+		} else {
+			if styleDef.Font != nil && (strings.EqualFold(styleDef.Font.Color, "#8080C0") || strings.EqualFold(styleDef.Font.Color, "8080C0")) {
+				t.Errorf("[%s] Unexpected PROTO font color #8080C0 for non-proto row, got %q", tc.description, styleDef.Font.Color)
+			}
+		}
+	}
+}
+
 
 
 

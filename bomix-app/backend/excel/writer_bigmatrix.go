@@ -169,6 +169,47 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	// 避免對同一基礎樣式重複呼叫 NewStyle，減少樣式表膨脹。
 	unlockCache := make(map[int]int)
 
+	// protoStyleCache 樣式快取：以原始 styleID 為鍵，快取 Font.Color: "#8080C0" 版本的 styleID。
+	protoStyleCache := make(map[int]int)
+
+	// makeProtoStyle 建立並快取指定樣式的 PROTO 物料文字顏色（Font.Color: "#8080C0"）版本。
+	// 當物料群組 (main + 2nd sources) 的 location 均屬於 PROTO 物料 (bom_status = P) 時套用。
+	//
+	// 參數：
+	//   - styleID：原始 Excelize 樣式 ID
+	//
+	// 回傳：
+	//   - int：PROTO 物料文字顏色版本的 Excelize 樣式 ID（若失敗則回傳原始 styleID）
+	makeProtoStyle := func(styleID int) int {
+		if styleID <= 0 {
+			return styleID
+		}
+		if cached, ok := protoStyleCache[styleID]; ok {
+			return cached
+		}
+		styleDef, err := f.GetStyle(styleID)
+		if err != nil || styleDef == nil {
+			return styleID
+		}
+		cp := *styleDef
+		if cp.Font != nil {
+			fontCopy := *cp.Font
+			fontCopy.Color = "#8080C0"
+			cp.Font = &fontCopy
+		} else {
+			cp.Font = &excelize.Font{
+				Color: "#8080C0",
+			}
+		}
+		newID, err := f.NewStyle(&cp)
+		if err != nil || newID <= 0 {
+			protoStyleCache[styleID] = styleID
+			return styleID
+		}
+		protoStyleCache[styleID] = newID
+		return newID
+	}
+
 	// makeUnlocked 建立並快取指定樣式的解鎖（Protection.Locked: false）版本。
 	// 確保工作表保護啟用時，非灰底儲存格允許使用者自由編輯。
 	//
@@ -396,7 +437,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	}
 
 	// Helper function to apply styles to a row (columns A-G and dynamic Model columns)
-	applyFullRowStyle := func(f *excelize.File, sheet string, row int, isEven bool) {
+	applyFullRowStyle := func(f *excelize.File, sheet string, row int, isEven bool, isProto bool) {
 		refRow := 6
 		if !isEven {
 			refRow = 7
@@ -412,8 +453,12 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			} else {
 				baseSt = styleAG7[colStr]
 			}
+			st := makeUnlocked(baseSt)
+			if isProto {
+				st = makeProtoStyle(st)
+			}
 			// makeUnlocked 確保 A-G 欄不被工作表保護鎖定
-			_ = f.SetCellStyle(sheet, cell, cell, makeUnlocked(baseSt))
+			_ = f.SetCellStyle(sheet, cell, cell, st)
 		}
 
 		// Model 欄先套用基礎樣式（後續由 getGrayStyle / getUnlockedModelStyle 覆蓋）
@@ -424,6 +469,9 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 				colStr := getColName(cIdx + i)
 				cell := fmt.Sprintf("%s%d", colStr, row)
 				st := getModelStyle(refRow, i, revModelCount)
+				if isProto {
+					st = makeProtoStyle(st)
+				}
 				_ = f.SetCellStyle(sheet, cell, cell, st)
 			}
 			cIdx += revModelCount
@@ -580,7 +628,8 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	for groupIdx, part := range parts {
 		// 依物料群組 (groupIdx) 切換斑馬紋樣式 (Row 6 / Row 7)
 		isEven := (groupIdx%2 == 0)
-		applyFullRowStyle(f, "BigMatrix", rowIndex, isEven)
+		isProtoGroup := strings.EqualFold(part.BOMStatus, "P")
+		applyFullRowStyle(f, "BigMatrix", rowIndex, isEven, isProtoGroup)
 
 		// Write basic part data (columns A-G)
 		if itemNum, err := strconv.Atoi(strings.TrimSpace(part.Item)); err == nil {
@@ -615,6 +664,9 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 					// See product-spec section 8.1.5.3
 					isBottomEdge := len(part.SecondSources) == 0
 					st := getGrayStyle(i, revModelCount, true, isBottomEdge)
+					if isProtoGroup {
+						st = makeProtoStyle(st)
+					}
 					if st >= 0 {
 						_ = f.SetCellStyle("BigMatrix", cell, cell, st)
 					}
@@ -627,6 +679,9 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 						refRow = 7
 					}
 					st := getUnlockedModelStyle(refRow, i, revModelCount)
+					if isProtoGroup {
+						st = makeProtoStyle(st)
+					}
 					if st >= 0 {
 						_ = f.SetCellStyle("BigMatrix", cell, cell, st)
 					}
@@ -649,7 +704,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		// Write second sources
 		for ssIdx, ss := range part.SecondSources {
 			isEvenSS := isEven
-			applyFullRowStyle(f, "BigMatrix", rowIndex, isEvenSS)
+			applyFullRowStyle(f, "BigMatrix", rowIndex, isEvenSS, isProtoGroup)
 
 			f.SetCellValue("BigMatrix", fmt.Sprintf("B%d", rowIndex), ss.HHPN)
 			f.SetCellValue("BigMatrix", fmt.Sprintf("C%d", rowIndex), ss.Description)
@@ -675,6 +730,9 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 					if !ssExists {
 						// 替代料在此 Revision 的群組中不存在：設定灰色底色，且禁止寫入任何資料（清空儲存格內容）
 						st := getGrayStyle(i, revModelCount, false, ssIsBottomEdge)
+						if isProtoGroup {
+							st = makeProtoStyle(st)
+						}
 						if st >= 0 {
 							_ = f.SetCellStyle("BigMatrix", cell, cell, st)
 						}
@@ -687,6 +745,9 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 							refRow = 7
 						}
 						st := getUnlockedModelStyle(refRow, i, revModelCount)
+						if isProtoGroup {
+							st = makeProtoStyle(st)
+						}
 						if st >= 0 {
 							_ = f.SetCellStyle("BigMatrix", cell, cell, st)
 						}
