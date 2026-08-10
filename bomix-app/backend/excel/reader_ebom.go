@@ -183,7 +183,7 @@ func (r *EBOMReader) Import(f Workbook) error {
 				locationIDsToUpdate = append(locationIDsToUpdate, target.ID)
 			} else {
 				if r.logger != nil {
-					r.logger.Warn(fmt.Sprintf("[EBOM Phase2] MP location '%s' 在 Phase 1 中未建立，略過", loc),
+					r.logger.Debug(fmt.Sprintf("[EBOM Phase2] MP location '%s' 在 Phase 1 中未建立，略過", loc),
 						"sheet", mpSheet, "location", loc,
 					)
 				}
@@ -971,6 +971,14 @@ func (r *EBOMReader) applyMergeAlgorithm(revisionID int64, newSecondSources []db
 // 回傳：
 //   - error: 若版本含文字則為 WarningError；若資料庫操作失敗則為一般 error
 func (r *EBOMReader) autoImportPreviousMatrix(revision db.BomRevision) error {
+	projectDisplay := fmt.Sprintf("%d", revision.ProjectID)
+	var proj db.Project
+	if r.db != nil {
+		if err := r.db.First(&proj, revision.ProjectID).Error; err == nil && proj.Code != "" {
+			projectDisplay = fmt.Sprintf("%s(%d)", proj.Code, revision.ProjectID)
+		}
+	}
+
 	// 步驟 1：使用智慧版本排序尋找前一版
 	previous, hasNonNumeric, err := db.FindPreviousRevisionSmart(r.db, revision.ProjectID, revision.Phase, revision.Version)
 	if err != nil {
@@ -982,8 +990,8 @@ func (r *EBOMReader) autoImportPreviousMatrix(revision db.BomRevision) error {
 		warnMsg := fmt.Sprintf(
 			"[autoImportPreviousMatrix] 版本號包含非數字字元，無法自動進行版本排序比對。"+
 				"跳過自動 Matrix 匯入，請手動使用「複製 Matrix」功能選擇版本進行複製 "+
-				"(ProjectID=%d, Phase=%s, Version=%s)",
-			revision.ProjectID, revision.Phase, revision.Version,
+				"(ProjectID=%s, Phase=%s, Version=%s)",
+			projectDisplay, revision.Phase, revision.Version,
 		)
 		if r.logger != nil {
 			r.logger.Warn(warnMsg)
@@ -995,8 +1003,8 @@ func (r *EBOMReader) autoImportPreviousMatrix(revision db.BomRevision) error {
 	if previous == nil {
 		if r.logger != nil {
 			r.logger.Debug(fmt.Sprintf(
-				"[autoImportPreviousMatrix] 同 Phase 無前一版可繼承 (ProjectID=%d, Phase=%s, Version=%s)",
-				revision.ProjectID, revision.Phase, revision.Version,
+				"[autoImportPreviousMatrix] 同 Phase 無前一版可繼承 (ProjectID=%s, Phase=%s, Version=%s)",
+				projectDisplay, revision.Phase, revision.Version,
 			))
 		}
 		return nil
