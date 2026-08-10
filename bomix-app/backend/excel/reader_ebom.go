@@ -12,6 +12,7 @@ import (
 	"bomix-app/backend/logger"
 	"bomix-app/backend/task"
 	"bomix-app/backend/types"
+
 	"gorm.io/gorm"
 )
 
@@ -27,11 +28,12 @@ type EBOMReader struct {
 // Import 匯入 EBOM 格式 Excel 檔案。
 //
 // 採用兩階段匯入流程：
-//   Phase 1（主料建置）：處理 SMD / PTH / BOTTOM / NI sheet，
-//     依 (supplier, supplier_pn) 去重建立 Part，並為每個 location 建立原子化 PartLocation。
-//   Phase 2（狀態覆寫）：處理 PROTO / MP / CCL sheet，
-//     僅更新 Phase 1 已建立的 PartLocation 的 BomStatus / CCL 屬性；
-//     同時判斷 BomRevision.Mode（NPI 或 MP）。
+//
+//	Phase 1（主料建置）：處理 SMD / PTH / BOTTOM / NI sheet，
+//	  依 (supplier, supplier_pn) 去重建立 Part，並為每個 location 建立原子化 PartLocation。
+//	Phase 2（狀態覆寫）：處理 PROTO / MP / CCL sheet，
+//	  僅更新 Phase 1 已建立的 PartLocation 的 BomStatus / CCL 屬性；
+//	  同時判斷 BomRevision.Mode（NPI 或 MP）。
 func (r *EBOMReader) Import(f Workbook) error {
 	sheets := f.GetSheetList()
 
@@ -151,7 +153,7 @@ func (r *EBOMReader) Import(f Workbook) error {
 				locationIDsToUpdate = append(locationIDsToUpdate, target.ID)
 			} else {
 				if r.logger != nil {
-					r.logger.Warn(fmt.Sprintf("[EBOM Phase2] PROTO location '%s' 在 Phase 1 中未建立，略過", loc),
+					r.logger.Debug(fmt.Sprintf("[EBOM Phase2] PROTO location '%s' 在 Phase 1 中未建立，略過", loc),
 						"sheet", protoSheet, "location", loc,
 					)
 				}
@@ -484,8 +486,8 @@ func (r *EBOMReader) parseMainSheet(
 // parsedPartLocation 內部結構：暫存原子化 location 及其關聯的 Part 指標
 // 用於在批次儲存 Part 後，正確填入 PartID
 type parsedPartLocation struct {
-	partPtr  *db.Part
-	location string
+	partPtr   *db.Part
+	location  string
 	bomStatus string
 	ccl       bool
 }
@@ -585,7 +587,7 @@ func (r *EBOMReader) parseMainSheetV2(
 }
 
 // parseNISheet 解析 NI sheet（不上件），建立 PartLocation（BomStatus='X'）。
-// 若 (supplier, supplier_pn) 在 partMap 中已存在，重用既有 Part；否則建立新 Part（Type=''）。
+// 若 (supplier, supplier_pn) 在 partMap 中已存在，重用既有 Part；否則建立新 Part（Type=”）。
 func (r *EBOMReader) parseNISheet(
 	f Workbook,
 	sheetName string,
@@ -981,7 +983,7 @@ func (r *EBOMReader) autoImportPreviousMatrix(revision db.BomRevision) error {
 			"[autoImportPreviousMatrix] 版本號包含非數字字元，無法自動進行版本排序比對。"+
 				"跳過自動 Matrix 匯入，請手動使用「複製 Matrix」功能選擇版本進行複製 "+
 				"(ProjectID=%d, Phase=%s, Version=%s)",
-				revision.ProjectID, revision.Phase, revision.Version,
+			revision.ProjectID, revision.Phase, revision.Version,
 		)
 		if r.logger != nil {
 			r.logger.Warn(warnMsg)

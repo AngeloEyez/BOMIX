@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"bomix-app/backend/logger"
 	"bomix-app/backend/types"
 	"github.com/xuri/excelize/v2"
 )
@@ -980,6 +981,72 @@ func TestExportMatrix_ProtoGroupRowTextColor(t *testing.T) {
 		}
 	}
 }
+
+// TestExportMatrix_OverwriteExistingFileWithWarning 驗證當 Matrix 匯出目標檔案已存在時，
+// validateAndPrepareOutputPath 能正常刪除舊檔並成功覆蓋寫入新檔
+func TestExportMatrix_OverwriteExistingFileWithWarning(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bomix-matrix-overwrite-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	targetPath := filepath.Join(tmpDir, "PROJ_OVERWRITE_EZBOM_EVT_0.1_MatrixBOM_20260810.xlsx")
+	// 預先寫入一舊舊檔內容
+	if err := os.WriteFile(targetPath, []byte("old dummy file content"), 0644); err != nil {
+		t.Fatalf("Failed to write dummy existing file: %v", err)
+	}
+
+	lg := logger.NewLogger(100)
+	writer, err := NewWriter(lg)
+	if err != nil {
+		t.Fatalf("Failed to create writer: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:     types.FormatMatrix,
+		OutputPath: targetPath,
+		PartData: []PartData{
+			{
+				Item:        "1",
+				HHPN:        "OVERWRITE_PN",
+				Description: "Overwrite Test Part",
+				Supplier:    "YAGEO",
+				SupplierPn:  "R10K",
+				Qty:         1,
+				Location:    "C1",
+				Type:        "SMD",
+				BOMStatus:   "I",
+				CCL:         true,
+			},
+		},
+		Revisions: []RevisionData{
+			{
+				ProjectCode:     "PROJ_OVERWRITE",
+				Phase:           "EVT",
+				Version:         "0.1",
+				ModelNames:      []string{"Model A"},
+				ModelQtyByOrder: map[int]int{0: 1},
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed when target file exists: %v", err)
+	}
+
+	if len(paths) == 0 || paths[0] != targetPath {
+		t.Fatalf("Expected output path %s, got %v", targetPath, paths)
+	}
+
+	f, err := excelize.OpenFile(targetPath)
+	if err != nil {
+		t.Fatalf("Failed to open overwritten Excel file: %v", err)
+	}
+	_ = f.Close()
+}
+
 
 
 

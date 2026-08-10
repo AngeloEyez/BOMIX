@@ -702,6 +702,10 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 						return fmt.Errorf("failed to export: %w", err)
 					}
 
+					if len(outputPaths) > 0 && taskLogger != nil {
+						taskLogger.Info(fmt.Sprintf("[ExportExcel] 成功匯出 Matrix 檔案: %s", filepath.Base(outputPaths[0])))
+					}
+
 					progress(1.0, fmt.Sprintf("Exported %d files", len(outputPaths)))
 					return nil
 				},

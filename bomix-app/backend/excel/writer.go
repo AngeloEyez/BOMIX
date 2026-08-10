@@ -193,10 +193,10 @@ func generateBigMatrixFileName(seriesName string, revisions []RevisionData, date
 
 // generateMatrixFileName generates the output filename for Matrix BOM export.
 // 1. 若該 Revision 記錄了匯入時的 SourceFile 檔名：
-//    - 將檔名中的 "(compared)" 替換為 ""
-//    - 將檔名中的 "_BOM_" 替換為 "_MatrixBOM_"
-// 2. 若無記錄 SourceFile，則使用備用預設規則命名：
-//    Format: {project code}_EZBOM_{phase}_{version}_MatrixBOM_{date}.xlsx
+//   - 將檔名中的 "(compared)" 替換為 ""
+//   - 將檔名中的 "_BOM_" 替換為 "_MatrixBOM_"
+//  2. 若無記錄 SourceFile，則使用備用預設規則命名：
+//     Format: {project code}_EZBOM_{phase}_{version}_MatrixBOM_{date}.xlsx
 func generateMatrixFileName(rev RevisionData, date string) string {
 	rawSource := strings.TrimSpace(filepath.Base(rev.SourceFile))
 	if rawSource != "" && rawSource != "." {
@@ -253,7 +253,7 @@ func resolveOutputPath(outputPath, outputDir, defaultFileName string) string {
 	// 檢查 target 是否為現存的目錄
 	fi, err := os.Stat(target)
 	isDir := err == nil && fi.IsDir()
-	
+
 	// 判斷是否帶有 .xlsx 或 .xls 展延名
 	hasXlsxExt := strings.HasSuffix(strings.ToLower(target), ".xlsx") || strings.HasSuffix(strings.ToLower(target), ".xls")
 
@@ -290,10 +290,11 @@ func validateAndPrepareOutputPath(lg *logger.Logger, outputPath, outputDir, defa
 		}
 	}
 
-	// 檢查目標檔案是否存在，若存在則先予以刪除
+	// 檢查目標檔案是否存在，若存在則先予以刪除，並輸出 Warning log 說明覆蓋動作
 	if fi, err := os.Stat(finalPath); err == nil && !fi.IsDir() {
+		fileName := filepath.Base(finalPath)
 		if lg != nil {
-			lg.Debug(fmt.Sprintf("[validateAndPrepareOutputPath] 目標檔案已存在，準備刪除舊檔: %s", finalPath))
+			lg.Warn(fmt.Sprintf("目標檔案 '%s' 已存在，將刪除舊檔並執行覆蓋寫入", fileName), "path", finalPath)
 		}
 		if removeErr := os.Remove(finalPath); removeErr != nil {
 			if lg != nil {
@@ -308,4 +309,3 @@ func validateAndPrepareOutputPath(lg *logger.Logger, outputPath, outputDir, defa
 
 	return finalPath, nil
 }
-

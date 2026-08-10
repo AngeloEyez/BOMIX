@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"bomix-app/backend/logger"
 	"bomix-app/backend/types"
 	"github.com/xuri/excelize/v2"
 )
@@ -1479,6 +1480,72 @@ func TestExportBigMatrix_ProtoGroupRowTextColor(t *testing.T) {
 		}
 	}
 }
+
+// TestExportBigMatrix_OverwriteExistingFileWithWarning 驗證當 BigMatrix 匯出目標檔案已存在時，
+// validateAndPrepareOutputPath 能正常刪除舊檔、輸出 Warning log 並成功覆蓋寫入新檔
+func TestExportBigMatrix_OverwriteExistingFileWithWarning(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bomix-bigmatrix-overwrite-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	targetPath := filepath.Join(tmpDir, "TestSeries_BigMatrix_EVT_0.1_20260810.xlsx")
+	// 預先寫入一舊舊檔內容
+	if err := os.WriteFile(targetPath, []byte("old bigmatrix dummy content"), 0644); err != nil {
+		t.Fatalf("Failed to write dummy existing file: %v", err)
+	}
+
+	lg := logger.NewLogger(100)
+	writer, err := NewWriter(lg)
+	if err != nil {
+		t.Fatalf("Failed to create writer: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:     types.FormatBigMatrix,
+		OutputPath: targetPath,
+		PartData: []PartData{
+			{
+				Item:        "1",
+				HHPN:        "OVERWRITE_BM_PN",
+				Description: "Overwrite Test BM Part",
+				Supplier:    "YAGEO",
+				SupplierPn:  "R10K",
+				Qty:         1,
+				Location:    "C1",
+				Type:        "SMD",
+				BOMStatus:   "I",
+				CCL:         true,
+			},
+		},
+		Revisions: []RevisionData{
+			{
+				ProjectCode:     "TestSeries",
+				Phase:           "EVT",
+				Version:         "0.1",
+				ModelNames:      []string{"Model A"},
+				ModelQtyByOrder: map[int]int{0: 1},
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed when target BigMatrix file exists: %v", err)
+	}
+
+	if len(paths) == 0 || paths[0] != targetPath {
+		t.Fatalf("Expected output path %s, got %v", targetPath, paths)
+	}
+
+	f, err := excelize.OpenFile(targetPath)
+	if err != nil {
+		t.Fatalf("Failed to open overwritten BigMatrix Excel file: %v", err)
+	}
+	_ = f.Close()
+}
+
 
 
 

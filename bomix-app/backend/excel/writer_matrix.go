@@ -2,7 +2,6 @@ package excel
 
 import (
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -369,6 +368,10 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		return nil, fmt.Errorf("failed to save Matrix: %w", err)
 	}
 
+	if w.logger != nil {
+		w.logger.Info(fmt.Sprintf("[exportMatrix] 成功匯出 Matrix 檔案: %s", fileName), "path", outputPath)
+	}
+
 	return []string{outputPath}, nil
 }
 
@@ -678,17 +681,19 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 		}
 	}
 
-	// Save to output path
+	// Save to output path using validateAndPrepareOutputPath
 	fileName := generateMatrixFileName(rev, date)
-	var outputPath string
-	if options.OutputDir != "" {
-		outputPath = filepath.Join(options.OutputDir, fileName)
-	} else {
-		outputPath = fileName
+	outputPath, err := validateAndPrepareOutputPath(w.logger, options.OutputPath, options.OutputDir, fileName)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := f.SaveAs(outputPath); err != nil {
 		return nil, fmt.Errorf("failed to save Matrix: %w", err)
+	}
+
+	if w.logger != nil {
+		w.logger.Info(fmt.Sprintf("[exportMatrixDetailed] 成功匯出 Matrix 檔案: %s", fileName), "path", outputPath)
 	}
 
 	return []string{outputPath}, nil
