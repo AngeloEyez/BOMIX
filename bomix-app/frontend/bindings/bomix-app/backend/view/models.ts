@@ -150,6 +150,7 @@ export interface ViewRevision {
     "pcb_version": string;
     "pca_pn": string;
     "date": string;
+    "source_file": string;
     "model_names": string[] | null;
 
     /**

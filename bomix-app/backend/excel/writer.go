@@ -84,6 +84,7 @@ type RevisionData struct {
 	Phase            string
 	Version          string
 	Date             string
+	SourceFile       string         // EBOM 匯入時記錄的來源檔名
 	ModelNames       []string       // 該 Revision 的 Model 名稱列表
 	ModelQty         map[string]int // Model name -> quantity
 	ModelQtyByOrder  map[int]int    // Model SortOrder (0,1,2...) -> quantity
@@ -126,7 +127,18 @@ func (w *WriterImpl) ExportExcel(options ExportOptions) ([]string, error) {
 			w.logger.Info("[Writer] 比對成功 -> 執行 Matrix 匯出")
 		}
 		if len(options.Revisions) > 0 && len(options.PartData) > 0 {
-			return w.exportMatrixDetailed(options, options.Revisions[0], options.PartData)
+			if len(options.Revisions) == 1 {
+				return w.exportMatrixDetailed(options, options.Revisions[0], options.PartData)
+			}
+			var allPaths []string
+			for _, rev := range options.Revisions {
+				paths, err := w.exportMatrixDetailed(options, rev, options.PartData)
+				if err != nil {
+					return nil, err
+				}
+				allPaths = append(allPaths, paths...)
+			}
+			return allPaths, nil
 		}
 		return w.exportMatrix(options)
 	default:
@@ -179,9 +191,36 @@ func generateBigMatrixFileName(seriesName string, revisions []RevisionData, date
 	return fmt.Sprintf("%s.xlsx", strings.Join(parts, "_"))
 }
 
-// generateMatrixFileName generates the output filename for Matrix
-// Format: {project code}_EZBOM_{phase}_{version}_MatrixBOM_{date}.xlsx
+// generateMatrixFileName generates the output filename for Matrix BOM export.
+// 1. 若該 Revision 記錄了匯入時的 SourceFile 檔名：
+//    - 將檔名中的 "(compared)" 替換為 ""
+//    - 將檔名中的 "_BOM_" 替換為 "_MatrixBOM_"
+// 2. 若無記錄 SourceFile，則使用備用預設規則命名：
+//    Format: {project code}_EZBOM_{phase}_{version}_MatrixBOM_{date}.xlsx
 func generateMatrixFileName(rev RevisionData, date string) string {
+	rawSource := strings.TrimSpace(filepath.Base(rev.SourceFile))
+	if rawSource != "" && rawSource != "." {
+		ext := filepath.Ext(rawSource)
+		baseName := strings.TrimSuffix(rawSource, ext)
+
+		// 移除 (compared) 標記 (包含常見大小寫與多餘空格)
+		baseName = strings.ReplaceAll(baseName, "(compared)", "")
+		baseName = strings.ReplaceAll(baseName, "(Compared)", "")
+		baseName = strings.ReplaceAll(baseName, "(COMPARED)", "")
+		baseName = strings.TrimSpace(baseName)
+
+		// 將 _BOM_ 取代為 _MatrixBOM_
+		if strings.Contains(baseName, "_BOM_") {
+			baseName = strings.ReplaceAll(baseName, "_BOM_", "_MatrixBOM_")
+		} else if strings.Contains(baseName, "_bom_") {
+			baseName = strings.ReplaceAll(baseName, "_bom_", "_MatrixBOM_")
+		} else if strings.Contains(baseName, "_Bom_") {
+			baseName = strings.ReplaceAll(baseName, "_Bom_", "_MatrixBOM_")
+		}
+
+		return fmt.Sprintf("%s.xlsx", baseName)
+	}
+
 	projCode := strings.TrimSpace(rev.ProjectCode)
 	if projCode == "" {
 		projCode = "BOMIX"

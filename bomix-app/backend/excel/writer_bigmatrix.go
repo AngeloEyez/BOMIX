@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"bomix-app/backend/types"
+
 	"github.com/xuri/excelize/v2"
 )
 
@@ -524,9 +525,9 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		id, _ := f.NewStyle(&excelize.Style{
 			Fill: excelize.Fill{Type: "pattern", Color: []string{"#D9D9D9"}, Pattern: 1},
 			Border: []excelize.Border{
-				{Type: "left",   Color: leftColor,   Style: leftStyle},
-				{Type: "right",  Color: rightColor,  Style: rightStyle},
-				{Type: "top",    Color: topColor,    Style: 1},
+				{Type: "left", Color: leftColor, Style: leftStyle},
+				{Type: "right", Color: rightColor, Style: rightStyle},
+				{Type: "top", Color: topColor, Style: 1},
 				{Type: "bottom", Color: bottomColor, Style: 1},
 			},
 			Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
@@ -552,7 +553,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	// 回傳：
 	//   - int：Excelize 樣式 ID（-1 表示建立失敗）
 	getGrayStyle := func(colIdx, totalCount int, isTopEdge, isBottomEdge bool) int {
-		isLeftEdge  := (colIdx == 0)
+		isLeftEdge := (colIdx == 0)
 		isRightEdge := (totalCount == 1 || colIdx == totalCount-1)
 		return createGrayStyle(isLeftEdge, isRightEdge, isTopEdge, isBottomEdge)
 	}
@@ -773,8 +774,8 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	_ = f.ProtectSheet("BigMatrix", &excelize.SheetProtectionOptions{
 		AlgorithmName:       "SHA-512",
 		Password:            "",
-		SelectLockedCells:   true,  // 允許點選鎖定儲存格 (唯讀)
-		SelectUnlockedCells: true,  // 允許點選並編輯解鎖儲存格
+		SelectLockedCells:   true, // 允許點選鎖定儲存格 (唯讀)
+		SelectUnlockedCells: true, // 允許點選並編輯解鎖儲存格
 		EditObjects:         true,
 		EditScenarios:       true,
 	})
@@ -858,18 +859,18 @@ func mergeSecondSources(parts []PartData) []PartData {
 
 		// Use first part as base (copy to avoid reference issues)
 		merged := PartData{
-			Item:           group[0].Item,
-			HHPN:           group[0].HHPN,
-			Description:    group[0].Description,
-			Supplier:       group[0].Supplier,
-			SupplierPn:     group[0].SupplierPn,
-			Qty:            group[0].Qty,
-			Location:       group[0].Location,
-			Type:           group[0].Type,
-			BOMStatus:      group[0].BOMStatus,
-			CCL:            group[0].CCL,
-			Remark:         group[0].Remark,
-			Selections:     make(map[string]string),
+			Item:        group[0].Item,
+			HHPN:        group[0].HHPN,
+			Description: group[0].Description,
+			Supplier:    group[0].Supplier,
+			SupplierPn:  group[0].SupplierPn,
+			Qty:         group[0].Qty,
+			Location:    group[0].Location,
+			Type:        group[0].Type,
+			BOMStatus:   group[0].BOMStatus,
+			CCL:         group[0].CCL,
+			Remark:      group[0].Remark,
+			Selections:  make(map[string]string),
 		}
 		for k, v := range group[0].Selections {
 			merged.Selections[k] = v

@@ -279,6 +279,7 @@ func buildViewRevisions(rawData map[int64]*rawRevisionData) []ViewRevision {
 			PCBVersion:       rev.PCBVersion,
 			PCAPN:            rev.PCAPN,
 			Date:             rev.Date,
+			SourceFile:       rev.SourceFile,
 			ModelNames:       modelNames,
 			ModelQty:         modelQty,
 			ModelQtyByOrder:  modelQtyByOrder,

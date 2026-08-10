@@ -107,6 +107,7 @@ type ViewRevision struct {
 	PCBVersion       string         `json:"pcb_version"`
 	PCAPN            string         `json:"pca_pn"`
 	Date             string         `json:"date"`
+	SourceFile       string         `json:"source_file"`
 	ModelNames       []string       `json:"model_names"`
 	ModelQty         map[string]int `json:"model_qty"`          // Model 名稱 -> 打件數量
 	ModelQtyByOrder  map[int]int    `json:"model_qty_by_order"` // Model 排序索引 (0,1,2...) -> 打件數量

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"bomix-app/backend/types"
+
 	"github.com/xuri/excelize/v2"
 )
 
@@ -400,14 +401,14 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 
 	// 8.2.3 - Tag replacement for header
 	tags := map[string]string{
-		"{{.ProjectCode}}":       rev.ProjectCode,
-		"{{.Description}}":       rev.Description,
-		"{{.SchematicVersion}}":  rev.SchematicVersion,
-		"{{.PCBVersion}}":        rev.PCBVersion,
-		"{{.PCAPN}}":             rev.PCAPN,
-		"{{.Phase}}":             rev.Phase,
-		"{{.Version}}":           rev.Version,
-		"{{.Date}}":              date,
+		"{{.ProjectCode}}":      rev.ProjectCode,
+		"{{.Description}}":      rev.Description,
+		"{{.SchematicVersion}}": rev.SchematicVersion,
+		"{{.PCBVersion}}":       rev.PCBVersion,
+		"{{.PCAPN}}":            rev.PCAPN,
+		"{{.Phase}}":            rev.Phase,
+		"{{.Version}}":          rev.Version,
+		"{{.Date}}":             date,
 	}
 
 	orderedModelNames := getOrderedModelNames(rev.ModelQty)
@@ -788,9 +789,9 @@ func resolveSelectedPN(part PartData, revID string, index int, orderedNames []st
 }
 
 // ensureMatrixSheets 確保範本檔中包含 "SMD", "PTH", "BOTTOM" 三個工作頁面。
-// 1. 若找不到 SMD 頁面 (不區分大小寫)，輸出 Error Log 並返回錯誤。
-// 2. 若找不到 PTH 或 BOTTOM 等其餘頁面，自動退回使用 SMD 頁面當作輸出樣板，
-//    並複製創立正確的頁面名稱 (PTH 或 BOTTOM)。
+//  1. 若找不到 SMD 頁面 (不區分大小寫)，輸出 Error Log 並返回錯誤。
+//  2. 若找不到 PTH 或 BOTTOM 等其餘頁面，自動退回使用 SMD 頁面當作輸出樣板，
+//     並複製創立正確的頁面名稱 (PTH 或 BOTTOM)。
 func (w *WriterImpl) ensureMatrixSheets(f *excelize.File) ([]string, error) {
 	sheets := []string{"SMD", "PTH", "BOTTOM"}
 
@@ -841,7 +842,7 @@ func (w *WriterImpl) ensureMatrixSheets(f *excelize.File) ([]string, error) {
 		} else {
 			// 若不存在目標頁面，自動退回使用 SMD 頁面作為樣板
 			if w.logger != nil {
-				w.logger.Warn(fmt.Sprintf("[Matrix] 範本檔中未找到 '%s' 頁面，自動複製 'SMD' 頁面作為樣板並建立 '%s' 頁面", target, target))
+				w.logger.Debug(fmt.Sprintf("[Matrix] 範本檔中未找到 '%s' 頁面，自動複製 'SMD' 頁面作為樣板並建立 '%s' 頁面", target, target))
 			}
 			newIdx, err := f.NewSheet(target)
 			if err != nil {

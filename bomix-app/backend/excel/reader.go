@@ -94,9 +94,10 @@ func (r *ReaderImpl) importEBOM(f Workbook, path string) (types.ImportResult, er
 
 	// Delegate to the EBOM reader
 	ebomReader := &EBOMReader{
-		db:     r.db,
-		result: &result,
-		logger: r.logger,
+		db:       r.db,
+		result:   &result,
+		filePath: path,
+		logger:   r.logger,
 	}
 
 	err := ebomReader.Import(f)

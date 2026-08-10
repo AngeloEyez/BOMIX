@@ -631,7 +631,87 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 		}
 	}
 
-	// Convert options - convert RevisionIDs from []int64 to []string
+	// 矩陣 (Matrix) 格式：每一個 selected BOM Revision 需各自匯出為獨立的 Matrix 檔案與任務
+	if bomFormat == types.FormatMatrix {
+		var taskIDs []string
+		for _, revIDVal := range options.RevisionIDs {
+			revIDStr := fmt.Sprintf("%d", revIDVal)
+
+			// 嘗試讀取 Revision 基本資訊，建立具備專案/Phase/Version識別度的 Task 名稱
+			var taskName string
+			var revRecord db.BomRevision
+			if err := dbConn.First(&revRecord, revIDVal).Error; err == nil {
+				var projRecord db.Project
+				projCode := "BOMIX"
+				if err := dbConn.First(&projRecord, revRecord.ProjectID).Error; err == nil && projRecord.Code != "" {
+					projCode = projRecord.Code
+				}
+				taskName = fmt.Sprintf("Export: Matrix (%s %s-%s)", projCode, revRecord.Phase, revRecord.Version)
+			} else {
+				taskName = fmt.Sprintf("Export: Matrix (ID: %d)", revIDVal)
+			}
+
+			// 多個 Revision 匯出時，若指定了 OutputPath 則取其目錄為 OutputDir
+			outDir := options.OutputDir
+			outPath := options.OutputPath
+			if len(options.RevisionIDs) > 1 && outDir == "" && outPath != "" {
+				outDir = filepath.Dir(outPath)
+				outPath = ""
+			}
+
+			tID := a.taskMgr.Submit(
+				taskName,
+				"Export",
+				func(ctx context.Context, progress func(float64, string), taskLogger *logger.Logger) error {
+					progress(0.1, fmt.Sprintf("Preparing export data for Revision %d...", revIDVal))
+
+					// 僅載入此單一 Revision 的 DB View 資料
+					revisions, parts, err := loadExportData(taskLogger, dbConn, []int64{revIDVal})
+					if err != nil {
+						taskLogger.Warn(fmt.Sprintf("[ExportExcel] 載入 Revision %d 的 View 資料失敗/警告: %v", revIDVal, err))
+					} else {
+						taskLogger.Info(fmt.Sprintf("[ExportExcel] 成功載入 Revision %d 的 DB 資料: Parts=%d", revIDVal, len(parts)))
+					}
+
+					exportOptions := excel.ExportOptions{
+						Format:              bomFormat,
+						ProjectIDs:          options.ProjectIDs,
+						RevisionIDs:         []string{revIDStr},
+						Description:         options.Description,
+						OutputPath:          outPath,
+						OutputDir:           outDir,
+						ModelCountOverrides: options.ModelCountOverrides,
+						Revisions:           revisions,
+						PartData:            parts,
+					}
+
+					excelWriter, err := excel.NewWriter(taskLogger)
+					if err != nil {
+						taskLogger.Error(fmt.Sprintf("[ExportExcel] 建立 Excel Writer 失敗: %v", err))
+						return fmt.Errorf("failed to create excel writer: %w", err)
+					}
+
+					outputPaths, err := excelWriter.ExportExcel(exportOptions)
+					if err != nil {
+						if errors.Is(err, excel.ErrInvalidOutputPath) || strings.Contains(err.Error(), "invalid export output path") {
+							if taskLogger != nil {
+								taskLogger.Warn(fmt.Sprintf("[ExportExcel] 匯出路徑無效或無法寫入: %v", err))
+							}
+							return task.NewWarningError(fmt.Errorf("無效的匯出路徑: %w", err))
+						}
+						return fmt.Errorf("failed to export: %w", err)
+					}
+
+					progress(1.0, fmt.Sprintf("Exported %d files", len(outputPaths)))
+					return nil
+				},
+			)
+			taskIDs = append(taskIDs, tID)
+		}
+		return taskIDs, nil
+	}
+
+	// BigMatrix 格式：所有選取的 Revisions 橫向合併於單一 BigMatrix 檔案中
 	revisionIDsStr := make([]string, len(options.RevisionIDs))
 	for i, id := range options.RevisionIDs {
 		revisionIDsStr[i] = fmt.Sprintf("%d", id)
@@ -689,7 +769,6 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 		},
 	)
 
-	//a.logger.Debug(fmt.Sprintf("匯出任務已提交: %s", taskID))
 	return []string{taskID}, nil
 }
 
@@ -745,6 +824,7 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 			Phase:            vr.Phase,
 			Version:          vr.Version,
 			Date:             vr.Date,
+			SourceFile:       vr.SourceFile,
 			ModelNames:       vr.ModelNames,
 			ModelQty:         vr.ModelQty,
 			ModelQtyByOrder:  vr.ModelQtyByOrder,

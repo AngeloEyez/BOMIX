@@ -75,6 +75,28 @@ func TestGenerateMatrixFileName(t *testing.T) {
 			date:   "20260801",
 			expect: "FY27_EZBOM_DB_0.1_MatrixBOM_20260801.xlsx",
 		},
+		{
+			name: "From EBOM SourceFile replacing _BOM_ and (compared)",
+			rev: RevisionData{
+				ProjectCode: "PROJ_M",
+				Phase:       "EVT",
+				Version:     "0.1",
+				SourceFile:  "PROJ_M_EZBOM_EVT_0.1_BOM_20260807(compared).xlsx",
+			},
+			date:   "20260807",
+			expect: "PROJ_M_EZBOM_EVT_0.1_MatrixBOM_20260807.xlsx",
+		},
+		{
+			name: "From EBOM SourceFile with full path and spaces",
+			rev: RevisionData{
+				ProjectCode: "PROJ_ORDER",
+				Phase:       "EVT",
+				Version:     "0.1",
+				SourceFile:  `C:\Path\To\PROJ_ORDER_EZBOM_EVT_0.1_BOM_20260807 (compared).xlsx`,
+			},
+			date:   "20260807",
+			expect: "PROJ_ORDER_EZBOM_EVT_0.1_MatrixBOM_20260807.xlsx",
+		},
 	}
 
 	for _, tt := range tests {

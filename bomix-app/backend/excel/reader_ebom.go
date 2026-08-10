@@ -3,6 +3,7 @@ package excel
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +19,8 @@ import (
 type EBOMReader struct {
 	db         *gorm.DB
 	result     *types.ImportResult
-	revisionID int64 // 匯入後設定
+	filePath   string // EBOM 匯入檔案路徑
+	revisionID int64  // 匯入後設定
 	logger     *logger.Logger
 }
 
@@ -803,6 +805,9 @@ func (r *EBOMReader) createOrUpdateRevision(projectCode, phase, version, descrip
 		existing.PCBVersion = pcbVersion
 		existing.PCAPN = pcaPn
 		existing.Date = date
+		if r.filePath != "" {
+			existing.SourceFile = filepath.Base(r.filePath)
+		}
 		existing.UpdatedAt = time.Now()
 		if err := r.db.Save(&existing).Error; err != nil {
 			return 0, err
@@ -812,6 +817,11 @@ func (r *EBOMReader) createOrUpdateRevision(projectCode, phase, version, descrip
 
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return 0, err
+	}
+
+	sourceFile := ""
+	if r.filePath != "" {
+		sourceFile = filepath.Base(r.filePath)
 	}
 
 	// 建立新 Revision
@@ -824,6 +834,7 @@ func (r *EBOMReader) createOrUpdateRevision(projectCode, phase, version, descrip
 		PCBVersion:       pcbVersion,
 		PCAPN:            pcaPn,
 		Date:             date,
+		SourceFile:       sourceFile,
 		Mode:             "NPI", // 預設，Phase 2 後會更新
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),

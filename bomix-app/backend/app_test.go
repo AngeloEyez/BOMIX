@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"bomix-app/backend/config"
 	"bomix-app/backend/db"
@@ -92,3 +93,101 @@ func TestGetRecentSeries_MissingAndCorruptedFiles(t *testing.T) {
 		t.Errorf("正常檔案的 Name = %q, 預期 %q", validItem.Name, "測試系列 A")
 	}
 }
+
+// TestExportExcel_MultipleMatrixRevisionsTasks 測試當選取多個 BOM Revision 匯出 Matrix 時，
+// App.ExportExcel 應會為每一個 selected Revision 依序建立獨立的 Task 任務與檔案
+func TestExportExcel_MultipleMatrixRevisionsTasks(t *testing.T) {
+	tempDir := t.TempDir()
+
+	validPath := filepath.Join(tempDir, "test_matrix_multi.bomx")
+	validDB, err := db.Open(validPath)
+	if err != nil {
+		t.Fatalf("無法建立測試資料庫: %v", err)
+	}
+	if err := db.AutoMigrate(validDB); err != nil {
+		db.Close(validDB)
+		t.Fatalf("無法初始化資料庫結構: %v", err)
+	}
+
+	series, err := db.CreateSeries(validDB, "Matrix Multi Test Series", "Series Desc")
+	if err != nil {
+		db.Close(validDB)
+		t.Fatalf("無法建立 Series: %v", err)
+	}
+	proj := &db.Project{SeriesID: series.ID, Code: "PROJ_MULT", Description: "Proj Desc"}
+	if err := validDB.Create(proj).Error; err != nil {
+		db.Close(validDB)
+		t.Fatalf("無法建立 Project: %v", err)
+	}
+	rev1, err := db.CreateRevision(validDB, proj.ID, "EVT", "0.1", "Rev 1 Desc")
+	if err != nil {
+		db.Close(validDB)
+		t.Fatalf("無法建立 Rev 1: %v", err)
+	}
+	rev2, err := db.CreateRevision(validDB, proj.ID, "DVT", "0.2", "Rev 2 Desc")
+	if err != nil {
+		db.Close(validDB)
+		t.Fatalf("無法建立 Rev 2: %v", err)
+	}
+
+	log := logger.NewLogger(100)
+	cfg := &config.Config{}
+	app := NewApp(nil, log, cfg)
+	app.db = validDB
+	defer db.Close(validDB)
+
+	exportOpts := &ExportOptions{
+		Format:      "Matrix",
+		RevisionIDs: []int64{rev1.ID, rev2.ID},
+		OutputDir:   tempDir,
+	}
+
+	taskIDs, err := app.ExportExcel(exportOpts)
+	if err != nil {
+		t.Fatalf("ExportExcel 失敗: %v", err)
+	}
+
+	if len(taskIDs) != 2 {
+		t.Fatalf("多 Revision 匯出 Matrix 預期回傳 2 個 Task ID，實際得到 %d 個: %v", len(taskIDs), taskIDs)
+	}
+
+	tasks, err := app.ListTasks()
+	if err != nil {
+		t.Fatalf("ListTasks 失敗: %v", err)
+	}
+
+	if len(tasks) < 2 {
+		t.Fatalf("Task Manager 中預期至少有 2 個任務，實際有 %d 個", len(tasks))
+	}
+
+	foundTask1 := false
+	foundTask2 := false
+	for _, tk := range tasks {
+		if tk.ID == taskIDs[0] {
+			foundTask1 = true
+		}
+		if tk.ID == taskIDs[1] {
+			foundTask2 = true
+		}
+	}
+
+	if !foundTask1 || !foundTask2 {
+		t.Errorf("Task Manager 中未正確註冊多個 Matrix 匯出 Task ID: %v vs %v", taskIDs, tasks)
+	}
+
+	// 等待非同步任務執行完成
+	for i := 0; i < 50; i++ {
+		allDone := true
+		for _, tk := range app.taskMgr.ListTasks() {
+			if tk.Status == "Running" || tk.Status == "Queued" {
+				allDone = false
+				break
+			}
+		}
+		if allDone {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
