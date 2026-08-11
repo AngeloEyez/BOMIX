@@ -38,22 +38,25 @@ type ExportOptions struct {
 
 // PartData represents a single part for export
 type PartData struct {
-	Item                    string
-	HHPN                    string
-	Description             string
-	Supplier                string
-	SupplierPn              string
-	Qty                     int
-	Location                string
-	Type                    string
-	BOMStatus               string
-	CCL                     bool
-	Remark                  string
-	SecondSources           []SecondSourceData
-	Selections              map[string]string            // Model Name -> Supplier PN mapping (單一 Revision)
-	SelectionsByOrder       map[int]string               // Model SortOrder (0,1,2...) -> Supplier PN mapping (單一 Revision)
-	SelectionsByRevAndOrder map[string]map[int]string    // RevisionID -> (Model SortOrder -> Selected Supplier PN) (BigMatrix 多 Revision)
-	SelectionsByRevAndName  map[string]map[string]string // RevisionID -> (Model Name -> Selected Supplier PN) (BigMatrix 多 Revision)
+	Item                         string
+	HHPN                         string
+	Description                  string
+	Supplier                     string
+	SupplierPn                   string
+	Qty                          int
+	Location                     string
+	Type                         string
+	BOMStatus                    string
+	CCL                          bool
+	Remark                       string
+	SecondSources                []SecondSourceData
+	Selections                   map[string]string            // Model Name -> Supplier PN mapping (單一 Revision)
+	SelectionsByOrder            map[int]string               // Model SortOrder (0,1,2...) -> Supplier PN mapping (單一 Revision)
+	SelectionsByRevAndOrder      map[string]map[int]string    // RevisionID -> (Model SortOrder -> Selected Supplier PN) (BigMatrix 多 Revision)
+	SelectionsByRevAndName       map[string]map[string]string // RevisionID -> (Model Name -> Selected Supplier PN) (BigMatrix 多 Revision)
+	SelectionsByMaterialByOrder  map[int]string               // Model SortOrder -> SelectedMaterial "Supplier|SupplierPN"
+	SelectionsByRevAndMaterial   map[string]map[int]string    // RevisionID -> (Model SortOrder -> SelectedMaterial "Supplier|SupplierPN")
+	MainSelectionsByOrder        map[int]bool                 // Model SortOrder -> 主料是否被勾選
 
 	// SourceRevisionIDs 記錄此物料群組出現在哪些 BOM Revision 中。
 	// 由 View 系統的 ViewPartGroup.SourceRevisionIDs 填入。
@@ -70,7 +73,8 @@ type SecondSourceData struct {
 	SupplierPn        string
 	Description       string
 	Remark            string
-	SourceRevisionIDs []int64 // 包含此替代料的 Revision ID 列表
+	SourceRevisionIDs []int64      // 包含此替代料的 Revision ID 列表
+	SelectionsByOrder map[int]bool // Model SortOrder -> 該 2nd Source 是否被勾選
 }
 
 // RevisionData contains BOM revision metadata for export

@@ -34,12 +34,13 @@ type ViewQuery struct {
 // SourceRevisionIDs 記錄此替代料出現在哪些 BOM Revision 中，
 // 用於讓下游（Export/Frontend）判斷「此替代料在特定 revision 中是否存在」。
 type ViewSecondSource struct {
-	HHPN              string  `json:"hhpn"`
-	Supplier          string  `json:"supplier"`
-	SupplierPN        string  `json:"supplier_pn"`
-	Description       string  `json:"description"`
-	Remark            string  `json:"remark"`
-	SourceRevisionIDs []int64 `json:"source_revision_ids"` // 包含此替代料的 Revision ID 列表
+	HHPN              string          `json:"hhpn"`
+	Supplier          string          `json:"supplier"`
+	SupplierPN        string          `json:"supplier_pn"`
+	Description       string          `json:"description"`
+	Remark            string          `json:"remark"`
+	SourceRevisionIDs []int64         `json:"source_revision_ids"` // 包含此替代料的 Revision ID 列表
+	SelectionsByOrder map[int]bool    `json:"selections_by_order"` // Model SortOrder -> 該 2nd Source 是否被勾選
 }
 
 // ViewModelSelection 某個 BOM Revision 內、某個 Model 的勾選狀態。
@@ -47,11 +48,13 @@ type ViewSecondSource struct {
 // 此 struct 為 ViewPartGroup.Selections 的元素，代表在某個 revision 的
 // 某個 Model 中，此物料群組被選中的是哪顆料（主料或替代料）。
 type ViewModelSelection struct {
-	RevisionID int64  `json:"revision_id"`
-	SortOrder  int    `json:"sort_order"` // 0-based 排序索引
-	ModelName  string `json:"model_name"`
-	ModelQty   int    `json:"model_qty"`
-	SelectedPN string `json:"selected_pn"` // 被選中的 SupplierPN（空字串=未勾選或尚未設定）
+	RevisionID       int64  `json:"revision_id"`
+	SortOrder        int    `json:"sort_order"`        // 0-based 排序索引
+	ModelName        string `json:"model_name"`
+	ModelQty         int    `json:"model_qty"`
+	SelectedPN       string `json:"selected_pn"`       // 被選中的 SupplierPN（空字串=未勾選或尚未設定）
+	SelectedSupplier string `json:"selected_supplier"` // 被選中的 Supplier（廠牌）
+	SelectedMaterial string `json:"selected_material"` // 被選中的完整物料識別鍵 (Supplier|SupplierPN)
 }
 
 // ViewPartGroup 聚合後的物料群組，是 View 系統的核心輸出單元。
@@ -88,12 +91,15 @@ type ViewPartGroup struct {
 	SourceRevisionIDs []int64 `json:"source_revision_ids"`
 
 	// 替代料（所有 revision 的聯集，以 supplier+supplier_pn 去重）
-	// 每個 ViewSecondSource 也附帶自己的 SourceRevisionIDs
+	// 每個 ViewSecondSource 也附帶自己的 SourceRevisionIDs 與 SelectionsByOrder
 	SecondSources []ViewSecondSource `json:"second_sources"`
 
 	// Model 勾選狀態（跨 revision × model 的完整矩陣）
 	// 包含所有被查詢的 revision 中，此物料群組的所有 model 勾選記錄
 	Selections []ViewModelSelection `json:"selections"`
+
+	// 主料在各 Model 中的勾選狀態 (Model SortOrder -> isSelected)
+	MainSelectionsByOrder map[int]bool `json:"main_selections_by_order"`
 }
 
 // ViewRevision BOM Revision 的元資料摘要，附帶在查詢結果中。

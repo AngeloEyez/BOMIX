@@ -304,9 +304,7 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 			for i := 0; i < actualModelCount; i++ {
 				col := getColName(modelStartCol + i)
 				cell := fmt.Sprintf("%s%d", col, rowIndex)
-				selectedPN := resolveSelectedPN(part, "", i, orderedModelNames)
-
-				if selectedPN != "" && strings.EqualFold(part.SupplierPn, selectedPN) {
+				if isMainSourceSelected(part, "", i, orderedModelNames) {
 					f.SetCellValue(sheet, cell, "V")
 				}
 			}
@@ -342,9 +340,7 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 				for i := 0; i < actualModelCount; i++ {
 					col := getColName(modelStartCol + i)
 					cell := fmt.Sprintf("%s%d", col, rowIndex)
-					selectedPN := resolveSelectedPN(part, "", i, orderedModelNames)
-
-					if selectedPN != "" && strings.EqualFold(ss.SupplierPn, selectedPN) {
+					if isSecondSourceSelected(ss, part, "", i, orderedModelNames) {
 						f.SetCellValue(sheet, cell, "V")
 					}
 				}
@@ -628,9 +624,7 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 			for i := 0; i < actualModelCount; i++ {
 				col := getColName(modelStartCol + i)
 				cell := fmt.Sprintf("%s%d", col, rowIndex)
-				selectedPN := resolveSelectedPN(part, rev.ID, i, orderedModelNames)
-
-				if selectedPN != "" && strings.EqualFold(part.SupplierPn, selectedPN) {
+				if isMainSourceSelected(part, rev.ID, i, orderedModelNames) {
 					f.SetCellValue(sheet, cell, "V")
 				}
 			}
@@ -666,9 +660,7 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 				for i := 0; i < actualModelCount; i++ {
 					col := getColName(modelStartCol + i)
 					cell := fmt.Sprintf("%s%d", col, rowIndex)
-					selectedPN := resolveSelectedPN(part, rev.ID, i, orderedModelNames)
-
-					if selectedPN != "" && strings.EqualFold(ss.SupplierPn, selectedPN) {
+					if isSecondSourceSelected(ss, part, rev.ID, i, orderedModelNames) {
 						f.SetCellValue(sheet, cell, "V")
 					}
 				}
@@ -757,6 +749,65 @@ func resolveModelQty(rev RevisionData, index int, orderedNames []string) int {
 		}
 	}
 	return 0
+}
+
+// resolveSelectedMaterial 獲取第 index 個 Model 在 Selections 中的選取 Material ("Supplier|SupplierPN")
+func resolveSelectedMaterial(part PartData, revID string, index int, orderedNames []string) string {
+	if revSelections, ok := part.SelectionsByRevAndMaterial[revID]; ok {
+		if mat, exists := revSelections[index]; exists && mat != "" {
+			return mat
+		}
+	}
+
+	if mat, ok := part.SelectionsByMaterialByOrder[index]; ok && mat != "" {
+		return mat
+	}
+
+	return ""
+}
+
+// isMainSourceSelected 判斷主料在指定的 Model 欄位 index 是否被勾選
+func isMainSourceSelected(part PartData, revID string, index int, orderedNames []string) bool {
+	if part.MainSelectionsByOrder != nil {
+		if sel, ok := part.MainSelectionsByOrder[index]; ok {
+			return sel
+		}
+	}
+
+	selMat := resolveSelectedMaterial(part, revID, index, orderedNames)
+	if selMat != "" {
+		mainMatKey := fmt.Sprintf("%s|%s", strings.TrimSpace(part.Supplier), strings.TrimSpace(part.SupplierPn))
+		return strings.EqualFold(selMat, mainMatKey)
+	}
+
+	selPN := resolveSelectedPN(part, revID, index, orderedNames)
+	if selPN != "" {
+		return strings.EqualFold(part.SupplierPn, selPN)
+	}
+
+	return false
+}
+
+// isSecondSourceSelected 判斷替代料在指定的 Model 欄位 index 是否被勾選
+func isSecondSourceSelected(ss SecondSourceData, part PartData, revID string, index int, orderedNames []string) bool {
+	if ss.SelectionsByOrder != nil {
+		if sel, ok := ss.SelectionsByOrder[index]; ok {
+			return sel
+		}
+	}
+
+	selMat := resolveSelectedMaterial(part, revID, index, orderedNames)
+	if selMat != "" {
+		ssMatKey := fmt.Sprintf("%s|%s", strings.TrimSpace(ss.Supplier), strings.TrimSpace(ss.SupplierPn))
+		return strings.EqualFold(selMat, ssMatKey)
+	}
+
+	selPN := resolveSelectedPN(part, revID, index, orderedNames)
+	if selPN != "" {
+		return strings.EqualFold(ss.SupplierPn, selPN)
+	}
+
+	return false
 }
 
 // resolveSelectedPN 彈性獲取第 index 個 Model 在 Selections 中的選取 PartPN (優先依據 SortOrder 索引)

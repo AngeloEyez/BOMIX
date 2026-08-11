@@ -386,6 +386,18 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			allLocsByPartID[loc.PartID] = append(allLocsByPartID[loc.PartID], loc)
 		}
 
+		// 追蹤是否有 MatrixSelection 的 partID 或 groupKey
+		hasSelectionByPartID := make(map[int64]bool)
+		hasSelectionByGroupKey := make(map[string]bool)
+		for _, sel := range data.selections {
+			if sel.PartID != 0 {
+				hasSelectionByPartID[sel.PartID] = true
+			}
+			if sel.Group != "" {
+				hasSelectionByGroupKey[sel.Group] = true
+			}
+		}
+
 		// 預先追蹤每個 part 是否有至少一個「有效」location（bom_status != X）。
 		// 此資訊用於判斷主料是否真正「存在」於此 revision（用於 SourceRevisionIDs 標記），
 		// 以確保 BigMatrix 匯出灰色判斷的正確性（bom_status=X 的物料不算存在於此 revision）。
@@ -399,11 +411,11 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			}
 		}
 
-		// 找出在此 revision 中含有「有效」location（bom_status != X）的 Parts。
-		// 只有這類 Part 才真正「上件」，才能影響 SourceRevisionIDs 的歸屬。
+		// 找出在此 revision 中含有「有效」location（bom_status != X）或含有 MatrixSelection 的 Parts。
 		validParts := make([]db.Part, 0, len(data.parts))
-		for partID := range hasEffectiveLocByPartID {
-			if p, exists := partByID[partID]; exists {
+		for _, p := range data.parts {
+			key := groupKey(p.Supplier, p.SupplierPN)
+			if hasEffectiveLocByPartID[p.ID] || hasSelectionByPartID[p.ID] || hasSelectionByGroupKey[key] {
 				validParts = append(validParts, p)
 			}
 		}
@@ -425,6 +437,9 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 		// --- 3. 建立此 revision 的 MatrixSelection 映射 (優先以 SortOrder 順序匹配) ---
 		selByGroupKeyByOrder := make(map[string]map[int]string)
 		selByGroupKeyByName := make(map[string]map[string]string)
+		selMaterialByGroupKeyByOrder := make(map[string]map[int]string)
+		selMaterialByGroupKeyByName := make(map[string]map[string]string)
+
 		for _, sel := range data.selections {
 			mainKey := sel.Group
 			if mainKey == "" {
@@ -441,11 +456,25 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				continue
 			}
 
+			matKey := sel.Material
+			if matKey == "" && sel.SelectedSupplierPn != "" {
+				if sel.SelectedSupplier != "" {
+					matKey = groupKey(sel.SelectedSupplier, sel.SelectedSupplierPn)
+				} else {
+					matKey = sel.SelectedSupplierPn
+				}
+			}
+
 			if okOrder {
 				if selByGroupKeyByOrder[mainKey] == nil {
 					selByGroupKeyByOrder[mainKey] = make(map[int]string)
 				}
 				selByGroupKeyByOrder[mainKey][sortOrder] = sel.SelectedSupplierPn
+
+				if selMaterialByGroupKeyByOrder[mainKey] == nil {
+					selMaterialByGroupKeyByOrder[mainKey] = make(map[int]string)
+				}
+				selMaterialByGroupKeyByOrder[mainKey][sortOrder] = matKey
 			}
 
 			if okName && modelName != "" {
@@ -453,6 +482,11 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 					selByGroupKeyByName[mainKey] = make(map[string]string)
 				}
 				selByGroupKeyByName[mainKey][modelName] = sel.SelectedSupplierPn
+
+				if selMaterialByGroupKeyByName[mainKey] == nil {
+					selMaterialByGroupKeyByName[mainKey] = make(map[string]string)
+				}
+				selMaterialByGroupKeyByName[mainKey][modelName] = matKey
 			}
 		}
 
@@ -488,7 +522,9 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				}
 			}
 
-			if _, exists := representativeParts[key]; !exists {
+			if rep, exists := representativeParts[key]; !exists {
+				representativeParts[key] = p
+			} else if rep.Type == "" && p.Type != "" {
 				representativeParts[key] = p
 			}
 		}
@@ -505,18 +541,19 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				}
 				b = &partGroupBuilder{
 					group: ViewPartGroup{
-						MainSupplier:   repPart.Supplier,
-						MainSupplierPN: repPart.SupplierPN,
-						Item:              repPart.Item,
-						HHPN:              repPart.HHPN,
-						Description:       repPart.Description,
-						Type:              repPart.Type, // SMD, PTH, BOTTOM
-						BOMStatus:         bomStat,
-						CCL:               cclByGroup[key],
-						Remark:            repPart.Remark,
-						Qty:               len(locationsByGroup[key]),
-						Locations:         locs,
-						SourceRevisionIDs: []int64{revID},
+						MainSupplier:          repPart.Supplier,
+						MainSupplierPN:        repPart.SupplierPN,
+						Item:                  repPart.Item,
+						HHPN:                  repPart.HHPN,
+						Description:           repPart.Description,
+						Type:                  repPart.Type, // SMD, PTH, BOTTOM
+						BOMStatus:             bomStat,
+						CCL:                   cclByGroup[key],
+						Remark:                repPart.Remark,
+						Qty:                   len(locationsByGroup[key]),
+						Locations:             locs,
+						SourceRevisionIDs:     []int64{revID},
+						MainSelectionsByOrder: make(map[int]bool),
 					},
 					ssBuilder: make(map[string]*ViewSecondSource),
 				}
@@ -525,24 +562,53 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			} else {
 				// 主料已存在於 group 中：追加 SourceRevisionID
 				b.group.SourceRevisionIDs = appendUnique(b.group.SourceRevisionIDs, revID)
+				if b.group.Type == "" && repPart.Type != "" {
+					b.group.Type = repPart.Type
+				}
 				if cclByGroup[key] {
 					b.group.CCL = true
+				}
+				if b.group.MainSelectionsByOrder == nil {
+					b.group.MainSelectionsByOrder = make(map[int]bool)
+				}
+			}
+
+			// 更新主料於此 revision 中的 Selection 狀態
+			if selMatOrderMap := selMaterialByGroupKeyByOrder[key]; selMatOrderMap != nil {
+				for sortOrder, selectedMat := range selMatOrderMap {
+					if strings.EqualFold(selectedMat, key) {
+						b.group.MainSelectionsByOrder[sortOrder] = true
+					}
 				}
 			}
 
 			// 檢察與組裝此 revision 屬於該主料的 2nd Source (替代料)
 			for _, ss := range ssByMainKey[key] {
 				ssKey := groupKey(ss.Supplier, ss.SupplierPN)
-				if existing, ok := b.ssBuilder[ssKey]; ok {
-					existing.SourceRevisionIDs = appendUnique(existing.SourceRevisionIDs, revID)
-				} else {
-					b.ssBuilder[ssKey] = &ViewSecondSource{
+				existing, ok := b.ssBuilder[ssKey]
+				if !ok {
+					existing = &ViewSecondSource{
 						HHPN:              ss.HHPN,
 						Supplier:          ss.Supplier,
 						SupplierPN:        ss.SupplierPN,
 						Description:       ss.Description,
 						Remark:            ss.Remark,
 						SourceRevisionIDs: []int64{revID},
+						SelectionsByOrder: make(map[int]bool),
+					}
+					b.ssBuilder[ssKey] = existing
+				} else {
+					existing.SourceRevisionIDs = appendUnique(existing.SourceRevisionIDs, revID)
+					if existing.SelectionsByOrder == nil {
+						existing.SelectionsByOrder = make(map[int]bool)
+					}
+				}
+
+				if selMatOrderMap := selMaterialByGroupKeyByOrder[key]; selMatOrderMap != nil {
+					for sortOrder, selectedMat := range selMatOrderMap {
+						if strings.EqualFold(selectedMat, ssKey) {
+							existing.SelectionsByOrder[sortOrder] = true
+						}
 					}
 				}
 			}
@@ -550,21 +616,44 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			// 蒐集此 revision 的 MatrixSelections (優先以 SortOrder 順序匹配)
 			selOrderMap := selByGroupKeyByOrder[key]
 			selNameMap := selByGroupKeyByName[key]
+			selMatOrderMap := selMaterialByGroupKeyByOrder[key]
+			selMatNameMap := selMaterialByGroupKeyByName[key]
+
 			for _, mData := range rawData[revID].models {
 				sortOrder := mData.SortOrder
 				var selectedPN string
+				var selectedMaterial string
+				var selectedSupplier string
+
 				if selOrderMap != nil {
 					selectedPN = selOrderMap[sortOrder]
 				}
 				if selectedPN == "" && selNameMap != nil && mData.ModelName != "" {
 					selectedPN = selNameMap[mData.ModelName]
 				}
+
+				if selMatOrderMap != nil {
+					selectedMaterial = selMatOrderMap[sortOrder]
+				}
+				if selectedMaterial == "" && selMatNameMap != nil && mData.ModelName != "" {
+					selectedMaterial = selMatNameMap[mData.ModelName]
+				}
+
+				if selectedMaterial != "" {
+					parts := strings.SplitN(selectedMaterial, "|", 2)
+					if len(parts) == 2 {
+						selectedSupplier = parts[0]
+					}
+				}
+
 				b.group.Selections = append(b.group.Selections, ViewModelSelection{
-					RevisionID: revID,
-					SortOrder:  sortOrder,
-					ModelName:  mData.ModelName,
-					ModelQty:   mData.Qty,
-					SelectedPN: selectedPN,
+					RevisionID:       revID,
+					SortOrder:        sortOrder,
+					ModelName:        mData.ModelName,
+					ModelQty:         mData.Qty,
+					SelectedPN:       selectedPN,
+					SelectedSupplier: selectedSupplier,
+					SelectedMaterial: selectedMaterial,
 				})
 			}
 		}

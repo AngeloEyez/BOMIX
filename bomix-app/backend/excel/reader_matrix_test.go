@@ -1,6 +1,7 @@
 package excel
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -15,7 +16,8 @@ import (
 // setupMatrixTestDB 建立記憶體 SQLite 供 Matrix 測試使用
 func setupMatrixTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	gdb, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	dbName := fmt.Sprintf("file:mem_%d_%p?mode=memory&cache=shared", time.Now().UnixNano(), t)
+	gdb, err := gorm.Open(sqlite.Open(dbName), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to open memory db: %v", err)
 	}

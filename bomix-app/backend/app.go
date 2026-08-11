@@ -912,10 +912,20 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 		selectionsByOrder := make(map[int]string)
 		selectionsByRevAndOrder := make(map[string]map[int]string)
 		selectionsByRevAndName := make(map[string]map[string]string)
+		selectionsByMaterialByOrder := make(map[int]string)
+		selectionsByRevAndMaterial := make(map[string]map[int]string)
 
 		for _, sel := range pg.Selections {
 			if sel.SelectedPN != "" {
 				revIDStr := fmt.Sprintf("%d", sel.RevisionID)
+				selectedMat := sel.SelectedMaterial
+				if selectedMat == "" {
+					if sel.SelectedSupplier != "" {
+						selectedMat = fmt.Sprintf("%s|%s", strings.TrimSpace(sel.SelectedSupplier), strings.TrimSpace(sel.SelectedPN))
+					} else {
+						selectedMat = strings.TrimSpace(sel.SelectedPN)
+					}
+				}
 
 				// 單一 Revision 相容
 				if _, exists := selections[sel.ModelName]; !exists {
@@ -923,6 +933,11 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 				}
 				if _, exists := selectionsByOrder[sel.SortOrder]; !exists {
 					selectionsByOrder[sel.SortOrder] = sel.SelectedPN
+				}
+				if selectedMat != "" {
+					if _, exists := selectionsByMaterialByOrder[sel.SortOrder]; !exists {
+						selectionsByMaterialByOrder[sel.SortOrder] = selectedMat
+					}
 				}
 
 				// 多 Revision 精確映射
@@ -935,6 +950,13 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 					selectionsByRevAndName[revIDStr] = make(map[string]string)
 				}
 				selectionsByRevAndName[revIDStr][sel.ModelName] = sel.SelectedPN
+
+				if selectedMat != "" {
+					if selectionsByRevAndMaterial[revIDStr] == nil {
+						selectionsByRevAndMaterial[revIDStr] = make(map[int]string)
+					}
+					selectionsByRevAndMaterial[revIDStr][sel.SortOrder] = selectedMat
+				}
 			}
 		}
 
@@ -948,27 +970,31 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 				Description:       ss.Description,
 				Remark:            ss.Remark,
 				SourceRevisionIDs: ss.SourceRevisionIDs,
+				SelectionsByOrder: ss.SelectionsByOrder,
 			})
 		}
 
 		partDataList = append(partDataList, excel.PartData{
-			Item:                    fmt.Sprintf("%d", idx+1), // 流水號
-			HHPN:                    pg.HHPN,
-			Description:             pg.Description,
-			Supplier:                pg.MainSupplier,
-			SupplierPn:              pg.MainSupplierPN,
-			Qty:                     pg.Qty,
-			Location:                pg.Locations,
-			Type:                    pg.Type,
-			BOMStatus:               pg.BOMStatus,
-			CCL:                     pg.CCL,
-			Remark:                  pg.Remark,
-			SecondSources:           ssData,
-			Selections:              selections,
-			SelectionsByOrder:       selectionsByOrder,
-			SelectionsByRevAndOrder: selectionsByRevAndOrder,
-			SelectionsByRevAndName:  selectionsByRevAndName,
-			SourceRevisionIDs:       pg.SourceRevisionIDs, // 傳遞來源歸屬，供 BigMatrix 填灰色
+			Item:                         fmt.Sprintf("%d", idx+1), // 流水號
+			HHPN:                         pg.HHPN,
+			Description:                  pg.Description,
+			Supplier:                     pg.MainSupplier,
+			SupplierPn:                   pg.MainSupplierPN,
+			Qty:                          pg.Qty,
+			Location:                     pg.Locations,
+			Type:                         pg.Type,
+			BOMStatus:                    pg.BOMStatus,
+			CCL:                          pg.CCL,
+			Remark:                       pg.Remark,
+			SecondSources:                ssData,
+			Selections:                   selections,
+			SelectionsByOrder:            selectionsByOrder,
+			SelectionsByRevAndOrder:      selectionsByRevAndOrder,
+			SelectionsByRevAndName:       selectionsByRevAndName,
+			SelectionsByMaterialByOrder:  selectionsByMaterialByOrder,
+			SelectionsByRevAndMaterial:   selectionsByRevAndMaterial,
+			MainSelectionsByOrder:        pg.MainSelectionsByOrder,
+			SourceRevisionIDs:            pg.SourceRevisionIDs, // 傳遞來源歸屬，供 BigMatrix 填灰色
 		})
 	}
 

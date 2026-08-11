@@ -84,13 +84,8 @@ func (r *MatrixReader) Import(f Workbook) error {
 	}
 
 	// ─── 步驟 3：檢查資料庫中是否存在對應的 BomRevision ──────────────────────────
-	series, err := db.GetSeriesInfo(r.db)
-	if err != nil {
-		return fmt.Errorf("取得 Series 失敗: %w", err)
-	}
-
 	var project db.Project
-	err = r.db.Where("series_id = ? AND code = ?", series.ID, projectCode).First(&project).Error
+	err = r.db.Where("code = ?", projectCode).First(&project).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			errMsg := fmt.Sprintf("warning: BOM revision for project '%s', phase '%s', version '%s' does not exist", projectCode, phase, version)
@@ -246,9 +241,9 @@ func (r *MatrixReader) Import(f Workbook) error {
 			}
 
 			// A(0)=Item, E(4)=Supplier, F(5)=SupplierPN
-			item := safeGetCol(row, 0)
-			supplier := safeGetCol(row, 4)
-			supplierPN := safeGetCol(row, 5)
+			item := strings.TrimSpace(safeGetCol(row, 0))
+			supplier := strings.TrimSpace(safeGetCol(row, 4))
+			supplierPN := strings.TrimSpace(safeGetCol(row, 5))
 
 			if supplier == "" && supplierPN == "" {
 				continue
@@ -273,6 +268,10 @@ func (r *MatrixReader) Import(f Workbook) error {
 					currentMainPart = nil
 					currentGroupKey = ""
 					continue
+				}
+				if p.Type == "" && sheetName != "" {
+					p.Type = sheetName
+					r.db.Model(p).Update("type", sheetName)
 				}
 				currentMainPart = p
 				currentGroupKey = key

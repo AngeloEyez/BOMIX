@@ -1844,6 +1844,63 @@ func TestAddModelSelectionConditionalFormatting(t *testing.T) {
 	}
 }
 
+func TestBigMatrixSelectionSupplierMatching(t *testing.T) {
+	part := PartData{
+		Supplier:   "LRC",
+		SupplierPn: "LMBT3906DW1T1G",
+		SelectionsByRevAndMaterial: map[string]map[int]string{
+			"101": {
+				0: "LRC|LMBT3906DW1T1G",
+				1: "PANJIT|MMDT3906",
+				2: "BLUEROCKET|MMDT3906",
+			},
+		},
+	}
+
+	ss1 := SecondSourceData{
+		Supplier:   "PANJIT",
+		SupplierPn: "MMDT3906",
+	}
+
+	ss2 := SecondSourceData{
+		Supplier:   "BLUEROCKET",
+		SupplierPn: "MMDT3906",
+	}
+
+	// Model 0 (sortOrder=0): Main source LRC|LMBT3906DW1T1G selected
+	if !isBigMatrixMainSourceSelected(part, "101", 0, "A") {
+		t.Errorf("Expected main source selected for model 0")
+	}
+	if isBigMatrixSecondSourceSelected(ss1, part, "101", 0, "A") {
+		t.Errorf("Expected ss1 not selected for model 0")
+	}
+	if isBigMatrixSecondSourceSelected(ss2, part, "101", 0, "A") {
+		t.Errorf("Expected ss2 not selected for model 0")
+	}
+
+	// Model 1 (sortOrder=1): Second source 1 PANJIT|MMDT3906 selected
+	if isBigMatrixMainSourceSelected(part, "101", 1, "B") {
+		t.Errorf("Expected main source not selected for model 1")
+	}
+	if !isBigMatrixSecondSourceSelected(ss1, part, "101", 1, "B") {
+		t.Errorf("Expected ss1 selected for model 1")
+	}
+	if isBigMatrixSecondSourceSelected(ss2, part, "101", 1, "B") {
+		t.Errorf("Expected ss2 NOT selected for model 1 (even though PN matches)")
+	}
+
+	// Model 2 (sortOrder=2): Second source 2 BLUEROCKET|MMDT3906 selected
+	if isBigMatrixMainSourceSelected(part, "101", 2, "C") {
+		t.Errorf("Expected main source not selected for model 2")
+	}
+	if isBigMatrixSecondSourceSelected(ss1, part, "101", 2, "C") {
+		t.Errorf("Expected ss1 NOT selected for model 2 (even though PN matches)")
+	}
+	if !isBigMatrixSecondSourceSelected(ss2, part, "101", 2, "C") {
+		t.Errorf("Expected ss2 selected for model 2")
+	}
+}
+
 
 
 

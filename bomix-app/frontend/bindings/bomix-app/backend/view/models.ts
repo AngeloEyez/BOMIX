@@ -21,6 +21,16 @@ export interface ViewModelSelection {
      * 被選中的 SupplierPN（空字串=未勾選或尚未設定）
      */
     "selected_pn": string;
+
+    /**
+     * 被選中的 Supplier（廠牌）
+     */
+    "selected_supplier": string;
+
+    /**
+     * 被選中的完整物料識別鍵 (Supplier|SupplierPN)
+     */
+    "selected_material": string;
 }
 
 /**
@@ -84,7 +94,7 @@ export interface ViewPartGroup {
 
     /**
      * 替代料（所有 revision 的聯集，以 supplier+supplier_pn 去重）
-     * 每個 ViewSecondSource 也附帶自己的 SourceRevisionIDs
+     * 每個 ViewSecondSource 也附帶自己的 SourceRevisionIDs 與 SelectionsByOrder
      */
     "second_sources": ViewSecondSource[] | null;
 
@@ -93,6 +103,11 @@ export interface ViewPartGroup {
      * 包含所有被查詢的 revision 中，此物料群組的所有 model 勾選記錄
      */
     "selections": ViewModelSelection[] | null;
+
+    /**
+     * 主料在各 Model 中的勾選狀態 (Model SortOrder -> isSelected)
+     */
+    "main_selections_by_order": { [_ in `${number}`]?: boolean } | null;
 }
 
 /**
@@ -181,4 +196,9 @@ export interface ViewSecondSource {
      * 包含此替代料的 Revision ID 列表
      */
     "source_revision_ids": number[] | null;
+
+    /**
+     * Model SortOrder -> 該 2nd Source 是否被勾選
+     */
+    "selections_by_order": { [_ in `${number}`]?: boolean } | null;
 }

@@ -698,8 +698,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 					}
 
 					mName := resolveModelName(rev, i)
-					selectedPN := resolveBigMatrixSelectedPN(part, rev.ID, i, mName)
-					if selectedPN != "" && strings.EqualFold(part.SupplierPn, selectedPN) {
+					if isBigMatrixMainSourceSelected(part, rev.ID, i, mName) {
 						f.SetCellValue("BigMatrix", cell, "V")
 					} else {
 						f.SetCellValue("BigMatrix", cell, "")
@@ -764,8 +763,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 						}
 
 						mName := resolveModelName(rev, i)
-						selectedPN := resolveBigMatrixSelectedPN(part, rev.ID, i, mName)
-						if selectedPN != "" && strings.EqualFold(ss.SupplierPn, selectedPN) {
+						if isBigMatrixSecondSourceSelected(ss, part, rev.ID, i, mName) {
 							f.SetCellValue("BigMatrix", cell, "V")
 						} else {
 							f.SetCellValue("BigMatrix", cell, "")
@@ -1056,6 +1054,70 @@ func resolveBigMatrixSelectedPN(part PartData, revID string, sortOrder int, mode
 		return pn
 	}
 	return ""
+}
+
+// resolveBigMatrixSelectedMaterial 獲取特定 Revision 下、特定 Model 的選取 Material ("Supplier|SupplierPN")
+func resolveBigMatrixSelectedMaterial(part PartData, revID string, sortOrder int) string {
+	if revID != "" {
+		if revMatMap, ok := part.SelectionsByRevAndMaterial[revID]; ok {
+			if mat, ok2 := revMatMap[sortOrder]; ok2 && mat != "" {
+				return mat
+			}
+		}
+		// 若已提供多 Revision 映射 (SelectionsByRevAndMaterial)，說明具有精確的跨 Revision 勾選集
+		if len(part.SelectionsByRevAndMaterial) > 0 {
+			return ""
+		}
+	}
+
+	if mat, ok := part.SelectionsByMaterialByOrder[sortOrder]; ok && mat != "" {
+		return mat
+	}
+	return ""
+}
+
+// isBigMatrixMainSourceSelected 判斷主料在指定的 Revision 與 Model 欄位 index 是否被勾選
+func isBigMatrixMainSourceSelected(part PartData, revID string, sortOrder int, modelName string) bool {
+	if len(part.SelectionsByRevAndMaterial) == 0 && part.MainSelectionsByOrder != nil {
+		if sel, ok := part.MainSelectionsByOrder[sortOrder]; ok {
+			return sel
+		}
+	}
+
+	selMat := resolveBigMatrixSelectedMaterial(part, revID, sortOrder)
+	if selMat != "" {
+		mainMatKey := fmt.Sprintf("%s|%s", strings.TrimSpace(part.Supplier), strings.TrimSpace(part.SupplierPn))
+		return strings.EqualFold(selMat, mainMatKey)
+	}
+
+	selectedPN := resolveBigMatrixSelectedPN(part, revID, sortOrder, modelName)
+	if selectedPN != "" {
+		return strings.EqualFold(part.SupplierPn, selectedPN)
+	}
+
+	return false
+}
+
+// isBigMatrixSecondSourceSelected 判斷替代料在指定的 Revision 與 Model 欄位 index 是否被勾選
+func isBigMatrixSecondSourceSelected(ss SecondSourceData, part PartData, revID string, sortOrder int, modelName string) bool {
+	if len(part.SelectionsByRevAndMaterial) == 0 && ss.SelectionsByOrder != nil {
+		if sel, ok := ss.SelectionsByOrder[sortOrder]; ok {
+			return sel
+		}
+	}
+
+	selMat := resolveBigMatrixSelectedMaterial(part, revID, sortOrder)
+	if selMat != "" {
+		ssMatKey := fmt.Sprintf("%s|%s", strings.TrimSpace(ss.Supplier), strings.TrimSpace(ss.SupplierPn))
+		return strings.EqualFold(selMat, ssMatKey)
+	}
+
+	selectedPN := resolveBigMatrixSelectedPN(part, revID, sortOrder, modelName)
+	if selectedPN != "" {
+		return strings.EqualFold(ss.SupplierPn, selectedPN)
+	}
+
+	return false
 }
 
 /**
