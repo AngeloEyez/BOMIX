@@ -15,8 +15,9 @@ type Series struct {
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	DeletedAt      gorm.DeletedAt `gorm:"index"`
-	LastExportPath string
-	Projects       []Project      `gorm:"foreignKey:SeriesID;constraint:OnDelete:CASCADE"`
+	LastExportPath     string
+	ProjectExportOrder string `gorm:"column:project_export_order"`
+	Projects           []Project      `gorm:"foreignKey:SeriesID;constraint:OnDelete:CASCADE"`
 }
 
 // Project represents a project within a series

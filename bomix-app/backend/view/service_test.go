@@ -503,3 +503,52 @@ func TestMergeRevisions_SequentialModels(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildViewRevisions_Order 驗證 buildViewRevisions 會嚴格依照 requestedIDs 指定的順序回傳 ViewRevision 列表
+func TestBuildViewRevisions_Order(t *testing.T) {
+	rawData := map[int64]*rawRevisionData{
+		1: {
+			revision: db.BomRevision{ID: 1, Phase: "PV", Version: "0.1"},
+			project:  db.Project{Code: "PROJ1"},
+		},
+		2: {
+			revision: db.BomRevision{ID: 2, Phase: "DV", Version: "0.2"},
+			project:  db.Project{Code: "PROJ2"},
+		},
+		3: {
+			revision: db.BomRevision{ID: 3, Phase: "MP", Version: "1.0"},
+			project:  db.Project{Code: "PROJ3"},
+		},
+	}
+
+	t.Run("自訂反轉順序 [3, 1, 2]", func(t *testing.T) {
+		reqIDs := []int64{3, 1, 2}
+		revs := buildViewRevisions(reqIDs, rawData)
+
+		if len(revs) != 3 {
+			t.Fatalf("期望 3 個 ViewRevision，實際 %d 個", len(revs))
+		}
+		expectedIDs := []int64{3, 1, 2}
+		for i, rev := range revs {
+			if rev.ID != expectedIDs[i] {
+				t.Errorf("Index %d 期望 Revision ID=%d，實際 got ID=%d", i, expectedIDs[i], rev.ID)
+			}
+		}
+	})
+
+	t.Run("自訂非連續順序 [2, 3]", func(t *testing.T) {
+		reqIDs := []int64{2, 3}
+		revs := buildViewRevisions(reqIDs, rawData)
+
+		if len(revs) != 3 {
+			t.Fatalf("期望 3 個 ViewRevision（2個由 requestedIDs 指定，1個補齊），實際 %d 個", len(revs))
+		}
+		expectedIDs := []int64{2, 3, 1}
+		for i, rev := range revs {
+			if rev.ID != expectedIDs[i] {
+				t.Errorf("Index %d 期望 Revision ID=%d，實際 got ID=%d", i, expectedIDs[i], rev.ID)
+			}
+		}
+	})
+}
+

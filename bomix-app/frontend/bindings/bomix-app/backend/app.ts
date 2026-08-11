@@ -213,6 +213,19 @@ export function Quit(): $CancellablePromise<void> {
 }
 
 /**
+ * SaveProjectExportOrder 即時儲存 BigMatrix 匯出對話框中的 Project 排序紀錄至 Series 資料表
+ * 
+ * 參數：
+ *   - projectCodes：專案 Code 順序列表
+ * 
+ * 回傳：
+ *   - error：若未開啟資料庫或 JSON 轉換/寫入失敗則回傳錯誤
+ */
+export function SaveProjectExportOrder(projectCodes: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(156455538, projectCodes);
+}
+
+/**
  * UpdateSettings updates the settings
  */
 export function UpdateSettings(settings: $models.Settings | null): $CancellablePromise<void> {

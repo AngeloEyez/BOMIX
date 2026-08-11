@@ -113,6 +113,7 @@ export interface SeriesInfo {
     "description": string;
     "path": string;
     "lastExportPath": string;
+    "projectExportOrder": string[] | null;
 }
 
 /**

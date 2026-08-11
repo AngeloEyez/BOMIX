@@ -191,3 +191,57 @@ func TestExportExcel_MultipleMatrixRevisionsTasks(t *testing.T) {
 	}
 }
 
+// TestSaveProjectExportOrder 驗證 Project 匯出排序紀錄之即時儲存與 GetSeriesInfo 讀取
+func TestSaveProjectExportOrder(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_order.bomx")
+
+	testDB, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("無法建立測試資料庫: %v", err)
+	}
+	defer db.Close(testDB)
+
+	if err := db.AutoMigrate(testDB); err != nil {
+		t.Fatalf("無法初始化資料庫結構: %v", err)
+	}
+	if _, err := db.CreateSeries(testDB, "Test Series", "Desc"); err != nil {
+		t.Fatalf("無法建立 Series: %v", err)
+	}
+
+	app := &App{
+		db:     testDB,
+		logger: logger.NewLogger(100),
+		cfg:    &config.Config{},
+	}
+
+	// 1. 初始狀態 ProjectExportOrder 應為空陣列
+	info, err := app.GetSeriesInfo()
+	if err != nil {
+		t.Fatalf("GetSeriesInfo 失敗: %v", err)
+	}
+	if len(info.ProjectExportOrder) != 0 {
+		t.Errorf("初始 ProjectExportOrder 應為空，實際 got %v", info.ProjectExportOrder)
+	}
+
+	// 2. 儲存 Project 匯出排序紀錄
+	expectedOrder := []string{"PROJ_B", "PROJ_A", "PROJ_C"}
+	if err := app.SaveProjectExportOrder(expectedOrder); err != nil {
+		t.Fatalf("SaveProjectExportOrder 失敗: %v", err)
+	}
+
+	// 3. 再次讀取並驗證
+	info2, err := app.GetSeriesInfo()
+	if err != nil {
+		t.Fatalf("GetSeriesInfo 失敗: %v", err)
+	}
+	if len(info2.ProjectExportOrder) != 3 {
+		t.Fatalf("期望 ProjectExportOrder 元素數為 3，實際 got %d", len(info2.ProjectExportOrder))
+	}
+	for i, code := range expectedOrder {
+		if info2.ProjectExportOrder[i] != code {
+			t.Errorf("Index %d 期望 %s，實際 got %s", i, code, info2.ProjectExportOrder[i])
+		}
+	}
+}
+

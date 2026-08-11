@@ -6,7 +6,8 @@ type SeriesInfo struct {
 	Name        string `json:"name"`
 	Description    string `json:"description"`
 	Path           string `json:"path"`
-	LastExportPath string `json:"lastExportPath"`
+	LastExportPath     string   `json:"lastExportPath"`
+	ProjectExportOrder []string `json:"projectExportOrder"`
 }
 
 // SeriesInfoWithTime represents series info with last opened time

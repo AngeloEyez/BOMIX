@@ -91,8 +91,8 @@ func (s *Service) Query(query ViewQuery) (*ViewResult, error) {
 		return nil, fmt.Errorf("view: 載入資料失敗: %w", err)
 	}
 
-	// 建立 ViewRevision 元資料列表
-	revisions := buildViewRevisions(rawData)
+	// 建立 ViewRevision 元資料列表（依 query.RevisionIDs 指定的順序）
+	revisions := buildViewRevisions(query.RevisionIDs, rawData)
 
 	// 執行多 revision 聯集合併，建立 ViewPartGroup 列表
 	partGroups := s.mergeRevisions(rawData, query)
@@ -236,56 +236,83 @@ func (s *Service) loadRawData(revisionIDs []int64) (map[int64]*rawRevisionData, 
 
 // buildViewRevisions 從 rawRevisionData 建立 ViewRevision 元資料列表。
 //
-// 輸出列表的順序與 rawData 的迭代順序一致（Go map 順序不固定，
-// 但對消費者而言 revision 的前後順序不影響功能正確性）。
+// 輸出列表的順序優先與 requestedIDs 指定的順序一致。
+// 若有未在 requestedIDs 中指定的 Revision，則依 ID 升冪補齊。
 //
 // 參數：
+//   - requestedIDs：期望的 BOM Revision ID 排序列表
 //   - rawData：從資料庫載入的原始資料映射
 //
 // 回傳：
 //   - []ViewRevision：已組裝的 revision 元資料列表
-func buildViewRevisions(rawData map[int64]*rawRevisionData) []ViewRevision {
+func buildViewRevisions(requestedIDs []int64, rawData map[int64]*rawRevisionData) []ViewRevision {
 	revisions := make([]ViewRevision, 0, len(rawData))
+	processed := make(map[int64]bool, len(rawData))
 
-	// 按 ID 排序以確保輸出順序一致
-	ids := make([]int64, 0, len(rawData))
-	for id := range rawData {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-
-	for _, id := range ids {
-		data := rawData[id]
-		rev := data.revision
-
-		// 建立 ModelNames 列表（排序）與 ModelQty 映射
-		modelNames := make([]string, 0, len(data.models))
-		modelQty := make(map[string]int, len(data.models))
-		modelQtyByOrder := make(map[int]int, len(data.models))
-		for _, m := range data.models {
-			modelNames = append(modelNames, m.ModelName)
-			modelQty[m.ModelName] = m.Qty
-			modelQtyByOrder[m.SortOrder] = m.Qty
+	// 1. 依 requestedIDs 指定的順序建立 ViewRevision
+	for _, id := range requestedIDs {
+		data, ok := rawData[id]
+		if !ok || processed[id] {
+			continue
 		}
-		sort.Strings(modelNames)
-
-		revisions = append(revisions, ViewRevision{
-			ID:               id,
-			ProjectCode:      data.project.Code,
-			Phase:            rev.Phase,
-			Version:          rev.Version,
-			Description:      rev.Description,
-			SchematicVersion: rev.SchematicVersion,
-			PCBVersion:       rev.PCBVersion,
-			PCAPN:            rev.PCAPN,
-			Date:             rev.Date,
-			SourceFile:       rev.SourceFile,
-			ModelNames:       modelNames,
-			ModelQty:         modelQty,
-			ModelQtyByOrder:  modelQtyByOrder,
-		})
+		revisions = append(revisions, createViewRevisionFromRaw(id, data))
+		processed[id] = true
 	}
+
+	// 2. 針對未包含在 requestedIDs 中的 Revision，按 ID 升冪補齊
+	remainingIDs := make([]int64, 0, len(rawData)-len(processed))
+	for id := range rawData {
+		if !processed[id] {
+			remainingIDs = append(remainingIDs, id)
+		}
+	}
+	sort.Slice(remainingIDs, func(i, j int) bool { return remainingIDs[i] < remainingIDs[j] })
+
+	for _, id := range remainingIDs {
+		data := rawData[id]
+		revisions = append(revisions, createViewRevisionFromRaw(id, data))
+	}
+
 	return revisions
+}
+
+// createViewRevisionFromRaw 從 rawRevisionData 建立單一 ViewRevision 元資料物件。
+//
+// 參數：
+//   - id：BOM Revision ID
+//   - data：從資料庫載入的原始 revision 資料
+//
+// 回傳：
+//   - ViewRevision：組裝完成的 revision 元資料
+func createViewRevisionFromRaw(id int64, data *rawRevisionData) ViewRevision {
+	rev := data.revision
+
+	// 建立 ModelNames 列表（排序）與 ModelQty 映射
+	modelNames := make([]string, 0, len(data.models))
+	modelQty := make(map[string]int, len(data.models))
+	modelQtyByOrder := make(map[int]int, len(data.models))
+	for _, m := range data.models {
+		modelNames = append(modelNames, m.ModelName)
+		modelQty[m.ModelName] = m.Qty
+		modelQtyByOrder[m.SortOrder] = m.Qty
+	}
+	sort.Strings(modelNames)
+
+	return ViewRevision{
+		ID:               id,
+		ProjectCode:      data.project.Code,
+		Phase:            rev.Phase,
+		Version:          rev.Version,
+		Description:      rev.Description,
+		SchematicVersion: rev.SchematicVersion,
+		PCBVersion:       rev.PCBVersion,
+		PCAPN:            rev.PCAPN,
+		Date:             rev.Date,
+		SourceFile:       rev.SourceFile,
+		ModelNames:       modelNames,
+		ModelQty:         modelQty,
+		ModelQtyByOrder:  modelQtyByOrder,
+	}
 }
 
 // groupKey 建立物料群組的識別鍵，格式為 "supplier|supplier_pn"

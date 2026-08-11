@@ -18,6 +18,7 @@ export interface SeriesInfo {
   description: string
   path: string
   lastExportPath: string
+  projectExportOrder?: string[]
 }
 
 export interface RecentFile {
@@ -245,6 +246,14 @@ export async function GetSeriesInfo(path?: string): Promise<SeriesInfo> {
     return res as unknown as SeriesInfo
   } catch (error) {
     handleApiError(error, 'GetSeriesInfo')
+  }
+}
+
+export async function SaveProjectExportOrder(projectCodes: string[]): Promise<void> {
+  try {
+    await App.SaveProjectExportOrder(projectCodes)
+  } catch (error) {
+    handleApiError(error, 'SaveProjectExportOrder')
   }
 }
 

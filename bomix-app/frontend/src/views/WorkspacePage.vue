@@ -409,6 +409,7 @@ import {
   ImportExcel,
   ExportExcel,
   CopyMatrixSelections,
+  SaveProjectExportOrder,
   OpenFileDialog,
   OpenMultipleFilesDialog,
   SelectFolderDialog,
@@ -532,6 +533,74 @@ function updateBigMatrixFilenameIfNeed(): void {
   }
 }
 
+/**
+ * 依據 Series 中儲存的 Project 排序紀錄，自動為選取之 Revisions 卡片進行排序
+ * 排序規則：
+ * 1. 若選中的 revision 中的 project 沒有存在上次紀錄，則排在最前面 (rank = -1)
+ * 2. 若存在於上次紀錄中，則依紀錄位置升冪排序 (rank >= 0)
+ * @param {SelectedRevisionCard[]} cards - 要排序的卡片陣列
+ * @returns {SelectedRevisionCard[]} 排序後的卡片陣列
+ */
+function sortCardsByProjectRecord(cards: SelectedRevisionCard[]): SelectedRevisionCard[] {
+  const savedOrder = appStore.seriesInfo?.projectExportOrder || []
+  if (savedOrder.length === 0 || cards.length <= 1) return cards
+
+  const orderMap = new Map<string, number>()
+  savedOrder.forEach((code, idx) => {
+    orderMap.set(code, idx)
+  })
+
+  const indexed = cards.map((card, originalIdx) => {
+    const code = card.projectCode || ''
+    const recordIndex = orderMap.has(code) ? orderMap.get(code)! : -1
+    return { card, recordIndex, originalIdx }
+  })
+
+  indexed.sort((a, b) => {
+    // 規則 2: 未在紀錄中的 Project (recordIndex === -1) 排在最前面
+    if (a.recordIndex === -1 && b.recordIndex !== -1) return -1
+    if (a.recordIndex !== -1 && b.recordIndex === -1) return 1
+
+    // 規則 1: 若均在紀錄中，依紀錄索引比較
+    if (a.recordIndex !== -1 && b.recordIndex !== -1) {
+      if (a.recordIndex !== b.recordIndex) {
+        return a.recordIndex - b.recordIndex
+      }
+    }
+
+    // 若屬於同一 Project 或均未在紀錄中，維持原始選擇順序
+    return a.originalIdx - b.originalIdx
+  })
+
+  return indexed.map(item => item.card)
+}
+
+/**
+ * 從目前 selectedCards 的順序提取不重複的 Project Code 序列，並即時儲存至 Series 資料表
+ */
+async function saveProjectOrderFromCards(): Promise<void> {
+  const projectOrder: string[] = []
+  for (const card of selectedCards.value) {
+    if (card.projectCode && !projectOrder.includes(card.projectCode)) {
+      projectOrder.push(card.projectCode)
+    }
+  }
+
+  // 即時更新 AppStore 記憶體快取
+  if (appStore.seriesInfo) {
+    appStore.seriesInfo.projectExportOrder = projectOrder
+  }
+
+  // 寫入 DB
+  try {
+    await SaveProjectExportOrder(projectOrder)
+    logStore.addLogEntry('DEBUG', `已即時更新 Project 匯出排序紀錄：[${projectOrder.join(', ')}]`)
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    logStore.addLogEntry('WARN', `儲存 Project 匯出排序紀錄失敗：${msg}`)
+  }
+}
+
 function onRevisionsChange(): void {
   const currentSelectedIds = new Set(exportRevisions.value)
 
@@ -560,6 +629,10 @@ function onRevisionsChange(): void {
     }
   }
 
+  // 依據歷史 Project 排序紀錄自動重新排序（未在紀錄中排前面，其餘依紀錄排序）
+  selectedCards.value = sortCardsByProjectRecord(selectedCards.value)
+  exportRevisions.value = selectedCards.value.map(c => c.id)
+
   updateBigMatrixFilenameIfNeed()
 }
 
@@ -567,6 +640,7 @@ function removeCard(index: number): void {
   selectedCards.value.splice(index, 1)
   exportRevisions.value = selectedCards.value.map(c => c.id)
   updateBigMatrixFilenameIfNeed()
+  saveProjectOrderFromCards()
 }
 
 // Drag and drop ordering logic
@@ -592,6 +666,9 @@ function onDrop(event: DragEvent, dropIndex: number): void {
   exportRevisions.value = selectedCards.value.map(c => c.id)
   draggedIndex.value = null
   updateBigMatrixFilenameIfNeed()
+
+  // 拖曳調整排序後，即時將 Project 排序紀錄寫入 Series 資料庫
+  saveProjectOrderFromCards()
 }
 
 // ==================== Copy Matrix ====================
@@ -962,7 +1039,10 @@ async function browseExportPath(): Promise<void> {
 async function executeExport(): Promise<void> {
   logStore.addLogEntry('INFO', `開始執行匯出作業...`)
   try {
-    const sortedRevisionIds = selectedCards.value.map(c => c.id)
+    let sortedRevisionIds = selectedCards.value.map(c => c.id)
+    if (sortedRevisionIds.length === 0 && exportRevisions.value.length > 0) {
+      sortedRevisionIds = [...exportRevisions.value]
+    }
     const modelCountOverrides: Record<string, number> = {}
     selectedCards.value.forEach(card => {
       modelCountOverrides[String(card.id)] = card.modelCount

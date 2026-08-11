@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -220,13 +221,54 @@ func (a *App) GetSeriesInfo() (*SeriesInfo, error) {
 		return nil, fmt.Errorf("failed to get series info: %w", err)
 	}
 
+	var projectOrder []string
+	if strings.TrimSpace(series.ProjectExportOrder) != "" {
+		_ = json.Unmarshal([]byte(series.ProjectExportOrder), &projectOrder)
+	}
+	if projectOrder == nil {
+		projectOrder = []string{}
+	}
+
 	return &SeriesInfo{
-		ID:             series.ID,
-		Name:           series.Name,
-		Description:    series.Description,
-		Path:           a.cfg.LastOpenedFile,
-		LastExportPath: series.LastExportPath,
+		ID:                 series.ID,
+		Name:               series.Name,
+		Description:        series.Description,
+		Path:               a.cfg.LastOpenedFile,
+		LastExportPath:     series.LastExportPath,
+		ProjectExportOrder: projectOrder,
 	}, nil
+}
+
+// SaveProjectExportOrder 即時儲存 BigMatrix 匯出對話框中的 Project 排序紀錄至 Series 資料表
+//
+// 參數：
+//   - projectCodes：專案 Code 順序列表
+//
+// 回傳：
+//   - error：若未開啟資料庫或 JSON 轉換/寫入失敗則回傳錯誤
+func (a *App) SaveProjectExportOrder(projectCodes []string) error {
+	a.mu.RLock()
+	dbConn := a.db
+	a.mu.RUnlock()
+
+	if dbConn == nil {
+		a.logger.Error("[SaveProjectExportOrder] 失敗: 未開啟 Series 資料庫")
+		return fmt.Errorf("no series is currently open")
+	}
+
+	orderJSON, err := json.Marshal(projectCodes)
+	if err != nil {
+		a.logger.Error(fmt.Sprintf("[SaveProjectExportOrder] JSON 序列化 Project 排序失敗: %v", err))
+		return fmt.Errorf("failed to marshal project export order: %w", err)
+	}
+
+	if err := db.UpdateProjectExportOrder(dbConn, string(orderJSON)); err != nil {
+		a.logger.Warn(fmt.Sprintf("[SaveProjectExportOrder] 更新 project_export_order 失敗: %v", err))
+		return fmt.Errorf("failed to update project export order in db: %w", err)
+	}
+
+	a.logger.Info(fmt.Sprintf("[SaveProjectExportOrder] 成功儲存 Project 匯出排序紀錄: %v", projectCodes))
+	return nil
 }
 
 // GetRecentSeries 傳回最近開啟的系列清單

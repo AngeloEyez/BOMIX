@@ -41,3 +41,15 @@ func GetSeries(db *gorm.DB, id int64) (*Series, error) {
 	}
 	return &series, nil
 }
+
+// UpdateProjectExportOrder 更新 Series 的 Project 匯出排序紀錄
+//
+// 參數：
+//   - db：GORM 資料庫連線
+//   - projectOrder：JSON 序列化後的 Project Code 順序字串
+//
+// 回傳：
+//   - error：若更新失敗則回傳錯誤
+func UpdateProjectExportOrder(db *gorm.DB, projectOrder string) error {
+	return db.Model(&Series{}).Where("id = ?", 1).Update("project_export_order", projectOrder).Error
+}
