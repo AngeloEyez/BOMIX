@@ -37,30 +37,17 @@
         :revision-id="projectStore.selectedRevision?.id"
       />
       <div v-else class="placeholder-content">
-        <div class="dashboard-header">
-          <i class="pi pi-box"></i>
-          <h2>BOM Workspace</h2>
-        </div>
-        
         <div v-if="projectStore.projects.length === 0" class="empty-state">
           <p>No projects found in this series.</p>
           <Button label="Import BOM" icon="pi pi-upload" @click="openImportDialog" class="p-button-outlined" />
         </div>
         
         <div v-else class="dashboard-stats">
-          <div class="stat-cards">
-            <div class="stat-card">
-              <span class="stat-title">Projects</span>
-              <span class="stat-value">{{ projectStore.projects.length }}</span>
-            </div>
-            <div class="stat-card">
-              <span class="stat-title">Total Revisions</span>
-              <span class="stat-value">{{ totalRevisions }}</span>
-            </div>
-          </div>
-          
           <div class="projects-list">
-            <h3>Latest Revisions</h3>
+            <div class="projects-header">
+              <span class="projects-title">Latest Revisions</span>
+              <span class="projects-count">{{ projectStore.projects.length }} Projects</span>
+            </div>
             <div class="project-items">
               <div v-for="p in projectStore.projects" :key="p.id" class="project-item">
                 <div class="project-info">
@@ -425,14 +412,14 @@ const appStore = useAppStore()
 const projectStore = useProjectStore()
 const logStore = useLogStore()
 
-// Computed dashboard stats
-const totalRevisions = computed(() => {
-  return projectStore.projects.reduce((sum, p) => sum + (p.revisions?.length || 0), 0)
-})
-
+/**
+ * 取得專案最新版本的名稱標籤 (Phase + Version)
+ * @param {Project} project - 專案物件
+ * @returns {string | null} 最新版本標籤字串，若無版本則回傳 null
+ */
 function getLatestRevision(project: Project): string | null {
   if (!project.revisions || project.revisions.length === 0) return null
-  // Assuming the last one in the array is the latest, or sort by id
+  // 依 ID 降冪排序，取得最新版本
   const sorted = [...project.revisions].sort((a, b) => b.id - a.id)
   const latest = sorted[0]
   return `${latest.phase} ${latest.version}`
@@ -1143,27 +1130,9 @@ async function executeExport(): Promise<void> {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 2rem;
+  padding: 0.75rem 1rem;
   color: var(--text-color);
   overflow-y: auto;
-}
-
-.dashboard-header {
-  text-align: center;
-  margin-bottom: 2rem;
-  color: var(--text-color-secondary);
-}
-
-.dashboard-header i {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  color: var(--surface-border);
-}
-
-.dashboard-header h2 {
-  font-size: 1.5rem;
-  margin: 0;
-  color: var(--text-color);
 }
 
 .empty-state {
@@ -1176,52 +1145,41 @@ async function executeExport(): Promise<void> {
 }
 
 .dashboard-stats {
-  max-width: 800px;
-  margin: 0 auto;
   width: 100%;
 }
 
-.stat-cards {
-  display: flex;
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.stat-card {
-  flex: 1;
-  background: var(--surface-card);
-  padding: 1.5rem;
-  border-radius: 8px;
-  border: 1px solid var(--surface-border);
+.projects-list {
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 0.5rem;
 }
 
-.stat-title {
-  color: var(--text-color-secondary);
-  font-size: 0.875rem;
+.projects-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0.25rem 0.5rem 0.25rem;
+  border-bottom: 1px solid var(--surface-border);
+  margin-bottom: 0.25rem;
+}
+
+.projects-title {
+  font-size: 0.75rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  color: var(--text-color-secondary);
 }
 
-.stat-value {
-  font-size: 2rem;
-  font-weight: 600;
-  color: var(--primary-color);
-}
-
-.projects-list h3 {
-  margin: 0 0 1rem 0;
-  font-size: 1.1rem;
+.projects-count {
+  font-size: 0.75rem;
   color: var(--text-color-secondary);
 }
 
 .project-items {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.25rem;
 }
 
 .project-item {
@@ -1229,38 +1187,46 @@ async function executeExport(): Promise<void> {
   justify-content: space-between;
   align-items: center;
   background: var(--surface-card);
-  padding: 1rem;
-  border-radius: 6px;
+  padding: 0.35rem 0.65rem;
+  border-radius: 4px;
   border: 1px solid var(--surface-border);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.project-item:hover {
+  border-color: var(--primary-color);
+  background: var(--surface-hover, rgba(255, 255, 255, 0.03));
 }
 
 .project-info {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .project-code {
   font-weight: 600;
+  font-size: 0.85rem;
 }
 
 .project-desc {
-  font-size: 0.875rem;
+  font-size: 0.78rem;
   color: var(--text-color-secondary);
 }
 
 .latest-rev {
   background: var(--primary-color);
   color: white;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  font-weight: 500;
+  padding: 0.125rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .no-rev {
   color: var(--text-color-secondary);
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   font-style: italic;
 }
 
