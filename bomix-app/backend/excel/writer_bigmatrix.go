@@ -1130,6 +1130,10 @@ func isBigMatrixSecondSourceSelected(ss SecondSourceData, part PartData, revID s
  *   b. 儲存格內容必須為空白或是 "V" or "v"
  * 若不符合條件，該 Model Column 區域底色會自動呈現淡紅色 (#FFC7CE)，框線保持不變。
  *
+ * 排除灰底區域：
+ * 若某物料 (或 2nd Source) 在特定 BOM Revision 中不存在 (呈現灰底)，該儲存格將不包含在條件格式化的套用範圍中，
+ * 確保灰底區域不會被條件格式化蓋過變成淡紅色。
+ *
  * @param f *excelize.File - Excelize 檔案物件
  * @param parts []PartData - 聚合後的物料清單
  * @param revisions []RevisionData - BOM Revision 清單
@@ -1147,16 +1151,48 @@ func addModelSelectionConditionalFormatting(
 		return
 	}
 
-	// 計算全體 BOM Revision 的 Model 欄位總數
-	totalModelCols := 0
+	// 建立 revision ID 字串 -> int64 的解析輔助
+	revIDToInt64 := make(map[string]int64, len(revisions))
 	for _, rev := range revisions {
-		revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
-		if revModelCount > 0 {
-			totalModelCols += revModelCount
+		var revIDInt int64
+		if idVal, parseErr := strconv.ParseInt(strings.TrimSpace(rev.ID), 10, 64); parseErr == nil {
+			revIDToInt64[rev.ID] = idVal
+		} else if _, scanErr := fmt.Sscanf(rev.ID, "%d", &revIDInt); scanErr == nil {
+			revIDToInt64[rev.ID] = revIDInt
 		}
 	}
-	if totalModelCols <= 0 {
-		return
+
+	revisionIDInList := func(revIDStr string, sourceRevisionIDs []int64) bool {
+		if len(sourceRevisionIDs) == 0 {
+			return false
+		}
+		revIDInt, ok := revIDToInt64[revIDStr]
+		if !ok {
+			return false
+		}
+		for _, srcID := range sourceRevisionIDs {
+			if srcID == revIDInt {
+				return true
+			}
+		}
+		return false
+	}
+
+	partExistsInRevision := func(part PartData, revID string) bool {
+		if len(part.SourceRevisionIDs) == 0 {
+			return true
+		}
+		return revisionIDInList(revID, part.SourceRevisionIDs)
+	}
+
+	ssExistsInRevision := func(part PartData, ss SecondSourceData, revID string) bool {
+		if !partExistsInRevision(part, revID) {
+			return false
+		}
+		if len(ss.SourceRevisionIDs) == 0 {
+			return true
+		}
+		return revisionIDInList(revID, ss.SourceRevisionIDs)
 	}
 
 	// 建立淡紅色底色樣式 (#FFC7CE)，當區域不符合條件時套用
@@ -1171,33 +1207,105 @@ func addModelSelectionConditionalFormatting(
 		return
 	}
 
-	startColStr := getColName(bomStartCol)
-	endColStr := getColName(bomStartCol + totalModelCols - 1)
-
-	// 計算每個物料 group 的列範圍 (groupStartRow .. groupEndRow)
+	// 遍歷每一個物料群組 (group)
 	currentRow := 6
 	for _, part := range parts {
-		startR := currentRow
-		endR := currentRow + len(part.SecondSources)
-		currentRow = endR + 1
+		groupStartRow := currentRow
+		secondSources := part.SecondSources
+		currentRow = groupStartRow + 1 + len(secondSources)
 
-		// 套用至該群組的所有 Model 欄位範圍 (例如 H7:O9)
-		targetRange := fmt.Sprintf("%s%d:%s%d", startColStr, startR, endColStr, endR)
+		// 依序針對每一個 Revision 套用條件格式化規則
+		currentCol := bomStartCol
+		for _, rev := range revisions {
+			revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
+			if revModelCount <= 0 {
+				continue
+			}
 
-		// 相對欄位公式 (例如 H$7:H$9)：
-		// 條件 a: COUNTIF(range, "V") <> 1 (必須且只能有一個 V/v)
-		// 條件 b: COUNTIF(range, "") + COUNTIF(range, "V") <> groupRowCount (不可包含空字串/空白與 V/v 以外的非法字元)
-		// 說明：Excel 中 SetCellValue("", cell, "") 寫入的空字串會被 COUNTIF(range, "<>") 視為非空白而誤判，
-		//       使用 COUNTIF(range, "") 能同時統計完全空白儲存格與空字串 ""，完美排除空字串的誤判問題。
-		groupRowCount := endR - startR + 1
-		colRangeStr := fmt.Sprintf("%s$%d:%s$%d", startColStr, startR, startColStr, endR)
-		invalidFormula := fmt.Sprintf(
-			"OR(COUNTIF(%s,\"V\")<>1,COUNTIF(%s,\"\")+COUNTIF(%s,\"V\")<>%d)",
-			colRangeStr, colRangeStr, colRangeStr, groupRowCount,
-		)
+			revStartColStr := getColName(currentCol)
+			revEndColStr := getColName(currentCol + revModelCount - 1)
 
-		_ = f.SetConditionalFormat("BigMatrix", targetRange, []excelize.ConditionalFormatOptions{
-			{Type: "formula", Criteria: invalidFormula, Format: &lightRedStyle},
-		})
+			// 找出在此 Revision 中非灰底 (存在) 的列號
+			var nonGrayRows []int
+			if partExistsInRevision(part, rev.ID) {
+				nonGrayRows = append(nonGrayRows, groupStartRow)
+			}
+			for ssIdx, ss := range secondSources {
+				if ssExistsInRevision(part, ss, rev.ID) {
+					nonGrayRows = append(nonGrayRows, groupStartRow+1+ssIdx)
+				}
+			}
+
+			// 若此 Revision 下全為灰底 (無任何上件物料)，則完全不套用條件格式化
+			if len(nonGrayRows) == 0 {
+				currentCol += revModelCount
+				continue
+			}
+
+			// 計算連續列範圍 (例如 [[6,7]] 或 [[6,6],[8,8]])
+			type subRange struct {
+				startRow int
+				endRow   int
+			}
+			var subRanges []subRange
+			subStart := nonGrayRows[0]
+			subPrev := nonGrayRows[0]
+
+			for idx := 1; idx < len(nonGrayRows); idx++ {
+				r := nonGrayRows[idx]
+				if r == subPrev+1 {
+					subPrev = r
+				} else {
+					subRanges = append(subRanges, subRange{startRow: subStart, endRow: subPrev})
+					subStart = r
+					subPrev = r
+				}
+			}
+			subRanges = append(subRanges, subRange{startRow: subStart, endRow: subPrev})
+
+			// 建立公式：以第一個 Model Column (revStartColStr) 為相對參照基準
+			// 若為單一連續列範圍 (99% 的情況)：COUNTIF(H$6:H$7,"V")
+			// 若為非連續列範圍：COUNTIF(H$6,"V")+COUNTIF(H$8,"V")
+			var vExpr, emptyExpr string
+			if len(subRanges) == 1 {
+				sR := subRanges[0].startRow
+				eR := subRanges[0].endRow
+				var colRangeStr string
+				if sR == eR {
+					colRangeStr = fmt.Sprintf("%s$%d", revStartColStr, sR)
+				} else {
+					colRangeStr = fmt.Sprintf("%s$%d:%s$%d", revStartColStr, sR, revStartColStr, eR)
+				}
+				vExpr = fmt.Sprintf("COUNTIF(%s,\"V\")", colRangeStr)
+				emptyExpr = fmt.Sprintf("COUNTIF(%s,\"\")", colRangeStr)
+			} else {
+				var vParts, emptyParts []string
+				for _, sr := range subRanges {
+					var colRangeStr string
+					if sr.startRow == sr.endRow {
+						colRangeStr = fmt.Sprintf("%s$%d", revStartColStr, sr.startRow)
+					} else {
+						colRangeStr = fmt.Sprintf("%s$%d:%s$%d", revStartColStr, sr.startRow, revStartColStr, sr.endRow)
+					}
+					vParts = append(vParts, fmt.Sprintf("COUNTIF(%s,\"V\")", colRangeStr))
+					emptyParts = append(emptyParts, fmt.Sprintf("COUNTIF(%s,\"\")", colRangeStr))
+				}
+				vExpr = strings.Join(vParts, "+")
+				emptyExpr = strings.Join(emptyParts, "+")
+			}
+
+			nonGrayCount := len(nonGrayRows)
+			invalidFormula := fmt.Sprintf("OR(%s<>1,%s+%s<>%d)", vExpr, emptyExpr, vExpr, nonGrayCount)
+
+			// 針對非灰底的連續列範圍分別設定條件格式化 Target Range (排除灰底列)
+			for _, sr := range subRanges {
+				subTargetRange := fmt.Sprintf("%s%d:%s%d", revStartColStr, sr.startRow, revEndColStr, sr.endRow)
+				_ = f.SetConditionalFormat("BigMatrix", subTargetRange, []excelize.ConditionalFormatOptions{
+					{Type: "formula", Criteria: invalidFormula, Format: &lightRedStyle},
+				})
+			}
+
+			currentCol += revModelCount
+		}
 	}
 }

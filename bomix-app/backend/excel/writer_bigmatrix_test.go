@@ -1807,12 +1807,12 @@ func TestAddModelSelectionConditionalFormatting(t *testing.T) {
 		t.Fatalf("GetConditionalFormats failed: %v", err)
 	}
 
-	// Group 1 (Row 6..7) 涵蓋 Col H..J 的條件格式化範圍為 H6:J7
+	// Group 1 在 Rev 101 (Col H..I) 的非灰底範圍為 H6:I7
 	// 相對欄位公式應為: OR(COUNTIF(H$6:H$7,"V")<>1,COUNTIF(H$6:H$7,"")+COUNTIF(H$6:H$7,"V")<>2)
 	expectedFormulaGroup1 := "OR(COUNTIF(H$6:H$7,\"V\")<>1,COUNTIF(H$6:H$7,\"\")+COUNTIF(H$6:H$7,\"V\")<>2)"
 
 	foundFormula1 := false
-	if cfList, ok := cfMap["H6:J7"]; ok {
+	if cfList, ok := cfMap["H6:I7"]; ok {
 		for _, cf := range cfList {
 			if cf.Value == expectedFormulaGroup1 || cf.Criteria == expectedFormulaGroup1 {
 				foundFormula1 = true
@@ -1822,15 +1822,15 @@ func TestAddModelSelectionConditionalFormatting(t *testing.T) {
 	}
 
 	if !foundFormula1 {
-		t.Errorf("Expected conditional format formula %q on range H6:J7 not found in cfMap: %+v", expectedFormulaGroup1, cfMap)
+		t.Errorf("Expected conditional format formula %q on range H6:I7 not found in cfMap: %+v", expectedFormulaGroup1, cfMap)
 	}
 
-	// Group 2 (Row 8) 涵蓋 Col H..J 的條件格式化範圍為 H8:J8
-	// 相對欄位公式應為: OR(COUNTIF(H$8:H$8,"V")<>1,COUNTIF(H$8:H$8,"")+COUNTIF(H$8:H$8,"V")<>1)
-	expectedFormulaGroup2 := "OR(COUNTIF(H$8:H$8,\"V\")<>1,COUNTIF(H$8:H$8,\"\")+COUNTIF(H$8:H$8,\"V\")<>1)"
+	// Group 2 在 Rev 102 (Col J) 的非灰底範圍為 J8:J8 (單列)
+	// 相對欄位公式應為: OR(COUNTIF(J$8,"V")<>1,COUNTIF(J$8,"")+COUNTIF(J$8,"V")<>1)
+	expectedFormulaGroup2 := "OR(COUNTIF(J$8,\"V\")<>1,COUNTIF(J$8,\"\")+COUNTIF(J$8,\"V\")<>1)"
 
 	foundFormula2 := false
-	if cfList, ok := cfMap["H8:J8"]; ok {
+	if cfList, ok := cfMap["J8:J8"]; ok {
 		for _, cf := range cfList {
 			if cf.Value == expectedFormulaGroup2 || cf.Criteria == expectedFormulaGroup2 {
 				foundFormula2 = true
@@ -1840,7 +1840,7 @@ func TestAddModelSelectionConditionalFormatting(t *testing.T) {
 	}
 
 	if !foundFormula2 {
-		t.Errorf("Expected conditional format formula %q on range H8:J8 not found in cfMap: %+v", expectedFormulaGroup2, cfMap)
+		t.Errorf("Expected conditional format formula %q on range J8:J8 not found in cfMap: %+v", expectedFormulaGroup2, cfMap)
 	}
 }
 
