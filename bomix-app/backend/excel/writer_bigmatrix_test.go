@@ -1546,6 +1546,173 @@ func TestExportBigMatrix_OverwriteExistingFileWithWarning(t *testing.T) {
 	_ = f.Close()
 }
 
+// TestExportBigMatrix_Row1Formula 驗證 BigMatrix 匯出時，
+// 各 Model 欄位的 Row 1 寫入正確公式 cnt_M - cnt_N - COUNTIF(<Col>6:<Col><EndRow>, "V")
+func TestExportBigMatrix_Row1Formula(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bomix-bigmatrix-row1formula-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	targetPath := filepath.Join(tmpDir, "Row1Formula_Test.xlsx")
+	lg := logger.NewLogger(100)
+	writer, err := NewWriter(lg)
+	if err != nil {
+		t.Fatalf("Failed to create writer: %v", err)
+	}
+
+	// 模擬 3 個主料群組 (cnt_M = 3)
+	// Part 1: SourceRevisionIDs = [101, 102] (存在於 Rev 101 與 Rev 102)
+	// Part 2: SourceRevisionIDs = [101, 102] (存在於 Rev 101 與 Rev 102)
+	// Part 3: SourceRevisionIDs = [102]      (僅存在於 Rev 102，Rev 101 不存在，cnt_N for Rev 101 = 1)
+	parts := []PartData{
+		{
+			Item:              "1",
+			HHPN:              "PN001",
+			Description:       "Capacitor 10uF",
+			Supplier:          "YAGEO",
+			SupplierPn:        "CC0402_10U",
+			Qty:               1,
+			Location:          "C1",
+			Type:              "SMD",
+			BOMStatus:         "I",
+			CCL:               true,
+			SourceRevisionIDs: []int64{101, 102},
+			SelectionsByRevAndOrder: map[string]map[int]string{
+				"101": {0: "CC0402_10U"},
+				"102": {0: "CC0402_10U"},
+			},
+		},
+		{
+			Item:              "2",
+			HHPN:              "PN002",
+			Description:       "Resistor 10K",
+			Supplier:          "YAGEO",
+			SupplierPn:        "R0402_10K",
+			Qty:               1,
+			Location:          "R1",
+			Type:              "SMD",
+			BOMStatus:         "I",
+			CCL:               true,
+			SourceRevisionIDs: []int64{101, 102},
+			SelectionsByRevAndOrder: map[string]map[int]string{
+				"101": {0: "R0402_10K"},
+				"102": {0: "R0402_10K"},
+			},
+		},
+		{
+			Item:              "3",
+			HHPN:              "PN003",
+			Description:       "Inductor 1uH",
+			Supplier:          "MURATA",
+			SupplierPn:        "L0402_1U",
+			Qty:               1,
+			Location:          "L1",
+			Type:              "SMD",
+			BOMStatus:         "I",
+			CCL:               true,
+			SourceRevisionIDs: []int64{102}, // 只在 Rev 102
+			SelectionsByRevAndOrder: map[string]map[int]string{
+				"102": {0: "L0402_1U"},
+			},
+		},
+	}
+
+	revisions := []RevisionData{
+		{
+			ID:              "101",
+			ProjectCode:     "TEST_SERIES",
+			Phase:           "EVT",
+			Version:         "0.1",
+			ModelNames:      []string{"Model A", "Model B"},
+			ModelQtyByOrder: map[int]int{0: 1, 1: 1},
+		},
+		{
+			ID:              "102",
+			ProjectCode:     "TEST_SERIES",
+			Phase:           "DVT",
+			Version:         "0.2",
+			ModelNames:      []string{"Model A"},
+			ModelQtyByOrder: map[int]int{0: 1},
+		},
+	}
+
+	options := ExportOptions{
+		Format:     types.FormatBigMatrix,
+		OutputPath: targetPath,
+		PartData:   parts,
+		Revisions:  revisions,
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+	if len(paths) == 0 {
+		t.Fatalf("Expected output path, got empty slice")
+	}
+
+	f, err := excelize.OpenFile(targetPath)
+	if err != nil {
+		t.Fatalf("Failed to open exported Excel file: %v", err)
+	}
+	defer f.Close()
+
+
+	// Rev 101 有 2 個 Model -> Column H (Model A), Column I (Model B)
+	// Rev 102 有 1 個 Model -> Column J (Model A)
+	// 資料列為 Row 6..8 (endRow = 8)
+	//
+	// Rev 101 的 cnt_M = 3, cnt_N = 1 (Part 3 不存在) -> 公式應為 3-1-COUNTIF(H6:H8,"V")
+	// Rev 102 的 cnt_M = 3, cnt_N = 0 (全部位於 102) -> 公式應為 3-0-COUNTIF(J6:J8,"V")
+
+	cellFormulaH1, err := f.GetCellFormula("BigMatrix", "H1")
+	if err != nil {
+		t.Fatalf("GetCellFormula(H1) failed: %v", err)
+	}
+	expectedH1 := "3-1-COUNTIF(H6:H8,\"V\")"
+	if cellFormulaH1 != expectedH1 {
+		t.Errorf("H1 formula = %q, want %q", cellFormulaH1, expectedH1)
+	}
+
+	cellFormulaI1, err := f.GetCellFormula("BigMatrix", "I1")
+	if err != nil {
+		t.Fatalf("GetCellFormula(I1) failed: %v", err)
+	}
+	expectedI1 := "3-1-COUNTIF(I6:I8,\"V\")"
+	if cellFormulaI1 != expectedI1 {
+		t.Errorf("I1 formula = %q, want %q", cellFormulaI1, expectedI1)
+	}
+
+	cellFormulaJ1, err := f.GetCellFormula("BigMatrix", "J1")
+	if err != nil {
+		t.Fatalf("GetCellFormula(J1) failed: %v", err)
+	}
+	expectedJ1 := "3-0-COUNTIF(J6:J8,\"V\")"
+	if cellFormulaJ1 != expectedJ1 {
+		t.Errorf("J1 formula = %q, want %q", cellFormulaJ1, expectedJ1)
+	}
+
+	// 驗證 Row 1 的條件格式化範圍是否已成功覆蓋全體 Model 欄位 (H1:J1)
+	cfMap, err := f.GetConditionalFormats("BigMatrix")
+	if err != nil {
+		t.Fatalf("GetConditionalFormats failed: %v", err)
+	}
+	hasCFOnH1J1 := false
+	for rng := range cfMap {
+		if strings.Contains(rng, "H1") && strings.Contains(rng, "J1") {
+			hasCFOnH1J1 = true
+			break
+		}
+	}
+	if !hasCFOnH1J1 {
+		t.Errorf("Expected conditional format range covering H1:J1, got cfMap: %+v", cfMap)
+	}
+}
+
+
+
 
 
 

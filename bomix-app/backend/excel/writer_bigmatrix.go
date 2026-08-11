@@ -131,17 +131,20 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		return nil, err
 	}
 
-	// Read archetype style IDs from template for H, I, J columns (Header rows 2-5)
+	// Read archetype style IDs from template for H, I, J columns (Header rows 1-5)
+	styleH1, _ := f.GetCellStyle("BigMatrix", "H1")
 	styleH2, _ := f.GetCellStyle("BigMatrix", "H2")
 	styleH3, _ := f.GetCellStyle("BigMatrix", "H3")
 	styleH4, _ := f.GetCellStyle("BigMatrix", "H4")
 	styleH5, _ := f.GetCellStyle("BigMatrix", "H5")
 
+	styleI1, _ := f.GetCellStyle("BigMatrix", "I1")
 	styleI2, _ := f.GetCellStyle("BigMatrix", "I2")
 	styleI3, _ := f.GetCellStyle("BigMatrix", "I3")
 	styleI4, _ := f.GetCellStyle("BigMatrix", "I4")
 	styleI5, _ := f.GetCellStyle("BigMatrix", "I5")
 
+	styleJ1, _ := f.GetCellStyle("BigMatrix", "J1")
 	styleJ2, _ := f.GetCellStyle("BigMatrix", "J2")
 	styleJ3, _ := f.GetCellStyle("BigMatrix", "J3")
 	styleJ4, _ := f.GetCellStyle("BigMatrix", "J4")
@@ -281,8 +284,15 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 				return styleI7
 			}
 		}
-		// Header rows 2..5
+		// Header rows 1..5
 		switch row {
+		case 1:
+			if colIdx == 0 {
+				return styleH1
+			} else if colIdx == totalCount-1 {
+				return styleJ1
+			}
+			return styleI1
 		case 2:
 			if colIdx == 0 {
 				return styleH2
@@ -766,6 +776,66 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			}
 
 			rowIndex++
+		}
+	}
+
+	// 寫入每個 Model 欄位 (start from H) 的 Row 1 計算公式：
+	// 公式規則：cnt_M - cnt_N - COUNTIF(<Col>6:<Col><EndRow>, "V")
+	//   - cnt_M：聚合後的 View 總共 main source 的數量 (len(parts))
+	//   - cnt_N：該 BOM Revision 不存在的主料數量 (!partExistsInRevision)
+	//   - COUNTIF：統計該欄位在 row 6 到最後有資料列 (endRow) 範圍內，存在 "V" 的總和
+	cntM := len(parts)
+	endRow := rowIndex - 1
+	currentCol = bomStartCol
+	for _, rev := range revisions {
+		revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
+		if revModelCount <= 0 {
+			continue
+		}
+
+		// 計算當前 Revision 不存在的主料數量 cnt_N
+		cntN := 0
+		for _, part := range parts {
+			if !partExistsInRevision(part, rev.ID) {
+				cntN++
+			}
+		}
+
+		for i := 0; i < revModelCount; i++ {
+			colStr := getColName(currentCol + i)
+			cell1 := fmt.Sprintf("%s1", colStr)
+
+			// 設定 Row 1 解鎖樣式
+			st := makeUnlocked(getModelStyle(1, i, revModelCount))
+			if st > 0 {
+				_ = f.SetCellStyle("BigMatrix", cell1, cell1, st)
+			}
+
+			// 寫入 Row 1 公式
+			var formulaStr string
+			if endRow >= 6 {
+				formulaStr = fmt.Sprintf("%d-%d-COUNTIF(%s6:%s%d,\"V\")", cntM, cntN, colStr, colStr, endRow)
+			} else {
+				formulaStr = fmt.Sprintf("%d-%d", cntM, cntN)
+			}
+			_ = f.SetCellFormula("BigMatrix", cell1, formulaStr)
+		}
+
+		currentCol += revModelCount
+	}
+
+	// 動態擴充 Row 1 條件格式化範圍至所有 Model 欄位 (H1:endCol1)
+	// 解決 Excelize 在動態新增欄位時不會自動擴展範本 sqref 條件格式化範圍的問題
+	totalModelCols = currentCol - bomStartCol
+	if totalModelCols > 0 {
+		endColStr := getColName(bomStartCol + totalModelCols - 1)
+		targetRange := fmt.Sprintf("H1:%s1", endColStr)
+		if cfMap, err := f.GetConditionalFormats("BigMatrix"); err == nil && len(cfMap) > 0 {
+			for origRange, cfOptsList := range cfMap {
+				if strings.Contains(origRange, "H1") {
+					_ = f.SetConditionalFormat("BigMatrix", targetRange, cfOptsList)
+				}
+			}
 		}
 	}
 
