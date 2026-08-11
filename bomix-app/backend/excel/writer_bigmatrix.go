@@ -839,6 +839,13 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		}
 	}
 
+	// 對 Model 勾選區塊（以每個物料 group 內的單一 model column 為單位）設定條件格式化：
+	// 檢查條件：
+	//   a. 該 model column 區域內必須且只能有一個勾選 ("V" 或 "v")
+	//   b. 儲存格內容必須為空白或是 "V" or "v"
+	// 若不符合條件，將該區域底色設定為淡紅色 (#FFC7CE)，框線保持不變
+	addModelSelectionConditionalFormatting(f, parts, revisions, options, bomStartCol)
+
 	// 啟用 Excel 工作表保護（不設定密碼 / 空密碼，供使用者需要時自由取消保護）
 	// 效果：灰底儲存格 (Locked: true) 禁止修改，可編輯儲存格 (Locked: false) 允許修改
 	_ = f.ProtectSheet("BigMatrix", &excelize.SheetProtectionOptions{
@@ -1049,4 +1056,86 @@ func resolveBigMatrixSelectedPN(part PartData, revID string, sortOrder int, mode
 		return pn
 	}
 	return ""
+}
+
+/**
+ * addModelSelectionConditionalFormatting 對 BigMatrix Model 勾選區塊設定條件格式化。
+ *
+ * 以每一個物料 group 內的 Model 欄位區域為單位 (Range: H[startRow]:EndCol[endRow])。
+ * 使用相對欄位位址 (H$startRow:H$endRow) 搭配全群組 Model 欄位範圍 (H:EndCol)，
+ * 使 Excel 能以單一條件格式化規則，針對直向每個 Model Column 獨立進行判斷：
+ *   a. 該 model column 區域內必須且只能有一個勾選 ("V" 或 "v")
+ *   b. 儲存格內容必須為空白或是 "V" or "v"
+ * 若不符合條件，該 Model Column 區域底色會自動呈現淡紅色 (#FFC7CE)，框線保持不變。
+ *
+ * @param f *excelize.File - Excelize 檔案物件
+ * @param parts []PartData - 聚合後的物料清單
+ * @param revisions []RevisionData - BOM Revision 清單
+ * @param options ExportOptions - 匯出選項
+ * @param bomStartCol int - Model 欄位起始欄索引 (0-based, 一般為 7 即 H 欄)
+ */
+func addModelSelectionConditionalFormatting(
+	f *excelize.File,
+	parts []PartData,
+	revisions []RevisionData,
+	options ExportOptions,
+	bomStartCol int,
+) {
+	if len(parts) == 0 || len(revisions) == 0 {
+		return
+	}
+
+	// 計算全體 BOM Revision 的 Model 欄位總數
+	totalModelCols := 0
+	for _, rev := range revisions {
+		revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
+		if revModelCount > 0 {
+			totalModelCols += revModelCount
+		}
+	}
+	if totalModelCols <= 0 {
+		return
+	}
+
+	// 建立淡紅色底色樣式 (#FFC7CE)，當區域不符合條件時套用
+	lightRedStyle, err := f.NewConditionalStyle(&excelize.Style{
+		Fill: excelize.Fill{
+			Type:    "pattern",
+			Color:   []string{"#FFC7CE"},
+			Pattern: 1,
+		},
+	})
+	if err != nil {
+		return
+	}
+
+	startColStr := getColName(bomStartCol)
+	endColStr := getColName(bomStartCol + totalModelCols - 1)
+
+	// 計算每個物料 group 的列範圍 (groupStartRow .. groupEndRow)
+	currentRow := 6
+	for _, part := range parts {
+		startR := currentRow
+		endR := currentRow + len(part.SecondSources)
+		currentRow = endR + 1
+
+		// 套用至該群組的所有 Model 欄位範圍 (例如 H7:O9)
+		targetRange := fmt.Sprintf("%s%d:%s%d", startColStr, startR, endColStr, endR)
+
+		// 相對欄位公式 (例如 H$7:H$9)：
+		// 條件 a: COUNTIF(range, "V") <> 1 (必須且只能有一個 V/v)
+		// 條件 b: COUNTIF(range, "") + COUNTIF(range, "V") <> groupRowCount (不可包含空字串/空白與 V/v 以外的非法字元)
+		// 說明：Excel 中 SetCellValue("", cell, "") 寫入的空字串會被 COUNTIF(range, "<>") 視為非空白而誤判，
+		//       使用 COUNTIF(range, "") 能同時統計完全空白儲存格與空字串 ""，完美排除空字串的誤判問題。
+		groupRowCount := endR - startR + 1
+		colRangeStr := fmt.Sprintf("%s$%d:%s$%d", startColStr, startR, startColStr, endR)
+		invalidFormula := fmt.Sprintf(
+			"OR(COUNTIF(%s,\"V\")<>1,COUNTIF(%s,\"\")+COUNTIF(%s,\"V\")<>%d)",
+			colRangeStr, colRangeStr, colRangeStr, groupRowCount,
+		)
+
+		_ = f.SetConditionalFormat("BigMatrix", targetRange, []excelize.ConditionalFormatOptions{
+			{Type: "formula", Criteria: invalidFormula, Format: &lightRedStyle},
+		})
+	}
 }

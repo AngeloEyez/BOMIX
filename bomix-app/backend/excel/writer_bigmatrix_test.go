@@ -1711,6 +1711,139 @@ func TestExportBigMatrix_Row1Formula(t *testing.T) {
 	}
 }
 
+func TestAddModelSelectionConditionalFormatting(t *testing.T) {
+	// 建立測試資料：包含 2 個物料 Group 與 2 個 BOM Revision
+	// Group 1 (Row 6..7): 1 主料 + 1 替代料
+	// Group 2 (Row 8): 1 主料 (無替代料)
+	// Rev 101 (Col H, I): 2 個 Model
+	// Rev 102 (Col J): 1 個 Model
+
+	tempDir, err := os.MkdirTemp("", "bigmatrix_cf_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	targetPath := filepath.Join(tempDir, "CF_BigMatrix_Test.xlsx")
+	lg := logger.NewLogger(100)
+	writer, err := NewWriter(lg)
+	if err != nil {
+		t.Fatalf("Failed to create writer: %v", err)
+	}
+
+	parts := []PartData{
+		{
+			Item:        "1",
+			HHPN:        "PN001",
+			Description: "Main Part 1",
+			Supplier:    "Supp A",
+			SupplierPn:  "SPN001",
+			Qty:         1,
+			Location:    "C1",
+			CCL:         true,
+			BOMStatus:   "M",
+			SecondSources: []SecondSourceData{
+				{
+					HHPN:        "PN001-SS1",
+					Description: "2nd Source 1",
+					Supplier:    "Supp B",
+					SupplierPn:  "SPN001-SS1",
+				},
+			},
+		},
+		{
+			Item:        "2",
+			HHPN:        "PN002",
+			Description: "Main Part 2",
+			Supplier:    "Supp C",
+			SupplierPn:  "SPN002",
+			Qty:         1,
+			Location:    "C2",
+			CCL:         true,
+			BOMStatus:   "M",
+		},
+	}
+
+	revisions := []RevisionData{
+		{
+			ID:          "101",
+			ProjectCode: "PROJ1",
+			Phase:       "EVT",
+			Version:     "v1",
+			ModelNames:  []string{"Model A", "Model B"},
+		},
+		{
+			ID:          "102",
+			ProjectCode: "PROJ1",
+			Phase:       "DVT",
+			Version:     "v1",
+			ModelNames:  []string{"Model C"},
+		},
+	}
+
+	options := ExportOptions{
+		Format:     types.FormatBigMatrix,
+		OutputPath: targetPath,
+		PartData:   parts,
+		Revisions:  revisions,
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+	if len(paths) == 0 {
+		t.Fatalf("Expected output path, got empty slice")
+	}
+
+	f, err := excelize.OpenFile(targetPath)
+	if err != nil {
+		t.Fatalf("Failed to open exported Excel file: %v", err)
+	}
+	defer f.Close()
+
+	cfMap, err := f.GetConditionalFormats("BigMatrix")
+	if err != nil {
+		t.Fatalf("GetConditionalFormats failed: %v", err)
+	}
+
+	// Group 1 (Row 6..7) 涵蓋 Col H..J 的條件格式化範圍為 H6:J7
+	// 相對欄位公式應為: OR(COUNTIF(H$6:H$7,"V")<>1,COUNTIF(H$6:H$7,"")+COUNTIF(H$6:H$7,"V")<>2)
+	expectedFormulaGroup1 := "OR(COUNTIF(H$6:H$7,\"V\")<>1,COUNTIF(H$6:H$7,\"\")+COUNTIF(H$6:H$7,\"V\")<>2)"
+
+	foundFormula1 := false
+	if cfList, ok := cfMap["H6:J7"]; ok {
+		for _, cf := range cfList {
+			if cf.Value == expectedFormulaGroup1 || cf.Criteria == expectedFormulaGroup1 {
+				foundFormula1 = true
+				break
+			}
+		}
+	}
+
+	if !foundFormula1 {
+		t.Errorf("Expected conditional format formula %q on range H6:J7 not found in cfMap: %+v", expectedFormulaGroup1, cfMap)
+	}
+
+	// Group 2 (Row 8) 涵蓋 Col H..J 的條件格式化範圍為 H8:J8
+	// 相對欄位公式應為: OR(COUNTIF(H$8:H$8,"V")<>1,COUNTIF(H$8:H$8,"")+COUNTIF(H$8:H$8,"V")<>1)
+	expectedFormulaGroup2 := "OR(COUNTIF(H$8:H$8,\"V\")<>1,COUNTIF(H$8:H$8,\"\")+COUNTIF(H$8:H$8,\"V\")<>1)"
+
+	foundFormula2 := false
+	if cfList, ok := cfMap["H8:J8"]; ok {
+		for _, cf := range cfList {
+			if cf.Value == expectedFormulaGroup2 || cf.Criteria == expectedFormulaGroup2 {
+				foundFormula2 = true
+				break
+			}
+		}
+	}
+
+	if !foundFormula2 {
+		t.Errorf("Expected conditional format formula %q on range H8:J8 not found in cfMap: %+v", expectedFormulaGroup2, cfMap)
+	}
+}
+
 
 
 
