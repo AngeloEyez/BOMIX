@@ -14,6 +14,7 @@ export type {
     LogEntry,
     LoggerSettings,
     Project,
+    ProjectExportSetting,
     RecentFile,
     RecentFilesSettings,
     SeriesInfo,

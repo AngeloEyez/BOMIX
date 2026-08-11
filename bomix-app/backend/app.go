@@ -170,6 +170,11 @@ func (a *App) OpenSeries(path string) error {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 
+	// 自動遷移 DB schema，確保舊版資料庫自動補齊新欄位 (如 project_export_order)
+	if err := db.AutoMigrate(database); err != nil {
+		a.logger.Warn(fmt.Sprintf("開啟系列時自動遷移 schema 警告: %v", err))
+	}
+
 	// Store the database connection
 	a.mu.Lock()
 	a.db = database
@@ -222,8 +227,25 @@ func (a *App) GetSeriesInfo() (*SeriesInfo, error) {
 	}
 
 	var projectOrder []string
+	projectModelCounts := make(map[string]int)
+
 	if strings.TrimSpace(series.ProjectExportOrder) != "" {
-		_ = json.Unmarshal([]byte(series.ProjectExportOrder), &projectOrder)
+		// 優先解析包含 ProjectCode 與 ModelCount 的設定列表
+		var settings []ProjectExportSetting
+		if jsonErr := json.Unmarshal([]byte(series.ProjectExportOrder), &settings); jsonErr == nil && len(settings) > 0 {
+			projectOrder = make([]string, 0, len(settings))
+			for _, st := range settings {
+				if st.ProjectCode != "" {
+					projectOrder = append(projectOrder, st.ProjectCode)
+					if st.ModelCount > 0 {
+						projectModelCounts[st.ProjectCode] = st.ModelCount
+					}
+				}
+			}
+		} else {
+			// 相容舊版僅包含 []string 的 JSON 資料
+			_ = json.Unmarshal([]byte(series.ProjectExportOrder), &projectOrder)
+		}
 	}
 	if projectOrder == nil {
 		projectOrder = []string{}
@@ -236,17 +258,18 @@ func (a *App) GetSeriesInfo() (*SeriesInfo, error) {
 		Path:               a.cfg.LastOpenedFile,
 		LastExportPath:     series.LastExportPath,
 		ProjectExportOrder: projectOrder,
+		ProjectModelCounts: projectModelCounts,
 	}, nil
 }
 
-// SaveProjectExportOrder 即時儲存 BigMatrix 匯出對話框中的 Project 排序紀錄至 Series 資料表
+// SaveProjectExportOrder 即時儲存 BigMatrix 匯出對話框中的 Project 排序與 Model 數量設定紀錄至 Series 資料表
 //
 // 參數：
-//   - projectCodes：專案 Code 順序列表
+//   - settings：專案匯出設定列表（包含 ProjectCode 與 ModelCount）
 //
 // 回傳：
 //   - error：若未開啟資料庫或 JSON 轉換/寫入失敗則回傳錯誤
-func (a *App) SaveProjectExportOrder(projectCodes []string) error {
+func (a *App) SaveProjectExportOrder(settings []ProjectExportSetting) error {
 	a.mu.RLock()
 	dbConn := a.db
 	a.mu.RUnlock()
@@ -256,10 +279,10 @@ func (a *App) SaveProjectExportOrder(projectCodes []string) error {
 		return fmt.Errorf("no series is currently open")
 	}
 
-	orderJSON, err := json.Marshal(projectCodes)
+	orderJSON, err := json.Marshal(settings)
 	if err != nil {
-		a.logger.Error(fmt.Sprintf("[SaveProjectExportOrder] JSON 序列化 Project 排序失敗: %v", err))
-		return fmt.Errorf("failed to marshal project export order: %w", err)
+		a.logger.Error(fmt.Sprintf("[SaveProjectExportOrder] JSON 序列化 Project 排序與 Model 數量失敗: %v", err))
+		return fmt.Errorf("failed to marshal project export settings: %w", err)
 	}
 
 	if err := db.UpdateProjectExportOrder(dbConn, string(orderJSON)); err != nil {
@@ -267,7 +290,7 @@ func (a *App) SaveProjectExportOrder(projectCodes []string) error {
 		return fmt.Errorf("failed to update project export order in db: %w", err)
 	}
 
-	a.logger.Info(fmt.Sprintf("[SaveProjectExportOrder] 成功儲存 Project 匯出排序紀錄: %v", projectCodes))
+	a.logger.Info(fmt.Sprintf("[SaveProjectExportOrder] 成功儲存 Project 匯出排序與 Model 數量紀錄: %+v", settings))
 	return nil
 }
 

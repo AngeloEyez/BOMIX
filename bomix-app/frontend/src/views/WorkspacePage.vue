@@ -265,6 +265,8 @@
                     :min="1"
                     :disabled="exportFormat.toLowerCase() === 'matrix'"
                     class="card-model-input"
+                    @change="saveProjectOrderFromCards"
+                    @update:modelValue="saveProjectOrderFromCards"
                   />
                 </div>
                 <Button
@@ -576,28 +578,37 @@ function sortCardsByProjectRecord(cards: SelectedRevisionCard[]): SelectedRevisi
 }
 
 /**
- * 從目前 selectedCards 的順序提取不重複的 Project Code 序列，並即時儲存至 Series 資料表
+ * 從目前 selectedCards 的順序與 ModelCount 提取 Project 設定列表，並即時儲存至 Series 資料表
  */
 async function saveProjectOrderFromCards(): Promise<void> {
+  const settings: Array<{ projectCode: string; modelCount: number }> = []
   const projectOrder: string[] = []
+  const projectModelCounts: Record<string, number> = {}
+
   for (const card of selectedCards.value) {
     if (card.projectCode && !projectOrder.includes(card.projectCode)) {
       projectOrder.push(card.projectCode)
+      projectModelCounts[card.projectCode] = card.modelCount
+      settings.push({
+        projectCode: card.projectCode,
+        modelCount: card.modelCount
+      })
     }
   }
 
   // 即時更新 AppStore 記憶體快取
   if (appStore.seriesInfo) {
     appStore.seriesInfo.projectExportOrder = projectOrder
+    appStore.seriesInfo.projectModelCounts = projectModelCounts
   }
 
   // 寫入 DB
   try {
-    await SaveProjectExportOrder(projectOrder)
-    logStore.addLogEntry('DEBUG', `已即時更新 Project 匯出排序紀錄：[${projectOrder.join(', ')}]`)
+    await SaveProjectExportOrder(settings)
+    logStore.addLogEntry('DEBUG', `已即時更新 Project 匯出排序與 Model 數量紀錄：[${projectOrder.map(c => `${c}:${projectModelCounts[c]}`).join(', ')}]`)
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    logStore.addLogEntry('WARN', `儲存 Project 匯出排序紀錄失敗：${msg}`)
+    logStore.addLogEntry('WARN', `儲存 Project 匯出排序與 Model 數量紀錄失敗：${msg}`)
   }
 }
 
@@ -614,7 +625,8 @@ function onRevisionsChange(): void {
       const opt = allRevisions.value.find(r => r.id === id)
       if (opt) {
         const dbCount = opt.modelCount || 0
-        const initialCount = dbCount > 0 ? dbCount : 3
+        const savedCount = appStore.seriesInfo?.projectModelCounts?.[opt.projectCode]
+        const initialCount = (savedCount && savedCount > 0) ? savedCount : (dbCount > 0 ? dbCount : 3)
         selectedCards.value.push({
           id: opt.id,
           projectId: opt.projectId,
@@ -631,6 +643,15 @@ function onRevisionsChange(): void {
 
   // 依據歷史 Project 排序紀錄自動重新排序（未在紀錄中排前面，其餘依紀錄排序）
   selectedCards.value = sortCardsByProjectRecord(selectedCards.value)
+
+  // 取回與套用歷史儲存的 Model 數量（若有的話）
+  for (const card of selectedCards.value) {
+    const savedCount = appStore.seriesInfo?.projectModelCounts?.[card.projectCode]
+    if (savedCount && savedCount > 0) {
+      card.modelCount = savedCount
+    }
+  }
+
   exportRevisions.value = selectedCards.value.map(c => c.id)
 
   updateBigMatrixFilenameIfNeed()

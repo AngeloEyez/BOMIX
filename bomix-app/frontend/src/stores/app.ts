@@ -10,6 +10,7 @@ export interface SeriesInfo {
   path: string
   lastExportPath?: string
   projectExportOrder?: string[]
+  projectModelCounts?: Record<string, number>
 }
 
 export const useAppStore = defineStore('app', () => {
@@ -43,6 +44,7 @@ export const useAppStore = defineStore('app', () => {
         path,
         lastExportPath: info.lastExportPath || '',
         projectExportOrder: info.projectExportOrder || [],
+        projectModelCounts: info.projectModelCounts || {},
       }
       isOpen.value = true
     } catch (err) {
@@ -69,6 +71,7 @@ export const useAppStore = defineStore('app', () => {
         path,
         lastExportPath: info?.lastExportPath || '',
         projectExportOrder: info?.projectExportOrder || [],
+        projectModelCounts: info?.projectModelCounts || {},
       }
       isOpen.value = true
     } catch (err) {

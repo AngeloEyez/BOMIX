@@ -384,8 +384,8 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	}
 
 	// Calculate and apply uniform column width for all model columns (H onwards)
-	maxColWidthReq := 5.0
-	padding := 2.0
+	maxColWidthReq := 3.0
+	padding := 0.5 // 欄寬邊距 (margin) 設定為 1.0
 
 	for _, rev := range revisions {
 		revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])

@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"strings"
 
 	"gorm.io/gorm"
 )
@@ -51,5 +52,13 @@ func GetSeries(db *gorm.DB, id int64) (*Series, error) {
 // 回傳：
 //   - error：若更新失敗則回傳錯誤
 func UpdateProjectExportOrder(db *gorm.DB, projectOrder string) error {
-	return db.Model(&Series{}).Where("id = ?", 1).Update("project_export_order", projectOrder).Error
+	err := db.Model(&Series{}).Where("id = ?", 1).Update("project_export_order", projectOrder).Error
+	if err != nil && strings.Contains(err.Error(), "no such column") {
+		// 若遇到舊版 DB 缺少欄位，自動補建 schema 並重試一次
+		if migErr := AutoMigrate(db); migErr == nil {
+			return db.Model(&Series{}).Where("id = ?", 1).Update("project_export_order", projectOrder).Error
+		}
+	}
+	return err
 }
+

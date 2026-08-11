@@ -224,13 +224,17 @@ func TestSaveProjectExportOrder(t *testing.T) {
 		t.Errorf("初始 ProjectExportOrder 應為空，實際 got %v", info.ProjectExportOrder)
 	}
 
-	// 2. 儲存 Project 匯出排序紀錄
-	expectedOrder := []string{"PROJ_B", "PROJ_A", "PROJ_C"}
-	if err := app.SaveProjectExportOrder(expectedOrder); err != nil {
+	// 2. 儲存 Project 匯出排序與 Model 數量紀錄
+	expectedSettings := []ProjectExportSetting{
+		{ProjectCode: "PROJ_B", ModelCount: 4},
+		{ProjectCode: "PROJ_A", ModelCount: 2},
+		{ProjectCode: "PROJ_C", ModelCount: 5},
+	}
+	if err := app.SaveProjectExportOrder(expectedSettings); err != nil {
 		t.Fatalf("SaveProjectExportOrder 失敗: %v", err)
 	}
 
-	// 3. 再次讀取並驗證
+	// 3. 再次讀取並驗證 Project 順序與 ModelCounts
 	info2, err := app.GetSeriesInfo()
 	if err != nil {
 		t.Fatalf("GetSeriesInfo 失敗: %v", err)
@@ -238,10 +242,17 @@ func TestSaveProjectExportOrder(t *testing.T) {
 	if len(info2.ProjectExportOrder) != 3 {
 		t.Fatalf("期望 ProjectExportOrder 元素數為 3，實際 got %d", len(info2.ProjectExportOrder))
 	}
+	expectedOrder := []string{"PROJ_B", "PROJ_A", "PROJ_C"}
 	for i, code := range expectedOrder {
 		if info2.ProjectExportOrder[i] != code {
 			t.Errorf("Index %d 期望 %s，實際 got %s", i, code, info2.ProjectExportOrder[i])
 		}
+	}
+	if info2.ProjectModelCounts["PROJ_B"] != 4 {
+		t.Errorf("期望 PROJ_B ModelCount=4，實際 got %d", info2.ProjectModelCounts["PROJ_B"])
+	}
+	if info2.ProjectModelCounts["PROJ_A"] != 2 {
+		t.Errorf("期望 PROJ_A ModelCount=2，實際 got %d", info2.ProjectModelCounts["PROJ_A"])
 	}
 }
 

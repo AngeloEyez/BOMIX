@@ -87,6 +87,14 @@ export interface Project {
 }
 
 /**
+ * ProjectExportSetting 代表單一 Project 的匯出排序與 Model 數量設定
+ */
+export interface ProjectExportSetting {
+    "projectCode": string;
+    "modelCount": number;
+}
+
+/**
  * RecentFile 代表最近開啟的檔案紀錄
  */
 export interface RecentFile {
@@ -114,6 +122,7 @@ export interface SeriesInfo {
     "path": string;
     "lastExportPath": string;
     "projectExportOrder": string[] | null;
+    "projectModelCounts": { [_ in string]?: number } | null;
 }
 
 /**

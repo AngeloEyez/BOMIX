@@ -12,6 +12,11 @@ import type { ViewResult, ViewPartGroup, ViewRevision, ViewSecondSource, ViewMod
 export type { ViewResult, ViewPartGroup, ViewRevision, ViewSecondSource, ViewModelSelection }
 
 // Type definitions matching backend models
+export interface ProjectExportSetting {
+  projectCode: string
+  modelCount: number
+}
+
 export interface SeriesInfo {
   id: number
   name: string
@@ -19,6 +24,7 @@ export interface SeriesInfo {
   path: string
   lastExportPath: string
   projectExportOrder?: string[]
+  projectModelCounts?: Record<string, number>
 }
 
 export interface RecentFile {
@@ -249,9 +255,9 @@ export async function GetSeriesInfo(path?: string): Promise<SeriesInfo> {
   }
 }
 
-export async function SaveProjectExportOrder(projectCodes: string[]): Promise<void> {
+export async function SaveProjectExportOrder(settings: ProjectExportSetting[]): Promise<void> {
   try {
-    await App.SaveProjectExportOrder(projectCodes)
+    await App.SaveProjectExportOrder(settings as unknown as any)
   } catch (error) {
     handleApiError(error, 'SaveProjectExportOrder')
   }
