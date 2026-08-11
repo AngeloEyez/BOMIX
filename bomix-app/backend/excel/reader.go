@@ -18,9 +18,10 @@ type Reader interface {
 
 // ReaderImpl is the main Excel reader implementation
 type ReaderImpl struct {
-	db       *gorm.DB
-	detector *Detector
-	logger   *logger.Logger
+	db         *gorm.DB
+	detector   *Detector
+	logger     *logger.Logger
+	progressCb func(progress float64, message string)
 }
 
 // NewReader creates a new Excel reader
@@ -30,6 +31,11 @@ func NewReader(db *gorm.DB, logger *logger.Logger) *ReaderImpl {
 		detector: NewDetector(logger),
 		logger:   logger,
 	}
+}
+
+// SetProgressCallback 設定進度回報回調函數
+func (r *ReaderImpl) SetProgressCallback(progressCb func(float64, string)) {
+	r.progressCb = progressCb
 }
 
 // ImportExcel imports multiple Excel files
@@ -94,10 +100,11 @@ func (r *ReaderImpl) importEBOM(f Workbook, path string) (types.ImportResult, er
 
 	// Delegate to the EBOM reader
 	ebomReader := &EBOMReader{
-		db:       r.db,
-		result:   &result,
-		filePath: path,
-		logger:   r.logger,
+		db:         r.db,
+		result:     &result,
+		filePath:   path,
+		logger:     r.logger,
+		progressCb: r.progressCb,
 	}
 
 	err := ebomReader.Import(f)
@@ -115,9 +122,10 @@ func (r *ReaderImpl) importBigMatrix(f Workbook, path string) (types.ImportResul
 
 	// 委派給 BigMatrixReader 處理
 	bigMatrixReader := &BigMatrixReader{
-		db:     r.db,
-		result: &result,
-		logger: r.logger,
+		db:         r.db,
+		result:     &result,
+		logger:     r.logger,
+		progressCb: r.progressCb,
 	}
 
 	err := bigMatrixReader.Import(f)
@@ -133,6 +141,7 @@ func (r *ReaderImpl) importMatrix(f Workbook, path string) (types.ImportResult, 
 
 	// Delegate to the Matrix reader
 	matrixReader := NewMatrixReader(r.db, &result, r.logger)
+	matrixReader.progressCb = r.progressCb
 	err := matrixReader.Import(f)
 	return result, err
 }

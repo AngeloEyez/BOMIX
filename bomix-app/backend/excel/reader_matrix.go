@@ -26,9 +26,10 @@ type validModelInfo struct {
 // MatrixReader handles Matrix format import
 // See product-spec section 7.3
 type MatrixReader struct {
-	db     *gorm.DB
-	result *types.ImportResult
-	logger *logger.Logger
+	db         *gorm.DB
+	result     *types.ImportResult
+	logger     *logger.Logger
+	progressCb func(progress float64, message string)
 }
 
 // NewMatrixReader creates a new MatrixReader instance
@@ -192,6 +193,17 @@ func (r *MatrixReader) Import(f Workbook) error {
 	var selectionsToCreate []db.MatrixSelection
 	seenSelections := make(map[string]bool) // Key: modelID|group|material 用於去重，防止違反 UNIQUE 約束
 
+	// 計算全表待處理資料列數並初始化 ProgressTracker
+	totalRows := 0
+	for _, sReq := range targetSheets {
+		if sName := r.findSheetCaseInsensitive(sheets, sReq); sName != "" {
+			if rws, err := f.GetRows(sName); err == nil && len(rws) > 5 {
+				totalRows += len(rws) - 5
+			}
+		}
+	}
+	tracker := NewProgressTracker(totalRows, 20, "正在解析與匯入 Matrix BOM...", r.progressCb)
+
 	if r.logger != nil {
 		r.logger.Info("[Matrix] 開始掃描工作表物料勾選",
 			"targetSheets", targetSheets,
@@ -225,6 +237,9 @@ func (r *MatrixReader) Import(f Workbook) error {
 
 		// 從 Row 6 (Index 5) 開始讀取
 		for i := 5; i < len(rows); i++ {
+			if tracker != nil {
+				tracker.AddRows(1)
+			}
 			row := rows[i]
 			if len(row) == 0 {
 				continue

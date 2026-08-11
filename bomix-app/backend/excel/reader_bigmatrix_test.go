@@ -9,6 +9,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"bomix-app/backend/db"
+	"bomix-app/backend/task"
 	"bomix-app/backend/view"
 )
 
@@ -592,7 +593,7 @@ func TestDDDBomx_ImportExportCycle(t *testing.T) {
 	reader := &BigMatrixReader{db: database}
 
 	// 執行匯入
-	if err := reader.Import(wb); err != nil {
+	if err := reader.Import(wb); err != nil && !task.IsWarningError(err) {
 		t.Fatalf("Import failed: %v", err)
 	}
 

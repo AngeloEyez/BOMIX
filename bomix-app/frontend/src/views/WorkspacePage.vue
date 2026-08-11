@@ -693,9 +693,9 @@ async function executeImport(): Promise<void> {
     const results = await ImportExcel(importFilePaths.value)
     importResults.value = results
     
-    // 初始化或向 taskStore 登記任務狀態
+    // 初始化或向 taskStore 登記任務狀態（若背景事件尚未建立才新增）
     for (const r of results) {
-      if (r.taskID) {
+      if (r.taskID && !taskStore.getTask(r.taskID)) {
         taskStore.updateTask(r.taskID, {
           id: r.taskID,
           name: `Import: ${r.fileName}`,

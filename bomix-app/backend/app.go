@@ -482,6 +482,7 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 
 				// 建立專屬單次開檔與解析的 Reader
 				taskExcelReader := excel.NewReader(dbConn, taskLogger)
+				taskExcelReader.SetProgressCallback(progress)
 
 				// 執行單次開檔、前置驗證與資料匯入
 				importResults, err := taskExcelReader.ImportExcel([]string{filePath})

@@ -23,6 +23,7 @@ type EBOMReader struct {
 	filePath   string // EBOM 匯入檔案路徑
 	revisionID int64  // 匯入後設定
 	logger     *logger.Logger
+	progressCb func(progress float64, message string)
 }
 
 // Import 匯入 EBOM 格式 Excel 檔案。
@@ -45,6 +46,18 @@ func (r *EBOMReader) Import(f Workbook) error {
 	protoSheet := r.findSheetCaseInsensitive(sheets, "PROTO")
 	mpSheet := r.findSheetCaseInsensitive(sheets, "MP")
 	cclSheet := r.findSheetCaseInsensitive(sheets, "CCL")
+
+	// ─── 計算全表待處理資料列數並初始化 10% 單位 ProgressTracker ───────────────
+	allSheetsToCount := []string{smdSheet, pthSheet, bottomSheet, niSheet, protoSheet, mpSheet, cclSheet}
+	totalRows := 0
+	for _, sName := range allSheetsToCount {
+		if sName != "" {
+			if rws, err := f.GetRows(sName); err == nil && len(rws) > 5 {
+				totalRows += len(rws) - 5
+			}
+		}
+	}
+	tracker := NewProgressTracker(totalRows, 20, "正在解析與匯入 EBOM BOM...", r.progressCb)
 
 	var phase, version, description, schematicVersion, pcbVersion, pcaPn, date, projectCode string
 	var err error
@@ -84,7 +97,7 @@ func (r *EBOMReader) Import(f Workbook) error {
 		if ms.name == "" {
 			continue
 		}
-		locs, ssList := r.parseMainSheetV2(f, ms.name, ms.sheetType, partMap, &partList)
+		locs, ssList := r.parseMainSheetV2(f, ms.name, ms.sheetType, partMap, &partList, tracker)
 		allParsedLocations = append(allParsedLocations, locs...)
 		parsedSSList = append(parsedSSList, ssList...)
 
@@ -102,7 +115,7 @@ func (r *EBOMReader) Import(f Workbook) error {
 
 	// 處理 NI sheet（bom_status = X）
 	if niSheet != "" {
-		locs := r.parseNISheet(f, niSheet, partMap, &partList)
+		locs := r.parseNISheet(f, niSheet, partMap, &partList, tracker)
 		allParsedLocations = append(allParsedLocations, locs...)
 		for _, loc := range locs {
 			phase1LocationSet[loc.location] = true
@@ -146,7 +159,7 @@ func (r *EBOMReader) Import(f Workbook) error {
 
 	// 處理 PROTO sheet（更新 bom_status = P）
 	if protoSheet != "" {
-		protoLocations = r.parsePhase2Sheet(f, protoSheet)
+		protoLocations = r.parsePhase2Sheet(f, protoSheet, tracker)
 		var locationIDsToUpdate []int64
 		for _, loc := range protoLocations {
 			if target, exists := locIndexMap[loc]; exists {
@@ -176,7 +189,7 @@ func (r *EBOMReader) Import(f Workbook) error {
 
 	// 處理 MP sheet（更新 bom_status = M）
 	if mpSheet != "" {
-		mpLocations = r.parsePhase2Sheet(f, mpSheet)
+		mpLocations = r.parsePhase2Sheet(f, mpSheet, tracker)
 		var locationIDsToUpdate []int64
 		for _, loc := range mpLocations {
 			if target, exists := locIndexMap[loc]; exists {
@@ -200,7 +213,7 @@ func (r *EBOMReader) Import(f Workbook) error {
 
 	// 處理 CCL sheet（更新 ccl = true）
 	if cclSheet != "" {
-		cclLocations := r.parsePhase2Sheet(f, cclSheet)
+		cclLocations := r.parsePhase2Sheet(f, cclSheet, tracker)
 		var locationIDsToUpdate []int64
 		for _, loc := range cclLocations {
 			if target, exists := locIndexMap[loc]; exists {
@@ -499,6 +512,7 @@ func (r *EBOMReader) parseMainSheetV2(
 	sheetName, sheetType string,
 	partMap map[string]*db.Part,
 	partList *[]*db.Part,
+	tracker *ProgressTracker,
 ) ([]parsedPartLocation, []parsedSecondSource) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
@@ -510,6 +524,9 @@ func (r *EBOMReader) parseMainSheetV2(
 	var currentMainPart *db.Part
 
 	for i := 5; i < len(rows); i++ {
+		if tracker != nil {
+			tracker.AddRows(1)
+		}
 		row := rows[i]
 		if len(row) == 0 {
 			continue
@@ -593,6 +610,7 @@ func (r *EBOMReader) parseNISheet(
 	sheetName string,
 	partMap map[string]*db.Part,
 	partList *[]*db.Part,
+	tracker *ProgressTracker,
 ) []parsedPartLocation {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
@@ -602,6 +620,9 @@ func (r *EBOMReader) parseNISheet(
 	var locationList []parsedPartLocation
 
 	for i := 5; i < len(rows); i++ {
+		if tracker != nil {
+			tracker.AddRows(1)
+		}
 		row := rows[i]
 		if len(row) == 0 {
 			continue
@@ -652,7 +673,7 @@ func (r *EBOMReader) parseNISheet(
 
 // parsePhase2Sheet 解析 Phase 2 狀態 sheet（PROTO / MP / CCL），僅收集 location 字串清單。
 // Phase 2 不建立新物料，只回傳要更新的 location 列表。
-func (r *EBOMReader) parsePhase2Sheet(f Workbook, sheetName string) []string {
+func (r *EBOMReader) parsePhase2Sheet(f Workbook, sheetName string, tracker *ProgressTracker) []string {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return nil
@@ -660,6 +681,9 @@ func (r *EBOMReader) parsePhase2Sheet(f Workbook, sheetName string) []string {
 
 	var locations []string
 	for i := 5; i < len(rows); i++ {
+		if tracker != nil {
+			tracker.AddRows(1)
+		}
 		row := rows[i]
 		if len(row) == 0 {
 			continue

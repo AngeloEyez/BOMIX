@@ -181,6 +181,7 @@ func (tm *TaskManager) SubmitWithID(taskID, name, taskType string, fn TaskFunc) 
 				"taskID":   taskID,
 				"progress": progress,
 				"message":  message,
+				"status":   string(types.TaskRunning),
 			})
 
 			if tm.logger != nil {

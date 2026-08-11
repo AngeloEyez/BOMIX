@@ -14,10 +14,11 @@ import (
 
 // BigMatrixReader handles BigMatrix format import
 type BigMatrixReader struct {
-	db       *gorm.DB
-	result   *types.ImportResult
-	logger   *logger.Logger
-	warnings []string // 累積所有非致命性警告訊息，供最終回傳 WarningError 使用
+	db         *gorm.DB
+	result     *types.ImportResult
+	logger     *logger.Logger
+	progressCb func(progress float64, message string)
+	warnings   []string // 累積所有非致命性警告訊息，供最終回傳 WarningError 使用
 }
 
 // Import imports a BigMatrix format file.
@@ -47,8 +48,15 @@ func (r *BigMatrixReader) Import(f Workbook) error {
 		return fmt.Errorf("failed to parse BOM configs: %w", err)
 	}
 
+	// 建立 10% 單位 ProgressTracker
+	totalRows := 0
+	if rws, err := f.GetRows(bigMatrixSheet); err == nil && len(rws) > 5 {
+		totalRows = len(rws) - 5
+	}
+	tracker := NewProgressTracker(totalRows, 20, "正在解析與匯入 BigMatrix BOM...", r.progressCb)
+
 	// 解析零件資料與矩陣勾選狀態
-	if err := r.parsePartsAndSelections(f, bigMatrixSheet, bomConfigs); err != nil {
+	if err := r.parsePartsAndSelections(f, bigMatrixSheet, bomConfigs, tracker); err != nil {
 		return fmt.Errorf("failed to parse parts and selections: %w", err)
 	}
 
@@ -301,7 +309,7 @@ func (r *BigMatrixReader) findExistingBOMRevision(config BOMConfig) (int64, bool
 
 // parsePartsAndSelections parses parts and their selections across multiple BOMs
 // See product-spec sections 7.2.2.2 and 7.2.2.3
-func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, configs []BOMConfig) error {
+func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, configs []BOMConfig, tracker *ProgressTracker) error {
 	// Get all rows from the sheet
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
@@ -373,6 +381,9 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 	validPartCount := 0
 	// 從 Row 6 開始逐行讀取零件與 Model 勾選 (0-indexed 為 5)
 	for i := 5; i < len(rows); i++ {
+		if tracker != nil {
+			tracker.AddRows(1)
+		}
 		row := rows[i]
 		if len(row) == 0 {
 			continue

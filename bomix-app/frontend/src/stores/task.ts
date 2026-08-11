@@ -40,9 +40,26 @@ export const useTaskStore = defineStore('task', () => {
     tasks.value.push(task)
   }
 
+  /**
+   * 更新或新增 Task 狀態
+   * 具備終結狀態保護機制：若當前任務已處於終結狀態（completed/failed/warning/cancelled），
+   * 則不允許舊的或亂序的 queued/running 事件覆蓋狀態。
+   */
   function updateTask(taskId: string, updates: Partial<Task>): void {
     const index = tasks.value.findIndex(t => t.id === taskId)
+    const terminalStates = ['completed', 'failed', 'warning', 'cancelled']
+    
     if (index !== -1) {
+      const currentTask = tasks.value[index]
+      const isTerminal = terminalStates.includes(currentTask.status)
+      const isIncomingNonTerminal = updates.status && ['queued', 'running', 'created'].includes(updates.status)
+
+      // 若目前任務已完成/失敗/警告/取消，且傳入的新狀態為非終結狀態，則忽略 status 的更新
+      if (isTerminal && isIncomingNonTerminal) {
+        const { status, ...safeUpdates } = updates
+        tasks.value[index] = { ...tasks.value[index], ...safeUpdates }
+        return
+      }
       tasks.value[index] = { ...tasks.value[index], ...updates }
     } else {
       tasks.value.push({
@@ -126,10 +143,15 @@ export const useTaskStore = defineStore('task', () => {
       const payload = data as any
       const id = payload.taskID || payload.id
       if (!id) return
+      const existing = getTask(id)
+      // 若任務已屬於終結狀態，忽略後續的進度推送
+      if (existing && ['completed', 'failed', 'warning', 'cancelled'].includes(existing.status)) {
+        return
+      }
       const rawProg = payload.progress || 0
       const progressVal = rawProg <= 1.0 ? Math.round(rawProg * 100) : Math.round(rawProg)
       updateTask(id, {
-        status: payload.status || 'running',
+        status: payload.status || existing?.status || 'running',
         progress: progressVal,
         message: payload.message || '',
         updatedAt: new Date().toISOString(),
