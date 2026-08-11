@@ -1901,6 +1901,53 @@ func TestBigMatrixSelectionSupplierMatching(t *testing.T) {
 	}
 }
 
+// TestExportBigMatrix_SheetProtection 驗證 BigMatrix 匯出時工作表保護設定包含欄格式、列格式與儲存格格式權限
+func TestExportBigMatrix_SheetProtection(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bomix-protection-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:      types.FormatBigMatrix,
+		OutputPath:  filepath.Join(tmpDir, "test_protection.xlsx"),
+		Description: "Test Sheet Protection",
+		PartData:    []PartData{},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open exported Excel file: %v", err)
+	}
+	defer f.Close()
+
+	opts, err := f.GetSheetProtection("BigMatrix")
+	if err != nil {
+		t.Fatalf("GetSheetProtection failed: %v", err)
+	}
+
+	if !opts.FormatCells {
+		t.Errorf("Expected FormatCells to be true, got false")
+	}
+	if !opts.FormatColumns {
+		t.Errorf("Expected FormatColumns to be true, got false")
+	}
+	if !opts.FormatRows {
+		t.Errorf("Expected FormatRows to be true, got false")
+	}
+}
+
 
 
 

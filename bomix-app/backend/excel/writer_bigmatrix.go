@@ -846,11 +846,15 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 
 	// 啟用 Excel 工作表保護（不設定密碼 / 空密碼，供使用者需要時自由取消保護）
 	// 效果：灰底儲存格 (Locked: true) 禁止修改，可編輯儲存格 (Locked: false) 允許修改
+	// 權限：允許點選鎖定/解鎖儲存格，並允許設定欄、列及儲存格格式
 	_ = f.ProtectSheet("BigMatrix", &excelize.SheetProtectionOptions{
 		AlgorithmName:       "SHA-512",
 		Password:            "",
 		SelectLockedCells:   true, // 允許點選鎖定儲存格 (唯讀)
 		SelectUnlockedCells: true, // 允許點選並編輯解鎖儲存格
+		FormatCells:         true, // 允許設定儲存格格式
+		FormatColumns:       true, // 允許設定欄格式
+		FormatRows:          true, // 允許設定列格式
 		EditObjects:         true,
 		EditScenarios:       true,
 	})
