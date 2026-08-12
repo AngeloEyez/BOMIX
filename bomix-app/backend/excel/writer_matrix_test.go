@@ -1047,9 +1047,82 @@ func TestExportMatrix_OverwriteExistingFileWithWarning(t *testing.T) {
 	_ = f.Close()
 }
 
+// TestExportMatrix_GroupMasterQtyFormula 驗證 Matrix 匯出時，物料群組內主料與所有替代料的 I 欄公式
+// 均固定引用該群組主料列的 G 欄 Qty（例如：Row 6 主料 I6="=G6*J6", Row 7 替代料 I7="=G6*J7", Row 8 替代料 I8="=G6*J8"）。
+func TestExportMatrix_GroupMasterQtyFormula(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bomix-groupqty-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
 
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("Failed to create writer: %v", err)
+	}
 
+	options := ExportOptions{
+		Format:     types.FormatMatrix,
+		OutputPath: filepath.Join(tmpDir, "group_qty_test_matrix.xlsx"),
+		PartData: []PartData{
+			{
+				Item:        "1",
+				HHPN:        "MAIN_PN_01",
+				Description: "Resistor 100K",
+				Supplier:    "YAGEO",
+				SupplierPn:  "R100K",
+				Qty:         4,
+				Type:        "SMD",
+				CCL:         true,
+				SecondSources: []SecondSourceData{
+					{
+						HHPN:        "ALT_PN_01",
+						Supplier:    "UNI-ROYAL",
+						SupplierPn:  "R100K_ALT1",
+						Description: "Resistor 100K Alt 1",
+					},
+					{
+						HHPN:        "ALT_PN_02",
+						Supplier:    "WALSIN",
+						SupplierPn:  "R100K_ALT2",
+						Description: "Resistor 100K Alt 2",
+					},
+				},
+			},
+		},
+	}
 
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
 
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open exported file: %v", err)
+	}
+	defer f.Close()
 
+	// 主料在 Row 6，替代料分別在 Row 7 與 Row 8
+	formulaI6, err6 := f.GetCellFormula("SMD", "I6")
+	formulaI7, err7 := f.GetCellFormula("SMD", "I7")
+	formulaI8, err8 := f.GetCellFormula("SMD", "I8")
 
+	if err6 != nil || err7 != nil || err8 != nil {
+		t.Fatalf("Failed to read formulas from I6/I7/I8: %v, %v, %v", err6, err7, err8)
+	}
+
+	expectedI6 := "=G6*J6"
+	expectedI7 := "=G6*J7"
+	expectedI8 := "=G6*J8"
+
+	if formulaI6 != expectedI6 {
+		t.Errorf("I6 formula mismatch: expected %s, got %s", expectedI6, formulaI6)
+	}
+	if formulaI7 != expectedI7 {
+		t.Errorf("I7 formula mismatch: expected %s, got %s", expectedI7, formulaI7)
+	}
+	if formulaI8 != expectedI8 {
+		t.Errorf("I8 formula mismatch: expected %s, got %s", expectedI8, formulaI8)
+	}
+}

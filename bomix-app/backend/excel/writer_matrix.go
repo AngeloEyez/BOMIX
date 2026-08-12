@@ -281,6 +281,9 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		}
 
 		for groupIdx, part := range sheetParts {
+			// 記錄該物料群組主料所在的列號 (groupMasterRow)，使整個群組 (含替代料) 的 I 欄公式均固定引用主料的 G 欄 Qty
+			groupMasterRow := rowIndex
+
 			// Alternate row styles by material group (Row 6 for even groups, Row 7 for odd groups)
 			isEven := (groupIdx%2 == 0)
 			isProtoGroup := strings.EqualFold(part.BOMStatus, "P")
@@ -296,8 +299,8 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 			f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), part.Qty)
 			f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), part.Location)
 
-			// 8.2.5.3 - I column formula: =G{row}*J{row}
-			formulaI := fmt.Sprintf("=G%d*J%d", rowIndex, rowIndex)
+			// 8.2.5.3 - I column formula: =G{groupMasterRow}*J{row} (引用群組主料 G 欄 Qty)
+			formulaI := fmt.Sprintf("=G%d*J%d", groupMasterRow, rowIndex)
 			f.SetCellFormula(sheet, fmt.Sprintf("I%d", rowIndex), formulaI)
 
 			// 8.2.5.4 - J column formula: Sum of selected Model quantities
@@ -333,8 +336,8 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 				f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), nil)
 				f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), nil)
 
-				// Formulas for second sources
-				formulaI := fmt.Sprintf("=G%d*J%d", rowIndex, rowIndex)
+				// Formulas for second sources (I 欄公式引用群組主料 G 欄 Qty: =G{groupMasterRow}*J{row})
+				formulaI := fmt.Sprintf("=G%d*J%d", groupMasterRow, rowIndex)
 				f.SetCellFormula(sheet, fmt.Sprintf("I%d", rowIndex), formulaI)
 
 				formulaJ := generateMatrixSelectionFormula(modelStartCol, actualModelCount, rowIndex, rev.ModelQty)
@@ -605,6 +608,9 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 		}
 
 		for groupIdx, part := range sheetParts {
+			// 記錄該物料群組主料所在的列號 (groupMasterRow)，使整個群組 (含替代料) 的 I 欄公式均固定引用主料的 G 欄 Qty
+			groupMasterRow := rowIndex
+
 			// Alternate row styles by material group (Row 6 for even groups, Row 7 for odd groups)
 			isEven := (groupIdx%2 == 0)
 			isProtoGroup := strings.EqualFold(part.BOMStatus, "P")
@@ -620,8 +626,8 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 			f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), part.Qty)
 			f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), part.Location)
 
-			// 8.2.5.3 - I column formula: =G{row}*J{row}
-			formulaI := fmt.Sprintf("=G%d*J%d", rowIndex, rowIndex)
+			// 8.2.5.3 - I column formula: =G{groupMasterRow}*J{row} (引用群組主料 G 欄 Qty)
+			formulaI := fmt.Sprintf("=G%d*J%d", groupMasterRow, rowIndex)
 			f.SetCellFormula(sheet, fmt.Sprintf("I%d", rowIndex), formulaI)
 
 			// 8.2.5.4 - J column formula
@@ -657,8 +663,8 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 				f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), nil)
 				f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), nil)
 
-				// Formulas for second sources
-				formulaI := fmt.Sprintf("=G%d*J%d", rowIndex, rowIndex)
+				// Formulas for second sources (I 欄公式引用群組主料 G 欄 Qty: =G{groupMasterRow}*J{row})
+				formulaI := fmt.Sprintf("=G%d*J%d", groupMasterRow, rowIndex)
 				f.SetCellFormula(sheet, fmt.Sprintf("I%d", rowIndex), formulaI)
 
 				formulaJ := generateMatrixSelectionFormula(modelStartCol, actualModelCount, rowIndex, rev.ModelQty)
