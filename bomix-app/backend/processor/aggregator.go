@@ -47,7 +47,9 @@ func (a *Aggregator) Aggregate(parts []db.Part, locations []db.PartLocation, sec
 		locationSet := make(map[string]bool)
 		var firstPart db.Part
 		hasCCL := false
-		bomStatus := ""
+		validLocCount := 0
+		pCount := 0
+		mCount := 0
 
 		for _, p := range groupParts {
 			if firstPart.Supplier == "" {
@@ -61,14 +63,25 @@ func (a *Aggregator) Aggregate(parts []db.Part, locations []db.PartLocation, sec
 				if loc.CCL {
 					hasCCL = true
 				}
-				if bomStatus == "" {
-					bomStatus = loc.BomStatus
+				statusUpper := strings.ToUpper(strings.TrimSpace(loc.BomStatus))
+				if statusUpper != "X" {
+					validLocCount++
+					if statusUpper == "P" {
+						pCount++
+					} else if statusUpper == "M" {
+						mCount++
+					}
 				}
 			}
 		}
 
-		if bomStatus == "" {
-			bomStatus = "I"
+		bomStatus := "I"
+		if validLocCount > 0 {
+			if pCount == validLocCount {
+				bomStatus = "P"
+			} else if mCount == validLocCount {
+				bomStatus = "M"
+			}
 		}
 
 		// Sort locations for consistent output

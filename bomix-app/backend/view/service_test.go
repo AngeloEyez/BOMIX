@@ -552,3 +552,57 @@ func TestBuildViewRevisions_Order(t *testing.T) {
 	})
 }
 
+// TestMergeRevisions_AllProtoRequiredForPStatus 驗證物料群組必須全部 location 為 P 時 BOMStatus 才為 P
+func TestMergeRevisions_AllProtoRequiredForPStatus(t *testing.T) {
+	svc := &Service{}
+
+	revData := &rawRevisionData{
+		revision: db.BomRevision{ID: 1},
+		parts: []db.Part{
+			{ID: 1, RevisionID: 1, Supplier: "Samsung", SupplierPN: "MIXED_PN", Type: "SMD", Item: "1"},
+			{ID: 2, RevisionID: 1, Supplier: "Samsung", SupplierPN: "ALL_P_PN", Type: "SMD", Item: "2"},
+		},
+		partLocations: []db.PartLocation{
+			// Part 1 (MIXED_PN): 有 2 個 location，一個是 P，一個是 I
+			{ID: 1, PartID: 1, Location: "C1", BomStatus: "P", CCL: false},
+			{ID: 2, PartID: 1, Location: "C2", BomStatus: "I", CCL: false},
+
+			// Part 2 (ALL_P_PN): 有 2 個 location，全都是 P
+			{ID: 3, PartID: 2, Location: "C3", BomStatus: "P", CCL: false},
+			{ID: 4, PartID: 2, Location: "C4", BomStatus: "P", CCL: false},
+		},
+	}
+
+	rawData := map[int64]*rawRevisionData{1: revData}
+	query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewAll}
+
+	groups := svc.mergeRevisions(rawData, query)
+	if len(groups) != 2 {
+		t.Fatalf("期望 2 個物料群組，實際得到 %d 個", len(groups))
+	}
+
+	var mixedGroup, allPGroup *ViewPartGroup
+	for i := range groups {
+		if groups[i].MainSupplierPN == "MIXED_PN" {
+			mixedGroup = &groups[i]
+		} else if groups[i].MainSupplierPN == "ALL_P_PN" {
+			allPGroup = &groups[i]
+		}
+	}
+
+	if mixedGroup == nil || allPGroup == nil {
+		t.Fatalf("無法找到對應測試群組")
+	}
+
+	// 混合狀態 (P + I) 的群組，不應判定為 P（應退回 I）
+	if mixedGroup.BOMStatus != "I" {
+		t.Errorf("混合狀態群組 (P+I) BOMStatus 期望為 'I'，實際得到 %q", mixedGroup.BOMStatus)
+	}
+
+	// 全為 P 狀態的群組，應判定為 P
+	if allPGroup.BOMStatus != "P" {
+		t.Errorf("全 P 狀態群組 BOMStatus 期望為 'P'，實際得到 %q", allPGroup.BOMStatus)
+	}
+}
+
+

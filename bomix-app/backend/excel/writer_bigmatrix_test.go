@@ -1948,6 +1948,49 @@ func TestExportBigMatrix_SheetProtection(t *testing.T) {
 	}
 }
 
+// TestExportBigMatrix_ClearTemplateResidualData 驗證 BigMatrix 匯出時會清空 Row 6 與 Row 7 範本殘留資料
+func TestExportBigMatrix_ClearTemplateResidualData(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bomix-clear-template-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	// 測試空物料列表時，Row 6 & 7 殘留範本文字應被完全清空
+	options := ExportOptions{
+		Format:      types.FormatBigMatrix,
+		OutputPath:  filepath.Join(tmpDir, "test_clear_template.xlsx"),
+		Description: "Test Clear Template",
+		PartData:    []PartData{},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open exported Excel file: %v", err)
+	}
+	defer f.Close()
+
+	for row := 6; row <= 7; row++ {
+		for col := 'A'; col <= 'G'; col++ {
+			val, _ := f.GetCellValue("BigMatrix", fmt.Sprintf("%c%d", col, row))
+			if val != "" {
+				t.Errorf("Expected cell %c%d to be empty, got: '%s'", col, row, val)
+			}
+		}
+	}
+}
+
+
 
 
 

@@ -495,6 +495,9 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 		locationsByGroup := make(map[string]map[string]bool)
 		cclByGroup := make(map[string]bool)
 		statusByGroup := make(map[string]string)
+		validLocCountByGroup := make(map[string]int)
+		pCountByGroup := make(map[string]int)
+		mCountByGroup := make(map[string]int)
 
 		for _, p := range validParts {
 			key := groupKey(p.Supplier, p.SupplierPN)
@@ -505,20 +508,19 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			// 只收集此 part 的有效 location（bom_status != X）參與聚合計算
 			locs := allLocsByPartID[p.ID]
 			for _, loc := range locs {
-				if strings.ToUpper(strings.TrimSpace(loc.BomStatus)) == "X" {
+				statusUpper := strings.ToUpper(strings.TrimSpace(loc.BomStatus))
+				if statusUpper == "X" {
 					continue // 跳過不上件 location，不計入位置聚合與 BOMStatus 統計
 				}
 				locationsByGroup[key][loc.Location] = true
 				if loc.CCL {
 					cclByGroup[key] = true
 				}
-				// BOMStatus 優先層級：P / M > I > X
-				curStatus := statusByGroup[key]
-				newStatus := loc.BomStatus
-				if curStatus == "" || curStatus == "X" {
-					statusByGroup[key] = newStatus
-				} else if newStatus == "P" || newStatus == "M" {
-					statusByGroup[key] = newStatus
+				validLocCountByGroup[key]++
+				if statusUpper == "P" {
+					pCountByGroup[key]++
+				} else if statusUpper == "M" {
+					mCountByGroup[key]++
 				}
 			}
 
@@ -526,6 +528,19 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				representativeParts[key] = p
 			} else if rep.Type == "" && p.Type != "" {
 				representativeParts[key] = p
+			}
+		}
+
+		// 計算此 revision 中各群組的 BOMStatus：
+		// 規則：只有當群組內所有有效 location 全為 P 時才為 P，全為 M 時才為 M，否則歸為 I
+		for key := range representativeParts {
+			totalLocs := validLocCountByGroup[key]
+			if totalLocs > 0 && pCountByGroup[key] == totalLocs {
+				statusByGroup[key] = "P"
+			} else if totalLocs > 0 && mCountByGroup[key] == totalLocs {
+				statusByGroup[key] = "M"
+			} else {
+				statusByGroup[key] = "I"
 			}
 		}
 
@@ -570,6 +585,10 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				}
 				if b.group.MainSelectionsByOrder == nil {
 					b.group.MainSelectionsByOrder = make(map[int]bool)
+				}
+				// 跨 Revision 合併：若當前 Revision 該群組狀態與已存在的狀態不一致，退回 "I"
+				if b.group.BOMStatus != statusByGroup[key] {
+					b.group.BOMStatus = "I"
 				}
 			}
 

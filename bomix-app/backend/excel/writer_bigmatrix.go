@@ -634,6 +634,17 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		return revisionIDInList(revID, ss.SourceRevisionIDs)
 	}
 
+	// 清空範本檔在 Row 6 與 Row 7 殘留的預設範例文字 (避免替代料列或資料列少於 2 列時殘留範本舊文字)
+	maxClearCols := currentCol
+	if maxClearCols < 26 {
+		maxClearCols = 26
+	}
+	for r := 6; r <= 7; r++ {
+		for c := 0; c < maxClearCols; c++ {
+			_ = f.SetCellValue("BigMatrix", fmt.Sprintf("%s%d", getColName(c), r), nil)
+		}
+	}
+
 	// 8.1.4 - Write part data
 	rowIndex := 6
 	for groupIdx, part := range parts {

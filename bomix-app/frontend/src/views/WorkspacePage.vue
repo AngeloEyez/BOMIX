@@ -49,10 +49,10 @@
               <span class="projects-count">{{ projectStore.projects.length }} Projects</span>
             </div>
             <div class="project-items">
-              <div v-for="p in projectStore.projects" :key="p.id" class="project-item">
+              <div v-for="p in sortedProjects" :key="p.id" class="project-item">
                 <div class="project-info">
                   <span class="project-code">{{ p.code || p.name || `Project ${p.id}` }}</span>
-                  <span class="project-desc" v-if="p.description">{{ p.description }}</span>
+                  <span class="project-desc" v-if="getImportDate(p)">{{ getImportDate(p) }}</span>
                 </div>
                 <div class="revision-info">
                   <span class="latest-rev" v-if="getLatestRevision(p)">{{ getLatestRevision(p) }}</span>
@@ -89,7 +89,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import Button from 'primevue/button'
 import { useAppStore, useProjectStore, useLogStore, useTaskStore } from '../stores'
 import BOMTable from '../components/BOMTable.vue'
@@ -98,7 +98,7 @@ import ImportResultsDialog from '../components/workspace/ImportResultsDialog.vue
 import ExportDialog, { type RevisionOption } from '../components/workspace/ExportDialog.vue'
 import CopyMatrixDialog from '../components/workspace/CopyMatrixDialog.vue'
 import type { ImportResult as BackendImportResult } from '../services/api'
-import type { Project } from '../stores/project'
+import type { Project, BomRevision } from '../stores/project'
 
 const appStore = useAppStore()
 const projectStore = useProjectStore()
@@ -114,6 +114,35 @@ const copyMatrixDialogVisible = ref(false)
 // 匯入結果與版本選項列表
 const importResults = ref<BackendImportResult[]>([])
 const allRevisions = ref<RevisionOption[]>([])
+
+/**
+ * 依據專案最新 BOM 版本的 ID 降冪排序，最新匯入的專案排在最前面
+ */
+const sortedProjects = computed(() => {
+  if (!projectStore.projects || projectStore.projects.length === 0) return []
+  return [...projectStore.projects].sort((a, b) => {
+    const revA = getLatestRevisionObj(a)
+    const revB = getLatestRevisionObj(b)
+
+    // 若均有 Revision，依 Revision ID (或 CreatedAt / Date) 降冪排序 (ID 越大表示越新建立/匯入)
+    if (revA && revB) {
+      if (revA.id !== revB.id) {
+        return revB.id - revA.id
+      }
+      const timeA = revA.createdAt ? new Date(revA.createdAt).getTime() : 0
+      const timeB = revB.createdAt ? new Date(revB.createdAt).getTime() : 0
+      if (timeA !== timeB) {
+        return timeB - timeA
+      }
+    } else if (revA) {
+      return -1
+    } else if (revB) {
+      return 1
+    }
+
+    return b.id - a.id
+  })
+})
 
 onMounted(() => {
   taskStore.startListening()
@@ -163,15 +192,52 @@ async function loadProjects(): Promise<void> {
 }
 
 /**
+ * 取得專案最新版本的 BomRevision 物件
+ * @param {Project} project - 專案物件
+ * @returns {BomRevision | null} 最新版本物件，若無版本則回傳 null
+ */
+function getLatestRevisionObj(project: Project): BomRevision | null {
+  if (!project.revisions || project.revisions.length === 0) return null
+  const sorted = [...project.revisions].sort((a, b) => b.id - a.id)
+  return sorted[0]
+}
+
+/**
  * 取得專案最新版本的名稱標籤 (Phase + Version)
  * @param {Project} project - 專案物件
  * @returns {string | null} 最新版本標籤字串，若無版本則回傳 null
  */
 function getLatestRevision(project: Project): string | null {
-  if (!project.revisions || project.revisions.length === 0) return null
-  const sorted = [...project.revisions].sort((a, b) => b.id - a.id)
-  const latest = sorted[0]
+  const latest = getLatestRevisionObj(project)
+  if (!latest) return null
   return `${latest.phase} ${latest.version}`
+}
+
+/**
+ * 取得專案最新版本的匯入日期字串
+ * @param {Project} project - 專案物件
+ * @returns {string} 格式化後的匯入日期字串
+ */
+function getImportDate(project: Project): string {
+  const latest = getLatestRevisionObj(project)
+  const rawDate = latest?.createdAt || latest?.date || project.createdAt || project.updatedAt
+  if (!rawDate) return ''
+
+  try {
+    const d = new Date(rawDate)
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear()
+      const month = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      const hours = String(d.getHours()).padStart(2, '0')
+      const minutes = String(d.getMinutes()).padStart(2, '0')
+      if (hours === '00' && minutes === '00' && rawDate.length <= 10) {
+        return `${year}-${month}-${day}`
+      }
+      return `${year}-${month}-${day} ${hours}:${minutes}`
+    }
+  } catch (_) {}
+  return rawDate
 }
 
 /**
