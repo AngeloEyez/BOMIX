@@ -365,16 +365,16 @@ func TestMergeRevisions_LocationAndQtyAggregation(t *testing.T) {
 	rev1Data := &rawRevisionData{
 		revision: db.BomRevision{ID: 1},
 		parts: []db.Part{
-			{ID: 101, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", Item: "1"},
-			{ID: 102, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", Item: "1"},
-			{ID: 103, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "PTH", Item: "2"},
+			{ID: 101, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Item: "1"},
+			{ID: 102, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Item: "1"},
+			{ID: 103, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Item: "2"},
 		},
 		partLocations: []db.PartLocation{
-			{ID: 1, PartID: 101, Location: "C1", BomStatus: "I", CCL: false},
-			{ID: 2, PartID: 101, Location: "C2", BomStatus: "I", CCL: false},
-			{ID: 3, PartID: 102, Location: "C2", BomStatus: "I", CCL: true},
-			{ID: 4, PartID: 102, Location: "C3", BomStatus: "I", CCL: true},
-			{ID: 5, PartID: 103, Location: "C4", BomStatus: "I", CCL: false},
+			{ID: 1, PartID: 101, Location: "C1", Type: "SMD", BomStatus: "I", CCL: false},
+			{ID: 2, PartID: 101, Location: "C2", Type: "SMD", BomStatus: "I", CCL: false},
+			{ID: 3, PartID: 102, Location: "C2", Type: "SMD", BomStatus: "I", CCL: true},
+			{ID: 4, PartID: 102, Location: "C3", Type: "SMD", BomStatus: "I", CCL: true},
+			{ID: 5, PartID: 103, Location: "C4", Type: "PTH", BomStatus: "I", CCL: false},
 		},
 	}
 
@@ -416,10 +416,10 @@ func TestMergeRevisions_MultipleRevisionsAnd2ndSources(t *testing.T) {
 	rev1Data := &rawRevisionData{
 		revision: db.BomRevision{ID: 1},
 		parts: []db.Part{
-			{ID: 1, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", Item: "1"},
+			{ID: 1, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Item: "1"},
 		},
 		partLocations: []db.PartLocation{
-			{ID: 1, PartID: 1, Location: "C1", BomStatus: "I", CCL: false},
+			{ID: 1, PartID: 1, Location: "C1", Type: "SMD", BomStatus: "I", CCL: false},
 		},
 		secondSources: []db.SecondSource{
 			{ID: 10, RevisionID: 1, PartID: 1, Supplier: "Yageo", SupplierPN: "CC0402KRX7R9BB104", HHPN: "HH1001"},
@@ -430,12 +430,12 @@ func TestMergeRevisions_MultipleRevisionsAnd2ndSources(t *testing.T) {
 	rev2Data := &rawRevisionData{
 		revision: db.BomRevision{ID: 2},
 		parts: []db.Part{
-			{ID: 2, RevisionID: 2, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", Item: "1"},
-			{ID: 3, RevisionID: 2, Supplier: "Murata", SupplierPN: "GRM155R71C104KA88D", Type: "SMD", Item: "2"},
+			{ID: 2, RevisionID: 2, Supplier: "Samsung", SupplierPN: "CL05B104", Item: "1"},
+			{ID: 3, RevisionID: 2, Supplier: "Murata", SupplierPN: "GRM155R71C104KA88D", Item: "2"},
 		},
 		partLocations: []db.PartLocation{
-			{ID: 2, PartID: 2, Location: "C1", BomStatus: "I", CCL: false},
-			{ID: 3, PartID: 3, Location: "C5", BomStatus: "I", CCL: false},
+			{ID: 2, PartID: 2, Location: "C1", Type: "SMD", BomStatus: "I", CCL: false},
+			{ID: 3, PartID: 3, Location: "C5", Type: "SMD", BomStatus: "I", CCL: false},
 		},
 		secondSources: []db.SecondSource{
 			{ID: 11, RevisionID: 2, PartID: 2, Supplier: "Yageo", SupplierPN: "CC0402KRX7R9BB104", HHPN: "HH1001"},
@@ -501,10 +501,10 @@ func TestMergeRevisions_SequentialModels(t *testing.T) {
 			{ID: 12, RevisionID: 1, SortOrder: 2, ModelName: "Model", Qty: 10},
 		},
 		parts: []db.Part{
-			{ID: 100, RevisionID: 1, Supplier: "Yageo", SupplierPN: "R100K", Type: "SMD", Item: "1"},
+			{ID: 100, RevisionID: 1, Supplier: "Yageo", SupplierPN: "R100K", Item: "1"},
 		},
 		partLocations: []db.PartLocation{
-			{ID: 1000, PartID: 100, Location: "R1", BomStatus: "I", CCL: true},
+			{ID: 1000, PartID: 100, Location: "R1", Type: "SMD", BomStatus: "I", CCL: true},
 		},
 		selections: []db.MatrixSelection{
 			{ID: 1, RevisionID: 1, ModelID: 10, PartID: 100, Group: "Yageo|R100K", SelectedSupplierPn: "R100K"},
@@ -591,17 +591,17 @@ func TestMergeRevisions_AllProtoRequiredForPStatus(t *testing.T) {
 	revData := &rawRevisionData{
 		revision: db.BomRevision{ID: 1},
 		parts: []db.Part{
-			{ID: 1, RevisionID: 1, Supplier: "Samsung", SupplierPN: "MIXED_PN", Type: "SMD", Item: "1"},
-			{ID: 2, RevisionID: 1, Supplier: "Samsung", SupplierPN: "ALL_P_PN", Type: "SMD", Item: "2"},
+			{ID: 1, RevisionID: 1, Supplier: "Samsung", SupplierPN: "MIXED_PN", Item: "1"},
+			{ID: 2, RevisionID: 1, Supplier: "Samsung", SupplierPN: "ALL_P_PN", Item: "2"},
 		},
 		partLocations: []db.PartLocation{
 			// Part 1 (MIXED_PN): 有 2 個 location，一個是 P，一個是 I
-			{ID: 1, PartID: 1, Location: "C1", BomStatus: "P", CCL: false},
-			{ID: 2, PartID: 1, Location: "C2", BomStatus: "I", CCL: false},
+			{ID: 1, PartID: 1, Location: "C1", Type: "SMD", BomStatus: "P", CCL: false},
+			{ID: 2, PartID: 1, Location: "C2", Type: "SMD", BomStatus: "I", CCL: false},
 
 			// Part 2 (ALL_P_PN): 有 2 個 location，全都是 P
-			{ID: 3, PartID: 2, Location: "C3", BomStatus: "P", CCL: false},
-			{ID: 4, PartID: 2, Location: "C4", BomStatus: "P", CCL: false},
+			{ID: 3, PartID: 2, Location: "C3", Type: "SMD", BomStatus: "P", CCL: false},
+			{ID: 4, PartID: 2, Location: "C4", Type: "SMD", BomStatus: "P", CCL: false},
 		},
 	}
 

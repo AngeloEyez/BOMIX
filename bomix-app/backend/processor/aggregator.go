@@ -51,12 +51,16 @@ func (a *Aggregator) Aggregate(parts []db.Part, locations []db.PartLocation, sec
 		pCount := 0
 		mCount := 0
 
+		partType := ""
 		for _, p := range groupParts {
 			if firstPart.Supplier == "" {
 				firstPart = p
 			}
 			partLocs := locsByPartID[p.ID]
 			for _, loc := range partLocs {
+				if loc.Type != "" && partType == "" {
+					partType = loc.Type
+				}
 				if loc.Location != "" {
 					locationSet[loc.Location] = true
 				}
@@ -112,7 +116,7 @@ func (a *Aggregator) Aggregate(parts []db.Part, locations []db.PartLocation, sec
 			MainSupplierPn: supplierPN,
 			Hhpn:           firstPart.HHPN,
 			Description:    firstPart.Description,
-			Type:           firstPart.Type,
+			Type:           partType,
 			Qty:            quantity,
 			Locations:      strings.Join(locList, ","),
 			BOMStatus:      bomStatus,

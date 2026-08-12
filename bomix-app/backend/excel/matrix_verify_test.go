@@ -3,12 +3,14 @@ package excel
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
 	"bomix-app/backend/db"
 	"bomix-app/backend/view"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
 	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 )
@@ -234,43 +236,118 @@ func TestVerifyMatrixExport_TARIS_SI1_02(t *testing.T) {
 
 			t.Logf("[%s 頁面] 導出筆數: %d, 基準檔筆數: %d", sheet, len(expRecs), len(benchRecs))
 
-			// 建構 map 供快取比對
-			expMap := make(map[string]groupRecord)
-			for _, r := range expRecs {
-				key := r.Supplier + "|" + r.SupplierPN
-				expMap[key] = r
+			// 解析主料群組與其轄下的 2nd Sources 與 Location 集合
+			type mainGroupData struct {
+				MainSupplier   string
+				MainSupplierPN string
+				HHPN           string
+				LocationRaw    string
+				LocationSet    map[string]bool
+				SecondSources  []string
 			}
 
-			benchMap := make(map[string]groupRecord)
-			for _, r := range benchRecs {
-				key := r.Supplier + "|" + r.SupplierPN
-				benchMap[key] = r
-			}
+			parseMainGroups := func(recs []groupRecord) ([]*mainGroupData, map[string]*mainGroupData) {
+				var list []*mainGroupData
+				gMap := make(map[string]*mainGroupData)
+				var current *mainGroupData
 
-			// 比對 1：逐列順序比對 (當數量一致時)
-			var locationMismatch int
-			var groupMismatch int
-
-			minLen := len(expRecs)
-			if len(benchRecs) < minLen {
-				minLen = len(benchRecs)
-			}
-
-			for i := 0; i < minLen; i++ {
-				exp := expRecs[i]
-				bench := benchRecs[i]
-
-				if exp.Supplier != bench.Supplier || exp.SupplierPN != bench.SupplierPN {
-					groupMismatch++
+				for _, r := range recs {
+					if r.IsMain {
+						locSet := make(map[string]bool)
+						if r.Location != "" {
+							parts := strings.Split(r.Location, ",")
+							for _, p := range parts {
+								p = strings.TrimSpace(p)
+								if p != "" {
+									locSet[p] = true
+								}
+							}
+						}
+						key := r.Supplier + "|" + r.SupplierPN
+						current = &mainGroupData{
+							MainSupplier:   r.Supplier,
+							MainSupplierPN: r.SupplierPN,
+							HHPN:           r.HHPN,
+							LocationRaw:    r.Location,
+							LocationSet:    locSet,
+							SecondSources:  []string{},
+						}
+						list = append(list, current)
+						gMap[key] = current
+					} else if current != nil {
+						if r.Supplier != "" || r.SupplierPN != "" {
+							ssKey := r.Supplier + "|" + r.SupplierPN
+							current.SecondSources = append(current.SecondSources, ssKey)
+						}
+					}
 				}
-				expNormLoc := strings.ReplaceAll(exp.Location, " ", "")
-				benchNormLoc := strings.ReplaceAll(bench.Location, " ", "")
-				if expNormLoc != benchNormLoc {
-					locationMismatch++
+				for _, g := range list {
+					sort.Strings(g.SecondSources)
+				}
+				return list, gMap
+			}
+
+			expGroups, expGroupMap := parseMainGroups(expRecs)
+			benchGroups, _ := parseMainGroups(benchRecs)
+
+			t.Logf("[%s 頁面] 主料群組數量: 導出=%d, 基準=%d", sheet, len(expGroups), len(benchGroups))
+			assert.Equal(t, len(benchGroups), len(expGroups), fmt.Sprintf("[%s 頁面] 主料群組數量應完全一致", sheet))
+
+			// 驗證項目 1：每一組 Main Source 所帶的 2nd Source 是否完全相同
+			// 驗證項目 2：每一組 Main Source 的 Location 位置 (拆分集合) 是否完全相同
+			var ssMismatchCount int
+			var locSetMismatchCount int
+
+			for _, bGroup := range benchGroups {
+				key := bGroup.MainSupplier + "|" + bGroup.MainSupplierPN
+				eGroup, exists := expGroupMap[key]
+				if !exists {
+					t.Errorf("[%s 頁面] 基準主料群組 %s 在導出檔中未找到", sheet, key)
+					continue
+				}
+
+				// 1. 比對 2nd Source 列表
+				ssMatched := true
+				if len(bGroup.SecondSources) != len(eGroup.SecondSources) {
+					ssMatched = false
+				} else {
+					for i := range bGroup.SecondSources {
+						if bGroup.SecondSources[i] != eGroup.SecondSources[i] {
+							ssMatched = false
+							break
+						}
+					}
+				}
+				if !ssMatched {
+					ssMismatchCount++
+					t.Logf("✖ [%s 頁面] 主料 %s 2nd Source 不一致: 基準=%v, 導出=%v",
+						sheet, key, bGroup.SecondSources, eGroup.SecondSources)
+				}
+
+				// 2. 比對 Location 集合 (以逗號拆分為集合)
+				locsMatched := true
+				if len(bGroup.LocationSet) != len(eGroup.LocationSet) {
+					locsMatched = false
+				} else {
+					for loc := range bGroup.LocationSet {
+						if !eGroup.LocationSet[loc] {
+							locsMatched = false
+							break
+						}
+					}
+				}
+				if !locsMatched {
+					locSetMismatchCount++
+					t.Logf("✖ [%s 頁面] 主料 %s Location 集合不一致: 基準=%q, 導出=%q",
+						sheet, key, bGroup.LocationRaw, eGroup.LocationRaw)
 				}
 			}
 
-			t.Logf("[%s 頁面] 前 %d 列逐列對比: 群組不一致 %d 筆, Location不一致 %d 筆", sheet, minLen, groupMismatch, locationMismatch)
+			t.Logf("✔ [%s 頁面] 主料群組 2nd Source 比對結果: %d 筆差異 (共 %d 組)", sheet, ssMismatchCount, len(benchGroups))
+			t.Logf("✔ [%s 頁面] 主料群組 Location 集合比對結果: %d 筆差異 (共 %d 組)", sheet, locSetMismatchCount, len(benchGroups))
+
+			assert.Equal(t, 0, ssMismatchCount, fmt.Sprintf("[%s 頁面] 每一組 Main Source 的 2nd Source 應與基準檔 100%% 相同", sheet))
+			assert.Equal(t, 0, locSetMismatchCount, fmt.Sprintf("[%s 頁面] 每一組 Main Source 的 Location 集合應與基準檔 100%% 相同", sheet))
 
 			// 針對重點物料 AZ1045-04F.R7G 檢查 Location
 			if strings.EqualFold(sheet, "SMD") {
@@ -302,9 +379,9 @@ func TestVerifyMatrixExport_TARIS_SI1_02(t *testing.T) {
 					for _, p := range targetParts {
 						var locs []db.PartLocation
 						database.Where("part_id = ?", p.ID).Find(&locs)
-						t.Logf("DB 中 %s (Part ID %d, Type=%s) 共 %d 個 PartLocation:", targetPN, p.ID, p.Type, len(locs))
+						t.Logf("DB 中 %s (Part ID %d) 共 %d 個 PartLocation:", targetPN, p.ID, len(locs))
 						for _, l := range locs {
-							t.Logf("   -> Loc=%s, Status=%s, CCL=%v", l.Location, l.BomStatus, l.CCL)
+							t.Logf("   -> Loc=%s, Type=%s, Status=%s, CCL=%v", l.Location, l.Type, l.BomStatus, l.CCL)
 						}
 					}
 
@@ -348,7 +425,7 @@ func TestVerifyMatrixExport_TARIS_SI1_02(t *testing.T) {
 				missingInExp := 0
 				for _, b := range benchRecs {
 					key := b.Supplier + "|" + b.SupplierPN
-					if _, exists := expMap[key]; !exists {
+					if _, exists := expGroupMap[key]; !exists {
 						missingInExp++
 						var parts []db.Part
 						database.Where("revision_id = ? AND supplier = ? AND supplier_pn = ?", targetRev.ID, b.Supplier, b.SupplierPN).Find(&parts)
@@ -364,9 +441,13 @@ func TestVerifyMatrixExport_TARIS_SI1_02(t *testing.T) {
 								}
 								statuses = append(statuses, l.BomStatus)
 							}
+							firstType := ""
+							if len(locs) > 0 {
+								firstType = locs[0].Type
+							}
 							if missingInExp <= 5 {
 								t.Logf("  基準有但導出無: Supp=%s, SuppPN=%s, PartType=%q, DB_CCL=%v, LocStatuses=%v",
-									b.Supplier, b.SupplierPN, p.Type, hasCCL, statuses)
+									b.Supplier, b.SupplierPN, firstType, hasCCL, statuses)
 							}
 						}
 					}

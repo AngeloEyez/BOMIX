@@ -324,14 +324,12 @@ func TestCreatePartsInBatch(t *testing.T) {
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP,22uF,+/-20%,X5R,6.3V,SMD0603",
 		},
 		{
 			RevisionID:  revision.ID,
-			Type:        "SMD",
 			Supplier:    "Murata",
 			SupplierPN:  "GRM188R61A106KE15D",
 			Description: "CAP,10uF,+/-10%,X5R,10V,SMD0603",
@@ -363,7 +361,6 @@ func TestDeletePartsByRevision(t *testing.T) {
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP",
@@ -394,18 +391,16 @@ func TestGetPartsByRevisionAndType(t *testing.T) {
 	revision, err := CreateRevision(db, project.ID, "DB", "0.1", "Initial")
 	assert.NoError(t, err)
 
-	// Create parts with different types
+	// Create parts with different types via PartLocations
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP",
 		},
 		{
 			RevisionID:  revision.ID,
-			Type:        "PTH",
 			Supplier:    "Murata",
 			SupplierPN:  "GRM188R61A106KE15D",
 			Description: "CAP",
@@ -414,17 +409,24 @@ func TestGetPartsByRevisionAndType(t *testing.T) {
 	err = CreatePartsInBatch(db, parts)
 	assert.NoError(t, err)
 
+	locs := []PartLocation{
+		{PartID: parts[0].ID, Location: "C1", Type: "SMD", BomStatus: "I"},
+		{PartID: parts[1].ID, Location: "C2", Type: "PTH", BomStatus: "I"},
+	}
+	err = CreatePartLocationsInBatch(db, locs)
+	assert.NoError(t, err)
+
 	// Get SMD parts
 	smdParts, err := GetPartsByRevisionAndType(db, revision.ID, "SMD")
 	assert.NoError(t, err)
 	assert.Len(t, smdParts, 1)
-	assert.Equal(t, "SMD", smdParts[0].Type)
+	assert.Equal(t, "Samsung", smdParts[0].Supplier)
 
 	// Get PTH parts
 	pthParts, err := GetPartsByRevisionAndType(db, revision.ID, "PTH")
 	assert.NoError(t, err)
 	assert.Len(t, pthParts, 1)
-	assert.Equal(t, "PTH", pthParts[0].Type)
+	assert.Equal(t, "Murata", pthParts[0].Supplier)
 }
 
 // TestCascadeDeleteRevision tests that deleting a revision cascades to all related tables
@@ -445,7 +447,6 @@ func TestCascadeDeleteRevision(t *testing.T) {
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP",
@@ -600,7 +601,6 @@ func TestMatrixSelectionOperations(t *testing.T) {
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP",
@@ -655,14 +655,12 @@ func TestDeleteInvalidSelections(t *testing.T) {
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP",
 		},
 		{
 			RevisionID:  revision.ID,
-			Type:        "PTH",
 			Supplier:    "Murata",
 			SupplierPN:  "GRM188R61A106KE15D",
 			Description: "CAP",
@@ -729,7 +727,6 @@ func TestSecondSourceOperations(t *testing.T) {
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP",
@@ -800,7 +797,6 @@ func TestFullWorkflow(t *testing.T) {
 	parts := []Part{
 		{
 			RevisionID:  revision.ID,
-			Type:        "SMD",
 			Supplier:    "Samsung",
 			SupplierPN:  "CL05B104KO5NNNC",
 			Description: "CAP,22uF,+/-20%,X5R,6.3V,SMD0603",

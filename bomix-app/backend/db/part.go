@@ -57,7 +57,7 @@ func GetPartsByRevisionWithLocations(db *gorm.DB, revisionID int64) ([]Part, err
 	return parts, nil
 }
 
-// GetPartsByRevisionAndType 查詢指定 Revision 且符合製程類型的 Part 記錄。
+// GetPartsByRevisionAndType 查詢指定 Revision 且含有符合製程類型 Location 的 Part 記錄。
 //
 // 參數：
 //   - db：GORM 資料庫連線
@@ -67,7 +67,9 @@ func GetPartsByRevisionWithLocations(db *gorm.DB, revisionID int64) ([]Part, err
 // 回傳：Part 切片或錯誤
 func GetPartsByRevisionAndType(db *gorm.DB, revisionID int64, partType string) ([]Part, error) {
 	var parts []Part
-	if err := db.Where("revision_id = ? AND type = ?", revisionID, partType).Find(&parts).Error; err != nil {
+	if err := db.Joins("JOIN part_locations ON part_locations.part_id = parts.id").
+		Where("parts.revision_id = ? AND part_locations.type = ?", revisionID, partType).
+		Group("parts.id").Find(&parts).Error; err != nil {
 		return nil, err
 	}
 	return parts, nil

@@ -269,10 +269,6 @@ func (r *MatrixReader) Import(f Workbook) error {
 					currentGroupKey = ""
 					continue
 				}
-				if p.Type == "" && sheetName != "" {
-					p.Type = sheetName
-					r.db.Model(p).Update("type", sheetName)
-				}
 				currentMainPart = p
 				currentGroupKey = key
 				materialSupplier = supplier

@@ -271,7 +271,11 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		// Filter parts by sheet type
 		var sheetParts []PartData
 		for _, part := range options.PartData {
-			if strings.ToUpper(part.Type) == strings.ToUpper(sheet) {
+			pType := strings.ToUpper(strings.TrimSpace(part.Type))
+			if pType == "" {
+				pType = "SMD"
+			}
+			if pType == strings.ToUpper(sheet) {
 				sheetParts = append(sheetParts, part)
 			}
 		}
@@ -591,7 +595,11 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 		// Filter parts by sheet type
 		var sheetParts []PartData
 		for _, part := range filteredParts {
-			if strings.ToUpper(part.Type) == strings.ToUpper(sheet) {
+			pType := strings.ToUpper(strings.TrimSpace(part.Type))
+			if pType == "" {
+				pType = "SMD"
+			}
+			if pType == strings.ToUpper(sheet) {
 				sheetParts = append(sheetParts, part)
 			}
 		}

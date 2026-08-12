@@ -215,7 +215,6 @@ func TestMergeAlgorithm(t *testing.T) {
 	// Create old parts and second sources (simulating existing database state)
 	mainPart := db.Part{
 		RevisionID: revision.ID,
-		Type:       "Main",
 		Supplier:   "SupplierX",
 		SupplierPN: "PN-001",
 		Description: "Main Part P1",
@@ -438,7 +437,6 @@ func TestImportMatrixSelections(t *testing.T) {
 	// Create parts in source revision
 	sourcePart := db.Part{
 		RevisionID: sourceRevision.ID,
-		Type:       "Main",
 		Supplier:   "Samsung",
 		SupplierPN: "CL10A106MQ8NNNC",
 		Description: "CAPACITOR 10uF",
@@ -497,7 +495,6 @@ func TestImportMatrixSelections(t *testing.T) {
 	// Create matching part in target revision
 	targetPart := db.Part{
 		RevisionID: targetRevision.ID,
-		Type:       "Main",
 		Supplier:   "Samsung",
 		SupplierPN: "CL10A106MQ8NNNC",
 		Description: "CAPACITOR 10uF",

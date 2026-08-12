@@ -259,7 +259,6 @@ func TestImport_BigMatrix_Integration(t *testing.T) {
 		RevisionID: revision.ID,
 		Supplier:   "Samsung",
 		SupplierPN: "CL10A106MQ8NNNC",
-		Type:       "SMD",
 	}
 	if err := database.Create(&part).Error; err != nil {
 		t.Fatalf("Failed to create test part: %v", err)
@@ -381,7 +380,6 @@ func TestImport_BigMatrix_ClearsOldSelections(t *testing.T) {
 		RevisionID: revision.ID,
 		Supplier:   "NewSupplier",
 		SupplierPN: "NEW-PN",
-		Type:       "SMD",
 	}
 	_ = database.Create(&newPart).Error
 
@@ -486,8 +484,8 @@ func TestImport_BigMatrix_MultipleModelsQtyAndSelections(t *testing.T) {
 	}
 
 	// 預先建立 Parts
-	part1 := db.Part{RevisionID: revision.ID, Supplier: "SupA", SupplierPN: "PN1", Type: "SMD"}
-	part2 := db.Part{RevisionID: revision.ID, Supplier: "SupB", SupplierPN: "PN2", Type: "SMD"}
+	part1 := db.Part{RevisionID: revision.ID, Supplier: "SupA", SupplierPN: "PN1"}
+	part2 := db.Part{RevisionID: revision.ID, Supplier: "SupB", SupplierPN: "PN2"}
 	_ = database.Create(&part1).Error
 	_ = database.Create(&part2).Error
 
@@ -821,6 +819,12 @@ func TestAZ5125_FullRoundtripVerify(t *testing.T) {
 	}
 
 	partDataList2 := convertToPartDataList(res2.PartGroups)
+	for _, p := range partDataList2 {
+		if strings.Contains(p.SupplierPn, "AZ5125") {
+			t.Logf("partDataList2 AZ5125: Item=%s, Supp=%s, SuppPN=%s, Type=%q, 2ndSourcesCount=%d",
+				p.Item, p.Supplier, p.SupplierPn, p.Type, len(p.SecondSources))
+		}
+	}
 	bmPath2, err := writer.exportBigMatrixDetailed(ExportOptions{OutputPath: tmpDir + "/BM2.xlsx"}, []RevisionData{revData1}, partDataList2)
 	if err != nil {
 		t.Fatalf("Export BM2 failed: %v", err)
@@ -848,16 +852,18 @@ func TestAZ5125_FullRoundtripVerify(t *testing.T) {
 	}
 	t.Logf("BM2 AZ5125 2nd source rows count: %d", az2ndSourceCountBM2)
 
-	// 5. 檢驗 Matrix2 中 AZ5125 的 2nd sources 數量
-	fMat2, _ := excelize.OpenFile(matPath2[0])
+	t.Logf("matPath2: %v", matPath2)
+	fMat2, err := excelize.OpenFile(matPath2[0])
+	if err != nil {
+		t.Fatalf("Open matPath2 failed: %v", err)
+	}
 	defer fMat2.Close()
-	mat2Rows, _ := fMat2.GetRows("SMD")
-
 	az2ndSourceCountMat2 := 0
-	for _, r := range mat2Rows {
-		if len(r) > 5 {
-			supplierPN := r[5]
+	for _, sName := range []string{"SMD", "PTH", "BOTTOM"} {
+		mat2Rows, _ := fMat2.GetRows(sName)
+		for _, r := range mat2Rows {
 			item := safeGetCol(r, 0)
+			supplierPN := safeGetCol(r, 5)
 			if item == "" && (strings.Contains(supplierPN, "SYT21M05ANO") || strings.Contains(supplierPN, "AU0521D5-F") || strings.Contains(supplierPN, "LESD5Z5") || strings.Contains(supplierPN, "WE1119K95") || strings.Contains(supplierPN, "ESD5471S")) {
 				az2ndSourceCountMat2++
 			}

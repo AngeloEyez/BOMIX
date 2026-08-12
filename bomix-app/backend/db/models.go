@@ -67,12 +67,8 @@ type BomRevision struct {
 // 相同 Revision 中相同 (supplier, supplier_pn) 的物料只存一筆。
 // Table: parts
 type Part struct {
-	ID         int64          `gorm:"primaryKey"`
-	RevisionID int64          `gorm:"not null;index:idx_part_revision_supplier_pn"`
-	// Type 代表製程類型：SMD / PTH / BOTTOM。
-	// NI（不上件）不是 type，而是以 PartLocation.BomStatus = 'X' 表示。
-	// 若物料僅出現在 NI sheet 且未在任何製程 sheet，則 Type 為空字串。
-	Type        string         `gorm:"index:idx_part_revision_type"`
+	ID          int64          `gorm:"primaryKey"`
+	RevisionID  int64          `gorm:"not null;index:idx_part_revision_supplier_pn"`
 	Item        string         // 料號流水編號
 	HHPN        string         // HH 內部料號
 	Supplier    string         `gorm:"not null;index:idx_part_revision_supplier_pn"`
@@ -84,18 +80,19 @@ type Part struct {
 	UpdatedAt   time.Time
 	DeletedAt   gorm.DeletedAt `gorm:"index"`
 	// Locations 為關聯的 PartLocation 清單（一對多）。
-	// 每個 PartLocation 代表一個原子化 location，並附帶獨立的 BomStatus 與 CCL 屬性。
+	// 每個 PartLocation 代表一個原子化 location，並附帶獨立的 Type, BomStatus 與 CCL 屬性。
 	Locations []PartLocation `gorm:"foreignKey:PartID;constraint:OnDelete:CASCADE"`
 }
 
 // PartLocation 為 Location 原子化獨立表，每個 location 位置編號一筆紀錄。
-// bom_status 與 ccl 屬性跟著 location 走，不再存放於 Part 表。
+// 製程類型 Type、bom_status 與 ccl 屬性跟著 location 走。
 // Table: part_locations
 type PartLocation struct {
-	ID     int64  `gorm:"primaryKey"`
-	PartID int64  `gorm:"not null;index:idx_part_location_part"`
-	// Location 為單一原子化位置編號，例如 "C1"、"R5"。
+	ID       int64  `gorm:"primaryKey"`
+	PartID   int64  `gorm:"not null;index:idx_part_location_part"`
 	Location string `gorm:"not null;index:idx_part_location_name"`
+	// Type 代表該 location 所在之製程面別/型態：SMD / PTH / BOTTOM。
+	Type string `gorm:"index:idx_part_location_type"`
 	// BomStatus 代表此 location 的 BOM 狀態：
 	//   I = Install（上件，預設）
 	//   X = Not Install（不上件，NI sheet）

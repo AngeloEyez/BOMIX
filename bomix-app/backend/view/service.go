@@ -418,8 +418,8 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 		// 找出在此 revision 中含有「有效」location（bom_status != X）或含有 MatrixSelection 的 Parts。
 		validParts := make([]db.Part, 0, len(data.parts))
 		for _, p := range data.parts {
-			key := groupKey(p.Supplier, p.SupplierPN, p.Type)
-			if hasEffectiveLocByPartID[p.ID] || hasSelectionByPartID[p.ID] || hasSelectionByGroupKey[key] || hasSelectionByGroupKey[groupKey(p.Supplier, p.SupplierPN)] {
+			key := groupKey(p.Supplier, p.SupplierPN)
+			if hasEffectiveLocByPartID[p.ID] || hasSelectionByPartID[p.ID] || hasSelectionByGroupKey[key] {
 				validParts = append(validParts, p)
 			}
 		}
@@ -431,9 +431,9 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			if !exists {
 				continue
 			}
-			// 只有主料在此 revision 有效上件，才採納其替代料
-			if hasEffectiveLocByPartID[mainPart.ID] {
-				key := groupKey(mainPart.Supplier, mainPart.SupplierPN, mainPart.Type)
+			// 只有主料在此 revision 有效上件或含有 Selection，才採納其替代料
+			if hasEffectiveLocByPartID[mainPart.ID] || hasSelectionByPartID[mainPart.ID] {
+				key := groupKey(mainPart.Supplier, mainPart.SupplierPN)
 				ssByMainKey[key] = append(ssByMainKey[key], ss)
 			}
 		}
@@ -447,7 +447,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 		for _, sel := range data.selections {
 			var mainKey string
 			if mainPart, exists := partByID[sel.PartID]; exists {
-				mainKey = groupKey(mainPart.Supplier, mainPart.SupplierPN, mainPart.Type)
+				mainKey = groupKey(mainPart.Supplier, mainPart.SupplierPN)
 			} else if sel.Group != "" {
 				mainKey = sel.Group
 			} else {
@@ -494,8 +494,9 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			}
 		}
 
-		// --- 4. 處理此 revision 的 Parts（按 (Supplier, SupplierPN, Type) 歸類） ---
+		// --- 4. 處理此 revision 的 Parts與 PartLocations（按 (Supplier, SupplierPN, Location.Type) 歸類） ---
 		representativeParts := make(map[string]db.Part)
+		typeByGroup := make(map[string]string)
 		locationsByGroup := make(map[string]map[string]bool)
 		cclByGroup := make(map[string]bool)
 		statusByGroup := make(map[string]string)
@@ -504,19 +505,22 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 		mCountByGroup := make(map[string]int)
 
 		for _, p := range validParts {
-			key := groupKey(p.Supplier, p.SupplierPN, p.Type)
-			if locationsByGroup[key] == nil {
-				locationsByGroup[key] = make(map[string]bool)
-			}
-
-			// 只收集此 part 的有效 location（bom_status != X）參與聚合計算
 			locs := allLocsByPartID[p.ID]
+			hasEffectiveLoc := false
+
 			for _, loc := range locs {
 				statusUpper := strings.ToUpper(strings.TrimSpace(loc.BomStatus))
 				if statusUpper == "X" {
 					continue // 跳過不上件 location，不計入位置聚合與 BOMStatus 統計
 				}
+				hasEffectiveLoc = true
+				key := groupKey(p.Supplier, p.SupplierPN, loc.Type)
+				if locationsByGroup[key] == nil {
+					locationsByGroup[key] = make(map[string]bool)
+				}
+
 				locationsByGroup[key][loc.Location] = true
+				typeByGroup[key] = loc.Type
 				if loc.CCL {
 					cclByGroup[key] = true
 				}
@@ -526,12 +530,17 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				} else if statusUpper == "M" {
 					mCountByGroup[key]++
 				}
+				if _, exists := representativeParts[key]; !exists {
+					representativeParts[key] = p
+				}
 			}
 
-			if rep, exists := representativeParts[key]; !exists {
-				representativeParts[key] = p
-			} else if rep.Type == "" && p.Type != "" {
-				representativeParts[key] = p
+			// 若物料沒有任何有效上件 location（如只有 X 或僅有 selection），使用無 type 鍵歸類
+			if !hasEffectiveLoc {
+				baseKey := groupKey(p.Supplier, p.SupplierPN)
+				if _, exists := representativeParts[baseKey]; !exists {
+					representativeParts[baseKey] = p
+				}
 			}
 		}
 
@@ -558,6 +567,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				if bomStat == "" {
 					bomStat = "I"
 				}
+				partType := typeByGroup[key]
 				b = &partGroupBuilder{
 					group: ViewPartGroup{
 						MainSupplier:          repPart.Supplier,
@@ -565,7 +575,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 						Item:                  repPart.Item,
 						HHPN:                  repPart.HHPN,
 						Description:           repPart.Description,
-						Type:                  repPart.Type, // SMD, PTH, BOTTOM
+						Type:                  partType, // SMD, PTH, BOTTOM
 						BOMStatus:             bomStat,
 						CCL:                   cclByGroup[key],
 						Remark:                repPart.Remark,
@@ -581,8 +591,8 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			} else {
 				// 主料已存在於 group 中：追加 SourceRevisionID
 				b.group.SourceRevisionIDs = appendUnique(b.group.SourceRevisionIDs, revID)
-				if b.group.Type == "" && repPart.Type != "" {
-					b.group.Type = repPart.Type
+				if b.group.Type == "" && typeByGroup[key] != "" {
+					b.group.Type = typeByGroup[key]
 				}
 				if cclByGroup[key] {
 					b.group.CCL = true
@@ -596,17 +606,18 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				}
 			}
 
+			baseKey := groupKey(repPart.Supplier, repPart.SupplierPN)
 			// 更新主料於此 revision 中的 Selection 狀態
-			if selMatOrderMap := selMaterialByGroupKeyByOrder[key]; selMatOrderMap != nil {
+			if selMatOrderMap := selMaterialByGroupKeyByOrder[baseKey]; selMatOrderMap != nil {
 				for sortOrder, selectedMat := range selMatOrderMap {
-					if strings.EqualFold(selectedMat, key) {
+					if strings.EqualFold(selectedMat, baseKey) || strings.EqualFold(selectedMat, key) {
 						b.group.MainSelectionsByOrder[sortOrder] = true
 					}
 				}
 			}
 
 			// 檢察與組裝此 revision 屬於該主料的 2nd Source (替代料)
-			for _, ss := range ssByMainKey[key] {
+			for _, ss := range ssByMainKey[baseKey] {
 				ssKey := groupKey(ss.Supplier, ss.SupplierPN)
 				existing, ok := b.ssBuilder[ssKey]
 				if !ok {
@@ -627,7 +638,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 					}
 				}
 
-				if selMatOrderMap := selMaterialByGroupKeyByOrder[key]; selMatOrderMap != nil {
+				if selMatOrderMap := selMaterialByGroupKeyByOrder[baseKey]; selMatOrderMap != nil {
 					for sortOrder, selectedMat := range selMatOrderMap {
 						if strings.EqualFold(selectedMat, ssKey) {
 							existing.SelectionsByOrder[sortOrder] = true
@@ -637,10 +648,10 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			}
 
 			// 蒐集此 revision 的 MatrixSelections (優先以 SortOrder 順序匹配)
-			selOrderMap := selByGroupKeyByOrder[key]
-			selNameMap := selByGroupKeyByName[key]
-			selMatOrderMap := selMaterialByGroupKeyByOrder[key]
-			selMatNameMap := selMaterialByGroupKeyByName[key]
+			selOrderMap := selByGroupKeyByOrder[baseKey]
+			selNameMap := selByGroupKeyByName[baseKey]
+			selMatOrderMap := selMaterialByGroupKeyByOrder[baseKey]
+			selMatNameMap := selMaterialByGroupKeyByName[baseKey]
 
 			for _, mData := range rawData[revID].models {
 				sortOrder := mData.SortOrder

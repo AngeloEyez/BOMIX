@@ -2,6 +2,7 @@ package excel
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -22,6 +23,10 @@ func TestFullMatrixImportExportFlow(t *testing.T) {
 	ebomPath2 := "testdata/TARIS_EZBOM_SI1_0.1_BOM_20260722_1400.WP(compared).xls"
 	matrixPath := "testdata/TARIS_EZBOM_SI1_0.1_MatrixBOM_20260722_1400.WP.xlsx"
 
+	if _, err := os.Stat(ebomPath1); os.IsNotExist(err) {
+		t.Skipf("Skipping test: %s not found", ebomPath1)
+	}
+
 	t.Log("=== 1. Importing EBOMs ===")
 	results1, err := reader.ImportExcel([]string{ebomPath1, ebomPath2})
 	if err != nil {
@@ -37,8 +42,8 @@ func TestFullMatrixImportExportFlow(t *testing.T) {
 	t.Logf("Parts in DB for Rev 2: %d", len(dbParts))
 	for _, p := range dbParts {
 		if strings.Contains(p.SupplierPN, "AZC199") || strings.Contains(p.SupplierPN, "AP22818") || strings.Contains(p.SupplierPN, "LBSS139") {
-			t.Logf("DB Part: ID=%d, RevID=%d, Type=%s, Sup=%s, PN=%s, Item=%s",
-				p.ID, p.RevisionID, p.Type, p.Supplier, p.SupplierPN, p.Item)
+			t.Logf("DB Part: ID=%d, RevID=%d, Sup=%s, PN=%s, Item=%s",
+				p.ID, p.RevisionID, p.Supplier, p.SupplierPN, p.Item)
 		}
 	}
 

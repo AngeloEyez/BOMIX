@@ -434,13 +434,12 @@ func (r *EBOMReader) parseMainSheet(
 
 		if item != "" {
 			// 主料（Main Source）：item 欄位有值
-			key := supplier + "|" + supplierPN + "|" + strings.ToUpper(strings.TrimSpace(sheetType))
+			key := supplier + "|" + supplierPN
 			part, exists := partMap[key]
 			if !exists {
-				// 此 (supplier, supplier_pn, type) 尚未出現：建立新 Part
+				// 此 (supplier, supplier_pn) 尚未出現：建立新 Part
 				part = &db.Part{
 					RevisionID:  r.revisionID,
-					Type:        sheetType,
 					Item:        item,
 					HHPN:        hhpn,
 					Supplier:    supplier,
@@ -501,6 +500,7 @@ func (r *EBOMReader) parseMainSheet(
 type parsedPartLocation struct {
 	partPtr   *db.Part
 	location  string
+	partType  string
 	bomStatus string
 	ccl       bool
 }
@@ -547,12 +547,11 @@ func (r *EBOMReader) parseMainSheetV2(
 
 		if item != "" {
 			// 主料
-			key := supplier + "|" + supplierPN + "|" + strings.ToUpper(strings.TrimSpace(sheetType))
+			key := supplier + "|" + supplierPN
 			part, exists := partMap[key]
 			if !exists {
 				part = &db.Part{
 					RevisionID:  r.revisionID,
-					Type:        sheetType,
 					Item:        item,
 					HHPN:        hhpn,
 					Supplier:    supplier,
@@ -571,6 +570,7 @@ func (r *EBOMReader) parseMainSheetV2(
 				locationList = append(locationList, parsedPartLocation{
 					partPtr:   part,
 					location:  loc,
+					partType:  sheetType,
 					bomStatus: "I",
 					ccl:       isCCL,
 				})
@@ -641,10 +641,9 @@ func (r *EBOMReader) parseNISheet(
 		key := supplier + "|" + supplierPN
 		part, exists := partMap[key]
 		if !exists {
-			// NI 物料在主製程中未出現，建立新 Part（Type 為空，表示無製程類型）
+			// NI 物料在主製程中未出現，建立新 Part
 			part = &db.Part{
 				RevisionID:  r.revisionID,
-				Type:        "",
 				HHPN:        hhpn,
 				Supplier:    supplier,
 				SupplierPN:  supplierPN,
@@ -658,6 +657,7 @@ func (r *EBOMReader) parseNISheet(
 			locationList = append(locationList, parsedPartLocation{
 				partPtr:   part,
 				location:  loc,
+				partType:  "",
 				bomStatus: "X",
 				ccl:       false,
 			})
@@ -761,6 +761,7 @@ func (r *EBOMReader) saveParts(
 		locations = append(locations, db.PartLocation{
 			PartID:    pl.partPtr.ID,
 			Location:  pl.location,
+			Type:      pl.partType,
 			BomStatus: pl.bomStatus,
 			CCL:       pl.ccl,
 		})

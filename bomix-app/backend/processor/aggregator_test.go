@@ -14,7 +14,6 @@ func TestAggregator_Aggregate(t *testing.T) {
 		parts := []db.Part{
 			{
 				ID:          1,
-				Type:        "SMD",
 				Supplier:    "Samsung",
 				SupplierPN:  "CL05B104KO5NNNC",
 				Description: "CAP,22uF,+/-20%,X5R,6.3V,SMD0603",
@@ -22,9 +21,9 @@ func TestAggregator_Aggregate(t *testing.T) {
 		}
 
 		locations := []db.PartLocation{
-			{PartID: 1, Location: "C1", BomStatus: "I", CCL: true},
-			{PartID: 1, Location: "C2", BomStatus: "I", CCL: true},
-			{PartID: 1, Location: "C3", BomStatus: "I", CCL: true},
+			{PartID: 1, Location: "C1", Type: "SMD", BomStatus: "I", CCL: true},
+			{PartID: 1, Location: "C2", Type: "SMD", BomStatus: "I", CCL: true},
+			{PartID: 1, Location: "C3", Type: "SMD", BomStatus: "I", CCL: true},
 		}
 
 		secondSources := []db.SecondSource{}
@@ -35,6 +34,7 @@ func TestAggregator_Aggregate(t *testing.T) {
 		assert.Equal(t, "Samsung", result[0].MainSupplier)
 		assert.Equal(t, "CL05B104KO5NNNC", result[0].MainSupplierPn)
 		assert.Equal(t, 3, result[0].Qty)
+		assert.Equal(t, "SMD", result[0].Type)
 		assert.Contains(t, result[0].Locations, "C1")
 		assert.Contains(t, result[0].Locations, "C2")
 		assert.Contains(t, result[0].Locations, "C3")
@@ -45,7 +45,6 @@ func TestAggregator_Aggregate(t *testing.T) {
 		parts := []db.Part{
 			{
 				ID:          1,
-				Type:        "PTH",
 				Supplier:    "Murata",
 				SupplierPN:  "GRM155R71H104KA88D",
 				Description: "CAP,100nF,+/-10%,X7R,50V,SMD0402",
@@ -53,8 +52,8 @@ func TestAggregator_Aggregate(t *testing.T) {
 		}
 
 		locations := []db.PartLocation{
-			{PartID: 1, Location: "C10", BomStatus: "I", CCL: false},
-			{PartID: 1, Location: "C11", BomStatus: "I", CCL: false},
+			{PartID: 1, Location: "C10", Type: "PTH", BomStatus: "I", CCL: false},
+			{PartID: 1, Location: "C11", Type: "PTH", BomStatus: "I", CCL: false},
 		}
 
 		secondSources := []db.SecondSource{}
@@ -63,6 +62,7 @@ func TestAggregator_Aggregate(t *testing.T) {
 
 		assert.Len(t, result, 1)
 		assert.Equal(t, 2, result[0].Qty)
+		assert.Equal(t, "PTH", result[0].Type)
 		assert.False(t, result[0].CCL)
 	})
 
@@ -70,7 +70,6 @@ func TestAggregator_Aggregate(t *testing.T) {
 		parts := []db.Part{
 			{
 				ID:          1,
-				Type:        "SMD",
 				Supplier:    "Yageo",
 				SupplierPN:  "RC0402FR-0710KL",
 				Description: "RES,10K,+/-1%,0603",
@@ -78,9 +77,9 @@ func TestAggregator_Aggregate(t *testing.T) {
 		}
 
 		locations := []db.PartLocation{
-			{PartID: 1, Location: "R1", BomStatus: "I", CCL: false},
-			{PartID: 1, Location: "R2", BomStatus: "I", CCL: false},
-			{PartID: 1, Location: "R3", BomStatus: "I", CCL: false},
+			{PartID: 1, Location: "R1", Type: "SMD", BomStatus: "I", CCL: false},
+			{PartID: 1, Location: "R2", Type: "SMD", BomStatus: "I", CCL: false},
+			{PartID: 1, Location: "R3", Type: "SMD", BomStatus: "I", CCL: false},
 		}
 
 		secondSources := []db.SecondSource{}
@@ -98,7 +97,6 @@ func TestAggregator_Aggregate(t *testing.T) {
 		parts := []db.Part{
 			{
 				ID:          1,
-				Type:        "SMD",
 				Supplier:    "Samsung",
 				SupplierPN:  "CL05B104KO5NNNC",
 				Description: "CAP,22uF,+/-20%,X5R,6.3V,SMD0603",
@@ -106,7 +104,7 @@ func TestAggregator_Aggregate(t *testing.T) {
 		}
 
 		locations := []db.PartLocation{
-			{PartID: 1, Location: "C1", BomStatus: "I", CCL: true},
+			{PartID: 1, Location: "C1", Type: "SMD", BomStatus: "I", CCL: true},
 		}
 
 		secondSources := []db.SecondSource{
