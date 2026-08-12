@@ -160,26 +160,45 @@ func TestFilter_Apply_NI(t *testing.T) {
 	}
 }
 
-// TestFilter_Apply_CCL 測試 CCL 視圖過濾
+// TestFilter_Apply_CCL 測試 CCL 視圖過濾 (包含 BOM Mode NPI 與 MP 判定)
 func TestFilter_Apply_CCL(t *testing.T) {
 	filter := NewFilter()
 
 	parts := []ViewPartGroup{
 		makeTestPart("S1", "P1", "SMD", "I", true, []int64{1}),
 		makeTestPart("S2", "P2", "SMD", "I", false, []int64{1}),
-		makeTestPart("S3", "P3", "SMD", "I", true, []int64{1}),
+		makeTestPart("S3", "P3", "SMD", "P", true, []int64{1}),
+		makeTestPart("S4", "P4", "SMD", "M", true, []int64{1}),
+		makeTestPart("S5", "P5", "SMD", "X", true, []int64{1}),
 	}
-	query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewCCL}
 
-	result := filter.Apply(parts, query)
-	if len(result) != 2 {
-		t.Errorf("CCL 過濾期望 2 個（CCL=true），實際得到 %d 個", len(result))
-	}
-	for _, p := range result {
-		if !p.CCL {
-			t.Errorf("CCL 視圖不應包含 CCL=%v 的物料", p.CCL)
+	t.Run("NPI 模式", func(t *testing.T) {
+		query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewCCL, ModeOverride: "NPI"}
+		result := filter.Apply(parts, query)
+		// 期望包含 I(S1) 與 P(S3)，排除 ccl=false(S2)、M(S4)與 X(S5)
+		if len(result) != 2 {
+			t.Errorf("NPI 模式 CCL 過濾期望 2 個（S1, S3），實際得到 %d 個", len(result))
 		}
-	}
+		for _, p := range result {
+			if !p.CCL || (p.BOMStatus != "I" && p.BOMStatus != "P") {
+				t.Errorf("NPI 模式 CCL 視圖不應包含 Status=%s, CCL=%v 的物料", p.BOMStatus, p.CCL)
+			}
+		}
+	})
+
+	t.Run("MP 模式", func(t *testing.T) {
+		query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewCCL, ModeOverride: "MP"}
+		result := filter.Apply(parts, query)
+		// 期望包含 I(S1) 與 M(S4)，排除 ccl=false(S2)、P(S3)與 X(S5)
+		if len(result) != 2 {
+			t.Errorf("MP 模式 CCL 過濾期望 2 個（S1, S4），實際得到 %d 個", len(result))
+		}
+		for _, p := range result {
+			if !p.CCL || (p.BOMStatus != "I" && p.BOMStatus != "M") {
+				t.Errorf("MP 模式 CCL 視圖不應包含 Status=%s, CCL=%v 的物料", p.BOMStatus, p.CCL)
+			}
+		}
+	})
 }
 
 // TestFilter_Apply_EmptyViewType 測試空 ViewType 預設為 ALL
@@ -339,7 +358,7 @@ func TestIsEffectiveBOMStatus(t *testing.T) {
 	})
 }
 
-// TestMergeRevisions_LocationAndQtyAggregation 測試同一 Revision 内跨 Type/CCL 的 Location 去重合併與 Qty 重新計算
+// TestMergeRevisions_LocationAndQtyAggregation 測試同一 Revision 内同 Type/CCL 的 Location 去重合併與 Qty 重新計算
 func TestMergeRevisions_LocationAndQtyAggregation(t *testing.T) {
 	svc := &Service{}
 
@@ -347,13 +366,15 @@ func TestMergeRevisions_LocationAndQtyAggregation(t *testing.T) {
 		revision: db.BomRevision{ID: 1},
 		parts: []db.Part{
 			{ID: 101, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", Item: "1"},
-			{ID: 102, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "PTH", Item: "1"},
+			{ID: 102, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "SMD", Item: "1"},
+			{ID: 103, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Type: "PTH", Item: "2"},
 		},
 		partLocations: []db.PartLocation{
 			{ID: 1, PartID: 101, Location: "C1", BomStatus: "I", CCL: false},
 			{ID: 2, PartID: 101, Location: "C2", BomStatus: "I", CCL: false},
 			{ID: 3, PartID: 102, Location: "C2", BomStatus: "I", CCL: true},
 			{ID: 4, PartID: 102, Location: "C3", BomStatus: "I", CCL: true},
+			{ID: 5, PartID: 103, Location: "C4", BomStatus: "I", CCL: false},
 		},
 	}
 
@@ -361,18 +382,29 @@ func TestMergeRevisions_LocationAndQtyAggregation(t *testing.T) {
 	query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewAll}
 
 	groups := svc.mergeRevisions(rawData, query)
-	if len(groups) != 1 {
-		t.Fatalf("期望 1 個物料群組，實際得到 %d 個", len(groups))
+	if len(groups) != 2 {
+		t.Fatalf("期望 2 個物料群組（1個SMD，1個PTH），實際得到 %d 個", len(groups))
 	}
 
-	group := groups[0]
+	smdGroup := groups[0]
+	if smdGroup.Type != "SMD" {
+		t.Errorf("第一個群組 Type 期望 SMD，實際得到 %s", smdGroup.Type)
+	}
 	// Location 應該合併去重為 "C1,C2,C3"
-	if group.Locations != "C1,C2,C3" {
-		t.Errorf("Locations 合併期望 %q，實際得到 %q", "C1,C2,C3", group.Locations)
+	if smdGroup.Locations != "C1,C2,C3" {
+		t.Errorf("Locations 合併期望 %q，實際得到 %q", "C1,C2,C3", smdGroup.Locations)
 	}
 	// Qty 應該重新計算為 3
-	if group.Qty != 3 {
-		t.Errorf("Qty 期望 3，實際得到 %d", group.Qty)
+	if smdGroup.Qty != 3 {
+		t.Errorf("Qty 期望 3，實際得到 %d", smdGroup.Qty)
+	}
+
+	pthGroup := groups[1]
+	if pthGroup.Type != "PTH" {
+		t.Errorf("第二個群組 Type 期望 PTH，實際得到 %s", pthGroup.Type)
+	}
+	if pthGroup.Locations != "C4" {
+		t.Errorf("PTH Locations 期望 C4，實際得到 %s", pthGroup.Locations)
 	}
 }
 

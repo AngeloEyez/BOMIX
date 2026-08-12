@@ -434,10 +434,10 @@ func (r *EBOMReader) parseMainSheet(
 
 		if item != "" {
 			// 主料（Main Source）：item 欄位有值
-			key := supplier + "|" + supplierPN
+			key := supplier + "|" + supplierPN + "|" + strings.ToUpper(strings.TrimSpace(sheetType))
 			part, exists := partMap[key]
 			if !exists {
-				// 此 (supplier, supplier_pn) 尚未出現：建立新 Part
+				// 此 (supplier, supplier_pn, type) 尚未出現：建立新 Part
 				part = &db.Part{
 					RevisionID:  r.revisionID,
 					Type:        sheetType,
@@ -547,7 +547,7 @@ func (r *EBOMReader) parseMainSheetV2(
 
 		if item != "" {
 			// 主料
-			key := supplier + "|" + supplierPN
+			key := supplier + "|" + supplierPN + "|" + strings.ToUpper(strings.TrimSpace(sheetType))
 			part, exists := partMap[key]
 			if !exists {
 				part = &db.Part{

@@ -315,9 +315,13 @@ func createViewRevisionFromRaw(id int64, data *rawRevisionData) ViewRevision {
 	}
 }
 
-// groupKey 建立物料群組的識別鍵，格式為 "supplier|supplier_pn"
-func groupKey(supplier, supplierPN string) string {
-	return supplier + "|" + supplierPN
+// groupKey 建立物料群組的識別鍵，格式為 "supplier|supplier_pn" 或 "supplier|supplier_pn|type"
+func groupKey(supplier, supplierPN string, partType ...string) string {
+	k := supplier + "|" + supplierPN
+	if len(partType) > 0 && partType[0] != "" {
+		k += "|" + strings.ToUpper(strings.TrimSpace(partType[0]))
+	}
+	return k
 }
 
 // isEffectiveBOMStatus 判斷指定物料的 bom_status 是否有效（非 X 上件狀態）。
@@ -414,8 +418,8 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 		// 找出在此 revision 中含有「有效」location（bom_status != X）或含有 MatrixSelection 的 Parts。
 		validParts := make([]db.Part, 0, len(data.parts))
 		for _, p := range data.parts {
-			key := groupKey(p.Supplier, p.SupplierPN)
-			if hasEffectiveLocByPartID[p.ID] || hasSelectionByPartID[p.ID] || hasSelectionByGroupKey[key] {
+			key := groupKey(p.Supplier, p.SupplierPN, p.Type)
+			if hasEffectiveLocByPartID[p.ID] || hasSelectionByPartID[p.ID] || hasSelectionByGroupKey[key] || hasSelectionByGroupKey[groupKey(p.Supplier, p.SupplierPN)] {
 				validParts = append(validParts, p)
 			}
 		}
@@ -429,7 +433,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			}
 			// 只有主料在此 revision 有效上件，才採納其替代料
 			if hasEffectiveLocByPartID[mainPart.ID] {
-				key := groupKey(mainPart.Supplier, mainPart.SupplierPN)
+				key := groupKey(mainPart.Supplier, mainPart.SupplierPN, mainPart.Type)
 				ssByMainKey[key] = append(ssByMainKey[key], ss)
 			}
 		}
@@ -441,13 +445,13 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 		selMaterialByGroupKeyByName := make(map[string]map[string]string)
 
 		for _, sel := range data.selections {
-			mainKey := sel.Group
-			if mainKey == "" {
-				mainPart, exists := partByID[sel.PartID]
-				if !exists {
-					continue
-				}
-				mainKey = groupKey(mainPart.Supplier, mainPart.SupplierPN)
+			var mainKey string
+			if mainPart, exists := partByID[sel.PartID]; exists {
+				mainKey = groupKey(mainPart.Supplier, mainPart.SupplierPN, mainPart.Type)
+			} else if sel.Group != "" {
+				mainKey = sel.Group
+			} else {
+				continue
 			}
 
 			sortOrder, okOrder := modelIDToSortOrder[sel.ModelID]
@@ -490,7 +494,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			}
 		}
 
-		// --- 4. 處理此 revision 的 Parts（按 (Supplier, SupplierPN) 歸類） ---
+		// --- 4. 處理此 revision 的 Parts（按 (Supplier, SupplierPN, Type) 歸類） ---
 		representativeParts := make(map[string]db.Part)
 		locationsByGroup := make(map[string]map[string]bool)
 		cclByGroup := make(map[string]bool)
@@ -500,7 +504,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 		mCountByGroup := make(map[string]int)
 
 		for _, p := range validParts {
-			key := groupKey(p.Supplier, p.SupplierPN)
+			key := groupKey(p.Supplier, p.SupplierPN, p.Type)
 			if locationsByGroup[key] == nil {
 				locationsByGroup[key] = make(map[string]bool)
 			}

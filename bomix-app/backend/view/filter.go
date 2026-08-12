@@ -57,7 +57,7 @@ func (f *Filter) Apply(parts []ViewPartGroup, query ViewQuery, modes ...string) 
 	case ViewMP:
 		return f.filterByBOMStatus(parts, "M")
 	case ViewCCL:
-		return f.filterCCL(parts)
+		return f.filterCCL(parts, mode)
 	default:
 		// 未知視圖類型：回傳全部（不過濾）
 		return parts
@@ -156,13 +156,31 @@ func (f *Filter) filterByBOMStatus(parts []ViewPartGroup, status string) []ViewP
 	return result
 }
 
-// filterCCL 過濾出關鍵零件 (CCL = true) 且 bom_status != X 的有效物料。
+// filterCCL 過濾出關鍵零件 (CCL = true) 且 bom_status 符合當前 BOM 模式 (NPI: I+P, MP: I+M) 的有效物料。
 // See product-spec section 6.4.2 & 8.1.6
-func (f *Filter) filterCCL(parts []ViewPartGroup) []ViewPartGroup {
+//
+// 參數：
+//   - parts：待過濾列表
+//   - mode：當前 BOM 模式（NPI 或 MP）
+//
+// 回傳：
+//   - []ViewPartGroup：過濾後的列表
+func (f *Filter) filterCCL(parts []ViewPartGroup, mode string) []ViewPartGroup {
 	result := make([]ViewPartGroup, 0)
+	mode = strings.ToUpper(strings.TrimSpace(mode))
+
 	for _, part := range parts {
-		if part.CCL && part.BOMStatus != "X" {
-			result = append(result, part)
+		if !part.CCL {
+			continue
+		}
+		if mode == "MP" {
+			if part.BOMStatus == "I" || part.BOMStatus == "M" {
+				result = append(result, part)
+			}
+		} else {
+			if part.BOMStatus == "I" || part.BOMStatus == "P" {
+				result = append(result, part)
+			}
 		}
 	}
 	return result
