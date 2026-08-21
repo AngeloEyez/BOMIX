@@ -42,7 +42,11 @@ func applyTagReplacement(f *excelize.File, tags map[string]string) error {
 				if replaced {
 					colName := getColName(j)
 					rowNum := i + 1
-					f.SetCellValue(sheet, fmt.Sprintf("%s%d", colName, rowNum), cellValue)
+					if cellValue == "" {
+						_ = f.SetCellValue(sheet, fmt.Sprintf("%s%d", colName, rowNum), nil)
+					} else {
+						_ = f.SetCellValue(sheet, fmt.Sprintf("%s%d", colName, rowNum), cellValue)
+					}
 				}
 			}
 		}
@@ -362,7 +366,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			if qty > 0 {
 				f.SetCellValue("BigMatrix", fmt.Sprintf("%s5", col), qty)
 			} else {
-				f.SetCellValue("BigMatrix", fmt.Sprintf("%s5", col), "")
+				f.SetCellValue("BigMatrix", fmt.Sprintf("%s5", col), nil)
 			}
 		}
 
@@ -657,14 +661,14 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		if itemNum, err := strconv.Atoi(strings.TrimSpace(part.Item)); err == nil {
 			f.SetCellValue("BigMatrix", fmt.Sprintf("A%d", rowIndex), itemNum)
 		} else {
-			f.SetCellValue("BigMatrix", fmt.Sprintf("A%d", rowIndex), part.Item)
+			f.SetCellValue("BigMatrix", fmt.Sprintf("A%d", rowIndex), stringOrNil(part.Item))
 		}
-		f.SetCellValue("BigMatrix", fmt.Sprintf("B%d", rowIndex), part.HHPN)
-		f.SetCellValue("BigMatrix", fmt.Sprintf("C%d", rowIndex), part.Description)
-		f.SetCellValue("BigMatrix", fmt.Sprintf("D%d", rowIndex), part.Supplier)
-		f.SetCellValue("BigMatrix", fmt.Sprintf("E%d", rowIndex), part.SupplierPn)
+		f.SetCellValue("BigMatrix", fmt.Sprintf("B%d", rowIndex), stringOrNil(part.HHPN))
+		f.SetCellValue("BigMatrix", fmt.Sprintf("C%d", rowIndex), stringOrNil(part.Description))
+		f.SetCellValue("BigMatrix", fmt.Sprintf("D%d", rowIndex), stringOrNil(part.Supplier))
+		f.SetCellValue("BigMatrix", fmt.Sprintf("E%d", rowIndex), stringOrNil(part.SupplierPn))
 		f.SetCellValue("BigMatrix", fmt.Sprintf("F%d", rowIndex), part.Qty)
-		f.SetCellValue("BigMatrix", fmt.Sprintf("G%d", rowIndex), part.Location)
+		f.SetCellValue("BigMatrix", fmt.Sprintf("G%d", rowIndex), stringOrNil(part.Location))
 
 		// 8.1.5.3 - Write Model selections
 		// 若物料在某 BOM Revision 中不存在，將對應的所有 Model 欄位填入灰色底色
@@ -692,8 +696,8 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 					if st >= 0 {
 						_ = f.SetCellStyle("BigMatrix", cell, cell, st)
 					}
-					// 灰底儲存格禁止寫入任何資料，強制設為空字串
-					f.SetCellValue("BigMatrix", cell, "")
+					// 灰底儲存格禁止寫入任何資料，強制設為 nil (Blank)
+					f.SetCellValue("BigMatrix", cell, nil)
 				} else {
 					// 物料存在：解鎖此儲存格 (Locked: false) 允許編輯，並判斷 Model 勾選狀態
 					refRow := 6
@@ -712,7 +716,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 					if isBigMatrixMainSourceSelected(part, rev.ID, i, mName) {
 						f.SetCellValue("BigMatrix", cell, "V")
 					} else {
-						f.SetCellValue("BigMatrix", cell, "")
+						f.SetCellValue("BigMatrix", cell, nil)
 					}
 				}
 			}
@@ -727,10 +731,10 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			isEvenSS := isEven
 			applyFullRowStyle(f, "BigMatrix", rowIndex, isEvenSS, isProtoGroup)
 
-			f.SetCellValue("BigMatrix", fmt.Sprintf("B%d", rowIndex), ss.HHPN)
-			f.SetCellValue("BigMatrix", fmt.Sprintf("C%d", rowIndex), ss.Description)
-			f.SetCellValue("BigMatrix", fmt.Sprintf("D%d", rowIndex), ss.Supplier)
-			f.SetCellValue("BigMatrix", fmt.Sprintf("E%d", rowIndex), ss.SupplierPn)
+			f.SetCellValue("BigMatrix", fmt.Sprintf("B%d", rowIndex), stringOrNil(ss.HHPN))
+			f.SetCellValue("BigMatrix", fmt.Sprintf("C%d", rowIndex), stringOrNil(ss.Description))
+			f.SetCellValue("BigMatrix", fmt.Sprintf("D%d", rowIndex), stringOrNil(ss.Supplier))
+			f.SetCellValue("BigMatrix", fmt.Sprintf("E%d", rowIndex), stringOrNil(ss.SupplierPn))
 
 			// 替代料也需要處理灰色底色
 			// 規則：當主料在當前 rev 本身不存在，或該 2nd Source 不在對應 rev 中，填入灰色底色
@@ -757,8 +761,8 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 						if st >= 0 {
 							_ = f.SetCellStyle("BigMatrix", cell, cell, st)
 						}
-						// 灰底儲存格禁止寫入任何資料，強制設為空字串
-						f.SetCellValue("BigMatrix", cell, "")
+						// 灰底儲存格禁止寫入任何資料，強制設為 nil (Blank)
+						f.SetCellValue("BigMatrix", cell, nil)
 					} else {
 						// 替代料存在：解鎖此儲存格 (Locked: false) 允許編輯，並判斷 Model 勾選狀態
 						refRow := 6
@@ -777,7 +781,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 						if isBigMatrixSecondSourceSelected(ss, part, rev.ID, i, mName) {
 							f.SetCellValue("BigMatrix", cell, "V")
 						} else {
-							f.SetCellValue("BigMatrix", cell, "")
+							f.SetCellValue("BigMatrix", cell, nil)
 						}
 					}
 				}

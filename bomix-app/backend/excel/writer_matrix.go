@@ -143,9 +143,9 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 			f.SetCellValue("PTH", fmt.Sprintf("%s5", col), qty)
 			f.SetCellValue("BOTTOM", fmt.Sprintf("%s5", col), qty)
 		} else {
-			f.SetCellValue("SMD", fmt.Sprintf("%s5", col), "")
-			f.SetCellValue("PTH", fmt.Sprintf("%s5", col), "")
-			f.SetCellValue("BOTTOM", fmt.Sprintf("%s5", col), "")
+			f.SetCellValue("SMD", fmt.Sprintf("%s5", col), nil)
+			f.SetCellValue("PTH", fmt.Sprintf("%s5", col), nil)
+			f.SetCellValue("BOTTOM", fmt.Sprintf("%s5", col), nil)
 		}
 	}
 
@@ -174,10 +174,12 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 	}
 
 	// 清空範本檔在 Row 6 與 Row 7 殘留的預設範例文字 (避免替代料列殘留範本舊文字)
+	// 清空範圍涵蓋 A 欄到所有 Model 欄位及 Remark 欄 (0 到 modelStartCol + actualModelCount)
+	clearEndCol := modelStartCol + actualModelCount
 	for _, sheet := range sheets {
 		for r := 6; r <= 7; r++ {
-			for c := 'A'; c <= 'J'; c++ {
-				_ = f.SetCellValue(sheet, fmt.Sprintf("%c%d", c, r), nil)
+			for c := 0; c <= clearEndCol; c++ {
+				_ = f.SetCellValue(sheet, fmt.Sprintf("%s%d", getColName(c), r), nil)
 			}
 		}
 	}
@@ -291,13 +293,14 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 
 			// Write basic part data (columns A, B, D, E, F, G, H)
 			// Column C is empty per spec 8.2.5.1
-			f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIndex), part.Item)
-			f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIndex), part.HHPN)
-			f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIndex), part.Description)
-			f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIndex), part.Supplier)
-			f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIndex), part.SupplierPn)
+			f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIndex), stringOrNil(part.Item))
+			f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIndex), stringOrNil(part.HHPN))
+			f.SetCellValue(sheet, fmt.Sprintf("C%d", rowIndex), nil)
+			f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIndex), stringOrNil(part.Description))
+			f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIndex), stringOrNil(part.Supplier))
+			f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIndex), stringOrNil(part.SupplierPn))
 			f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), part.Qty)
-			f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), part.Location)
+			f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), stringOrNil(part.Location))
 
 			// 8.2.5.3 - I column formula: =G{groupMasterRow}*J{row} (引用群組主料 G 欄 Qty)
 			formulaI := fmt.Sprintf("=G%d*J%d", groupMasterRow, rowIndex)
@@ -317,7 +320,7 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 			}
 
 			// Write Remark (column after all Model columns)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", remarkCol, rowIndex), part.Remark)
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", remarkCol, rowIndex), stringOrNil(part.Remark))
 
 			rowIndex++
 
@@ -328,11 +331,11 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 
 				// Second sources don't have Item, Qty or Location. Clear template residue by setting cell value to nil.
 				f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIndex), nil)
-				f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIndex), ss.HHPN)
+				f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIndex), stringOrNil(ss.HHPN))
 				f.SetCellValue(sheet, fmt.Sprintf("C%d", rowIndex), nil)
-				f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIndex), ss.Description)
-				f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIndex), ss.Supplier)
-				f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIndex), ss.SupplierPn)
+				f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIndex), stringOrNil(ss.Description))
+				f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIndex), stringOrNil(ss.Supplier))
+				f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIndex), stringOrNil(ss.SupplierPn))
 				f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), nil)
 				f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), nil)
 
@@ -353,7 +356,7 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 				}
 
 				// Remark for second source
-				f.SetCellValue(sheet, fmt.Sprintf("%s%d", remarkCol, rowIndex), ss.Remark)
+				f.SetCellValue(sheet, fmt.Sprintf("%s%d", remarkCol, rowIndex), stringOrNil(ss.Remark))
 
 				rowIndex++
 			}
@@ -468,7 +471,7 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 			if qty > 0 {
 				f.SetCellValue(sheet, fmt.Sprintf("%s5", col), qty)
 			} else {
-				f.SetCellValue(sheet, fmt.Sprintf("%s5", col), "")
+				f.SetCellValue(sheet, fmt.Sprintf("%s5", col), nil)
 			}
 		}
 	}
@@ -495,10 +498,12 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 	}
 
 	// 清空範本檔在 Row 6 與 Row 7 殘留的預設範例文字 (避免替代料列殘留範本舊文字)
+	// 清空範圍涵蓋 A 欄到所有 Model 欄位及 Remark 欄 (0 到 modelStartCol + actualModelCount)
+	clearEndColDetailed := modelStartCol + actualModelCount
 	for _, sheet := range sheets {
 		for r := 6; r <= 7; r++ {
-			for c := 'A'; c <= 'J'; c++ {
-				_ = f.SetCellValue(sheet, fmt.Sprintf("%c%d", c, r), nil)
+			for c := 0; c <= clearEndColDetailed; c++ {
+				_ = f.SetCellValue(sheet, fmt.Sprintf("%s%d", getColName(c), r), nil)
 			}
 		}
 	}
@@ -618,13 +623,14 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 
 			// Write basic part data (columns A, B, D, E, F, G, H)
 			// Column C is empty per spec 8.2.5.1
-			f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIndex), part.Item)
-			f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIndex), part.HHPN)
-			f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIndex), part.Description)
-			f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIndex), part.Supplier)
-			f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIndex), part.SupplierPn)
+			f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIndex), stringOrNil(part.Item))
+			f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIndex), stringOrNil(part.HHPN))
+			f.SetCellValue(sheet, fmt.Sprintf("C%d", rowIndex), nil)
+			f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIndex), stringOrNil(part.Description))
+			f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIndex), stringOrNil(part.Supplier))
+			f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIndex), stringOrNil(part.SupplierPn))
 			f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), part.Qty)
-			f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), part.Location)
+			f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), stringOrNil(part.Location))
 
 			// 8.2.5.3 - I column formula: =G{groupMasterRow}*J{row} (引用群組主料 G 欄 Qty)
 			formulaI := fmt.Sprintf("=G%d*J%d", groupMasterRow, rowIndex)
@@ -644,7 +650,7 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 			}
 
 			// 8.2.5.5 - Write Remark (column after all Model columns)
-			f.SetCellValue(sheet, fmt.Sprintf("%s%d", remarkCol, rowIndex), part.Remark)
+			f.SetCellValue(sheet, fmt.Sprintf("%s%d", remarkCol, rowIndex), stringOrNil(part.Remark))
 
 			rowIndex++
 
@@ -655,11 +661,11 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 
 				// Second sources don't have Item, Qty or Location. Clear template residue by setting cell value to nil.
 				f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIndex), nil)
-				f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIndex), ss.HHPN)
+				f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIndex), stringOrNil(ss.HHPN))
 				f.SetCellValue(sheet, fmt.Sprintf("C%d", rowIndex), nil)
-				f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIndex), ss.Description)
-				f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIndex), ss.Supplier)
-				f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIndex), ss.SupplierPn)
+				f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIndex), stringOrNil(ss.Description))
+				f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIndex), stringOrNil(ss.Supplier))
+				f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIndex), stringOrNil(ss.SupplierPn))
 				f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), nil)
 				f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), nil)
 
@@ -680,7 +686,7 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 				}
 
 				// Remark for second source
-				f.SetCellValue(sheet, fmt.Sprintf("%s%d", remarkCol, rowIndex), ss.Remark)
+				f.SetCellValue(sheet, fmt.Sprintf("%s%d", remarkCol, rowIndex), stringOrNil(ss.Remark))
 
 				rowIndex++
 			}

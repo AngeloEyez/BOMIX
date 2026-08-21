@@ -313,3 +313,13 @@ func validateAndPrepareOutputPath(lg *logger.Logger, outputPath, outputDir, defa
 
 	return finalPath, nil
 }
+
+// stringOrNil 若傳入字串為空字串，回傳 nil，否則回傳原字串。
+// 用於避免 excelize 寫入長度為 0 的字串 (CellTypeString)，確保輸出標準的 Blank 儲存格。
+func stringOrNil(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+

@@ -2,6 +2,7 @@ package excel
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -31,6 +32,13 @@ type groupRecord struct {
 func TestVerifyMatrixExport_TARIS_SI1_02(t *testing.T) {
 	ebomPath := filepath.Join("testdata", "TARIS_EZBOM_SI1_0.2_BOM_20260811_1000.WP(compared).xls")
 	benchmarkPath := filepath.Join("testdata", "TARIS_EZBOM_SI1_0.2_MatrixBOM_20260811_1000.WP.xlsx")
+
+	if _, err := os.Stat(ebomPath); os.IsNotExist(err) {
+		t.Skipf("Skipping test: %s not found", ebomPath)
+	}
+	if _, err := os.Stat(benchmarkPath); os.IsNotExist(err) {
+		t.Skipf("Skipping test: %s not found", benchmarkPath)
+	}
 
 	t.Logf("建立記憶體資料庫並匯入 EBOM 測試檔: %s", ebomPath)
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
