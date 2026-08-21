@@ -847,3 +847,253 @@ func naturalSortKey(s string) []string {
 	}
 	return tokens
 }
+
+// MergePartGroupsByMaterial 將包含 Type 維度的物料群組列表，進一步去除 Type 維度，
+// 依據 (MainSupplier, MainSupplierPN) 進行二階物料合併。
+//
+// 適用場景：
+//   - BigMatrix 匯出：單一工作表呈現全體物料，同一物料跨製程（如 SMD + BOTTOM）需合併為單一 Main Source。
+//
+// 合併規則：
+//   - 群組識別鍵：(MainSupplier, MainSupplierPN)
+//   - Item / HHPN / Description / Remark：保留首個非空資訊
+//   - Type：保留首個非空 Type（例如 "SMD"）
+//   - Locations：將所有被合併群組的 locations 拆分、去重、自然排序後重新組合為逗號分隔字串
+//   - Qty：重新計算為合併後 locations 的數量
+//   - CCL：若任一群組為 CCL=true，則合併後為 true
+//   - BOMStatus：若所有被合併群組的 BOMStatus 均為 "P" 則為 "P"，全為 "M" 則為 "M"，否則歸為 "I"
+//   - SourceRevisionIDs：取所有群組 SourceRevisionIDs 的聯集去重
+//   - SecondSources：依 (Supplier, SupplierPN) 取聯集去重，合併 SourceRevisionIDs 與 SelectionsByOrder
+//   - Selections：合併各 Revision 各 Model 的選擇狀態
+//   - MainSelectionsByOrder：合併主料各 Model 的勾選狀態（OR 運算）
+//   - 輸出排序：依合併後的 Locations 自然排序
+func MergePartGroupsByMaterial(groups []ViewPartGroup) []ViewPartGroup {
+	if len(groups) == 0 {
+		return []ViewPartGroup{}
+	}
+
+	type materialGroupBuilder struct {
+		group         ViewPartGroup
+		locSet        map[string]bool
+		allProto      bool
+		allMP         bool
+		hasStatus     bool
+		ssBuilder     map[string]*ViewSecondSource
+		selectionsMap map[string]ViewModelSelection // key: revID_sortOrder
+	}
+
+	builders := make(map[string]*materialGroupBuilder)
+	keyOrder := make([]string, 0)
+
+	for _, g := range groups {
+		matKey := groupKey(g.MainSupplier, g.MainSupplierPN)
+
+		b, exists := builders[matKey]
+		if !exists {
+			locSet := make(map[string]bool)
+			for _, loc := range atomizeLocations(g.Locations) {
+				locSet[loc] = true
+			}
+
+			ssMap := make(map[string]*ViewSecondSource, len(g.SecondSources))
+			for _, ss := range g.SecondSources {
+				ssKey := groupKey(ss.Supplier, ss.SupplierPN)
+				ssCopy := ss
+				ssCopy.SourceRevisionIDs = append([]int64(nil), ss.SourceRevisionIDs...)
+				ssCopy.SelectionsByOrder = make(map[int]bool, len(ss.SelectionsByOrder))
+				for k, v := range ss.SelectionsByOrder {
+					ssCopy.SelectionsByOrder[k] = v
+				}
+				ssMap[ssKey] = &ssCopy
+			}
+
+			selMap := make(map[string]ViewModelSelection, len(g.Selections))
+			for _, sel := range g.Selections {
+				selKey := fmt.Sprintf("%d_%d", sel.RevisionID, sel.SortOrder)
+				selMap[selKey] = sel
+			}
+
+			mainSelMap := make(map[int]bool, len(g.MainSelectionsByOrder))
+			for k, v := range g.MainSelectionsByOrder {
+				mainSelMap[k] = v
+			}
+
+			statusUpper := strings.ToUpper(strings.TrimSpace(g.BOMStatus))
+			isP := (statusUpper == "P")
+			isM := (statusUpper == "M")
+
+			b = &materialGroupBuilder{
+				group: ViewPartGroup{
+					MainSupplier:          g.MainSupplier,
+					MainSupplierPN:        g.MainSupplierPN,
+					Item:                  g.Item,
+					HHPN:                  g.HHPN,
+					Description:           g.Description,
+					Type:                  g.Type,
+					BOMStatus:             g.BOMStatus,
+					CCL:                   g.CCL,
+					Remark:                g.Remark,
+					SourceRevisionIDs:     append([]int64(nil), g.SourceRevisionIDs...),
+					MainSelectionsByOrder: mainSelMap,
+				},
+				locSet:        locSet,
+				allProto:      isP,
+				allMP:         isM,
+				hasStatus:     true,
+				ssBuilder:     ssMap,
+				selectionsMap: selMap,
+			}
+			builders[matKey] = b
+			keyOrder = append(keyOrder, matKey)
+		} else {
+			// 主料已存在：進行屬性合併
+			// 1. 基本資訊補充（若既有為空則補齊）
+			if b.group.Item == "" && g.Item != "" {
+				b.group.Item = g.Item
+			}
+			if b.group.HHPN == "" && g.HHPN != "" {
+				b.group.HHPN = g.HHPN
+			}
+			if b.group.Description == "" && g.Description != "" {
+				b.group.Description = g.Description
+			}
+			if b.group.Type == "" && g.Type != "" {
+				b.group.Type = g.Type
+			}
+			if b.group.Remark == "" && g.Remark != "" {
+				b.group.Remark = g.Remark
+			}
+
+			// 2. Locations 聯集
+			for _, loc := range atomizeLocations(g.Locations) {
+				b.locSet[loc] = true
+			}
+
+			// 3. CCL 聯集（OR）
+			if g.CCL {
+				b.group.CCL = true
+			}
+
+			// 4. BOMStatus 判斷（全 P 則 P，全 M 則 M，否則 I）
+			statusUpper := strings.ToUpper(strings.TrimSpace(g.BOMStatus))
+			if statusUpper != "P" {
+				b.allProto = false
+			}
+			if statusUpper != "M" {
+				b.allMP = false
+			}
+
+			// 5. SourceRevisionIDs 聯集
+			for _, revID := range g.SourceRevisionIDs {
+				b.group.SourceRevisionIDs = appendUnique(b.group.SourceRevisionIDs, revID)
+			}
+
+			// 6. MainSelectionsByOrder 合併（OR）
+			for order, isSel := range g.MainSelectionsByOrder {
+				if isSel {
+					b.group.MainSelectionsByOrder[order] = true
+				}
+			}
+
+			// 7. SecondSources 聯集
+			for _, ss := range g.SecondSources {
+				ssKey := groupKey(ss.Supplier, ss.SupplierPN)
+				existingSS, ok := b.ssBuilder[ssKey]
+				if !ok {
+					ssCopy := ss
+					ssCopy.SourceRevisionIDs = append([]int64(nil), ss.SourceRevisionIDs...)
+					ssCopy.SelectionsByOrder = make(map[int]bool, len(ss.SelectionsByOrder))
+					for k, v := range ss.SelectionsByOrder {
+						ssCopy.SelectionsByOrder[k] = v
+					}
+					b.ssBuilder[ssKey] = &ssCopy
+				} else {
+					for _, rID := range ss.SourceRevisionIDs {
+						existingSS.SourceRevisionIDs = appendUnique(existingSS.SourceRevisionIDs, rID)
+					}
+					for order, isSel := range ss.SelectionsByOrder {
+						if isSel {
+							existingSS.SelectionsByOrder[order] = true
+						}
+					}
+				}
+			}
+
+			// 8. Selections 合併
+			for _, sel := range g.Selections {
+				selKey := fmt.Sprintf("%d_%d", sel.RevisionID, sel.SortOrder)
+				existingSel, ok := b.selectionsMap[selKey]
+				if !ok || existingSel.SelectedPN == "" {
+					b.selectionsMap[selKey] = sel
+				}
+			}
+		}
+	}
+
+	// 組合最終結果
+	result := make([]ViewPartGroup, 0, len(builders))
+	for _, matKey := range keyOrder {
+		b := builders[matKey]
+
+		// 重新計算 Locations 與 Qty
+		b.group.Locations = sortedLocations(b.locSet)
+		b.group.Qty = len(b.locSet)
+
+		// 決定最終 BOMStatus
+		if b.allProto {
+			b.group.BOMStatus = "P"
+		} else if b.allMP {
+			b.group.BOMStatus = "M"
+		} else {
+			b.group.BOMStatus = "I"
+		}
+
+		// 組合 SecondSources（排序）
+		ssList := make([]ViewSecondSource, 0, len(b.ssBuilder))
+		for _, ss := range b.ssBuilder {
+			ssList = append(ssList, *ss)
+		}
+		sort.Slice(ssList, func(i, j int) bool {
+			ki := ssList[i].Supplier + "|" + ssList[i].SupplierPN
+			kj := ssList[j].Supplier + "|" + ssList[j].SupplierPN
+			return ki < kj
+		})
+		b.group.SecondSources = ssList
+
+		// 組合 Selections（依 RevisionID, SortOrder 排序）
+		selections := make([]ViewModelSelection, 0, len(b.selectionsMap))
+		for _, sel := range b.selectionsMap {
+			selections = append(selections, sel)
+		}
+		sort.Slice(selections, func(i, j int) bool {
+			if selections[i].RevisionID != selections[j].RevisionID {
+				return selections[i].RevisionID < selections[j].RevisionID
+			}
+			return selections[i].SortOrder < selections[j].SortOrder
+		})
+		b.group.Selections = selections
+
+		result = append(result, b.group)
+	}
+
+	// 依 Location 自然排序
+	sort.SliceStable(result, func(i, j int) bool {
+		return compareLocStr(result[i].Locations, result[j].Locations)
+	})
+
+	return result
+}
+
+// atomizeLocations 將逗號分隔的 location 字串拆分為獨立的 location 陣列（若尚未在當前 package 宣告）
+func atomizeLocations(locationStr string) []string {
+	raw := strings.Split(locationStr, ",")
+	result := make([]string, 0, len(raw))
+	for _, p := range raw {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+

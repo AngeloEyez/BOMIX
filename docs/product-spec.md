@@ -676,10 +676,11 @@ type ViewResult struct {
 
 當 `ViewQuery.RevisionIDs` 包含多個 ID 時，View 系統執行以下整合：
 
-1. **主料聯集**：以 `(supplier, supplier_pn)` 為群組鍵，遍歷所有 revision 的 parts，建立主料聯集。
-2. **來源歸屬標記**：每個 `ViewPartGroup` 記錄 `SourceRevisionIDs`，列出此群組存在的所有 revision ID。物料屬性（description、type、qty、locations）取自 `RevisionIDs` 列表中**第一個包含此物料的 revision**。
-3. **替代料聯集**：各 revision 的 SecondSource 以 `(supplier, supplier_pn)` 去重後取聯集，每個 `ViewSecondSource` 也附帶自己的 `SourceRevisionIDs`。
-4. **勾選狀態蒐集**：蒐集所有 revision × model 的 `MatrixSelection`，附帶在 `ViewPartGroup.Selections` 中。
+1. **主料基礎聯集**：以 `(supplier, supplier_pn, type)` 為基礎群組鍵，遍歷所有 revision 的 parts，建立主料基礎聯集（維持製程 Type 維度，供 Matrix 匯出依 SMD/PTH/BOTTOM 分工作表使用）。
+2. **二階物料合併（BigMatrix 專用）**：提供 `MergePartGroupsByMaterial` 函數，進一步去除 `Type` 維度，以 `(supplier, supplier_pn)` 進行合併。將同一物料跨製程（如 SMD + BOTTOM）的打件位置取聯集去重、Qty 重新計算為總數，輸出為單一主料群組。
+3. **來源歸屬標記**：每個 `ViewPartGroup` 記錄 `SourceRevisionIDs`，列出此群組存在的所有 revision ID。物料屬性（description、type、qty、locations）取自 `RevisionIDs` 列表中**第一個包含此物料的 revision**。
+4. **替代料聯集**：各 revision 的 SecondSource 以 `(supplier, supplier_pn)` 去重後取聯集，每個 `ViewSecondSource` 也附帶自己的 `SourceRevisionIDs`。
+5. **勾選狀態蒐集**：蒐集所有 revision × model 的 `MatrixSelection`，附帶在 `ViewPartGroup.Selections` 中。
 
 #### 5.4.5 SourceRevisionIDs 的下游使用
 
@@ -783,10 +784,11 @@ BOM 資料的聚合、過濾與多 BOM Revision 整合均由 **View 系統（`ba
 
 #### 6.4.1 聚合與多 BOM 整合邏輯
 
-1. **主料群組化**：以 `(supplier, supplier_pn)` 為群組鍵將原子化零件聚合。
-2. **多 BOM 聯集合併**：當查詢包含多份 BOM Revision 時，建立所有 BOM 中的主料與替代料（2nd Source）聯集合併群組。
-3. **Location 與 Qty 聚合**：合併同群組的 Location 為逗號分隔字串，並自動計算打件數量 Qty（預設取自第一個包含此物料的 BOM Revision）。
-4. **來源歸屬標記**：每個物料群組附帶 `SourceRevisionIDs`，列出其存在的 BOM Revision ID 列表。
+1. **主料群組化**：View 系統基礎聚合以 `(supplier, supplier_pn, type)` 為群組鍵將原子化零件聚合，維持製程 Type 維度以支援各製程獨立視圖與 Matrix 匯出分表。
+2. **二階跨製程聚合**：針對 BigMatrix 匯出等需呈現全機單一物料之場景，提供 `MergePartGroupsByMaterial` 將相同 `(supplier, supplier_pn)` 的物料群組合併為單一項目。
+3. **多 BOM 聯集合併**：當查詢包含多份 BOM Revision 時，建立所有 BOM 中的主料與替代料（2nd Source）聯集合併群組。
+4. **Location 與 Qty 聚合**：合併同群組的 Location 為逗號分隔字串，並自動計算打件數量 Qty（預設取自第一個包含此物料的 BOM Revision）。
+5. **來源歸屬標記**：每個物料群組附帶 `SourceRevisionIDs`，列出其存在的 BOM Revision ID 列表。
 
 #### 6.4.2 視圖過濾類別
 
@@ -1218,7 +1220,7 @@ BigMatrix 格式的工作表中，自 **H 欄** 開始向右排列了多份 BOM 
 | F | `qty` | 打件數量 (由計算location中位置數量得到) |
 | G | `location` | 零件位置編號（逗號分隔） |
 
-物料列表與欄位資料直接取自 **View 系統** 回傳之 `ViewPartGroup` 結構體。因為物料列表是 View 系統對多份 BOM 聯集合併的結果，`qty` 與 `location` 由 View 系統自動取自第一份包含該物料的 BOM Revision。
+物料列表與欄位資料直接取自 **View 系統** 經 `MergePartGroupsByMaterial` 二階物料合併後回傳之 `ViewPartGroup` 結構體。同一物料若跨多個製程（例如同時存在於 SMD 與 BOTTOM，如 `INA234AIYBJR`），BigMatrix 匯出時會自動整併為單一 Main Source 列，`location` 為全體打件位置聯集（如 `PSU1,PSU2`），`qty` 為合併後的總打件數量。
 
 ##### 8.1.5.2 Main Source / 2nd Source 排列
 
@@ -1238,7 +1240,7 @@ BigMatrix 格式的工作表中，自 **H 欄** 開始向右排列了多份 BOM 
 
 匯出至 BigMatrix 時，所有資料的獲取與動態篩選**統一由 View 系統（`backend/view/`）負責處理**：
 
-1. **多 BOM 聯集合併**：View 系統自動遍歷所選擇的所有 BOM Revisions，建立包含所有主料與 2nd Source 組合的聯集群組。
+1. **多 BOM 聯集合併與二階物料整併**：View 系統自動遍歷所選擇的所有 BOM Revisions 建立聯集群組，並透過 `MergePartGroupsByMaterial` 依 `(supplier, supplier_pn)` 消除 `Type` 維度，合併跨製程打件位置與數量。
 2. **條件篩選**：View 系統會在查詢時依據以下條件進行過濾，僅回傳符合條件的零件：
    - `ccl = Y`
    - `bom_status != X` (包含 `I`, `P`, `M` 上件狀態)

@@ -731,8 +731,8 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 				func(ctx context.Context, progress func(float64, string), taskLogger *logger.Logger) error {
 					progress(0.1, fmt.Sprintf("Preparing export data for Revision %d...", revIDVal))
 
-					// 僅載入此單一 Revision 的 DB View 資料
-					revisions, parts, err := loadExportData(taskLogger, dbConn, []int64{revIDVal})
+					// 僅載入此單一 Revision 的 DB View 資料（Matrix 匯出：保留 Type 維度）
+					revisions, parts, err := loadExportData(taskLogger, dbConn, []int64{revIDVal}, false)
 					if err != nil {
 						taskLogger.Warn(fmt.Sprintf("[ExportExcel] 載入 Revision %d 的 View 資料失敗/警告: %v", revIDVal, err))
 					} else {
@@ -796,7 +796,8 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 			progress(0.1, "Preparing export data...")
 
 			// Load revisions and part data from DB via View System using taskLogger
-			revisions, parts, err := loadExportData(taskLogger, dbConn, options.RevisionIDs)
+			// BigMatrix 格式：需進一步去除 Type 維度，依 (Supplier, SupplierPN) 合併物料
+			revisions, parts, err := loadExportData(taskLogger, dbConn, options.RevisionIDs, true)
 			if err != nil {
 				taskLogger.Warn(fmt.Sprintf("[ExportExcel] 從資料庫載入 View 資料失敗/警告: %v", err))
 			} else {
@@ -855,12 +856,13 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 //   - lg：Logger 實例
 //   - dbConn：GORM 資料庫連線
 //   - revisionIDs：要匯出的 BOM Revision ID 列表
+//   - groupByMaterial：是否進一步去除 Type 維度，依 (Supplier, SupplierPN) 合併物料（BigMatrix 匯出為 true，Matrix 匯出為 false）
 //
 // 回傳：
 //   - []excel.RevisionData：revision 元資料列表
 //   - []excel.PartData：物料資料列表（包含 SourceRevisionIDs）
 //   - error：若查詢失敗則回傳錯誤
-func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]excel.RevisionData, []excel.PartData, error) {
+func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64, groupByMaterial bool) ([]excel.RevisionData, []excel.PartData, error) {
 	if len(revisionIDs) == 0 {
 		return nil, nil, nil
 	}
@@ -871,14 +873,24 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 	}
 
 	if lg != nil {
-		lg.Info(fmt.Sprintf("[loadExportData] 建立 View 條件: RevisionIDs=%v, ViewType=%s",
-			query.RevisionIDs, query.ViewType))
+		lg.Info(fmt.Sprintf("[loadExportData] 建立 View 條件: RevisionIDs=%v, ViewType=%s, GroupByMaterial=%v",
+			query.RevisionIDs, query.ViewType, groupByMaterial))
 	}
 
 	svc := view.NewService(dbConn, lg)
 	viewResult, err := svc.Query(query)
 	if err != nil {
 		return nil, nil, fmt.Errorf("view query failed: %w", err)
+	}
+
+	// 若啟用 groupByMaterial (如 BigMatrix 匯出)，進一步去除 Type 維度，依 (Supplier, SupplierPN) 進行二階物料合併
+	partGroups := viewResult.PartGroups
+	if groupByMaterial {
+		partGroups = view.MergePartGroupsByMaterial(viewResult.PartGroups)
+		if lg != nil {
+			lg.Info(fmt.Sprintf("[loadExportData] 套用二階物料合併 (去除 Type 維度): 原始群組數=%d, 合併後物料數=%d",
+				len(viewResult.PartGroups), len(partGroups)))
+		}
 	}
 
 	// 將 ViewRevision 轉換為 excel.RevisionData
@@ -903,8 +915,8 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64) ([]
 
 	// 將 ViewPartGroup 轉換為 excel.PartData
 	// 物料群組已由 View 系統聚合完畢（locations 已合併、qty 已計算）
-	partDataList := make([]excel.PartData, 0, len(viewResult.PartGroups))
-	for idx, pg := range viewResult.PartGroups {
+	partDataList := make([]excel.PartData, 0, len(partGroups))
+	for idx, pg := range partGroups {
 		// 整合此群組的 Model 勾選狀態：
 		// 1. 單一 Revision 相容: map[modelName]selectedPN 與 map[sortOrder]selectedPN
 		// 2. BigMatrix 多 Revision 精確: map[revIDStr]map[sortOrder]selectedPN 與 map[revIDStr]map[modelName]selectedPN
