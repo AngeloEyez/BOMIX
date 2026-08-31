@@ -44,10 +44,12 @@
         <Tree
           :value="sortedTreeNodes"
           :expanded-keys="expandedKeys"
-          :selection-keys="selectionKeys"
-          selection-mode="single"
+          v-model:selection-keys="selectionKeys"
+          selection-mode="multiple"
+          :meta-key-selection="true"
           class="compact-tree"
-          @node-select="onNodeSelect"
+          @node-select="onTreeNodeSelect"
+          @node-unselect="onTreeNodeUnselect"
           @node-toggle="onNodeToggle"
         >
           <template #node="slotProps">
@@ -73,18 +75,21 @@
       <div v-else class="table-container">
         <DataTable
           :value="flatRevisions"
-          dataKey="id"
+          v-model:selection="selectedTableRows"
+          selection-mode="multiple"
+          :meta-key-selection="true"
+          data-key="id"
           :scrollable="true"
           scroll-height="flex"
           :row-hover="true"
           :row-class="getTableRowClass"
           class="compact-datatable"
-          striped-rows
           :lazy="false"
           :sort-field="currentSortField"
           :sort-order="currentSortOrderNumber"
           @sort="onTableSort"
-          @row-click="onTableRowClick"
+          @row-select="onTableRowSelect"
+          @row-unselect="onTableRowUnselect"
         >
           <!-- Project 欄位 (可排序) -->
           <Column field="projectCode" sortable style="min-width: 80px;">
@@ -165,6 +170,9 @@ const expandedKeys = ref<Record<string, boolean>>({})
 /** 樹狀選取鍵值記錄 */
 const selectionKeys = ref<Record<string, boolean>>({})
 
+/** 表格選取的資料列集合 (用於 DataTable 多選) */
+const selectedTableRows = ref<FlatRevisionRow[]>([])
+
 /**
  * 展平後的 Revision 表格資料介面定義
  */
@@ -178,6 +186,38 @@ interface FlatRevisionRow {
   tag: string
   createdAt: string
   date: string
+}
+
+/**
+ * 比較兩陣列元素是否完全一致 (不分順序)
+ * @param {number[]} a - 數值陣列 A
+ * @param {number[]} b - 數值陣列 B
+ * @returns {boolean} 是否一致
+ */
+function areNumberArraysEqual(a: number[], b: number[]): boolean {
+  if (a.length !== b.length) return false
+  const setB = new Set(b)
+  return a.every((item) => setB.has(item))
+}
+
+/**
+ * 取得專案的時間戳記 (用於排序)
+ * @param {Project} p - 專案物件
+ * @returns {number} 時間戳記數值
+ */
+function getProjectTimestamp(p: Project): number {
+  if (p.revisions && p.revisions.length > 0) {
+    const sorted = [...p.revisions].sort((a, b) => b.id - a.id)
+    if (sorted[0].createdAt) {
+      const t = new Date(sorted[0].createdAt).getTime()
+      if (!isNaN(t)) return t
+    }
+  }
+  if (p.createdAt) {
+    const t = new Date(p.createdAt).getTime()
+    if (!isNaN(t)) return t
+  }
+  return p.id
 }
 
 /**
@@ -199,93 +239,6 @@ const currentSortOrderNumber = computed<number | undefined>(() => {
   if (!currentSortField.value) return undefined
   return sortOrder.value === 'asc' ? 1 : -1
 })
-
-/**
- * 監聽 projectStore 專案變更，預設展開所有專案節點
- */
-watch(
-  () => projectStore.projects,
-  (newProjects) => {
-    if (newProjects && newProjects.length > 0) {
-      const keys: Record<string, boolean> = {}
-      newProjects.forEach((p) => {
-        keys[`p_${p.id}`] = true
-      })
-      expandedKeys.value = keys
-    }
-  },
-  { immediate: true, deep: true }
-)
-
-/**
- * 監聽 projectStore 選取狀態，同步至樹狀選取
- */
-watch(
-  [() => projectStore.selectedProjectId, () => projectStore.selectedRevisionId],
-  ([projId, revId]) => {
-    if (revId) {
-      selectionKeys.value = { [`${revId}`]: true }
-    } else if (projId) {
-      selectionKeys.value = { [`p_${projId}`]: true }
-    } else {
-      selectionKeys.value = {}
-    }
-  },
-  { immediate: true }
-)
-
-/**
- * 切換樹狀圖 / 表格視圖模式
- */
-function toggleViewMode(): void {
-  viewMode.value = viewMode.value === 'tree' ? 'table' : 'tree'
-}
-
-/**
- * 點擊頂部工具列「依建立日期排序」按鈕
- * 啟用日期排序時，清除表頭欄位排序狀態
- */
-function handleSortByDate(): void {
-  if (sortType.value === 'date') {
-    sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc'
-  } else {
-    sortType.value = 'date'
-    sortOrder.value = 'desc'
-  }
-}
-
-/**
- * 點擊頂部工具列「依專案名稱排序」按鈕
- * 同步將排序狀態設為 project，並連動表頭 Project 欄位
- */
-function handleSortByProject(): void {
-  if (sortType.value === 'project') {
-    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
-  } else {
-    sortType.value = 'project'
-    sortOrder.value = 'asc'
-  }
-}
-
-/**
- * 處理 DataTable 表頭點擊排序事件
- * @param {any} event - PrimeVue sort 事件物件 (包含 sortField 與 sortOrder)
- */
-function onTableSort(event: any): void {
-  const field = event.sortField as string
-  const order: 'asc' | 'desc' = event.sortOrder === 1 ? 'asc' : 'desc'
-
-  if (field === 'projectCode') {
-    sortType.value = 'project'
-    sortOrder.value = order
-  } else if (field === 'phase') {
-    sortType.value = 'phase'
-    sortOrder.value = order
-  } else if (field === 'version') {
-    sortType.value = 'version'
-    sortOrder.value = order
-  }
-}
 
 /**
  * 計算已排序的樹狀節點清單
@@ -403,37 +356,152 @@ const flatRevisions = computed<FlatRevisionRow[]>(() => {
 })
 
 /**
- * 取得專案的時間戳記 (用於排序)
- * @param {Project} p - 專案物件
- * @returns {number} 時間戳記數值
+ * 監聽 projectStore 專案變更，預設展開所有專案節點
  */
-function getProjectTimestamp(p: Project): number {
-  if (p.revisions && p.revisions.length > 0) {
-    const sorted = [...p.revisions].sort((a, b) => b.id - a.id)
-    if (sorted[0].createdAt) {
-      const t = new Date(sorted[0].createdAt).getTime()
-      if (!isNaN(t)) return t
+watch(
+  () => projectStore.projects,
+  (newProjects) => {
+    if (newProjects && newProjects.length > 0) {
+      const keys: Record<string, boolean> = {}
+      newProjects.forEach((p) => {
+        keys[`p_${p.id}`] = true
+      })
+      expandedKeys.value = keys
     }
-  }
-  if (p.createdAt) {
-    const t = new Date(p.createdAt).getTime()
-    if (!isNaN(t)) return t
-  }
-  return p.id
+  },
+  { immediate: true, deep: true }
+)
+
+/**
+ * 監聽 projectStore 選取狀態，同步至樹狀選取與表格選取
+ */
+watch(
+  [() => projectStore.selectedProjectId, () => projectStore.selectedRevisionIds, () => flatRevisions.value],
+  ([projId, revIds, allFlatRows]) => {
+    // 1. 同步樹狀選取 keys
+    const newTreeKeys: Record<string, boolean> = {}
+    if (revIds && revIds.length > 0) {
+      revIds.forEach((id) => {
+        newTreeKeys[`${id}`] = true
+      })
+    } else if (projId) {
+      newTreeKeys[`p_${projId}`] = true
+    }
+    selectionKeys.value = newTreeKeys
+
+    // 2. 同步表格選取 Rows
+    if (revIds && revIds.length > 0) {
+      const idSet = new Set(revIds)
+      const matched = (allFlatRows || []).filter((r) => idSet.has(r.id))
+      const currentSelectedIds = selectedTableRows.value.map((r) => r.id)
+      if (!areNumberArraysEqual(currentSelectedIds, revIds)) {
+        selectedTableRows.value = matched
+      }
+    } else {
+      if (selectedTableRows.value.length > 0) {
+        selectedTableRows.value = []
+      }
+    }
+  },
+  { immediate: true, deep: true }
+)
+
+/**
+ * 切換樹狀圖 / 表格視圖模式
+ */
+function toggleViewMode(): void {
+  viewMode.value = viewMode.value === 'tree' ? 'table' : 'tree'
 }
 
 /**
- * 樹狀節點點擊選取處理
- * @param {any} node - 選取的樹節點
+ * 點擊頂部工具列「依建立日期排序」按鈕
+ * 啟用日期排序時，清除表頭欄位排序狀態
  */
-function onNodeSelect(node: any): void {
-  if (node.type === 'project') {
-    const projId = typeof node.key === 'string' && node.key.startsWith('p_')
-      ? parseInt(node.key.replace('p_', ''), 10)
-      : parseInt(node.key, 10)
-    projectStore.selectProject(projId)
-  } else if (node.type === 'revision') {
-    projectStore.selectRevision(parseInt(node.key, 10))
+function handleSortByDate(): void {
+  if (sortType.value === 'date') {
+    sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc'
+  } else {
+    sortType.value = 'date'
+    sortOrder.value = 'desc'
+  }
+}
+
+/**
+ * 點擊頂部工具列「依專案名稱排序」按鈕
+ * 同步將排序狀態設為 project，並連動表頭 Project 欄位
+ */
+function handleSortByProject(): void {
+  if (sortType.value === 'project') {
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortType.value = 'project'
+    sortOrder.value = 'asc'
+  }
+}
+
+/**
+ * 處理 DataTable 表頭點擊排序事件
+ * @param {any} event - PrimeVue sort 事件物件 (包含 sortField 與 sortOrder)
+ */
+function onTableSort(event: any): void {
+  const field = event.sortField as string
+  const order: 'asc' | 'desc' = event.sortOrder === 1 ? 'asc' : 'desc'
+
+  if (field === 'projectCode') {
+    sortType.value = 'project'
+    sortOrder.value = order
+  } else if (field === 'phase') {
+    sortType.value = 'phase'
+    sortOrder.value = order
+  } else if (field === 'version') {
+    sortType.value = 'version'
+    sortOrder.value = order
+  }
+}
+
+/**
+ * 樹狀節點選取事件處理
+ * @param {any} _node - 選取的樹節點
+ */
+function onTreeNodeSelect(_node: any): void {
+  syncTreeSelectionToStore()
+}
+
+/**
+ * 樹狀節點取消選取事件處理
+ * @param {any} _node - 取消選取的樹節點
+ */
+function onTreeNodeUnselect(_node: any): void {
+  syncTreeSelectionToStore()
+}
+
+/**
+ * 將 Tree 的 selectionKeys 狀態解析並即時同步至 projectStore
+ */
+function syncTreeSelectionToStore(): void {
+  const keys = selectionKeys.value || {}
+  const revIds = Object.keys(keys)
+    .filter((k) => !k.startsWith('p_') && keys[k])
+    .map((k) => parseInt(k, 10))
+    .filter((id) => !isNaN(id))
+
+  if (revIds.length > 0) {
+    if (!areNumberArraysEqual(revIds, projectStore.selectedRevisionIds)) {
+      projectStore.setSelectedRevisionIds(revIds)
+    }
+  } else {
+    // 若無選取 Revision，檢查是否有選中 Project 節點
+    const projKeys = Object.keys(keys).filter((k) => k.startsWith('p_') && keys[k])
+    if (projKeys.length > 0) {
+      const projId = parseInt(projKeys[0].replace('p_', ''), 10)
+      if (projectStore.selectedProjectId !== projId || projectStore.selectedRevisionIds.length > 0) {
+        projectStore.selectProject(projId)
+      }
+    } else {
+      if (projectStore.selectedRevisionIds.length > 0 || projectStore.selectedProjectId !== null) {
+        projectStore.clearSelection()
+      }
+    }
   }
 }
 
@@ -446,13 +514,28 @@ function onNodeToggle(_node: any): void {
 }
 
 /**
- * 表格資料列點擊事件
- * @param {any} event - PrimeVue row-click 事件物件
+ * 表格列選取事件處理
+ * @param {any} _event - DataTable row-select 事件
  */
-function onTableRowClick(event: any): void {
-  const row = event.data as FlatRevisionRow
-  if (row && row.id) {
-    projectStore.selectRevision(row.id)
+function onTableRowSelect(_event: any): void {
+  syncTableSelectionToStore()
+}
+
+/**
+ * 表格列取消選取事件處理
+ * @param {any} _event - DataTable row-unselect 事件
+ */
+function onTableRowUnselect(_event: any): void {
+  syncTableSelectionToStore()
+}
+
+/**
+ * 將 Table 的 selectedTableRows 狀態解析並即時同步至 projectStore
+ */
+function syncTableSelectionToStore(): void {
+  const revIds = selectedTableRows.value.map((r) => r.id)
+  if (!areNumberArraysEqual(revIds, projectStore.selectedRevisionIds)) {
+    projectStore.setSelectedRevisionIds(revIds)
   }
 }
 
@@ -462,7 +545,7 @@ function onTableRowClick(event: any): void {
  * @returns {string} CSS class 名稱
  */
 function getTableRowClass(data: FlatRevisionRow): string {
-  return data.id === projectStore.selectedRevisionId ? 'row-selected' : ''
+  return projectStore.selectedRevisionIds.includes(data.id) ? 'row-selected' : ''
 }
 </script>
 

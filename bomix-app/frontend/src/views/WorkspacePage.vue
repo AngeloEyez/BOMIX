@@ -34,8 +34,8 @@
     <!-- Main Content Panel -->
     <div class="main-content">
       <BOMTable
-        v-if="projectStore.selectedRevision"
-        :revision-id="projectStore.selectedRevision?.id"
+        v-if="projectStore.selectedRevisionIds.length > 0"
+        :revision-ids="projectStore.selectedRevisionIds"
       />
       <div v-else class="placeholder-content">
         <div v-if="projectStore.projects.length === 0" class="empty-state">

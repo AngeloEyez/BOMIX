@@ -209,9 +209,14 @@ export interface BOMDisplayRow {
   selections: Record<string, string>
 }
 
-const props = defineProps<{
-  revisionId?: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    revisionIds?: number[]
+  }>(),
+  {
+    revisionIds: () => []
+  }
+)
 
 const emit = defineEmits<{
   (e: 'part-selected', part: ViewPartGroup): void
@@ -240,7 +245,15 @@ const sortOrder = ref(1)
 const searchQuery = ref('')
 
 // Computed properties
-const currentRevisionId = computed(() => props.revisionId || 0)
+/**
+ * 取得主顯示的 Revision ID（多選時目前先以第 1 個 revisionId 為主）
+ */
+const currentRevisionId = computed(() => {
+  if (props.revisionIds && props.revisionIds.length > 0) {
+    return props.revisionIds[0]
+  }
+  return 0
+})
 
 const aggregatedParts = ref<ViewPartGroup[]>([])
 const currentRevisionMetadata = ref<ViewRevision | null>(null)
@@ -539,8 +552,8 @@ function isModelSelected(row: BOMDisplayRow, modelName: string): boolean {
 
 function onViewChange(): void {
   collapsedParents.value = new Set()
-  if (currentRevisionId.value) {
-    loadBOMData(currentRevisionId.value)
+  if (props.revisionIds && props.revisionIds.length > 0) {
+    loadBOMData(props.revisionIds)
   }
 }
 
@@ -548,18 +561,39 @@ function getCCLClass(ccl: boolean): string {
   return ccl ? 'ccl-critical' : 'ccl-normal'
 }
 
-// Watch for revision changes
-watch(() => props.revisionId, (newId) => {
-  if (newId) {
-    loadBOMData(newId)
-  }
-})
+// Watch for revisionIds changes
+watch(
+  () => props.revisionIds,
+  (newIds) => {
+    if (newIds && newIds.length > 0) {
+      loadBOMData(newIds)
+    } else {
+      aggregatedParts.value = []
+      collapsedParents.value = new Set()
+      currentRevisionMetadata.value = null
+    }
+  },
+  { deep: true }
+)
 
-async function loadBOMData(revisionId: number): Promise<void> {
+/**
+ * 載入指定 BOM Revision 清單的物料群組視圖資料
+ * 目前架構接收 revisionIds 陣列，並以第一個 revisionId 載入顯示內容，為後續多版本聚合預留擴充接口
+ * @param {number[]} revisionIds - BOM Revision ID 陣列
+ */
+async function loadBOMData(revisionIds: number[]): Promise<void> {
+  if (!revisionIds || revisionIds.length === 0) {
+    aggregatedParts.value = []
+    collapsedParents.value = new Set()
+    currentRevisionMetadata.value = null
+    return
+  }
+
   try {
+    const primaryId = revisionIds[0]
     const viewType = selectedView.value === 'all' ? '' : selectedView.value.toUpperCase()
-    logStore.addLogEntry('DEBUG', `[View System] 準備建立 View: RevisionIDs=[${revisionId}], ViewType="${viewType || 'ALL'}"`)
-    const result = await GetBOMView([revisionId], viewType)
+    logStore.addLogEntry('DEBUG', `[View System] 準備建立 View: RevisionIDs=[${revisionIds.join(', ')}] (Primary ID: ${primaryId}), ViewType="${viewType || 'ALL'}"`)
+    const result = await GetBOMView([primaryId], viewType)
     
     if (result && result.part_groups) {
       aggregatedParts.value = result.part_groups
@@ -577,13 +611,13 @@ async function loadBOMData(revisionId: number): Promise<void> {
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
-    logStore.addLogEntry('ERROR', `Failed to load BOM data: ${msg}`)
+    logStore.addLogEntry('ERROR', `載入 BOM 資料失敗: ${msg}`)
   }
 }
 
 onMounted(() => {
-  if (props.revisionId) {
-    loadBOMData(props.revisionId)
+  if (props.revisionIds && props.revisionIds.length > 0) {
+    loadBOMData(props.revisionIds)
   }
 })
 </script>
