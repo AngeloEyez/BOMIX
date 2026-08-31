@@ -46,38 +46,7 @@
         @resize="onSidebarResize"
         @dblclick="resetSidebarWidth"
       >
-        <div class="sidebar">
-          <div class="sidebar-header">
-            <span class="sidebar-title">Projects</span>
-          </div>
-          <div class="sidebar-content">
-            <Tree
-              :value="projectStore.projectTree"
-              :expanded-keys="expandedKeys"
-              :selection-keys="selectionKeys"
-              selection-mode="single"
-              @node-select="onNodeSelect"
-              @node-toggle="onNodeToggle"
-            >
-              <template #node="slotProps">
-                <div class="tree-node">
-                  <span v-if="slotProps.node.type === 'project'" class="node-icon">
-                    <i class="pi pi-folder"></i>
-                  </span>
-                  <span v-if="slotProps.node.type === 'revision'" class="node-icon">
-                    <i class="pi pi-version"></i>
-                  </span>
-                  <span class="node-label">{{ slotProps.node.label }}</span>
-                </div>
-              </template>
-              <template #empty>
-                <div class="p-3 text-center text-color-secondary" style="font-size: 0.875rem;">
-                  No projects yet.<br>Import a BOM to start.
-                </div>
-              </template>
-            </Tree>
-          </div>
-        </div>
+        <SidebarPanel />
       </SplitterPanel>
 
       <!-- Main Content Panel -->
@@ -103,19 +72,17 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
-import Tree from 'primevue/tree'
 import Button from 'primevue/button'
 import { useAppStore, useProjectStore, useLogStore, useTaskStore } from './stores'
 import LogPanel from './components/LogPanel.vue'
+import SidebarPanel from './components/SidebarPanel.vue'
+import { GetSettings } from './services/api'
 
 const router = useRouter()
 const appStore = useAppStore()
 const projectStore = useProjectStore()
 const logStore = useLogStore()
 const taskStore = useTaskStore()
-
-// Header height
-const headerHeight = 40
 
 // Sidebar width management
 const sidebarWidth = ref(20) // Default 20%
@@ -125,11 +92,6 @@ const bottomPanelHeight = ref(window.innerHeight * 0.1) // Default 10%
 let isResizingBottom = false
 let startY = 0
 let startHeight = 0
-
-const expandedKeys = ref<Record<string, boolean>>({})
-const selectionKeys = ref<Record<string, string>>({})
-
-import { GetSettings } from './services/api'
 
 onMounted(async () => {
   // Start listening to events
@@ -176,7 +138,7 @@ async function loadProjects(): Promise<void> {
   if (!appStore.seriesInfo?.id) return
 
   try {
-    // 載入專案列表 (包含 Revisions，並由 store 內部自動轉換為 tree)
+    // 載入專案列表 (包含 Revisions)
     await projectStore.loadProjects(appStore.seriesInfo.id)
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -219,18 +181,6 @@ function resetBottomHeight(): void {
   bottomPanelHeight.value = window.innerHeight * 0.1
 }
 
-function onNodeSelect(node: any): void {
-  if (node.type === 'project') {
-    projectStore.selectProject(parseInt(node.key))
-  } else if (node.type === 'revision') {
-    projectStore.selectRevision(parseInt(node.key))
-  }
-}
-
-function onNodeToggle(_node: any): void {
-  // Tree handles this internally with expandedKeys
-}
-
 async function handleCloseSeries(): Promise<void> {
   await appStore.closeSeries()
   projectStore.clearProjects()
@@ -238,7 +188,6 @@ async function handleCloseSeries(): Promise<void> {
 
 async function checkAutoOpen(): Promise<void> {
   // This will check the settings and auto-open the last file if enabled
-  // Implementation depends on settings being loaded
 }
 </script>
 
@@ -334,53 +283,6 @@ body {
 
 :deep(.p-splitter-gutter:hover) {
   background-color: var(--primary-color) !important;
-}
-
-/* Sidebar */
-.sidebar {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.sidebar-header {
-  padding: 0.25rem 0.5rem;
-  border-bottom: 1px solid var(--surface-border);
-}
-
-.sidebar-title {
-  font-weight: 600;
-  font-size: 0.75rem;
-  color: var(--text-color-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.sidebar-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0.25rem;
-}
-
-/* Tree Node */
-.tree-node {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.25rem 0;
-}
-
-.node-icon {
-  color: var(--primary-color);
-  width: 1.25rem;
-  text-align: center;
-  font-size: 0.875rem;
-}
-
-.node-label {
-  flex: 1;
-  font-size: 0.875rem;
 }
 
 /* Bottom Panel */
