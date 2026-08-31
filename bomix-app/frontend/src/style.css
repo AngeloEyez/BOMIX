@@ -64,3 +64,71 @@ html.app-dark {
     --primary-color: var(--p-primary-500, #0e639c);
     --highlight-background: var(--p-color-highlight-bg, #094771);
   }
+
+/* ==========================================================================
+   全域 UI 與按鈕樣式標準 (Unified Button & Toolbar Standards)
+   規格以 Header / Title Bar 按鈕為基準：
+   - 高度：28px
+   - 字體大小：13px (0.8125rem)
+   - 內距：0 8px (0.5rem)
+   - 圖示間距：0.35rem
+   - 圓角：2px
+   - 風格：Secondary Text / Ghost 按鈕
+   ========================================================================== */
+
+/* 統一 PrimeVue 按鈕基礎尺寸與字體 */
+.p-button {
+  font-family: var(--p-font-family);
+  font-size: 13px !important;
+  font-weight: 500;
+  border-radius: var(--p-radius-base, 2px) !important;
+  gap: 0.35rem !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+/* 工具列與標題列標準次要文字按鈕 (Header & Toolbar Secondary Text Buttons) */
+.p-button.p-button-text.p-button-secondary,
+.p-button.p-button-text[data-pc-severity="secondary"],
+.app-toolbar-btn {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 0.5rem !important;
+  font-size: 13px !important;
+  color: var(--text-color) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+}
+
+.p-button.p-button-text.p-button-secondary:hover,
+.p-button.p-button-text[data-pc-severity="secondary"]:hover,
+.app-toolbar-btn:hover {
+  background-color: var(--surface-hover) !important;
+  color: var(--text-color) !important;
+}
+
+.p-button.p-button-text.p-button-secondary:active,
+.p-button.p-button-text[data-pc-severity="secondary"]:active,
+.app-toolbar-btn:active {
+  background-color: var(--surface-border) !important;
+}
+
+.p-button.p-button-text.p-button-secondary:focus-visible,
+.p-button.p-button-text[data-pc-severity="secondary"]:focus-visible,
+.app-toolbar-btn:focus-visible {
+  outline: 1px solid var(--primary-color) !important;
+  outline-offset: -1px;
+}
+
+/* 工具列按鈕內的圖示大小標準化 */
+.p-button.p-button-text.p-button-secondary .p-button-icon,
+.p-button.p-button-text[data-pc-severity="secondary"] .p-button-icon,
+.app-toolbar-btn .p-button-icon {
+  font-size: 13px !important;
+}
+
+/* 對話框 footer 與一般對話框按鈕高度標準化 */
+.p-dialog-footer .p-button {
+  height: 28px !important;
+  padding: 0 0.75rem !important;
+}
+

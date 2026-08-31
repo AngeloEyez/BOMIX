@@ -33,12 +33,14 @@
           label="Expand All"
           icon="pi pi-angle-down"
           text
+          severity="secondary"
           @click="expandAll"
         />
         <Button
           label="Collapse All"
           icon="pi pi-angle-right"
           text
+          severity="secondary"
           @click="collapseAll"
         />
       </div>

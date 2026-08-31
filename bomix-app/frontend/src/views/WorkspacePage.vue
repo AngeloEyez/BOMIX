@@ -2,28 +2,29 @@
   <div class="workspace-page">
     <!-- Top Toolbar -->
     <div class="top-toolbar">
-      <div class="toolbar-left">
-        <span class="series-name" v-if="appStore.seriesInfo">
-          {{ appStore.seriesInfo.name }}
-        </span>
-      </div>
+      <div class="toolbar-left"></div>
       <div class="toolbar-right">
         <Button
           label="Import"
           icon="pi pi-upload"
-          class="p-button-success"
+          text
+          severity="secondary"
           @click="importDialogVisible = true"
+          title="匯入 BOM 檔案"
         />
         <Button
           label="Export"
           icon="pi pi-download"
-          class="p-button-warning"
+          text
+          severity="secondary"
           @click="openExportDialog"
+          title="匯出 Excel 矩陣"
         />
         <Button
           label="複製 Matrix"
           icon="pi pi-copy"
-          class="p-button-outlined p-button-info"
+          text
+          severity="secondary"
           @click="copyMatrixDialogVisible = true"
           title="手動從指定版本複製 Matrix Selection 到另一版本"
         />
@@ -39,7 +40,13 @@
       <div v-else class="placeholder-content">
         <div v-if="projectStore.projects.length === 0" class="empty-state">
           <p>No projects found in this series.</p>
-          <Button label="Import BOM" icon="pi pi-upload" @click="importDialogVisible = true" class="p-button-outlined" />
+          <Button
+            label="Import BOM"
+            icon="pi pi-upload"
+            text
+            severity="secondary"
+            @click="importDialogVisible = true"
+          />
         </div>
         
         <div v-else class="dashboard-stats">
@@ -270,10 +277,11 @@ function openExportDialog(): void {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 50px;
-  padding: 0 1rem;
-  background: var(--surface-ground);
+  height: 36px;
+  padding: 0 0.5rem;
+  background: var(--surface-card);
   border-bottom: 1px solid var(--surface-border);
+  flex-shrink: 0;
 }
 
 .toolbar-left {
@@ -281,15 +289,9 @@ function openExportDialog(): void {
   align-items: center;
 }
 
-.series-name {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--text-color);
-}
-
 .toolbar-right {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.25rem;
 }
 
 .main-content {

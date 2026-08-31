@@ -47,6 +47,7 @@
         label="取消"
         icon="pi pi-times"
         text
+        severity="secondary"
         @click="visibleModel = false"
       />
       <Button

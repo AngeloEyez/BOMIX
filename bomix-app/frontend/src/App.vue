@@ -5,11 +5,10 @@
       <div class="header-left">
         <div class="logo">
           <i class="pi pi-box"></i>
-          <span class="logo-text">BOMIX</span>
+          <span v-if="appStore.seriesInfo?.name" class="logo-text">
+            {{ appStore.seriesInfo.name }}
+          </span>
         </div>
-        <span v-if="appStore.seriesInfo" class="series-title">
-          - {{ appStore.seriesInfo.name }}
-        </span>
       </div>
       <div class="header-right">
         <Button
@@ -310,11 +309,6 @@ body {
   font-weight: 700;
   color: var(--text-color);
   letter-spacing: 0.05em;
-}
-
-.series-title {
-  font-size: 0.9rem;
-  color: var(--text-color-secondary);
 }
 
 .header-right {

@@ -20,7 +20,8 @@
           v-if="importFilePaths.length > 0"
           label="清除全部"
           icon="pi pi-trash"
-          class="p-button-outlined p-button-danger"
+          text
+          severity="danger"
           @click="clearImportFiles"
         />
       </div>
@@ -57,6 +58,7 @@
         label="取消"
         icon="pi pi-times"
         text
+        severity="secondary"
         @click="visibleModel = false"
       />
       <Button

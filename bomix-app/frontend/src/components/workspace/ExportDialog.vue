@@ -119,6 +119,7 @@
         label="Cancel"
         icon="pi pi-times"
         text
+        severity="secondary"
         @click="visibleModel = false"
       />
       <Button
