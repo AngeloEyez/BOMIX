@@ -1,69 +1,96 @@
 <template>
   <div class="settings-page">
-    <div class="settings-container">
-      <h1 class="page-title">Settings</h1>
+    <div class="settings-header">
+      <div class="settings-title">
+        <i class="pi pi-cog"></i>
+        <span>Settings</span>
+      </div>
+      <!-- <span class="settings-subtitle">設定即時自動儲存 (Auto-saved)</span> -->
+    </div>
 
-      <div class="settings-section">
-        <h2 class="section-title">Appearance</h2>
-        <div class="setting-item">
-          <label for="theme-select" class="setting-label">Theme</label>
-          <Select
-            id="theme-select"
+    <div class="settings-grid">
+      <!-- 1. Appearance -->
+      <div class="settings-card">
+        <div class="card-header">
+          <i class="pi pi-palette card-icon"></i>
+          <span class="card-title">Appearance</span>
+        </div>
+        <div class="setting-row">
+          <label class="setting-label">Theme Mode</label>
+          <SelectButton
             v-model="settings.theme"
             :options="themeOptions"
             option-label="label"
             option-value="value"
-            placeholder="Select a theme"
-            class="setting-input"
+            :allow-empty="false"
+            size="small"
+            class="compact-select-btn"
           />
         </div>
       </div>
 
-      <div class="settings-section">
-        <h2 class="section-title">Import Settings</h2>
-        <div class="setting-item">
+      <!-- 2. Import Settings -->
+      <div class="settings-card">
+        <div class="card-header">
+          <i class="pi pi-upload card-icon"></i>
+          <span class="card-title">Import Settings</span>
+        </div>
+        <div class="checkbox-row" @click="settings.import.confirmOverwrite = !settings.import.confirmOverwrite">
           <Checkbox
             id="confirm-overwrite"
             v-model="settings.import.confirmOverwrite"
             :binary="true"
+            @click.stop
           />
-          <label for="confirm-overwrite" class="setting-label">
+          <label for="confirm-overwrite" class="checkbox-label" @click.stop="settings.import.confirmOverwrite = !settings.import.confirmOverwrite">
             Confirm before overwriting existing BOM
           </label>
         </div>
-        <div class="setting-item">
+        <div class="checkbox-row" @click="settings.autoImportPreviousMatrix = !settings.autoImportPreviousMatrix">
           <Checkbox
             id="auto-import-matrix"
             v-model="settings.autoImportPreviousMatrix"
             :binary="true"
+            @click.stop
           />
-          <label for="auto-import-matrix" class="setting-label">
+          <label for="auto-import-matrix" class="checkbox-label" @click.stop="settings.autoImportPreviousMatrix = !settings.autoImportPreviousMatrix">
             Automatically import previous Matrix when importing EBOM
           </label>
         </div>
       </div>
 
-      <div class="settings-section">
-        <h2 class="section-title">General</h2>
-        <div class="setting-item">
+      <!-- 3. General Settings -->
+      <div class="settings-card">
+        <div class="card-header">
+          <i class="pi pi-sliders-h card-icon"></i>
+          <span class="card-title">General</span>
+        </div>
+        <div class="checkbox-row" @click="settings.autoOpenLastFile = !settings.autoOpenLastFile">
           <Checkbox
             id="auto-open-last-file"
             v-model="settings.autoOpenLastFile"
             :binary="true"
+            @click.stop
           />
-          <label for="auto-open-last-file" class="setting-label">
+          <label for="auto-open-last-file" class="checkbox-label" @click.stop="settings.autoOpenLastFile = !settings.autoOpenLastFile">
             Automatically open last file on startup
           </label>
         </div>
-        <div v-if="settings.lastOpenedFile" class="setting-item">
-          <span class="setting-label">Last opened file:</span>
-          <span class="setting-value">{{ settings.lastOpenedFile }}</span>
+        <div v-if="settings.lastOpenedFile" class="setting-row path-row">
+          <span class="setting-label">Last Opened File:</span>
+          <span class="setting-path-badge" :title="settings.lastOpenedFile">
+            {{ settings.lastOpenedFile }}
+          </span>
         </div>
       </div>
 
-      <div class="settings-section">
-        <h2 class="section-title">Logger</h2>
-        <div class="setting-item">
+      <!-- 4. Logger Settings -->
+      <div class="settings-card">
+        <div class="card-header">
+          <i class="pi pi-list card-icon"></i>
+          <span class="card-title">Logger</span>
+        </div>
+        <div class="setting-row">
           <label for="log-level" class="setting-label">Log Level</label>
           <Select
             id="log-level"
@@ -72,35 +99,44 @@
             option-label="label"
             option-value="value"
             placeholder="Select log level"
-            class="setting-input"
+            size="small"
+            class="compact-select"
           />
         </div>
-        <div class="setting-item">
+        <div class="setting-row">
           <label for="max-entries" class="setting-label">Max Log Entries</label>
           <InputNumber
             id="max-entries"
             v-model="settings.logger.maxEntries"
+            :showButtons="true"
             :min="100"
             :max="5000"
-            class="setting-input"
+            :step="100"
+            size="small"
+            class="compact-input-number"
           />
         </div>
       </div>
 
-      <div class="settings-section">
-        <h2 class="section-title">Recent Files</h2>
-        <div class="setting-item">
-          <label for="max-recent" class="setting-label">Max Recent Files</label>
+      <!-- 5. Recent Files Settings -->
+      <div class="settings-card">
+        <div class="card-header">
+          <i class="pi pi-history card-icon"></i>
+          <span class="card-title">Recent Files</span>
+        </div>
+        <div class="setting-row">
+          <label for="max-recent" class="setting-label">Max Recent Files Count</label>
           <InputNumber
             id="max-recent"
             v-model="settings.recentFiles.maxRecentFiles"
+            :showButtons="true"
             :min="1"
             :max="50"
-            class="setting-input"
+            size="small"
+            class="compact-input-number"
           />
         </div>
       </div>
-
     </div>
   </div>
 </template>
@@ -108,6 +144,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import Select from 'primevue/select'
+import SelectButton from 'primevue/selectbutton'
 import Checkbox from 'primevue/checkbox'
 import InputNumber from 'primevue/inputnumber'
 import { GetSettings, UpdateSettings, type Settings } from '../services/api'
@@ -223,59 +260,216 @@ onMounted(async () => {
 <style scoped>
 .settings-page {
   display: flex;
-  justify-content: center;
-  padding: 1rem 2rem;
-  background: var(--surface-ground);
+  flex-direction: column;
   height: 100%;
   overflow-y: auto;
+  padding: 0.65rem 0.85rem;
+  background: var(--surface-ground);
+  gap: 0.5rem;
 }
 
-.settings-container {
-  width: 100%;
-  max-width: 800px;
-}
-
-.page-title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--text-color);
-  margin: 0 0 1rem;
-}
-
-.settings-section {
-  padding: 0.75rem 0;
-  margin-bottom: 0.5rem;
-}
-
-.section-title {
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: var(--text-color);
-  margin: 0 0 0.5rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.setting-item {
+/* 頂部標題列 (VSCode Style) */
+.settings-header {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.35rem 0;
+  justify-content: space-between;
+  padding: 0.2rem 0.25rem 0.4rem 0.25rem;
+  border-bottom: 1px solid var(--surface-border);
+  flex-shrink: 0;
+}
+
+.settings-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-color);
+}
+
+.settings-title i {
+  color: var(--primary-color);
+  font-size: 0.95rem;
+}
+
+.settings-subtitle {
+  font-size: 0.72rem;
+  color: var(--text-color-secondary);
+}
+
+/* 緊湊自適應網格 (最大化可視面積) */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 0.55rem;
+  width: 100%;
+}
+
+/* 卡片區塊 */
+.settings-card {
+  background: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 4px;
+  padding: 0.55rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  transition: border-color 0.15s ease;
+}
+
+.settings-card:hover {
+  border-color: var(--surface-border-hover, var(--primary-color));
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--surface-border);
+  padding-bottom: 0.3rem;
+  margin-bottom: 0.15rem;
+}
+
+.card-icon {
+  font-size: 0.8rem;
+  color: var(--primary-color);
+}
+
+.card-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-color-secondary);
+}
+
+/* 單行設定項目 */
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.25rem 0.35rem;
+  border-radius: 3px;
+  min-height: 32px;
+  gap: 0.5rem;
+  overflow: hidden;
+  transition: background-color 0.12s ease;
+}
+
+.setting-row:hover {
+  background: var(--surface-hover, rgba(255, 255, 255, 0.03));
 }
 
 .setting-label {
-  flex: 1;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 500;
   color: var(--text-color);
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.setting-input {
-  width: 250px;
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.3rem 0.35rem;
+  border-radius: 3px;
+  cursor: pointer;
+  min-height: 30px;
+  transition: background-color 0.12s ease;
 }
 
-.setting-value {
-  font-size: 0.85rem;
+.checkbox-row:hover {
+  background: var(--surface-hover, rgba(255, 255, 255, 0.03));
+}
+
+.checkbox-label {
+  font-size: 0.8rem;
+  color: var(--text-color);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* 控制項尺寸與樣式 */
+.compact-select-btn {
+  height: 26px;
+  flex-shrink: 0;
+}
+
+:deep(.compact-select-btn .p-button) {
+  padding: 0.15rem 0.55rem !important;
+  font-size: 0.78rem !important;
+}
+
+.compact-select {
+  width: 110px !important;
+  min-width: 110px !important;
+  max-width: 110px !important;
+  height: 26px !important;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+:deep(.compact-select .p-select-label) {
+  padding: 0.15rem 0.45rem !important;
+  font-size: 0.8rem !important;
+}
+
+.compact-input-number {
+  width: 110px !important;
+  min-width: 110px !important;
+  max-width: 110px !important;
+  height: 26px !important;
+  flex-shrink: 0;
+}
+
+:deep(.compact-input-number.p-inputnumber) {
+  width: 110px !important;
+  min-width: 110px !important;
+  max-width: 110px !important;
+  height: 26px !important;
+  display: inline-flex !important;
+  flex-shrink: 0 !important;
+}
+
+:deep(.compact-input-number .p-inputnumber-input) {
+  width: 100% !important;
+  height: 24px !important;
+  padding: 0.1rem 1.4rem 0.1rem 0.45rem !important;
+  font-size: 0.78rem !important;
+  text-align: left !important;
+}
+
+:deep(.compact-input-number .p-inputnumber-button) {
+  width: 18px !important;
+  padding: 0 !important;
+  height: 50% !important;
+}
+
+:deep(.compact-input-number .p-inputnumber-button .p-icon) {
+  font-size: 0.55rem !important;
+  width: 0.55rem !important;
+  height: 0.55rem !important;
+}
+
+.setting-path-badge {
+  font-size: 0.75rem;
   color: var(--text-color-secondary);
-  word-break: break-all;
+  background: var(--surface-ground);
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  border: 1px solid var(--surface-border);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
+

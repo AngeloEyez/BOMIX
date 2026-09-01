@@ -50,9 +50,6 @@
             {{ selectedCards.length }}
           </span>
         </span>
-        <span v-if="exportFormat.toLowerCase() === 'bigmatrix'" class="revisions-tip-text">
-          可拖曳把手調整匯出排序
-        </span>
       </div>
 
       <!-- 卡片清單區塊 -->
@@ -694,11 +691,6 @@ async function executeExport(): Promise<void> {
   border-radius: 10px;
   font-size: 0.68rem;
   font-weight: 600;
-}
-
-.revisions-tip-text {
-  font-size: 0.72rem;
-  color: var(--text-color-secondary);
 }
 
 .selected-cards-container {

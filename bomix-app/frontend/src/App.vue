@@ -349,16 +349,19 @@ body {
 }
 
 .title-bar-btn {
-  height: 26px;
-  font-size: 0.8rem;
-  padding: 0.15rem 0.5rem;
-  transition: all 0.15s ease;
+  height: 28px !important;
+  min-height: 28px !important;
+  font-size: 0.82rem;
+  padding: 0 0.5rem !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.title-bar-btn-active {
-  background: var(--primary-color) !important;
-  color: #ffffff !important;
-  font-weight: 600;
+.title-bar-btn.title-bar-btn-active {
+  color: var(--primary-color) !important;
+  background-color: var(--surface-hover) !important;
 }
 
 /* Main Splitter */
