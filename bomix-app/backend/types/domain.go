@@ -29,10 +29,11 @@ const (
 	TaskCreated   TaskStatus = "Created"
 	TaskQueued    TaskStatus = "Queued"
 	TaskRunning   TaskStatus = "Running"
-	TaskCompleted TaskStatus = "Completed"
-	TaskWarning   TaskStatus = "Warning"
-	TaskFailed    TaskStatus = "Failed"
-	TaskCancelled TaskStatus = "Cancelled"
+	TaskCompleted      TaskStatus = "Completed"
+	TaskWarning        TaskStatus = "Warning"
+	TaskWaitingConfirm TaskStatus = "WaitingConfirm"
+	TaskFailed         TaskStatus = "Failed"
+	TaskCancelled      TaskStatus = "Cancelled"
 )
 
 // ExportOptions contains options for exporting to Excel.

@@ -18,24 +18,37 @@ type Reader interface {
 
 // ReaderImpl is the main Excel reader implementation
 type ReaderImpl struct {
-	db         *gorm.DB
-	detector   *Detector
-	logger     *logger.Logger
-	progressCb func(progress float64, message string)
+	db                 *gorm.DB
+	detector           *Detector
+	logger             *logger.Logger
+	progressCb         func(progress float64, message string)
+	confirmOverwrite   bool
+	confirmOverwriteCb func(projectCode, phase, version string) (bool, error)
 }
 
 // NewReader creates a new Excel reader
 func NewReader(db *gorm.DB, logger *logger.Logger) *ReaderImpl {
 	return &ReaderImpl{
-		db:       db,
-		detector: NewDetector(logger),
-		logger:   logger,
+		db:                 db,
+		detector:           NewDetector(logger),
+		logger:             logger,
+		confirmOverwrite:   true, // 預設開啟確認
 	}
 }
 
 // SetProgressCallback 設定進度回報回調函數
 func (r *ReaderImpl) SetProgressCallback(progressCb func(float64, string)) {
 	r.progressCb = progressCb
+}
+
+// SetConfirmOverwrite 設定是否需在覆蓋前提示確認
+func (r *ReaderImpl) SetConfirmOverwrite(confirm bool) {
+	r.confirmOverwrite = confirm
+}
+
+// SetConfirmOverwriteCallback 設定覆蓋確認回調函數
+func (r *ReaderImpl) SetConfirmOverwriteCallback(cb func(projectCode, phase, version string) (bool, error)) {
+	r.confirmOverwriteCb = cb
 }
 
 // ImportExcel imports multiple Excel files
@@ -100,11 +113,13 @@ func (r *ReaderImpl) importEBOM(f Workbook, path string) (types.ImportResult, er
 
 	// Delegate to the EBOM reader
 	ebomReader := &EBOMReader{
-		db:         r.db,
-		result:     &result,
-		filePath:   path,
-		logger:     r.logger,
-		progressCb: r.progressCb,
+		db:                 r.db,
+		result:             &result,
+		filePath:           path,
+		logger:             r.logger,
+		progressCb:         r.progressCb,
+		confirmOverwrite:   r.confirmOverwrite,
+		confirmOverwriteCb: r.confirmOverwriteCb,
 	}
 
 	err := ebomReader.Import(f)

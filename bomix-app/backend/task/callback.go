@@ -3,12 +3,13 @@ package task
 // Event constants for task-related Wails events
 // See product-spec section 5.1.4
 const (
-	EventTaskCreated   = "task:created"    // Task created/queued
-	EventTaskProgress  = "task:progress"   // Progress update
-	EventTaskComplete  = "task:complete"   // Task completed
-	EventTaskFailed    = "task:failed"     // Task failed
-	EventTaskCancelled = "task:cancelled"  // Task cancelled
-	EventTaskRunning   = "task:running"    // Task started running
+	EventTaskCreated        = "task:created"         // Task created/queued
+	EventTaskProgress       = "task:progress"        // Progress update
+	EventTaskComplete       = "task:complete"        // Task completed
+	EventTaskFailed         = "task:failed"          // Task failed
+	EventTaskCancelled      = "task:cancelled"       // Task cancelled
+	EventTaskRunning        = "task:running"         // Task started running
+	EventTaskWaitingConfirm = "task:waiting_confirm" // Task waiting for user confirmation
 )
 
 // TaskProgressEvent is emitted when a task's progress updates

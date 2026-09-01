@@ -18,12 +18,14 @@ import (
 
 // EBOMReader handles EBOM format import
 type EBOMReader struct {
-	db         *gorm.DB
-	result     *types.ImportResult
-	filePath   string // EBOM 匯入檔案路徑
-	revisionID int64  // 匯入後設定
-	logger     *logger.Logger
-	progressCb func(progress float64, message string)
+	db                 *gorm.DB
+	result             *types.ImportResult
+	filePath           string // EBOM 匯入檔案路徑
+	revisionID         int64  // 匯入後設定
+	logger             *logger.Logger
+	progressCb         func(progress float64, message string)
+	confirmOverwrite   bool
+	confirmOverwriteCb func(projectCode, phase, version string) (bool, error)
 }
 
 // Import 匯入 EBOM 格式 Excel 檔案。
@@ -65,6 +67,37 @@ func (r *EBOMReader) Import(f Workbook) error {
 		phase, version, description, schematicVersion, pcbVersion, pcaPn, date, projectCode, err = r.parseHeader(f, smdSheet)
 		if err != nil {
 			return fmt.Errorf("failed to parse header: %w", err)
+		}
+	}
+
+	// ─── 檢查既有 Revision 與覆蓋確認 ─────────────────────────────────────────
+	isExisting, err := r.checkRevisionExists(projectCode, phase, version)
+	if err != nil {
+		return fmt.Errorf("failed to check revision: %w", err)
+	}
+
+	if isExisting && r.confirmOverwrite && r.confirmOverwriteCb != nil {
+		if r.logger != nil {
+			r.logger.Info(fmt.Sprintf("發現既有版本 [%s %s %s]，等待使用者確認是否覆蓋...", projectCode, phase, version),
+				"project", projectCode, "phase", phase, "version", version)
+		}
+
+		approve, err := r.confirmOverwriteCb(projectCode, phase, version)
+		if err != nil {
+			return fmt.Errorf("確認覆蓋程序發生錯誤: %w", err)
+		}
+		if !approve {
+			// 使用者選擇「略過」
+			if r.logger != nil {
+				r.logger.Info(fmt.Sprintf("使用者略過覆蓋既有版本 [%s %s %s]，跳過匯入作業", projectCode, phase, version))
+			}
+			if r.progressCb != nil {
+				r.progressCb(1.0, fmt.Sprintf("已略過匯入 (版本 %s %s 已存在)", phase, version))
+			}
+			return nil
+		}
+		if r.logger != nil {
+			r.logger.Info(fmt.Sprintf("使用者已確認覆蓋既有版本 [%s %s %s]，繼續執行匯入...", projectCode, phase, version))
 		}
 	}
 
@@ -799,6 +832,36 @@ func (r *EBOMReader) saveParts(
 }
 
 // ─── Revision 管理 ───────────────────────────────────────────────────────────
+
+// checkRevisionExists 檢查指定 Project + Phase + Version 的 BomRevision 是否已存在於資料庫中
+func (r *EBOMReader) checkRevisionExists(projectCode, phase, version string) (bool, error) {
+	if r.db == nil {
+		return false, errors.New("db is nil")
+	}
+	series, err := db.GetSeriesInfo(r.db)
+	if err != nil {
+		return false, fmt.Errorf("取得 Series 失敗: %w", err)
+	}
+
+	var project db.Project
+	err = r.db.Where("series_id = ? AND code = ?", series.ID, projectCode).First(&project).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	var count int64
+	err = r.db.Model(&db.BomRevision{}).
+		Where("project_id = ? AND phase = ? AND version = ?", project.ID, phase, version).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
 
 // createOrUpdateRevision 建立或更新 BomRevision 記錄，回傳 Revision ID
 func (r *EBOMReader) createOrUpdateRevision(projectCode, phase, version, description, schematicVersion, pcbVersion, pcaPn, date string) (int64, error) {

@@ -128,6 +128,42 @@ export const useAppStore = defineStore('app', () => {
   // 全域匯入對話框與拖曳檔案狀態管理
   const importDialogVisible = ref(false)
   const droppedFiles = ref<string[]>([])
+  const confirmOverwrite = ref(true)
+
+  /**
+   * 初始化載入全域設定
+   */
+  async function initSettings(): Promise<void> {
+    try {
+      const s = await GetSeriesInfo() // ensure initialized
+      const settings = await (await import('../services/api')).GetSettings()
+      if (settings?.import) {
+        confirmOverwrite.value = settings.import.confirmOverwrite ?? true
+      }
+    } catch (_) {}
+  }
+
+  /**
+   * 更新並持久化覆蓋前確認選項設定
+   * @param {boolean} val - 是否啟用覆蓋前確認
+   */
+  async function setConfirmOverwrite(val: boolean): Promise<void> {
+    confirmOverwrite.value = val
+    try {
+      const { GetSettings, UpdateSettings } = await import('../services/api')
+      const s = await GetSettings()
+      if (s) {
+        if (!s.import) {
+          s.import = { confirmOverwrite: val, autoImportPreviousMatrix: false }
+        } else {
+          s.import.confirmOverwrite = val
+        }
+        await UpdateSettings(s)
+      }
+    } catch (err) {
+      console.error('Failed to persist confirmOverwrite setting:', err)
+    }
+  }
 
   /**
    * 處理拖曳 Excel 檔案進應用程式事件
@@ -161,6 +197,7 @@ export const useAppStore = defineStore('app', () => {
     workspaceView,
     importDialogVisible,
     droppedFiles,
+    confirmOverwrite,
     // Getters
     isSeriesOpen,
     // Actions
@@ -172,5 +209,7 @@ export const useAppStore = defineStore('app', () => {
     setWorkspaceView,
     handleDroppedFiles,
     clearDroppedFiles,
+    initSettings,
+    setConfirmOverwrite,
   }
 })

@@ -41,6 +41,32 @@ export const useTaskStore = defineStore('task', () => {
   }
 
   /**
+   * 將後端各類 Task 狀態字串標準化為前端小寫統一格式
+   */
+  function normalizeTaskStatus(status?: string): string {
+    if (!status) return 'queued'
+    const lower = status.toLowerCase()
+    if (lower === 'waitingconfirm' || lower === 'waiting_confirm') return 'waiting_confirm'
+    if (lower === 'created' || lower === 'queued') return 'queued'
+    if (lower === 'running') return 'running'
+    if (lower === 'completed' || lower === 'done') return 'completed'
+    if (lower === 'warning') return 'warning'
+    if (lower === 'failed' || lower === 'error') return 'failed'
+    if (lower === 'cancelled') return 'cancelled'
+    return lower
+  }
+
+  /**
+   * 安全解析 Wails v3 事件資料（處理陣列包裝情況）
+   */
+  function extractPayload(data: any): any {
+    if (Array.isArray(data) && data.length > 0) {
+      return data[0]
+    }
+    return data || {}
+  }
+
+  /**
    * 更新或新增 Task 狀態
    * 具備終結狀態保護機制：若當前任務已處於終結狀態（completed/failed/warning/cancelled），
    * 則不允許舊的或亂序的 queued/running 事件覆蓋狀態。
@@ -48,11 +74,12 @@ export const useTaskStore = defineStore('task', () => {
   function updateTask(taskId: string, updates: Partial<Task>): void {
     const index = tasks.value.findIndex(t => t.id === taskId)
     const terminalStates = ['completed', 'failed', 'warning', 'cancelled']
+    const safeStatus = updates.status ? normalizeTaskStatus(updates.status) : undefined
     
     if (index !== -1) {
       const currentTask = tasks.value[index]
       const isTerminal = terminalStates.includes(currentTask.status)
-      const isIncomingNonTerminal = updates.status && ['queued', 'running', 'created'].includes(updates.status)
+      const isIncomingNonTerminal = safeStatus && ['queued', 'running', 'created'].includes(safeStatus)
 
       // 若目前任務已完成/失敗/警告/取消，且傳入的新狀態為非終結狀態，則忽略 status 的更新
       if (isTerminal && isIncomingNonTerminal) {
@@ -60,18 +87,23 @@ export const useTaskStore = defineStore('task', () => {
         tasks.value[index] = { ...tasks.value[index], ...safeUpdates }
         return
       }
-      tasks.value[index] = { ...tasks.value[index], ...updates }
+      tasks.value[index] = {
+        ...tasks.value[index],
+        ...updates,
+        ...(safeStatus ? { status: safeStatus } : {})
+      }
     } else {
       tasks.value.push({
         id: taskId,
         name: updates.name || 'Import Task',
         type: updates.type || 'Import',
-        status: updates.status || 'queued',
+        status: safeStatus || 'queued',
         progress: updates.progress || 0,
         message: updates.message || '',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        ...updates
+        ...updates,
+        ...(safeStatus ? { status: safeStatus } : {})
       })
     }
   }
@@ -105,7 +137,7 @@ export const useTaskStore = defineStore('task', () => {
     isListening = true
 
     ListenToEvents('task:created', (data) => {
-      const payload = data as any
+      const payload = extractPayload(data)
       const id = payload.taskID || payload.id
       if (!id) return
       const existing = getTask(id)
@@ -114,7 +146,7 @@ export const useTaskStore = defineStore('task', () => {
           id,
           name: payload.name || 'Task',
           type: payload.type || 'Import',
-          status: payload.status || 'queued',
+          status: normalizeTaskStatus(payload.status || 'queued'),
           progress: Math.round((payload.progress || 0) * 100),
           message: payload.message || 'Queued',
           createdAt: new Date().toISOString(),
@@ -122,14 +154,14 @@ export const useTaskStore = defineStore('task', () => {
         })
       } else {
         updateTask(id, {
-          status: payload.status || 'queued',
+          status: normalizeTaskStatus(payload.status || 'queued'),
           updatedAt: new Date().toISOString(),
         })
       }
     })
 
     ListenToEvents('task:running', (data) => {
-      const payload = data as any
+      const payload = extractPayload(data)
       const id = payload.taskID || payload.id
       if (!id) return
       updateTask(id, {
@@ -139,8 +171,19 @@ export const useTaskStore = defineStore('task', () => {
       })
     })
 
+    ListenToEvents('task:waiting_confirm', (data) => {
+      const payload = extractPayload(data)
+      const id = payload.taskID || payload.id
+      if (!id) return
+      updateTask(id, {
+        status: 'waiting_confirm',
+        message: payload.message || '發現既有版本，等待確認是否覆蓋...',
+        updatedAt: new Date().toISOString(),
+      })
+    })
+
     ListenToEvents('task:progress', (data) => {
-      const payload = data as any
+      const payload = extractPayload(data)
       const id = payload.taskID || payload.id
       if (!id) return
       const existing = getTask(id)
@@ -150,8 +193,9 @@ export const useTaskStore = defineStore('task', () => {
       }
       const rawProg = payload.progress || 0
       const progressVal = rawProg <= 1.0 ? Math.round(rawProg * 100) : Math.round(rawProg)
+      const newStatus = payload.status ? normalizeTaskStatus(payload.status) : (existing?.status || 'running')
       updateTask(id, {
-        status: payload.status || existing?.status || 'running',
+        status: newStatus,
         progress: progressVal,
         message: payload.message || '',
         updatedAt: new Date().toISOString(),
@@ -159,7 +203,7 @@ export const useTaskStore = defineStore('task', () => {
     })
 
     ListenToEvents('task:complete', (data) => {
-      const payload = data as any
+      const payload = extractPayload(data)
       const id = payload.taskID || payload.id
       if (!id) return
       updateTask(id, {
@@ -171,7 +215,7 @@ export const useTaskStore = defineStore('task', () => {
     })
 
     ListenToEvents('task:failed', (data) => {
-      const payload = data as any
+      const payload = extractPayload(data)
       const id = payload.taskID || payload.id
       if (!id) return
       const status = payload.status === 'warning' ? 'warning' : 'failed'
@@ -184,7 +228,7 @@ export const useTaskStore = defineStore('task', () => {
     })
 
     ListenToEvents('task:cancelled', (data) => {
-      const payload = data as any
+      const payload = extractPayload(data)
       const id = payload.taskID || payload.id
       if (!id) return
       updateTask(id, {

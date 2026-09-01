@@ -9,6 +9,7 @@ import (
 	"bomix-app/backend/config"
 	"bomix-app/backend/db"
 	"bomix-app/backend/logger"
+	"bomix-app/backend/types"
 )
 
 // TestGetRecentSeries_MissingAndCorruptedFiles 測試最近開啟檔案的過濾與損毀標記邏輯
@@ -315,7 +316,7 @@ func TestImportExcel_TwoPhaseGrouping(t *testing.T) {
 	inputFiles := []string{fileMatrix, fileEBOM}
 
 	// 呼叫 ImportExcel
-	results, err := app.ImportExcel(inputFiles)
+	results, err := app.ImportExcel(inputFiles, false)
 	if err != nil {
 		t.Fatalf("ImportExcel 執行失敗: %v", err)
 	}
@@ -386,7 +387,7 @@ func TestAppImportExcel_TarisPCM_RealFiles(t *testing.T) {
 	app.db = testDB
 
 	// 同時傳入兩個檔案進行兩階段排程匯入
-	results, err := app.ImportExcel([]string{absEBOM, absMatrix})
+	results, err := app.ImportExcel([]string{absEBOM, absMatrix}, false)
 	if err != nil {
 		t.Fatalf("App.ImportExcel 失敗: %v", err)
 	}
@@ -420,6 +421,190 @@ func TestAppImportExcel_TarisPCM_RealFiles(t *testing.T) {
 		if st.Status != "Completed" {
 			t.Errorf("任務 %s (%s) 狀態應為 Completed，實際為 %s，錯誤: %s", st.ID, st.Name, st.Status, st.Error)
 		}
+	}
+}
+
+// TestAppImportExcel_ConfirmOverwrite 測試當開啟 confirmOverwrite 且發現既有版本時的暫停與確認流程
+func TestAppImportExcel_ConfirmOverwrite(t *testing.T) {
+	ebomPath := filepath.Join("excel", "testdata", "TARIS-PCM_EZBOM_SI1_0.3_BOM_20260817_1000.WP(compared).xls")
+	absEBOM, err := filepath.Abs(ebomPath)
+	if err != nil {
+		t.Fatalf("路徑錯誤: %v", err)
+	}
+
+	l := logger.NewLogger(100)
+	tempDBPath := filepath.Join(t.TempDir(), "test_app_confirm_overwrite.bomx")
+	testDB, err := db.Open(tempDBPath)
+	if err != nil {
+		t.Fatalf("建立測試 DB 失敗: %v", err)
+	}
+	defer db.Close(testDB)
+	if err := db.AutoMigrate(testDB); err != nil {
+		t.Fatalf("AutoMigrate 失敗: %v", err)
+	}
+	_, err = db.CreateSeries(testDB, "abc", "Desc")
+	if err != nil {
+		t.Fatalf("CreateSeries 失敗: %v", err)
+	}
+
+	app := NewApp(nil, l, &config.Config{})
+	app.db = testDB
+
+	// 第一次匯入：建立版本
+	results1, err := app.ImportExcel([]string{absEBOM}, false)
+	if err != nil {
+		t.Fatalf("第一次匯入失敗: %v", err)
+	}
+	for i := 0; i < 100; i++ {
+		st := app.taskMgr.GetStatus(results1[0].TaskID)
+		if st != nil && st.Status == "Completed" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// 第二次匯入：開啟 confirmOverwrite = true，預期任務會暫停進入 WaitingConfirm 狀態
+	results2, err := app.ImportExcel([]string{absEBOM}, true)
+	if err != nil {
+		t.Fatalf("第二次匯入失敗: %v", err)
+	}
+	taskID := results2[0].TaskID
+
+	// 等待任務進入 WaitingConfirm 狀態
+	isWaiting := false
+	for i := 0; i < 100; i++ {
+		st := app.taskMgr.GetStatus(taskID)
+		if st != nil && st.Status == string(types.TaskWaitingConfirm) {
+			isWaiting = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if !isWaiting {
+		t.Fatalf("任務未如預期進入 WaitingConfirm 狀態")
+	}
+
+	// 呼叫 ConfirmTaskOverwrite 解除阻塞確認覆蓋
+	if err := app.ConfirmTaskOverwrite(taskID, true); err != nil {
+		t.Fatalf("ConfirmTaskOverwrite 失敗: %v", err)
+	}
+
+	// 等待任務順利完成
+	isCompleted := false
+	for i := 0; i < 100; i++ {
+		st := app.taskMgr.GetStatus(taskID)
+		if st != nil && st.Status == "Completed" {
+			isCompleted = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if !isCompleted {
+		t.Fatalf("確認覆蓋後任務未順利完成")
+	}
+}
+
+// TestAppImportExcel_PartialWaitingConfirm_OthersContinue 測試當 Phase 1 多個檔案中僅有部分需要確認時，不需要確認的任務能獨立執行完成，不會被設定為 WaitingConfirm
+func TestAppImportExcel_PartialWaitingConfirm_OthersContinue(t *testing.T) {
+	ebomPath := filepath.Join("excel", "testdata", "TARIS-PCM_EZBOM_SI1_0.3_BOM_20260817_1000.WP(compared).xls")
+	absEBOM, err := filepath.Abs(ebomPath)
+	if err != nil {
+		t.Fatalf("路徑錯誤: %v", err)
+	}
+
+	l := logger.NewLogger(100)
+	tempDBPath := filepath.Join(t.TempDir(), "test_app_partial_confirm.bomx")
+	testDB, err := db.Open(tempDBPath)
+	if err != nil {
+		t.Fatalf("建立測試 DB 失敗: %v", err)
+	}
+	defer db.Close(testDB)
+	if err := db.AutoMigrate(testDB); err != nil {
+		t.Fatalf("AutoMigrate 失敗: %v", err)
+	}
+	series, err := db.CreateSeries(testDB, "abc", "Desc")
+	if err != nil {
+		t.Fatalf("CreateSeries 失敗: %v", err)
+	}
+
+	// 預先在資料庫建立 TARIS-PCM SI1 0.3 版本，模擬該版本已存在
+	project, err := db.GetOrCreateProject(testDB, series.ID, "TARIS-PCM", "Description")
+	if err != nil {
+		t.Fatalf("建立 Project 失敗: %v", err)
+	}
+	rev := db.BomRevision{
+		ProjectID: project.ID,
+		Phase:     "SI1",
+		Version:   "0.3",
+	}
+	if err := testDB.Create(&rev).Error; err != nil {
+		t.Fatalf("建立 Revision 失敗: %v", err)
+	}
+
+	app := NewApp(nil, l, &config.Config{})
+	app.db = testDB
+
+	// 同時提交兩個檔案：
+	// 檔案 1: TARIS-PCM SI1 0.3（已存在，預期進入 WaitingConfirm）
+	// 檔案 2: 虛構或不同檔案（假設也是非 Matrix 檔案，但若格式錯誤或不同，預期不會進入 WaitingConfirm，而是繼續執行至 Completed 或 Warning）
+	tempDir := t.TempDir()
+	fileNonExisting := filepath.Join(tempDir, "NEW_PROJ_EZBOM_EVT.xlsx")
+	_ = os.WriteFile(fileNonExisting, []byte("fake content"), 0644)
+
+	results, err := app.ImportExcel([]string{absEBOM, fileNonExisting}, true)
+	if err != nil {
+		t.Fatalf("ImportExcel 失敗: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("預期提交 2 個任務，實際為 %d", len(results))
+	}
+
+	taskEBOM_ID := results[0].TaskID
+	taskOther_ID := results[1].TaskID
+
+	// 等待一段時間，驗證：
+	// 1. taskEBOM_ID 應進入 WaitingConfirm 狀態
+	// 2. taskOther_ID 絕不可被設為 WaitingConfirm，而應正常執行結束（Warning 或 Failed，因為 fake content）
+	for i := 0; i < 50; i++ {
+		stEBOM := app.taskMgr.GetStatus(taskEBOM_ID)
+		stOther := app.taskMgr.GetStatus(taskOther_ID)
+
+		if stOther != nil && stOther.Status == string(types.TaskWaitingConfirm) {
+			t.Fatalf("錯誤：不需要確認的任務 %s 被錯誤設定為 WaitingConfirm", taskOther_ID)
+		}
+
+		if stEBOM != nil && stEBOM.Status == string(types.TaskWaitingConfirm) {
+			// EBOM 順利進入 WaitingConfirm
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// 再次確認 stOther 狀態絕不是 WaitingConfirm
+	stOther := app.taskMgr.GetStatus(taskOther_ID)
+	if stOther != nil && stOther.Status == string(types.TaskWaitingConfirm) {
+		t.Errorf("taskOther_ID 狀態不應為 WaitingConfirm")
+	}
+
+	// 確認 EBOM 任務
+	if err := app.ConfirmTaskOverwrite(taskEBOM_ID, true); err != nil {
+		t.Fatalf("ConfirmTaskOverwrite 失敗: %v", err)
+	}
+
+	// 等待 EBOM 任務完成
+	for i := 0; i < 100; i++ {
+		stEBOM := app.taskMgr.GetStatus(taskEBOM_ID)
+		if stEBOM != nil && stEBOM.Status == "Completed" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	finalEBOM := app.taskMgr.GetStatus(taskEBOM_ID)
+	if finalEBOM.Status != "Completed" {
+		t.Errorf("EBOM 任務預期 Completed，實際為 %s", finalEBOM.Status)
 	}
 }
 

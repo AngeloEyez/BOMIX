@@ -210,8 +210,9 @@ async function loadSettings(): Promise<boolean> {
       },
     }
     
-    // 初始化同步至 logStore
+    // 初始化同步至 logStore 與 appStore
     logStore.globalLogLevel = settings.value.logger.level
+    appStore.confirmOverwrite = settings.value.import.confirmOverwrite
     return true
   } catch (error) {
     console.error('Failed to load settings:', error)
@@ -237,6 +238,11 @@ watch(settings, (newVal) => {
   
   // Apply log level instantly
   logStore.globalLogLevel = newVal.logger.level
+
+  // Apply confirmOverwrite instantly
+  if (newVal.import) {
+    appStore.confirmOverwrite = newVal.import.confirmOverwrite ?? true
+  }
 
   if (saveTimeout) clearTimeout(saveTimeout)
   saveTimeout = setTimeout(async () => {

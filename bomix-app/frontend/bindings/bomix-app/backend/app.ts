@@ -43,6 +43,20 @@ export function CloseSeries(): $CancellablePromise<void> {
 }
 
 /**
+ * ConfirmTaskOverwrite 回應指定任務的覆蓋確認請求。
+ * 
+ * 參數：
+ *   - taskID: 任務 ID
+ *   - overwrite: true 表示確認覆蓋，false 表示略過覆蓋
+ * 
+ * 回傳：
+ *   - error: 若任務不存在或未處於等待確認狀態則回傳錯誤
+ */
+export function ConfirmTaskOverwrite(taskID: string, overwrite: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3408973748, taskID, overwrite);
+}
+
+/**
  * CopyMatrixSelections 以異步任務形式，手動將指定 source revision 的 Matrix Model 與 Selection 複製到 target revision。
  * 
  * 此函數為手動版本複製的 Wails 綁定入口，會以 Task 形式提交至背景執行，
@@ -188,13 +202,14 @@ export function GetVersion(): $CancellablePromise<string> {
  * 
  * 參數：
  *   - filePaths: 欲匯入的 Excel 檔案路徑清單
+ *   - confirmOverwrite: 匯入覆蓋現有 BOM 前是否提示確認
  * 
  * 回傳：
  *   - []*ImportResult: 包含所有提交任務之 Task ID 與狀態資訊
  *   - error: 若當前無開啟中的 Series 則回傳錯誤
  */
-export function ImportExcel(filePaths: string[] | null): $CancellablePromise<($models.ImportResult | null)[] | null> {
-    return $Call.ByID(882224074, filePaths);
+export function ImportExcel(filePaths: string[] | null, confirmOverwrite: boolean): $CancellablePromise<($models.ImportResult | null)[] | null> {
+    return $Call.ByID(882224074, filePaths, confirmOverwrite);
 }
 
 /**

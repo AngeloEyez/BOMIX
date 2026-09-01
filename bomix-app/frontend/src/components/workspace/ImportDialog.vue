@@ -102,14 +102,16 @@
           </div>
 
           <!-- 下行：覆蓋確認選項 Checkbox -->
-          <div class="import-options flex items-center gap-1.5">
+          <div class="import-options flex items-center gap-1.5 cursor-pointer" @click="toggleConfirmOverwrite">
             <Checkbox
-              v-model="confirmOverwrite"
+              :modelValue="confirmOverwrite"
               inputId="confirmOverwrite"
               :binary="true"
               class="compact-checkbox"
+              @update:modelValue="onConfirmOverwriteChange"
+              @click.stop
             />
-            <label for="confirmOverwrite" class="options-label text-xs"> 匯入覆蓋現有 BOM 前提示確認</label>
+            <label for="confirmOverwrite" class="options-label text-xs cursor-pointer" @click.stop="toggleConfirmOverwrite"> 匯入覆蓋現有 BOM 前提示確認</label>
           </div>
         </div>
 
@@ -139,7 +141,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import Checkbox from 'primevue/checkbox'
@@ -178,7 +180,28 @@ const visibleModel = computed({
 })
 
 const importFilePaths = ref<string[]>([])
-const confirmOverwrite = ref(false)
+
+/**
+ * 雙向連動 appStore 與持久化 Config 設定
+ */
+const confirmOverwrite = computed({
+  get: () => appStore.confirmOverwrite,
+  set: (val: boolean) => {
+    appStore.setConfirmOverwrite(val)
+  }
+})
+
+function toggleConfirmOverwrite(): void {
+  confirmOverwrite.value = !confirmOverwrite.value
+}
+
+function onConfirmOverwriteChange(val: boolean): void {
+  confirmOverwrite.value = val
+}
+
+onMounted(() => {
+  appStore.initSettings()
+})
 
 /**
  * 當開啟對話框時，自動重置選取檔案列表，若有拖曳進來的檔案則自動載入
@@ -187,6 +210,8 @@ watch(
   () => props.visible,
   (newVal) => {
     if (newVal) {
+      appStore.initSettings()
+
       if (appStore.droppedFiles && appStore.droppedFiles.length > 0) {
         importFilePaths.value = [...appStore.droppedFiles]
         appStore.clearDroppedFiles()
@@ -293,7 +318,7 @@ async function browseFiles(): Promise<void> {
  */
 async function executeImport(): Promise<void> {
   try {
-    const results = await ImportExcel(importFilePaths.value)
+    const results = await ImportExcel(importFilePaths.value, confirmOverwrite.value)
     
     // 向 taskStore 登記任務狀態
     for (const r of results) {

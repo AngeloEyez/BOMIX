@@ -328,12 +328,27 @@ export async function GetBOMView(revisionIDs: number[], viewType: string): Promi
 
 // ==================== Import/Export ====================
 
-export async function ImportExcel(filePaths: string[]): Promise<ImportResult[]> {
+export async function ImportExcel(filePaths: string[], confirmOverwrite: boolean = true): Promise<ImportResult[]> {
   try {
-    const res = await App.ImportExcel(filePaths)
+    const res = await (App.ImportExcel as any)(filePaths, confirmOverwrite)
     return (res || []) as unknown as ImportResult[]
   } catch (error) {
     handleApiError(error, 'ImportExcel')
+  }
+}
+
+/**
+ * 回應任務的覆蓋確認請求 (覆蓋或略過)
+ * @param {string} taskID - 任務 ID
+ * @param {boolean} overwrite - 是否確認覆蓋 (true: 覆蓋, false: 略過)
+ */
+export async function ConfirmTaskOverwrite(taskID: string, overwrite: boolean): Promise<void> {
+  try {
+    if (typeof (App as any).ConfirmTaskOverwrite === 'function') {
+      await (App as any).ConfirmTaskOverwrite(taskID, overwrite)
+    }
+  } catch (error) {
+    handleApiError(error, 'ConfirmTaskOverwrite')
   }
 }
 

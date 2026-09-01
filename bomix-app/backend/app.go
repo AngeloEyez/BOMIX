@@ -27,20 +27,23 @@ import (
 
 // App struct for Wails bindings
 type App struct {
-	app     *application.App
-	logger  *logger.Logger
-	cfg     *config.Config
-	taskMgr *task.Manager
-	db      *gorm.DB
-	mu      sync.RWMutex
+	app          *application.App
+	logger       *logger.Logger
+	cfg          *config.Config
+	taskMgr      *task.Manager
+	db           *gorm.DB
+	mu           sync.RWMutex
+	confirmChans map[string]chan bool
+	confirmMu    sync.Mutex
 }
 
 // NewApp creates a new App instance
 func NewApp(wailsApp *application.App, logger *logger.Logger, cfg *config.Config) *App {
 	app := &App{
-		app:    wailsApp,
-		logger: logger,
-		cfg:    cfg,
+		app:          wailsApp,
+		logger:       logger,
+		cfg:          cfg,
+		confirmChans: make(map[string]chan bool),
 	}
 
 	// Set logger event callback
@@ -539,12 +542,13 @@ func isMatrixFile(filePath string) bool {
 //
 // 參數：
 //   - filePaths: 欲匯入的 Excel 檔案路徑清單
+//   - confirmOverwrite: 匯入覆蓋現有 BOM 前是否提示確認
 //
 // 回傳：
 //   - []*ImportResult: 包含所有提交任務之 Task ID 與狀態資訊
 //   - error: 若當前無開啟中的 Series 則回傳錯誤
-func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
-	a.logger.Debug(fmt.Sprintf("準備匯入 %d 個 Excel 檔案", len(filePaths)))
+func (a *App) ImportExcel(filePaths []string, confirmOverwrite bool) ([]*ImportResult, error) {
+	a.logger.Debug(fmt.Sprintf("準備匯入 %d 個 Excel 檔案 (confirmOverwrite=%v)", len(filePaths), confirmOverwrite))
 
 	a.mu.RLock()
 	dbConn := a.db
@@ -575,7 +579,7 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 		nonMatrixWg.Add(len(nonMatrixPaths))
 		phase1Done = make(chan struct{})
 
-		// 在背景 goroutine 等待第一階段所有任務完成後關閉 channel 通知
+		// 在背景 goroutine 等待第一階段所有任務完成（包含等待確認完成）後關閉 channel 通知
 		go func() {
 			nonMatrixWg.Wait()
 			close(phase1Done)
@@ -584,137 +588,202 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 
 	// 2. 第一階段：提交非 Matrix 檔案匯入任務
 	for _, filePath := range nonMatrixPaths {
-		taskID := uuid.New().String()
-		taskName := fmt.Sprintf("Import: %s", filepath.Base(filePath))
-		fp := filePath
+		curTaskID := uuid.New().String()
+		curTaskName := fmt.Sprintf("Import: %s", filepath.Base(filePath))
+		curFilePath := filePath
 
-		a.taskMgr.SubmitWithID(
-			taskID,
-			taskName,
-			"Import",
-			func(ctx context.Context, progress func(float64, string), taskLogger *logger.Logger) error {
-				defer nonMatrixWg.Done()
+		func(taskID, taskName, fp string) {
+			a.taskMgr.SubmitWithID(
+				taskID,
+				taskName,
+				"Import",
+				func(ctx context.Context, progress func(float64, string), taskLogger *logger.Logger) error {
+					defer nonMatrixWg.Done()
 
-				taskLogger.Info("開始執行基礎 BOM 匯入作業...", "name", taskName)
-				progress(0.2, "正在開啟與辨識 Excel 檔案...")
+					taskLogger.Info("開始執行基礎 BOM 匯入作業...", "name", taskName, "taskID", taskID)
+					progress(0.2, "正在開啟與辨識 Excel 檔案...")
 
-				// 建立專屬單次開檔與解析的 Reader
-				taskExcelReader := excel.NewReader(dbConn, taskLogger)
-				taskExcelReader.SetProgressCallback(progress)
+					// 建立專屬單次開檔與解析的 Reader
+					taskExcelReader := excel.NewReader(dbConn, taskLogger)
+					taskExcelReader.SetProgressCallback(progress)
+					taskExcelReader.SetConfirmOverwrite(confirmOverwrite)
 
-				// 執行單次開檔、前置驗證與資料匯入
-				importResults, err := taskExcelReader.ImportExcel([]string{fp})
-				if err != nil {
-					taskLogger.Error("開啟或讀取 Excel 檔案重大失敗", "error", err.Error())
-					return err
-				}
+					// 注入覆蓋確認回調函式（綁定特定 taskID）
+					taskExcelReader.SetConfirmOverwriteCallback(func(projectCode, phase, version string) (bool, error) {
+						ch := make(chan bool, 1)
+						a.confirmMu.Lock()
+						a.confirmChans[taskID] = ch
+						a.confirmMu.Unlock()
 
-				if len(importResults) > 0 {
-					result := importResults[0]
+						msg := fmt.Sprintf("發現既有版本 (%s %s %s)，等待確認是否覆蓋...", projectCode, phase, version)
+						a.taskMgr.SetTaskStatus(taskID, types.TaskWaitingConfirm, msg)
+						a.EmitEvent("task:waiting_confirm", map[string]interface{}{
+							"taskID":      taskID,
+							"projectCode": projectCode,
+							"phase":       phase,
+							"version":     version,
+							"message":     msg,
+							"status":      "waiting_confirm",
+						})
 
-					// 檢查是否有格式解析錯誤、Unknown 格式，或是非 Matrix 格式但 PartsCount 為 0 筆
-					isWarning := len(result.Errors) > 0 || result.Format == types.FormatUnknown || (result.Format != types.FormatMatrix && result.PartsCount == 0)
-					if isWarning {
-						errMsg := fmt.Sprintf("匯入結果需要確認: 格式=%s, 成功筆數=%d", result.Format, result.PartsCount)
-						if len(result.Errors) > 0 {
-							errMsg += fmt.Sprintf(", 錯誤=%v", result.Errors)
+						taskLogger.Warn(msg, "taskID", taskID, "project", projectCode, "phase", phase, "version", version)
+
+						select {
+						case approve, ok := <-ch:
+							if !ok {
+								return false, errors.New("confirmation channel closed")
+							}
+							a.taskMgr.SetTaskStatus(taskID, types.TaskRunning, "使用者已完成確認，繼續處理中...")
+							return approve, nil
+						case <-ctx.Done():
+							a.confirmMu.Lock()
+							delete(a.confirmChans, taskID)
+							a.confirmMu.Unlock()
+							return false, ctx.Err()
 						}
-						taskLogger.Warn(errMsg)
-						progress(0.9, errMsg)
-						return task.NewWarningError(errors.New(errMsg))
+					})
+
+					// 執行單次開檔、前置驗證與資料匯入
+					importResults, err := taskExcelReader.ImportExcel([]string{fp})
+					if err != nil {
+						taskLogger.Error("開啟或讀取 Excel 檔案重大失敗", "error", err.Error(), "taskID", taskID)
+						return err
 					}
 
-					msg := fmt.Sprintf("成功匯入 %d 筆料件", result.PartsCount)
-					progress(0.9, msg)
-					taskLogger.Info(msg)
-				}
+					if len(importResults) > 0 {
+						result := importResults[0]
 
-				progress(1.0, "匯入作業完成")
-				return nil
-			},
-		)
+						// 檢查是否有格式解析錯誤、Unknown 格式，或是非 Matrix 格式但 PartsCount 為 0 筆
+						isWarning := len(result.Errors) > 0 || result.Format == types.FormatUnknown || (result.Format != types.FormatMatrix && result.PartsCount == 0)
+						if isWarning {
+							errMsg := fmt.Sprintf("匯入結果需要確認: 格式=%s, 成功筆數=%d", result.Format, result.PartsCount)
+							if len(result.Errors) > 0 {
+								errMsg += fmt.Sprintf(", 錯誤=%v", result.Errors)
+							}
+							taskLogger.Warn(errMsg, "taskID", taskID)
+							progress(0.9, errMsg)
+							return task.NewWarningError(errors.New(errMsg))
+						}
 
-		results = append(results, &ImportResult{
-			FileName: filepath.Base(fp),
-			Status:   "queued",
-			Message:  "Task created",
-			TaskID:   taskID,
-		})
+						msg := fmt.Sprintf("成功匯入 %d 筆料件", result.PartsCount)
+						progress(0.9, msg)
+						taskLogger.Info(msg, "taskID", taskID)
+					}
+
+					progress(1.0, "匯入作業完成")
+					return nil
+				},
+			)
+
+			results = append(results, &ImportResult{
+				FileName: filepath.Base(fp),
+				Status:   "queued",
+				Message:  "Task created",
+				TaskID:   taskID,
+			})
+		}(curTaskID, curTaskName, curFilePath)
 	}
 
 	// 3. 第二階段：提交 Matrix 檔案匯入任務（若有第一階段，等待第一階段結束後再執行）
 	for _, filePath := range matrixPaths {
-		taskID := uuid.New().String()
-		taskName := fmt.Sprintf("Import: %s", filepath.Base(filePath))
-		fp := filePath
+		curTaskID := uuid.New().String()
+		curTaskName := fmt.Sprintf("Import: %s", filepath.Base(filePath))
+		curFilePath := filePath
 
-		a.taskMgr.SubmitWithID(
-			taskID,
-			taskName,
-			"Import",
-			func(ctx context.Context, progress func(float64, string), taskLogger *logger.Logger) error {
-				// 若有第一階段非 Matrix 任務，先行等待其群組結束
-				if phase1Done != nil {
-					taskLogger.Info("等待第一階段非 Matrix BOM 檔案匯入完成...", "name", taskName)
-					progress(0.05, "等待非 Matrix BOM 檔案匯入完成...")
+		func(taskID, taskName, fp string) {
+			a.taskMgr.SubmitWithID(
+				taskID,
+				taskName,
+				"Import",
+				func(ctx context.Context, progress func(float64, string), taskLogger *logger.Logger) error {
+					// 若有第一階段非 Matrix 任務，先行等待其群組結束
+					if phase1Done != nil {
+						taskLogger.Info("等待第一階段非 Matrix BOM 檔案匯入完成...", "name", taskName, "taskID", taskID)
+						progress(0.05, "等待非 Matrix BOM 檔案匯入完成...")
 
-					select {
-					case <-ctx.Done():
-						return ctx.Err()
-					case <-phase1Done:
-						taskLogger.Info("第一階段匯入已完成，開始執行 Matrix BOM 匯入作業...", "name", taskName)
-					}
-				} else {
-					taskLogger.Info("開始執行 Matrix BOM 匯入作業...", "name", taskName)
-				}
-
-				progress(0.2, "正在開啟與辨識 Excel 檔案...")
-
-				// 建立專屬單次開檔與解析的 Reader
-				taskExcelReader := excel.NewReader(dbConn, taskLogger)
-				taskExcelReader.SetProgressCallback(progress)
-
-				// 執行單次開檔、前置驗證與資料匯入
-				importResults, err := taskExcelReader.ImportExcel([]string{fp})
-				if err != nil {
-					taskLogger.Error("開啟或讀取 Excel 檔案重大失敗", "error", err.Error())
-					return err
-				}
-
-				if len(importResults) > 0 {
-					result := importResults[0]
-
-					// 檢查是否有格式解析錯誤、Unknown 格式
-					isWarning := len(result.Errors) > 0 || result.Format == types.FormatUnknown
-					if isWarning {
-						errMsg := fmt.Sprintf("匯入結果需要確認: 格式=%s, 成功筆數=%d", result.Format, result.PartsCount)
-						if len(result.Errors) > 0 {
-							errMsg += fmt.Sprintf(", 錯誤=%v", result.Errors)
+						select {
+						case <-ctx.Done():
+							return ctx.Err()
+						case <-phase1Done:
+							taskLogger.Info("第一階段匯入已完成，開始執行 Matrix BOM 匯入作業...", "name", taskName, "taskID", taskID)
 						}
-						taskLogger.Warn(errMsg)
-						progress(0.9, errMsg)
-						return task.NewWarningError(errors.New(errMsg))
+					} else {
+						taskLogger.Info("開始執行 Matrix BOM 匯入作業...", "name", taskName, "taskID", taskID)
 					}
 
-					msg := "成功匯入 Matrix BOM 勾選資料與 Model 規格"
-					progress(0.9, msg)
-					taskLogger.Info(msg)
-				}
+					progress(0.2, "正在開啟與辨識 Excel 檔案...")
 
-				progress(1.0, "匯入作業完成")
-				return nil
-			},
-		)
+					// 建立專屬單次開檔與解析的 Reader
+					taskExcelReader := excel.NewReader(dbConn, taskLogger)
+					taskExcelReader.SetProgressCallback(progress)
 
-		results = append(results, &ImportResult{
-			FileName: filepath.Base(fp),
-			Status:   "queued",
-			Message:  "Task created",
-			TaskID:   taskID,
-		})
+					// 執行單次開檔、前置驗證與資料匯入
+					importResults, err := taskExcelReader.ImportExcel([]string{fp})
+					if err != nil {
+						taskLogger.Error("開啟或讀取 Excel 檔案重大失敗", "error", err.Error(), "taskID", taskID)
+						return err
+					}
+
+					if len(importResults) > 0 {
+						result := importResults[0]
+
+						// 檢查是否有格式解析錯誤、Unknown 格式
+						isWarning := len(result.Errors) > 0 || result.Format == types.FormatUnknown
+						if isWarning {
+							errMsg := fmt.Sprintf("匯入結果需要確認: 格式=%s, 成功筆數=%d", result.Format, result.PartsCount)
+							if len(result.Errors) > 0 {
+								errMsg += fmt.Sprintf(", 錯誤=%v", result.Errors)
+							}
+							taskLogger.Warn(errMsg, "taskID", taskID)
+							progress(0.9, errMsg)
+							return task.NewWarningError(errors.New(errMsg))
+						}
+
+						msg := "成功匯入 Matrix BOM 勾選資料與 Model 規格"
+						progress(0.9, msg)
+						taskLogger.Info(msg, "taskID", taskID)
+					}
+
+					progress(1.0, "匯入作業完成")
+					return nil
+				},
+			)
+
+			results = append(results, &ImportResult{
+				FileName: filepath.Base(fp),
+				Status:   "queued",
+				Message:  "Task created",
+				TaskID:   taskID,
+			})
+		}(curTaskID, curTaskName, curFilePath)
 	}
 
 	return results, nil
+}
+
+// ConfirmTaskOverwrite 回應指定任務的覆蓋確認請求。
+//
+// 參數：
+//   - taskID: 任務 ID
+//   - overwrite: true 表示確認覆蓋，false 表示略過覆蓋
+//
+// 回傳：
+//   - error: 若任務不存在或未處於等待確認狀態則回傳錯誤
+func (a *App) ConfirmTaskOverwrite(taskID string, overwrite bool) error {
+	a.confirmMu.Lock()
+	ch, exists := a.confirmChans[taskID]
+	if exists {
+		delete(a.confirmChans, taskID)
+	}
+	a.confirmMu.Unlock()
+
+	if !exists {
+		return fmt.Errorf("任務 %s 目前未處於等待確認狀態", taskID)
+	}
+
+	// 解鎖 goroutine 繼續執行
+	ch <- overwrite
+	return nil
 }
 
 

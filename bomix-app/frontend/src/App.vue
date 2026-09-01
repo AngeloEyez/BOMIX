@@ -332,6 +332,9 @@ onMounted(async () => {
     const s = await GetSettings()
     appStore.applyTheme(s.theme)
     useLogStore().globalLogLevel = s.logger?.level || 'info'
+    if (s.import) {
+      appStore.confirmOverwrite = s.import.confirmOverwrite ?? true
+    }
   } catch (e) {
     appStore.applyTheme('system')
   }

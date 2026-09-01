@@ -3,6 +3,8 @@
     v-model:visible="visibleModel"
     modal
     maximizable
+    :closable="!hasActiveTasks"
+    :closeOnEscape="!hasActiveTasks"
     :style="{ width: '720px', maxWidth: '94vw' }"
     class="vscode-styled-dialog"
   >
@@ -35,6 +37,15 @@
               @click="activeFilter = 'all'"
             >
               全部 <span class="pill-count">{{ results.length }}</span>
+            </button>
+            <button
+              v-if="waitingCount > 0"
+              class="filter-pill pill-waiting animate-pulse"
+              :class="{ 'is-active': activeFilter === 'waiting' }"
+              @click="activeFilter = 'waiting'"
+            >
+              <i class="pi pi-exclamation-triangle mr-0.5"></i>
+              待確認 <span class="pill-count">{{ waitingCount }}</span>
             </button>
             <button
               v-if="runningCount > 0"
@@ -96,7 +107,7 @@
             class="result-row"
             :class="getResultClass(result)"
           >
-            <!-- 左側：狀態圖示 + 檔名 -->
+            <!-- 左側：狀態圖示 + 檔名與確認操作 -->
             <div class="row-main-info flex items-center gap-2 min-w-0 flex-1">
               <i :class="['result-status-icon shrink-0', getResultIcon(result)]"></i>
               <div class="file-info-group min-w-0 flex-1">
@@ -115,7 +126,7 @@
               </div>
             </div>
 
-            <!-- 右側：即時狀態標籤與進度條 -->
+            <!-- 右側：即時狀態標籤、進度條與待確認按鈕 -->
             <div class="row-side-info flex flex-col items-end shrink-0 gap-1">
               <div class="flex items-center gap-1.5">
                 <span
@@ -141,6 +152,34 @@
                   :style="{ width: `${getResultProgress(result)}%` }"
                 ></div>
               </div>
+
+              <!-- 待確認狀態之「確認覆蓋 / 略過」操作按鈕群 -->
+              <div
+                v-if="getResultStatus(result) === 'waiting_confirm'"
+                class="confirm-action-group flex items-center gap-1.5"
+              >
+                <Button
+                  label="確認覆蓋"
+                  icon="pi pi-check"
+                  size="small"
+                  severity="warn"
+                  class="vscode-btn vscode-warn-btn"
+                  :loading="confirmingTaskId === result.taskID"
+                  @click="handleConfirm(result.taskID, true)"
+                  title="確認覆蓋資料庫中已存在的相同版本"
+                />
+                <Button
+                  label="略過"
+                  icon="pi pi-forward"
+                  size="small"
+                  text
+                  severity="secondary"
+                  class="vscode-btn vscode-ghost-btn"
+                  :disabled="confirmingTaskId === result.taskID"
+                  @click="handleConfirm(result.taskID, false)"
+                  title="略過此檔案，不覆蓋既有資料"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -150,25 +189,31 @@
     <!-- 對話框底部操作列 -->
     <template #footer>
       <div class="vscode-statusbar-footer flex items-center justify-between w-full">
-        <div class="footer-left text-xs text-color-secondary flex items-center gap-1.5">
-          <i
-            v-if="runningCount > 0 || queuedCount > 0"
-            class="pi pi-spin pi-spinner text-blue-500"
-          ></i>
-          <span v-if="runningCount > 0 || queuedCount > 0">
-            匯入任務正在背景持續處理中，可隨時關閉此視窗
+        <div class="footer-left text-xs flex items-center gap-1.5">
+          <!-- 1. 有任務等待確認 -->
+          <span v-if="waitingCount > 0" class="text-amber-500 font-medium flex items-center gap-1">
+            <i class="pi pi-exclamation-triangle"></i>
+            尚有 {{ waitingCount }} 個任務等待確認是否覆蓋，完成確認前禁止關閉視窗
           </span>
+          <!-- 2. 有任務正在執行或排隊中 -->
+          <span v-else-if="runningCount > 0 || queuedCount > 0" class="text-blue-400 flex items-center gap-1">
+            <i class="pi pi-spin pi-spinner"></i>
+            匯入任務正在處理中，完成後方可關閉視窗
+          </span>
+          <!-- 3. 所有任務已完成 -->
           <span v-else-if="results.length > 0" class="text-green-500 flex items-center gap-1">
             <i class="pi pi-check"></i> 所有匯入作業已處理完畢
           </span>
         </div>
         <div class="footer-right flex items-center gap-2">
           <Button
-            label="關閉"
-            icon="pi pi-check"
+            :label="hasActiveTasks ? '處理中...' : '關閉'"
+            :icon="hasActiveTasks ? 'pi pi-spin pi-spinner' : 'pi pi-check'"
             size="small"
             class="vscode-btn vscode-primary-btn"
+            :disabled="hasActiveTasks"
             @click="visibleModel = false"
+            :title="hasActiveTasks ? '尚有未完成或待確認的任務，無法關閉' : '關閉視窗'"
           />
         </div>
       </div>
@@ -182,7 +227,7 @@ import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import Tag from 'primevue/tag'
 import { useTaskStore } from '../../stores'
-import type { ImportResult as BackendImportResult } from '../../services/api'
+import { ConfirmTaskOverwrite, type ImportResult as BackendImportResult } from '../../services/api'
 
 /**
  * Component Props 定義
@@ -201,8 +246,11 @@ const emit = defineEmits<{
 
 const taskStore = useTaskStore()
 
-/** 篩選模式：'all' | 'running' | 'queued' | 'completed' | 'failed' */
-const activeFilter = ref<'all' | 'running' | 'queued' | 'completed' | 'failed'>('all')
+/** 篩選模式：'all' | 'waiting' | 'running' | 'queued' | 'completed' | 'failed' */
+const activeFilter = ref<'all' | 'waiting' | 'running' | 'queued' | 'completed' | 'failed'>('all')
+
+/** 正在呼叫後端確認 API 的 Task ID */
+const confirmingTaskId = ref<string | null>(null)
 
 /**
  * v-model:visible 雙向代理計算屬性
@@ -237,14 +285,21 @@ function isMatrix(fileName?: string): boolean {
 /**
  * 取得 Task 即時狀態
  * @param {BackendImportResult} result - 匯入結果項目
- * @returns {string} 狀態字串 (running/completed/failed/queued 等)
+ * @returns {string} 狀態字串 (waiting_confirm/running/completed/failed/queued 等)
  */
 function getResultStatus(result: BackendImportResult): string {
   const task = getResultTask(result)
   if (task) {
-    return task.status
+    const s = (task.status || '').toLowerCase()
+    if (s === 'waitingconfirm' || s === 'waiting_confirm') return 'waiting_confirm'
+    if (s === 'done') return 'completed'
+    if (s === 'error') return 'failed'
+    if (s === 'created') return 'queued'
+    return s || 'queued'
   }
-  return result.status || 'queued'
+  const fallback = (result.status || 'queued').toLowerCase()
+  if (fallback === 'waitingconfirm' || fallback === 'waiting_confirm') return 'waiting_confirm'
+  return fallback
 }
 
 /**
@@ -268,6 +323,9 @@ function getResultProgress(result: BackendImportResult): number {
 function getResultMessage(result: BackendImportResult): string {
   const task = getResultTask(result)
   if (task) {
+    if (task.status === 'waiting_confirm') {
+      return task.message || '發現既有版本，等待確認是否覆蓋...'
+    }
     if (task.status === 'completed' || task.status === 'done') {
       return task.message || '匯入完成'
     }
@@ -291,6 +349,11 @@ function getResultMessage(result: BackendImportResult): string {
 /**
  * 各狀態數量計算屬性
  */
+const waitingCount = computed(() => {
+  if (!props.results) return 0
+  return props.results.filter(r => getResultStatus(r) === 'waiting_confirm').length
+})
+
 const runningCount = computed(() => {
   if (!props.results) return 0
   return props.results.filter(r => getResultStatus(r) === 'running').length
@@ -316,6 +379,17 @@ const completedCount = computed(() => {
 })
 
 /**
+ * 是否尚有未結束的任務 (待確認、處理中或佇列中)
+ */
+const hasActiveTasks = computed(() => {
+  if (!props.results || props.results.length === 0) return false
+  return props.results.some(r => {
+    const s = getResultStatus(r)
+    return s === 'waiting_confirm' || s === 'running' || s === 'queued' || s === 'created'
+  })
+})
+
+/**
  * 總體完成百分比 (0 ~ 100)
  */
 const overallPercent = computed(() => {
@@ -332,6 +406,7 @@ const filteredResults = computed(() => {
 
   return props.results.filter(r => {
     const s = getResultStatus(r)
+    if (activeFilter.value === 'waiting') return s === 'waiting_confirm'
     if (activeFilter.value === 'running') return s === 'running'
     if (activeFilter.value === 'queued') return s === 'queued' || s === 'created'
     if (activeFilter.value === 'completed') return s === 'completed' || s === 'done'
@@ -341,6 +416,23 @@ const filteredResults = computed(() => {
 })
 
 /**
+ * 呼叫後端 API 回應指定任務的覆蓋確認
+ * @param {string} taskId - 任務 ID
+ * @param {boolean} overwrite - 是否確認覆蓋
+ */
+async function handleConfirm(taskId?: string, overwrite: boolean = true): Promise<void> {
+  if (!taskId) return
+  confirmingTaskId.value = taskId
+  try {
+    await ConfirmTaskOverwrite(taskId, overwrite)
+  } catch (e) {
+    console.error('Failed to confirm task overwrite:', e)
+  } finally {
+    confirmingTaskId.value = null
+  }
+}
+
+/**
  * 取得 Status Tag 標籤與 Severity 級別
  * @param {BackendImportResult} result - 匯入結果項目
  * @returns {{ label: string; severity: string }} PrimeVue Tag 參數
@@ -348,6 +440,8 @@ const filteredResults = computed(() => {
 function getResultStatusTag(result: BackendImportResult): { label: string; severity: 'secondary' | 'info' | 'success' | 'warn' | 'danger' | 'contrast' } {
   const status = getResultStatus(result)
   switch (status) {
+    case 'waiting_confirm':
+      return { label: '待確認', severity: 'warn' }
     case 'created':
     case 'queued':
       return { label: '排隊中', severity: 'secondary' }
@@ -376,6 +470,8 @@ function getResultStatusTag(result: BackendImportResult): { label: string; sever
 function getResultIcon(result: BackendImportResult): string {
   const status = getResultStatus(result)
   switch (status) {
+    case 'waiting_confirm':
+      return 'pi pi-exclamation-triangle text-amber-500'
     case 'created':
     case 'queued':
       return 'pi pi-clock text-slate-400'
@@ -403,6 +499,7 @@ function getResultIcon(result: BackendImportResult): string {
  */
 function getResultClass(result: BackendImportResult): string {
   const status = getResultStatus(result)
+  if (status === 'waiting_confirm') return 'row-waiting'
   if (status === 'failed' || status === 'error') return 'row-failed'
   if (status === 'warning') return 'row-warning'
   if (status === 'completed' || status === 'done') return 'row-success'
@@ -481,6 +578,15 @@ html.app-dark .pill-count {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.pill-waiting.is-active {
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #f59e0b;
+}
+
+.pill-waiting {
+  color: #d97706;
+}
+
 .pill-running.is-active {
   border-color: rgba(59, 130, 246, 0.4);
   color: #3b82f6;
@@ -494,6 +600,24 @@ html.app-dark .pill-count {
 .pill-failed.is-active {
   border-color: rgba(239, 68, 68, 0.4);
   color: #ef4444;
+}
+
+/* 待確認項目行樣式 */
+.result-row.row-waiting {
+  background: rgba(245, 158, 11, 0.05);
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.vscode-warn-btn {
+  background: #d97706 !important;
+  border-color: #d97706 !important;
+  color: #ffffff !important;
+  font-weight: 600;
+}
+
+.vscode-warn-btn:hover {
+  background: #b45309 !important;
+  border-color: #b45309 !important;
 }
 
 /* 總體進度條 */

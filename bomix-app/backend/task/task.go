@@ -382,6 +382,31 @@ func (tm *TaskManager) ListTasks() []*Task {
 	return tasks
 }
 
+// SetTaskStatus sets the status and message of a task and emits the progress event
+func (tm *TaskManager) SetTaskStatus(taskID string, status types.TaskStatus, message string) {
+	tm.mu.RLock()
+	task, exists := tm.tasks[taskID]
+	tm.mu.RUnlock()
+
+	if !exists {
+		return
+	}
+
+	task.mu.Lock()
+	task.Status = string(status)
+	if message != "" {
+		task.Message = message
+	}
+	task.mu.Unlock()
+
+	tm.emitEvent(EventTaskProgress, map[string]interface{}{
+		"taskID":   taskID,
+		"progress": task.GetProgress(),
+		"message":  task.Message,
+		"status":   string(status),
+	})
+}
+
 // emitEvent emits a task event to the frontend
 func (tm *TaskManager) emitEvent(event string, data interface{}) {
 	if tm.emitter != nil {
