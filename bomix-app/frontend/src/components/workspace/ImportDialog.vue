@@ -27,19 +27,43 @@
       </div>
 
       <div v-if="importFilePaths.length > 0" class="file-list-container">
-        <div class="file-list-header">
-          已選取 {{ importFilePaths.length }} 個檔案：
+        <div class="file-list-header flex justify-between items-center">
+          <span>已選取 {{ importFilePaths.length }} 個檔案：</span>
+          <span v-if="nonMatrixFiles.length > 0 && matrixFiles.length > 0" class="text-xs text-blue-600 dark:text-blue-400 font-normal">
+            (分 2 階段匯入)
+          </span>
         </div>
         <div class="file-list">
-          <div class="file-item" v-for="(path, idx) in importFilePaths" :key="idx" :title="path">
-            <i
-              class="pi pi-times remove-icon"
-              @click="removeImportFile(idx)"
-              title="移除此檔案"
-            ></i>
-            <i class="pi pi-file-excel file-type-icon text-green-500"></i>
-            <span class="file-name">{{ getFileName(path) }}</span>
+          <div class="file-item flex justify-between items-center" v-for="(path, idx) in importFilePaths" :key="idx" :title="path">
+            <div class="flex items-center gap-1.5 min-w-0 flex-1">
+              <i
+                class="pi pi-times remove-icon shrink-0"
+                @click="removeImportFile(idx)"
+                title="移除此檔案"
+              ></i>
+              <i class="pi pi-file-excel file-type-icon text-green-500 shrink-0"></i>
+              <span class="file-name truncate">{{ getFileName(path) }}</span>
+            </div>
+            <span
+              v-if="isMatrix(path)"
+              class="phase-badge matrix-badge shrink-0"
+              title="檔名包含 Matrix，將於第 2 階段匯入"
+            >
+              第 2 階段 (Matrix)
+            </span>
+            <span
+              v-else
+              class="phase-badge base-badge shrink-0"
+              title="基礎 BOM 檔案，將於第 1 階段優先匯入"
+            >
+              第 1 階段
+            </span>
           </div>
+        </div>
+
+        <div v-if="nonMatrixFiles.length > 0 && matrixFiles.length > 0" class="phase-hint-box text-xs p-2 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800/50 flex items-center gap-1.5">
+          <i class="pi pi-info-circle text-blue-500 shrink-0"></i>
+          <span>兩階段自動排程：將先匯入 <strong>{{ nonMatrixFiles.length }}</strong> 個基礎 BOM，完成後自動接續匯入 <strong>{{ matrixFiles.length }}</strong> 個 Matrix BOM。</span>
         </div>
       </div>
 
@@ -135,6 +159,27 @@ function getFileName(filePath: string): string {
   if (!filePath) return ''
   return filePath.split(/[\\/]/).pop() || filePath
 }
+
+/**
+ * 判斷檔案是否為 Matrix BOM 檔案（檔名包含 "matrix"，不區分大小寫）
+ * @param {string} filePath - 傳入的檔案路徑
+ * @returns {boolean} 是否包含 matrix
+ */
+function isMatrix(filePath: string): boolean {
+  if (!filePath) return false
+  const name = getFileName(filePath).toLowerCase()
+  return name.includes('matrix')
+}
+
+/**
+ * 第一階段：非 Matrix（基礎 BOM）檔案清單
+ */
+const nonMatrixFiles = computed(() => importFilePaths.value.filter(p => !isMatrix(p)))
+
+/**
+ * 第二階段：Matrix BOM 檔案清單
+ */
+const matrixFiles = computed(() => importFilePaths.value.filter(p => isMatrix(p)))
 
 /**
  * 移除指定索引之匯入檔案
@@ -250,7 +295,7 @@ async function executeImport(): Promise<void> {
   background: var(--surface-ground);
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.25rem;
 }
 
 .file-item {
@@ -289,6 +334,30 @@ async function executeImport(): Promise<void> {
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 0.78rem;
+}
+
+.phase-badge {
+  font-size: 0.68rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.base-badge {
+  background-color: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.matrix-badge {
+  background-color: rgba(168, 85, 247, 0.12);
+  color: #9333ea;
+  border: 1px solid rgba(168, 85, 247, 0.25);
+}
+
+.phase-hint-box {
+  line-height: 1.4;
 }
 
 .import-options {

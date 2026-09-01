@@ -517,7 +517,32 @@ func (a *App) GetBOMView(revisionIDs []int64, viewType string) (*view.ViewResult
 
 // ==================== Import/Export ====================
 
-// ImportExcel imports Excel files into the database
+// isMatrixFile 判斷給定的檔案路徑之檔案名稱是否包含 "matrix"（不區分大小寫）
+//
+// 參數：
+//   - filePath: 檔案完整或相對路徑
+//
+// 回傳：
+//   - 若檔案名稱（不含路徑目錄）包含 "matrix"（忽略大小寫）則回傳 true，否則回傳 false
+func isMatrixFile(filePath string) bool {
+	fileName := filepath.Base(filePath)
+	return strings.Contains(strings.ToLower(fileName), "matrix")
+}
+
+// ImportExcel 依兩階段分組匯入 Excel 檔案至資料庫
+//
+// 執行邏輯：
+// 1. 檔案分組：依檔名是否包含 "matrix" (不區分大小寫) 分為非 Matrix 組與 Matrix 組。
+// 2. 兩階段執行：
+//   - 第一階段：先背景執行非 Matrix 組 (EBOM/一般 BOM) 的匯入任務。
+//   - 第二階段：等待第一階段所有群組任務全數結束後，Matrix 組自動接續執行開檔與匯入。
+//
+// 參數：
+//   - filePaths: 欲匯入的 Excel 檔案路徑清單
+//
+// 回傳：
+//   - []*ImportResult: 包含所有提交任務之 Task ID 與狀態資訊
+//   - error: 若當前無開啟中的 Series 則回傳錯誤
 func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 	a.logger.Debug(fmt.Sprintf("準備匯入 %d 個 Excel 檔案", len(filePaths)))
 
@@ -529,20 +554,48 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 		return nil, fmt.Errorf("no series is currently open")
 	}
 
+	// 1. 檔案分組：將檔案依檔名是否含 "matrix" 分為兩組
+	var nonMatrixPaths []string
+	var matrixPaths []string
+	for _, fp := range filePaths {
+		if isMatrixFile(fp) {
+			matrixPaths = append(matrixPaths, fp)
+		} else {
+			nonMatrixPaths = append(nonMatrixPaths, fp)
+		}
+	}
+
 	results := make([]*ImportResult, 0, len(filePaths))
 
-	for _, filePath := range filePaths {
+	// 第一階段同步機制：追蹤非 Matrix 任務群組之完成狀態
+	var nonMatrixWg sync.WaitGroup
+	var phase1Done chan struct{}
+
+	if len(nonMatrixPaths) > 0 {
+		nonMatrixWg.Add(len(nonMatrixPaths))
+		phase1Done = make(chan struct{})
+
+		// 在背景 goroutine 等待第一階段所有任務完成後關閉 channel 通知
+		go func() {
+			nonMatrixWg.Wait()
+			close(phase1Done)
+		}()
+	}
+
+	// 2. 第一階段：提交非 Matrix 檔案匯入任務
+	for _, filePath := range nonMatrixPaths {
 		taskID := uuid.New().String()
 		taskName := fmt.Sprintf("Import: %s", filepath.Base(filePath))
+		fp := filePath
 
-		// Submit import task
 		a.taskMgr.SubmitWithID(
 			taskID,
 			taskName,
 			"Import",
 			func(ctx context.Context, progress func(float64, string), taskLogger *logger.Logger) error {
-				taskLogger.Info("開始執行匯入作業...", "name", taskName)
+				defer nonMatrixWg.Done()
 
+				taskLogger.Info("開始執行基礎 BOM 匯入作業...", "name", taskName)
 				progress(0.2, "正在開啟與辨識 Excel 檔案...")
 
 				// 建立專屬單次開檔與解析的 Reader
@@ -550,10 +603,9 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 				taskExcelReader.SetProgressCallback(progress)
 
 				// 執行單次開檔、前置驗證與資料匯入
-				importResults, err := taskExcelReader.ImportExcel([]string{filePath})
+				importResults, err := taskExcelReader.ImportExcel([]string{fp})
 				if err != nil {
 					taskLogger.Error("開啟或讀取 Excel 檔案重大失敗", "error", err.Error())
-					// 重大 IO 或系統錯誤，回傳原始 Error (觸發 Task Status = error)
 					return err
 				}
 
@@ -569,16 +621,10 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 						}
 						taskLogger.Warn(errMsg)
 						progress(0.9, errMsg)
-						// 業務與校驗警示，回傳 WarningError (觸發 Task Status = warning)
 						return task.NewWarningError(errors.New(errMsg))
 					}
 
-					var msg string
-					if result.Format == types.FormatMatrix {
-						msg = "成功匯入 Matrix BOM 勾選資料與 Model 規格"
-					} else {
-						msg = fmt.Sprintf("成功匯入 %d 筆料件", result.PartsCount)
-					}
+					msg := fmt.Sprintf("成功匯入 %d 筆料件", result.PartsCount)
 					progress(0.9, msg)
 					taskLogger.Info(msg)
 				}
@@ -589,7 +635,79 @@ func (a *App) ImportExcel(filePaths []string) ([]*ImportResult, error) {
 		)
 
 		results = append(results, &ImportResult{
-			FileName: filepath.Base(filePath),
+			FileName: filepath.Base(fp),
+			Status:   "queued",
+			Message:  "Task created",
+			TaskID:   taskID,
+		})
+	}
+
+	// 3. 第二階段：提交 Matrix 檔案匯入任務（若有第一階段，等待第一階段結束後再執行）
+	for _, filePath := range matrixPaths {
+		taskID := uuid.New().String()
+		taskName := fmt.Sprintf("Import: %s", filepath.Base(filePath))
+		fp := filePath
+
+		a.taskMgr.SubmitWithID(
+			taskID,
+			taskName,
+			"Import",
+			func(ctx context.Context, progress func(float64, string), taskLogger *logger.Logger) error {
+				// 若有第一階段非 Matrix 任務，先行等待其群組結束
+				if phase1Done != nil {
+					taskLogger.Info("等待第一階段非 Matrix BOM 檔案匯入完成...", "name", taskName)
+					progress(0.05, "等待非 Matrix BOM 檔案匯入完成...")
+
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-phase1Done:
+						taskLogger.Info("第一階段匯入已完成，開始執行 Matrix BOM 匯入作業...", "name", taskName)
+					}
+				} else {
+					taskLogger.Info("開始執行 Matrix BOM 匯入作業...", "name", taskName)
+				}
+
+				progress(0.2, "正在開啟與辨識 Excel 檔案...")
+
+				// 建立專屬單次開檔與解析的 Reader
+				taskExcelReader := excel.NewReader(dbConn, taskLogger)
+				taskExcelReader.SetProgressCallback(progress)
+
+				// 執行單次開檔、前置驗證與資料匯入
+				importResults, err := taskExcelReader.ImportExcel([]string{fp})
+				if err != nil {
+					taskLogger.Error("開啟或讀取 Excel 檔案重大失敗", "error", err.Error())
+					return err
+				}
+
+				if len(importResults) > 0 {
+					result := importResults[0]
+
+					// 檢查是否有格式解析錯誤、Unknown 格式
+					isWarning := len(result.Errors) > 0 || result.Format == types.FormatUnknown
+					if isWarning {
+						errMsg := fmt.Sprintf("匯入結果需要確認: 格式=%s, 成功筆數=%d", result.Format, result.PartsCount)
+						if len(result.Errors) > 0 {
+							errMsg += fmt.Sprintf(", 錯誤=%v", result.Errors)
+						}
+						taskLogger.Warn(errMsg)
+						progress(0.9, errMsg)
+						return task.NewWarningError(errors.New(errMsg))
+					}
+
+					msg := "成功匯入 Matrix BOM 勾選資料與 Model 規格"
+					progress(0.9, msg)
+					taskLogger.Info(msg)
+				}
+
+				progress(1.0, "匯入作業完成")
+				return nil
+			},
+		)
+
+		results = append(results, &ImportResult{
+			FileName: filepath.Base(fp),
 			Status:   "queued",
 			Message:  "Task created",
 			TaskID:   taskID,

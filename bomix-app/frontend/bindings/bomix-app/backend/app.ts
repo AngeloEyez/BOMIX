@@ -178,7 +178,20 @@ export function GetVersion(): $CancellablePromise<string> {
 }
 
 /**
- * ImportExcel imports Excel files into the database
+ * ImportExcel 依兩階段分組匯入 Excel 檔案至資料庫
+ * 
+ * 執行邏輯：
+ * 1. 檔案分組：依檔名是否包含 "matrix" (不區分大小寫) 分為非 Matrix 組與 Matrix 組。
+ * 2. 兩階段執行：
+ *   - 第一階段：先背景執行非 Matrix 組 (EBOM/一般 BOM) 的匯入任務。
+ *   - 第二階段：等待第一階段所有群組任務全數結束後，Matrix 組自動接續執行開檔與匯入。
+ * 
+ * 參數：
+ *   - filePaths: 欲匯入的 Excel 檔案路徑清單
+ * 
+ * 回傳：
+ *   - []*ImportResult: 包含所有提交任務之 Task ID 與狀態資訊
+ *   - error: 若當前無開啟中的 Series 則回傳錯誤
  */
 export function ImportExcel(filePaths: string[] | null): $CancellablePromise<($models.ImportResult | null)[] | null> {
     return $Call.ByID(882224074, filePaths);

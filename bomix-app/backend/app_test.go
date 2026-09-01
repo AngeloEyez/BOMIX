@@ -256,3 +256,172 @@ func TestSaveProjectExportOrder(t *testing.T) {
 	}
 }
 
+// TestIsMatrixFile 測試檔案名稱之 Matrix 判定邏輯（不區分大小寫，且僅以檔名為主）
+func TestIsMatrixFile(t *testing.T) {
+	tests := []struct {
+		name     string
+		filePath string
+		expected bool
+	}{
+		{"純小寫 matrix", "test_matrix.xlsx", true},
+		{"純大寫 MATRIX", "PROJ_MATRIX_BOM.XLSX", true},
+		{"大小寫混雜 Matrix", "Project_Matrix_V1.xlsx", true},
+		{"BigMatrix", "system_bigmatrix_2026.xlsx", true},
+		{"一般 EBOM 檔名", "PROJ_M_EZBOM_EVT_0.1.xlsx", false},
+		{"一般純英文檔名", "sample_parts_list.xls", false},
+		{"路徑目錄含 matrix 但檔名不含", "C:\\matrix_dir\\normal_ebom.xlsx", false},
+		{"Unix 風格路徑包含 Matrix 檔名", "/home/user/docs/EVT_Matrix.xlsx", true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := isMatrixFile(tc.filePath)
+			if actual != tc.expected {
+				t.Errorf("isMatrixFile(%q) = %v, want %v", tc.filePath, actual, tc.expected)
+			}
+		})
+	}
+}
+
+// TestImportExcel_TwoPhaseGrouping 測試 ImportExcel 之分組與分階段背景任務機制
+func TestImportExcel_TwoPhaseGrouping(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_import_grouping.bomx")
+
+	testDB, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("無法建立測試資料庫: %v", err)
+	}
+	defer db.Close(testDB)
+
+	if err := db.AutoMigrate(testDB); err != nil {
+		t.Fatalf("無法初始化資料庫結構: %v", err)
+	}
+	if _, err := db.CreateSeries(testDB, "Import Grouping Test Series", "Desc"); err != nil {
+		t.Fatalf("無法建立 Series: %v", err)
+	}
+
+	log := logger.NewLogger(100)
+	cfg := &config.Config{}
+	app := NewApp(nil, log, cfg)
+	app.db = testDB
+
+	// 建立臨時假檔案 (一個非 matrix，一個 matrix)
+	fileEBOM := filepath.Join(tempDir, "PROJ_EZBOM_EVT.xlsx")
+	fileMatrix := filepath.Join(tempDir, "PROJ_Matrix_EVT.xlsx")
+	_ = os.WriteFile(fileEBOM, []byte("fake ebom content"), 0644)
+	_ = os.WriteFile(fileMatrix, []byte("fake matrix content"), 0644)
+
+	inputFiles := []string{fileMatrix, fileEBOM}
+
+	// 呼叫 ImportExcel
+	results, err := app.ImportExcel(inputFiles)
+	if err != nil {
+		t.Fatalf("ImportExcel 執行失敗: %v", err)
+	}
+
+	// 驗證回傳結果筆數
+	if len(results) != 2 {
+		t.Fatalf("預期回傳 2 筆結果，實際得到 %d 筆", len(results))
+	}
+
+	// 驗證 Task 是否皆已成功註冊至 TaskManager
+	for _, res := range results {
+		if res.TaskID == "" {
+			t.Errorf("檔案 %s 的 TaskID 不應為空", res.FileName)
+		}
+		status := app.taskMgr.GetStatus(res.TaskID)
+		if status == nil {
+			t.Errorf("Task %s 未在 TaskManager 中找到", res.TaskID)
+		}
+	}
+
+	// 等待背景任務執行結束
+	for i := 0; i < 50; i++ {
+		allDone := true
+		for _, res := range results {
+			st := app.taskMgr.GetStatus(res.TaskID)
+			if st != nil && (st.Status == "Running" || st.Status == "Queued" || st.Status == "Created") {
+				allDone = false
+				break
+			}
+		}
+		if allDone {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// TestAppImportExcel_TarisPCM_RealFiles 測試使用真實 TARIS-PCM EBOM (.xls) 與 Matrix (.xlsx) 檔案進行兩階段批次匯入
+func TestAppImportExcel_TarisPCM_RealFiles(t *testing.T) {
+	ebomPath := filepath.Join("excel", "testdata", "TARIS-PCM_EZBOM_SI1_0.3_BOM_20260817_1000.WP(compared).xls")
+	matrixPath := filepath.Join("excel", "testdata", "TARIS-PCM_EZBOM_SI1_0.3_MatrixBOM_20260817_1000.WP.xlsx")
+
+	absEBOM, err := filepath.Abs(ebomPath)
+	if err != nil {
+		t.Fatalf("路徑錯誤: %v", err)
+	}
+	absMatrix, err := filepath.Abs(matrixPath)
+	if err != nil {
+		t.Fatalf("路徑錯誤: %v", err)
+	}
+
+	l := logger.NewLogger(100)
+	tempDBPath := filepath.Join(t.TempDir(), "test_app_taris_real.bomx")
+	testDB, err := db.Open(tempDBPath)
+	if err != nil {
+		t.Fatalf("建立測試 DB 失敗: %v", err)
+	}
+	defer db.Close(testDB)
+	if err := db.AutoMigrate(testDB); err != nil {
+		t.Fatalf("AutoMigrate 失敗: %v", err)
+	}
+	_, err = db.CreateSeries(testDB, "abc", "Desc")
+	if err != nil {
+		t.Fatalf("CreateSeries 失敗: %v", err)
+	}
+
+	app := NewApp(nil, l, &config.Config{})
+	app.db = testDB
+
+	// 同時傳入兩個檔案進行兩階段排程匯入
+	results, err := app.ImportExcel([]string{absEBOM, absMatrix})
+	if err != nil {
+		t.Fatalf("App.ImportExcel 失敗: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Fatalf("預期提交 2 個任務，實際為 %d", len(results))
+	}
+
+	// 等待所有任務完成
+	for i := 0; i < 200; i++ {
+		allDone := true
+		for _, r := range results {
+			st := app.taskMgr.GetStatus(r.TaskID)
+			if st != nil && (st.Status == "Running" || st.Status == "Queued" || st.Status == "Created") {
+				allDone = false
+				break
+			}
+		}
+		if allDone {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// 驗證兩個任務皆順利 Completed
+	for _, r := range results {
+		st := app.taskMgr.GetStatus(r.TaskID)
+		if st == nil {
+			t.Fatalf("未找到任務 %s", r.TaskID)
+		}
+		if st.Status != "Completed" {
+			t.Errorf("任務 %s (%s) 狀態應為 Completed，實際為 %s，錯誤: %s", st.ID, st.Name, st.Status, st.Error)
+		}
+	}
+}
+
+
+
