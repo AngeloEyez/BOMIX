@@ -108,8 +108,13 @@ const projectStore = useProjectStore()
 const logStore = useLogStore()
 const taskStore = useTaskStore()
 
-// 對話框顯示控制狀態
-const importDialogVisible = ref(false)
+// 對話框顯示控制狀態 (importDialogVisible 與 appStore 全域狀態同步)
+const importDialogVisible = computed({
+  get: () => appStore.importDialogVisible,
+  set: (val: boolean) => {
+    appStore.importDialogVisible = val
+  }
+})
 const importResultDialogVisible = ref(false)
 const copyMatrixDialogVisible = ref(false)
 

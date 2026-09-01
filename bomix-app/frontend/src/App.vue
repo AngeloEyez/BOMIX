@@ -1,5 +1,20 @@
 <template>
-  <div class="app-container">
+  <div
+    class="app-container"
+    data-file-drop-target="true"
+  >
+    <!-- 全域檔案拖曳視覺遮罩 (VS Code Drag Overlay) -->
+    <div
+      v-if="isDraggingOver"
+      class="global-drag-overlay"
+    >
+      <div class="drag-card">
+        <i class="pi pi-file-excel drag-icon"></i>
+        <span class="drag-title">釋放滑鼠以匯入 BOM 檔案</span>
+        <span class="drag-sub">支援 EBOM, BigMatrix, Matrix Excel 檔案 (.xlsx, .xls)</span>
+      </div>
+    </div>
+
     <!-- Header / Title Bar -->
     <header class="header">
       <div class="header-left">
@@ -96,7 +111,7 @@ import Button from 'primevue/button'
 import { useAppStore, useProjectStore, useLogStore, useTaskStore } from './stores'
 import LogPanel from './components/LogPanel.vue'
 import SidebarPanel from './components/SidebarPanel.vue'
-import { GetSettings } from './services/api'
+import { GetSettings, ListenToEvents } from './services/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -174,6 +189,118 @@ function handleSettingsClick(): void {
   }
 }
 
+// 全域拖曳檔案狀態管理
+const isDraggingOver = ref(false)
+let dragCounter = 0
+
+/**
+ * 處理拖曳進入視窗事件
+ */
+function handleDragEnter(e: DragEvent): void {
+  e.preventDefault()
+  dragCounter++
+  if (e.dataTransfer?.types?.includes('Files')) {
+    isDraggingOver.value = true
+  }
+}
+
+/**
+ * 處理拖曳懸浮視窗事件
+ */
+function handleDragOver(e: DragEvent): void {
+  e.preventDefault()
+  if (e.dataTransfer) {
+    e.dataTransfer.dropEffect = 'copy'
+  }
+}
+
+/**
+ * 處理拖曳離開視窗事件
+ */
+function handleDragLeave(e: DragEvent): void {
+  e.preventDefault()
+  dragCounter--
+  if (dragCounter <= 0) {
+    dragCounter = 0
+    isDraggingOver.value = false
+  }
+}
+
+/**
+ * 判斷路徑是否為絕對磁碟路徑
+ */
+function isAbsolutePath(path: string): boolean {
+  if (!path) return false
+  return /^[a-zA-Z]:[\\/]/.test(path) || path.startsWith('\\\\') || path.startsWith('/')
+}
+
+/**
+ * 安全解析各類事件格式中的檔案清單 (字串陣列、單一字串、物件包裝)
+ */
+function extractFileList(data: any): string[] {
+  if (!data) return []
+  if (Array.isArray(data)) {
+    if (data.length > 0 && Array.isArray(data[0])) {
+      return data[0].map(String)
+    }
+    return data.map(String)
+  }
+  if (typeof data === 'string') {
+    return [data]
+  }
+  if (typeof data === 'object') {
+    if (Array.isArray(data.files)) {
+      return data.files.map(String)
+    }
+    if (Array.isArray(data.data)) {
+      return extractFileList(data.data)
+    }
+  }
+  return []
+}
+
+/**
+ * 處理接收到的拖放檔案清單
+ */
+function onFilesReceived(data: any): void {
+  const paths = extractFileList(data)
+  const validPaths = paths.filter(path => {
+    const p = String(path).toLowerCase()
+    return p.endsWith('.xlsx') || p.endsWith('.xls')
+  })
+
+  if (validPaths.length > 0) {
+    appStore.handleDroppedFiles(validPaths)
+  }
+}
+
+/**
+ * 處理放開拖曳檔案事件 (HTML5 原生事件處理)
+ */
+function handleDrop(e: DragEvent): void {
+  dragCounter = 0
+  isDraggingOver.value = false
+
+  const files = e.dataTransfer?.files
+  if (!files || files.length === 0) return
+
+  const validPaths: string[] = []
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]
+    const path = (file as any).path || ''
+    if (path && isAbsolutePath(path)) {
+      const lower = path.toLowerCase()
+      if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
+        validPaths.push(path)
+      }
+    }
+  }
+
+  if (validPaths.length > 0) {
+    appStore.handleDroppedFiles(validPaths)
+  }
+}
+
 // Sidebar width management
 const sidebarWidth = ref(20) // Default 20%
 
@@ -184,8 +311,17 @@ let startY = 0
 let startHeight = 0
 
 onMounted(async () => {
-  // 註冊全域右鍵選單攔截
+  // 註冊全域右鍵選單攔截與全域拖曳防護
   window.addEventListener('contextmenu', handleGlobalContextMenu)
+  window.addEventListener('dragenter', handleDragEnter)
+  window.addEventListener('dragover', handleDragOver)
+  window.addEventListener('dragleave', handleDragLeave)
+  window.addEventListener('drop', handleDrop)
+
+  // 監聽 Wails 原生與後端視窗拖放事件 (包含絕對路徑)
+  ListenToEvents('files:dropped', onFilesReceived)
+  ListenToEvents('files-dropped', onFilesReceived)
+  ListenToEvents('common:WindowFilesDropped', onFilesReceived)
 
   // Start listening to events
   logStore.startListening()
@@ -218,6 +354,10 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('contextmenu', handleGlobalContextMenu)
+  window.removeEventListener('dragenter', handleDragEnter)
+  window.removeEventListener('dragover', handleDragOver)
+  window.removeEventListener('dragleave', handleDragLeave)
+  window.removeEventListener('drop', handleDrop)
 })
 
 // Watch for series open changes
@@ -423,5 +563,59 @@ body {
 
 .resize-handle:hover {
   background-color: var(--primary-color);
+}
+
+/* 全域檔案拖曳視覺遮罩 (VS Code Drag Overlay) */
+.global-drag-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background-color: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.drag-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 2.5rem 3.5rem;
+  background: var(--surface-card);
+  border: 2px dashed var(--primary-color);
+  border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  animation: pulse-border 1.5s infinite ease-in-out;
+}
+
+.drag-icon {
+  font-size: 3rem;
+  color: #22c55e;
+}
+
+.drag-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.drag-sub {
+  font-size: 0.85rem;
+  color: var(--text-color-secondary);
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    border-color: var(--primary-color);
+    transform: scale(1);
+  }
+  50% {
+    border-color: #3b82f6;
+    transform: scale(1.02);
+  }
 }
 </style>

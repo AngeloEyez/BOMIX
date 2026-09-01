@@ -2,95 +2,138 @@
   <Dialog
     v-model:visible="visibleModel"
     modal
-    header="Import BOM Files (多檔案匯入)"
-    :style="{ width: '560px' }"
+    maximizable
+    :style="{ width: '680px', maxWidth: '94vw' }"
+    class="vscode-styled-dialog"
   >
-    <div class="import-dialog-content">
-      <p class="drag-hint">
-        選擇要匯入的 Excel 檔案（支援 EBOM, BigMatrix, Matrix 格式，可按住 Ctrl/Shift 選擇多個檔案）
-      </p>
+    <!-- 自訂 VS Code 風格 Title Bar -->
+    <template #header>
+      <div class="vscode-titlebar-title flex items-center gap-2">
+        <i class="pi pi-upload text-primary text-xs"></i>
+        <span class="title-main font-medium"> 匯入 BOM 檔案</span>
+        <span class="title-sub text-xs text-color-secondary font-normal"> (Import BOM Files)</span>
+      </div>
+    </template>
 
-      <div class="button-group flex gap-2">
-        <Button
-          label="瀏覽選取檔案..."
-          icon="pi pi-folder-open"
-          @click="browseFiles"
-        />
-        <Button
-          v-if="importFilePaths.length > 0"
-          label="清除全部"
-          icon="pi pi-trash"
-          text
-          severity="danger"
-          @click="clearImportFiles"
-        />
+    <div class="import-dialog-content">
+      <!-- 頂部操作工具列 -->
+      <div class="toolbar-row flex items-center justify-between">
+        <div class="flex items-center gap-1.5">
+          <Button
+            label="瀏覽選取檔案..."
+            icon="pi pi-folder-open"
+            size="small"
+            class="vscode-action-btn"
+            @click="browseFiles"
+          />
+          <Button
+            v-if="importFilePaths.length > 0"
+            label="清除全部"
+            icon="pi pi-trash"
+            text
+            size="small"
+            severity="danger"
+            class="vscode-action-btn vscode-danger-btn"
+            @click="clearImportFiles"
+          />
+        </div>
       </div>
 
-      <div v-if="importFilePaths.length > 0" class="file-list-container">
-        <div class="file-list-header flex justify-between items-center">
-          <span>已選取 {{ importFilePaths.length }} 個檔案：</span>
-          <span v-if="nonMatrixFiles.length > 0 && matrixFiles.length > 0" class="text-xs text-blue-600 dark:text-blue-400 font-normal">
-            (分 2 階段匯入)
-          </span>
+      <!-- 檔案列表區域 (VS Code 緊湊列表風格，超出窗口時支援垂直捲軸) -->
+      <div class="file-list-container" data-file-drop-target="true">
+        <div v-if="importFilePaths.length === 0" class="file-list-empty">
+          <i class="pi pi-file-excel empty-icon"></i>
+          <span class="empty-text">尚未選取任何檔案</span>
+          <span class="empty-subtext">點擊上方「瀏覽選取檔案」或直接拖曳 Excel 檔案至此視窗 (支援 Ctrl/Shift 多選)</span>
         </div>
-        <div class="file-list">
-          <div class="file-item flex justify-between items-center" v-for="(path, idx) in importFilePaths" :key="idx" :title="path">
-            <div class="flex items-center gap-1.5 min-w-0 flex-1">
-              <i
-                class="pi pi-times remove-icon shrink-0"
-                @click="removeImportFile(idx)"
-                title="移除此檔案"
-              ></i>
-              <i class="pi pi-file-excel file-type-icon text-green-500 shrink-0"></i>
+
+        <div v-else class="file-list">
+          <div
+            v-for="(path, idx) in importFilePaths"
+            :key="path"
+            class="file-item"
+            :title="path"
+          >
+            <!-- 序號與 Excel 圖示 -->
+            <span class="file-index">{{ idx + 1 }}</span>
+            <i class="pi pi-file-excel file-type-icon"></i>
+
+            <!-- 檔案名稱與路徑 -->
+            <div class="file-info min-w-0 flex-1">
               <span class="file-name truncate">{{ getFileName(path) }}</span>
             </div>
+
+            <!-- 僅 Matrix BOM 顯示 "Matrix" 標籤，一般 EBOM 不顯示標籤 -->
             <span
               v-if="isMatrix(path)"
-              class="phase-badge matrix-badge shrink-0"
-              title="檔名包含 Matrix，將於第 2 階段匯入"
+              class="phase-badge matrix-badge"
+              title="Matrix BOM 檔案"
             >
-              第 2 階段 (Matrix)
+              Matrix
             </span>
-            <span
-              v-else
-              class="phase-badge base-badge shrink-0"
-              title="基礎 BOM 檔案，將於第 1 階段優先匯入"
+
+            <!-- 移除按鈕 -->
+            <button
+              class="remove-btn"
+              @click.stop="removeImportFile(idx)"
+              title="從清單中移除"
             >
-              第 1 階段
-            </span>
+              <i class="pi pi-times"></i>
+            </button>
           </div>
         </div>
-
-        <div v-if="nonMatrixFiles.length > 0 && matrixFiles.length > 0" class="phase-hint-box text-xs p-2 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800/50 flex items-center gap-1.5">
-          <i class="pi pi-info-circle text-blue-500 shrink-0"></i>
-          <span>兩階段自動排程：將先匯入 <strong>{{ nonMatrixFiles.length }}</strong> 個基礎 BOM，完成後自動接續匯入 <strong>{{ matrixFiles.length }}</strong> 個 Matrix BOM。</span>
-        </div>
-      </div>
-
-      <div class="import-options">
-        <Checkbox
-          v-model="confirmOverwrite"
-          inputId="confirmOverwrite"
-          :binary="true"
-        />
-        <label for="confirmOverwrite">匯入覆蓋現有 BOM 前提示確認</label>
       </div>
     </div>
 
+    <!-- 對話框底部操作列 (VS Code 雙行舒適排版，確保文字與 Checkbox 完整清晰) -->
     <template #footer>
-      <Button
-        label="取消"
-        icon="pi pi-times"
-        text
-        severity="secondary"
-        @click="visibleModel = false"
-      />
-      <Button
-        label="開始匯入"
-        icon="pi pi-upload"
-        @click="executeImport"
-        :disabled="importFilePaths.length === 0"
-      />
+      <div class="vscode-statusbar-footer flex items-center justify-between w-full gap-3">
+        <!-- 左側：上行計數資訊，下行覆蓋選項 Checkbox -->
+        <div class="footer-left flex flex-col justify-center gap-1 min-w-0 flex-1">
+          <!-- 上行：檔案計數與細項分類 -->
+          <div class="stats-row flex items-center min-w-0">
+            <span v-if="importFilePaths.length > 0" class="stats-label text-xs">
+              已選取 <strong>{{ importFilePaths.length }}</strong> 個檔案
+              <span class="stats-breakdown text-color-secondary font-normal ml-1">
+                ( EBOM: <strong class="text-color">{{ nonMatrixFiles.length }}</strong> Matrix: <strong class="text-color">{{ matrixFiles.length }}</strong> )
+              </span>
+            </span>
+            <span v-else class="text-xs text-color-secondary">未選取檔案</span>
+          </div>
+
+          <!-- 下行：覆蓋確認選項 Checkbox -->
+          <div class="import-options flex items-center gap-1.5">
+            <Checkbox
+              v-model="confirmOverwrite"
+              inputId="confirmOverwrite"
+              :binary="true"
+              class="compact-checkbox"
+            />
+            <label for="confirmOverwrite" class="options-label text-xs"> 匯入覆蓋現有 BOM 前提示確認</label>
+          </div>
+        </div>
+
+        <!-- 右側：取消與開始匯入按鈕 -->
+        <div class="footer-right flex items-center gap-2 shrink-0">
+          <Button
+            label="取消"
+            icon="pi pi-times"
+            text
+            size="small"
+            severity="secondary"
+            class="vscode-btn vscode-ghost-btn"
+            @click="visibleModel = false"
+          />
+          <Button
+            label="開始匯入"
+            icon="pi pi-upload"
+            size="small"
+            class="vscode-btn vscode-primary-btn"
+            @click="executeImport"
+            :disabled="importFilePaths.length === 0"
+          />
+        </div>
+      </div>
     </template>
   </Dialog>
 </template>
@@ -100,7 +143,7 @@ import { ref, computed, watch } from 'vue'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import Checkbox from 'primevue/checkbox'
-import { useLogStore, useTaskStore } from '../../stores'
+import { useLogStore, useTaskStore, useAppStore } from '../../stores'
 import {
   ImportExcel,
   OpenMultipleFilesDialog,
@@ -124,6 +167,7 @@ const emit = defineEmits<{
 
 const logStore = useLogStore()
 const taskStore = useTaskStore()
+const appStore = useAppStore()
 
 /**
  * v-model:visible 雙向代理計算屬性
@@ -133,19 +177,39 @@ const visibleModel = computed({
   set: (val: boolean) => emit('update:visible', val)
 })
 
-const importFilePath = ref('')
 const importFilePaths = ref<string[]>([])
 const confirmOverwrite = ref(false)
 
 /**
- * 當開啟對話框時，自動重置選取檔案列表
+ * 當開啟對話框時，自動重置選取檔案列表，若有拖曳進來的檔案則自動載入
  */
 watch(
   () => props.visible,
   (newVal) => {
     if (newVal) {
-      importFilePaths.value = []
-      importFilePath.value = ''
+      if (appStore.droppedFiles && appStore.droppedFiles.length > 0) {
+        importFilePaths.value = [...appStore.droppedFiles]
+        appStore.clearDroppedFiles()
+      } else {
+        importFilePaths.value = []
+      }
+    }
+  }
+)
+
+/**
+ * 監聽外部是否有新的拖曳檔案傳入
+ */
+watch(
+  () => appStore.droppedFiles,
+  (newFiles) => {
+    if (newFiles && newFiles.length > 0 && props.visible) {
+      const set = new Set(importFilePaths.value)
+      for (const f of newFiles) {
+        set.add(f)
+      }
+      importFilePaths.value = Array.from(set)
+      appStore.clearDroppedFiles()
     }
   }
 )
@@ -172,12 +236,12 @@ function isMatrix(filePath: string): boolean {
 }
 
 /**
- * 第一階段：非 Matrix（基礎 BOM）檔案清單
+ * 非 Matrix（基礎 EBOM）檔案清單
  */
 const nonMatrixFiles = computed(() => importFilePaths.value.filter(p => !isMatrix(p)))
 
 /**
- * 第二階段：Matrix BOM 檔案清單
+ * Matrix BOM 檔案清單
  */
 const matrixFiles = computed(() => importFilePaths.value.filter(p => isMatrix(p)))
 
@@ -187,11 +251,6 @@ const matrixFiles = computed(() => importFilePaths.value.filter(p => isMatrix(p)
  */
 function removeImportFile(index: number): void {
   importFilePaths.value.splice(index, 1)
-  if (importFilePaths.value.length === 0) {
-    importFilePath.value = ''
-  } else {
-    importFilePath.value = `已選取 ${importFilePaths.value.length} 個檔案`
-  }
 }
 
 /**
@@ -199,7 +258,6 @@ function removeImportFile(index: number): void {
  */
 function clearImportFiles(): void {
   importFilePaths.value = []
-  importFilePath.value = ''
 }
 
 /**
@@ -222,8 +280,7 @@ async function browseFiles(): Promise<void> {
         currentSet.add(p)
       }
       importFilePaths.value = Array.from(currentSet)
-      importFilePath.value = `已選取 ${importFilePaths.value.length} 個檔案`
-      logStore.addLogEntry('DEBUG', `已選取 ${selectedPaths.length} 個匯入檔案`)
+      logStore.addLogEntry('DEBUG', `已選取 ${selectedPaths.length} 個匯入檔案，目前累計 ${importFilePaths.value.length} 個`)
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -263,106 +320,307 @@ async function executeImport(): Promise<void> {
 </script>
 
 <style scoped>
+/* 內容排版容器 */
 .import-dialog-content {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.5rem;
+  height: 100%;
 }
 
-.drag-hint {
-  color: var(--text-color-secondary);
-  font-size: 0.875rem;
+/* 操作按鈕 (VS Code Action Btn) */
+.vscode-action-btn {
+  height: 26px !important;
+  font-size: 12px !important;
+  padding: 0 0.55rem !important;
+  border-radius: var(--p-radius-base, 2px) !important;
 }
 
+.vscode-danger-btn {
+  color: #ef4444 !important;
+}
+
+.vscode-danger-btn:hover {
+  background: rgba(239, 68, 68, 0.1) !important;
+}
+
+/* 檔案列表容器 (VS Code 風格) */
 .file-list-container {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--p-radius-base, 2px);
+  background: var(--surface-card);
+  overflow: hidden;
+  flex: 1;
 }
 
-.file-list-header {
-  font-size: 0.8rem;
-  font-weight: 600;
+/* 檔案滾動清單：超出時呈現垂直捲軸 */
+.file-list {
+  min-height: 220px;
+  max-height: 340px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 自訂 VS Code 緊湊滾動條 */
+.file-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.file-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.file-list::-webkit-scrollbar-thumb {
+  background-color: var(--surface-border);
+  border-radius: 4px;
+}
+
+.file-list::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-color-secondary);
+}
+
+/* 空白狀態提示 */
+.file-list-empty {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 1.5rem;
   color: var(--text-color-secondary);
 }
 
-.file-list {
-  max-height: 160px;
-  overflow-y: auto;
-  border: 1px solid var(--surface-border);
-  border-radius: 6px;
-  padding: 0.35rem 0.4rem;
-  background: var(--surface-ground);
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+.empty-icon {
+  font-size: 1.8rem;
+  color: var(--text-color-secondary);
+  opacity: 0.6;
 }
 
+.empty-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.empty-subtext {
+  font-size: 11px;
+  text-align: center;
+  max-width: 360px;
+  line-height: 1.3;
+}
+
+/* 檔案項目列 (緊湊 VS Code Row) */
 .file-item {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.2rem 0.45rem;
-  background: var(--surface-card);
-  border: 1px solid var(--surface-border);
-  border-radius: 4px;
-  font-size: 0.78rem;
-  line-height: 1.2;
+  gap: 0.45rem;
+  height: 26px;
+  padding: 0 0.5rem;
+  border-bottom: 1px solid var(--surface-border);
+  font-size: 12px;
+  line-height: 1;
+  transition: background-color 0.1s ease;
 }
 
-.remove-icon {
-  font-size: 0.75rem;
+.file-item:last-child {
+  border-bottom: none;
+}
+
+.file-item:hover {
+  background: var(--surface-hover);
+}
+
+.file-index {
+  font-size: 11px;
   color: var(--text-color-secondary);
-  cursor: pointer;
-  padding: 2px;
-  border-radius: 3px;
-  transition: color 0.15s ease, background-color 0.15s ease;
-}
-
-.remove-icon:hover {
-  color: #ef4444;
-  background-color: rgba(239, 68, 68, 0.1);
+  width: 18px;
+  text-align: right;
+  flex-shrink: 0;
 }
 
 .file-type-icon {
-  font-size: 0.8rem;
+  font-size: 13px;
+  color: #22c55e;
+  flex-shrink: 0;
 }
 
 .file-item .file-name {
   font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 0.78rem;
+  color: var(--text-color);
+  font-size: 12px;
 }
 
+/* Matrix 標籤樣式 */
 .phase-badge {
-  font-size: 0.68rem;
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 2px;
   font-weight: 600;
   white-space: nowrap;
-}
-
-.base-badge {
-  background-color: rgba(59, 130, 246, 0.12);
-  color: #2563eb;
-  border: 1px solid rgba(59, 130, 246, 0.25);
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
 }
 
 .matrix-badge {
   background-color: rgba(168, 85, 247, 0.12);
-  color: #9333ea;
-  border: 1px solid rgba(168, 85, 247, 0.25);
+  color: #a855f7;
+  border: 1px solid rgba(168, 85, 247, 0.3);
 }
 
-.phase-hint-box {
-  line-height: 1.4;
-}
-
-.import-options {
+/* 移除按鈕 */
+.remove-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 2px;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: center;
+  font-size: 10px;
+  opacity: 0.6;
+  transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.file-item:hover .remove-btn {
+  opacity: 1;
+}
+
+.remove-btn:hover {
+  color: #ef4444;
+  background-color: rgba(239, 68, 68, 0.12);
+}
+
+/* 底部 VS Code Status Bar 風格 */
+.vscode-statusbar-footer {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.stats-label {
+  color: var(--text-color);
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.stats-breakdown {
+  letter-spacing: 0.02em;
+}
+
+/* 覆蓋選項 Checkbox */
+.import-options {
+  cursor: pointer;
+  user-select: none;
+  line-height: 1.3;
+}
+
+.compact-checkbox {
+  transform: scale(0.9);
+}
+
+.options-label {
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 11.5px !important;
+}
+
+.import-options:hover .options-label {
+  color: var(--text-color);
+}
+
+/* Footer 按鈕樣式 */
+.vscode-btn {
+  height: 26px !important;
+  font-size: 12px !important;
+  padding: 0 0.65rem !important;
+  border-radius: var(--p-radius-base, 2px) !important;
+}
+
+.vscode-ghost-btn {
+  color: var(--text-color-secondary) !important;
+}
+
+.vscode-ghost-btn:hover {
+  color: var(--text-color) !important;
+  background: var(--surface-hover) !important;
+}
+</style>
+
+<style>
+/* ==========================================================================
+   VS Code 視窗風格 Dialog 全域與深層覆蓋 (VS Code Dialog Styles)
+   ========================================================================== */
+.vscode-styled-dialog {
+  border-radius: var(--p-radius-base, 2px) !important;
+  overflow: hidden !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28), 0 0 1px rgba(0, 0, 0, 0.5) !important;
+  border: 1px solid var(--surface-border) !important;
+}
+
+/* Title Bar 頂部標題列 */
+.vscode-styled-dialog .p-dialog-header {
+  height: 34px !important;
+  padding: 0 0.5rem 0 0.75rem !important;
+  background-color: var(--surface-ground) !important;
+  border-bottom: 1px solid var(--surface-border) !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.vscode-styled-dialog .p-dialog-title {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+
+.vscode-styled-dialog .p-dialog-header-actions {
+  gap: 0.2rem !important;
+}
+
+.vscode-styled-dialog .p-dialog-header-actions button,
+.vscode-styled-dialog .p-dialog-header-actions .p-dialog-close-button,
+.vscode-styled-dialog .p-dialog-header-actions .p-dialog-maximize-button {
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 2px !important;
+  color: var(--text-color-secondary) !important;
+  transition: all 0.1s ease !important;
+}
+
+.vscode-styled-dialog .p-dialog-header-actions button:hover {
+  background-color: var(--surface-hover) !important;
+  color: var(--text-color) !important;
+}
+
+.vscode-styled-dialog .p-dialog-header-actions .p-dialog-close-button:hover {
+  background-color: #e81123 !important;
+  color: #ffffff !important;
+}
+
+/* Dialog Content 區域 */
+.vscode-styled-dialog .p-dialog-content {
+  padding: 0.55rem 0.75rem !important;
+  background-color: var(--surface-ground) !important;
+}
+
+/* Footer 底部狀態與操作列：高度自適應，保證雙行排版舒適無截斷 */
+.vscode-styled-dialog .p-dialog-footer {
+  min-height: 46px !important;
+  height: auto !important;
+  padding: 0.35rem 0.75rem !important;
+  background-color: var(--surface-ground) !important;
+  border-top: 1px solid var(--surface-border) !important;
+  display: flex !important;
+  align-items: center !important;
 }
 </style>

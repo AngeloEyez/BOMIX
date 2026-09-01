@@ -10,6 +10,7 @@ import (
 	"bomix-app/backend/logger"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 // Wails uses Go's `embed` package to embed the frontend files into the binary.
@@ -21,10 +22,9 @@ import (
 var assets embed.FS
 
 func init() {
-	// Register a custom event whose associated data type is string.
-	// This is not required, but the binding generator will pick up registered events
-	// and provide a strongly typed JS/TS API for them.
+	// Register custom events
 	application.RegisterEvent[string]("time")
+	application.RegisterEvent[[]string]("files:dropped")
 }
 
 // main function serves as the application's entry point. It initializes the application, creates a window,
@@ -65,11 +65,12 @@ func main() {
 	// 'Mac' options tailor the window when running on macOS.
 	// 'BackgroundColour' is the background colour of the window.
 	// 'URL' is the URL that will be loaded into the webview.
-	wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
+	mainWindow := wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "BOMIX",
 		// Window sized to the golden ratio (1000 / 618 ≈ 1.618).
-		Width:  1000,
-		Height: 618,
+		Width:          1000,
+		Height:         618,
+		EnableFileDrop: true,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,
@@ -77,6 +78,18 @@ func main() {
 		},
 		BackgroundColour: application.NewRGB(6, 7, 15),
 		URL:              "/",
+	})
+
+	// 監聽視窗原生檔案拖放事件，取得真正的本機絕對路徑並推送至前端
+	mainWindow.OnWindowEvent(events.Common.WindowFilesDropped, func(event *application.WindowEvent) {
+		droppedFiles := event.Context().DroppedFiles()
+		logLogger.Info("WindowFilesDropped received", "count", len(droppedFiles), "files", droppedFiles)
+		if len(droppedFiles) > 0 {
+			wailsApp.Event.Emit("files:dropped", droppedFiles)
+			wailsApp.Event.Emit("files-dropped", map[string]interface{}{
+				"files": droppedFiles,
+			})
+		}
 	})
 
 	// Create a goroutine that emits an event containing the current time every second.

@@ -125,6 +125,32 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  // 全域匯入對話框與拖曳檔案狀態管理
+  const importDialogVisible = ref(false)
+  const droppedFiles = ref<string[]>([])
+
+  /**
+   * 處理拖曳 Excel 檔案進應用程式事件
+   * @param {string[]} paths - 拖曳進來的檔案完整路徑清單
+   */
+  function handleDroppedFiles(paths: string[]): void {
+    if (!paths || paths.length === 0) return
+    if (!isOpen.value) {
+      logStore.addLogEntry('WARN', '請先建立或開啟系列專案，方可匯入 BOM 檔案')
+      return
+    }
+    droppedFiles.value = [...paths]
+    importDialogVisible.value = true
+    logStore.addLogEntry('INFO', `偵測到拖曳 ${paths.length} 個 Excel 檔案，已自動載入至匯入對話框`)
+  }
+
+  /**
+   * 清除暫存的拖曳檔案清單
+   */
+  function clearDroppedFiles(): void {
+    droppedFiles.value = []
+  }
+
   return {
     // State
     isOpen,
@@ -133,6 +159,8 @@ export const useAppStore = defineStore('app', () => {
     error,
     currentTheme,
     workspaceView,
+    importDialogVisible,
+    droppedFiles,
     // Getters
     isSeriesOpen,
     // Actions
@@ -142,5 +170,7 @@ export const useAppStore = defineStore('app', () => {
     clearError,
     applyTheme,
     setWorkspaceView,
+    handleDroppedFiles,
+    clearDroppedFiles,
   }
 })

@@ -445,7 +445,8 @@ const eventListeners = new Map<string, any>()
 export function ListenToEvents(eventName: string, callback: (data: any) => void): void {
   try {
     const unlistener = Events.On(eventName, (e: any) => {
-      const data = e.data && e.data.length > 0 ? e.data[0] : e.data
+      // 在 Wails v3 中，Events.On 回調傳入 WailsEvent 物件，其 .data 欄位攜帶原始 payload
+      const data = e?.data !== undefined ? e.data : e
       callback(data)
     })
     
