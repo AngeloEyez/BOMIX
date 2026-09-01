@@ -17,6 +17,67 @@
   --highlight-background: var(--p-highlight-bg, #eff6ff);
 }
 
+/* ==========================================================================
+   全域文字選取控制 (Global Text Selection Control)
+   桌面應用程式預設禁用全域文字選取，僅於特定白名單區域（輸入框、日誌、表格等）開放選取
+   ========================================================================== */
+
+*, *::before, *::after {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 白名單開放可選取與編輯之區域（含其所有子元素） */
+input,
+input *,
+textarea,
+textarea *,
+[contenteditable="true"],
+[contenteditable="true"] *,
+.p-inputtext,
+.p-inputtext *,
+.p-textarea,
+.p-textarea *,
+.p-inputnumber-input,
+.p-inputnumber-input *,
+.selectable-text,
+.selectable-text *,
+.select-text,
+.select-text *,
+.can-select,
+.can-select *,
+.log-content,
+.log-content *,
+.task-log-content,
+.task-log-content *,
+.bom-table-container .bom-table,
+.bom-table-container .bom-table td,
+.bom-table-container .bom-table td *,
+.p-datatable-tbody,
+.p-datatable-tbody td,
+.p-datatable-tbody td *,
+.p-datatable-table td,
+.p-datatable-table td *,
+code,
+code *,
+pre,
+pre * {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+/* 控制項按鈕、圖示與分隔線維持不可框選 */
+.p-button,
+.p-button *,
+.p-select,
+.p-select *,
+.p-splitter-gutter,
+.toggle-ss-btn,
+.toggle-ss-btn * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
 body {
   font-family: var(--p-font-family);
   font-size: 13px;
@@ -25,6 +86,7 @@ body {
   background-color: var(--surface-ground);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  cursor: default;
 }
 
 /* Dark mode support */

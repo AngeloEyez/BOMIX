@@ -62,6 +62,10 @@
       :sort-field="sortField"
       :sort-order="sortOrder"
       @sort="onSort"
+      @row-click="onRowClick"
+      contextMenu
+      v-model:contextMenuSelection="selectedContextRow"
+      @row-contextmenu="onRowContextMenu"
     >
       <!-- 收合 / 展開 控制欄 -->
       <Column style="width: 3.2rem" header="">
@@ -171,6 +175,9 @@
       </Column>
     </DataTable>
 
+    <!-- 右鍵選單元件 -->
+    <ContextMenu ref="contextMenuRef" :model="contextMenuItems" />
+
     <!-- Summary Statistics -->
     <div class="table-summary">
       <span>Total Main Parts: {{ aggregatedParts.length }}</span>
@@ -181,9 +188,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, computed, watch, onMounted } from 'vue'
+import { ref, shallowRef, computed, watch, onMounted, onUnmounted } from 'vue'
 import DataTable, { type DataTableSortEvent } from 'primevue/datatable'
 import Column from 'primevue/column'
+import ContextMenu from 'primevue/contextmenu'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
@@ -616,10 +624,150 @@ async function loadBOMData(revisionIds: number[]): Promise<void> {
   }
 }
 
+// ── 右鍵選單與快捷鍵支援 (Custom Context Menu & Shortcuts) ────
+const contextMenuRef = ref()
+const selectedContextRow = ref<BOMDisplayRow | null>(null)
+/** 目前左鍵點選啟用的資料列（用於 Ctrl+C 快捷鍵整列複製） */
+const activeSelectedRow = ref<BOMDisplayRow | null>(null)
+
+/**
+ * 處理表格列左鍵點選事件
+ * @param event - PrimeVue DataTable row-click 事件
+ */
+function onRowClick(event: any): void {
+  activeSelectedRow.value = event.data
+}
+
+/**
+ * 複製純文字至剪貼簿
+ * @param text - 要複製的字串內容
+ */
+async function copyText(text?: string): Promise<void> {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch (err) {
+    console.error('Failed to copy text to clipboard:', err)
+  }
+}
+
+/**
+ * 複製整列資料為 Tab 分隔字串 (TSV 格式，方便貼入 Excel)
+ * @param row - 表格列資料
+ */
+function copyRowTSV(row?: BOMDisplayRow | null): void {
+  if (!row) return
+  const cols = [
+    row.item || '',
+    row.hhpn || '',
+    row.description || '',
+    row.supplier || '',
+    row.supplier_pn || '',
+    row.qty ?? '',
+    row.locations || '',
+    row.ccl ? 'Y' : '',
+    row.remark || ''
+  ]
+  copyText(cols.join('\t'))
+}
+
+/**
+ * 鍵盤 Ctrl+C (或 Cmd+C) 事件監聽常式
+ * 若使用者有框選文字，讓瀏覽器原生複製生效；
+ * 若無框選文字但有選中表格列，則自動複製該列完整 TSV 資料並在 Log 中提示。
+ */
+function handleKeyDown(event: KeyboardEvent): void {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+    const selectedText = window.getSelection()?.toString()
+    if (selectedText && selectedText.trim().length > 0) {
+      // 已有手動框選文字，讓原生複製行為生效
+      return
+    }
+
+    const targetRow = selectedContextRow.value || activeSelectedRow.value
+    if (targetRow) {
+      event.preventDefault()
+      copyRowTSV(targetRow)
+      logStore.addLogEntry('INFO', `已將料號 ${targetRow.hhpn || targetRow.item || '-'} 整列資料複製至剪貼簿`)
+    }
+  }
+}
+
+/**
+ * 處理表格列右鍵事件
+ * @param event - PrimeVue DataTable 拋出的 row-contextmenu 事件
+ */
+function onRowContextMenu(event: any): void {
+  selectedContextRow.value = event.data
+  activeSelectedRow.value = event.data
+  contextMenuRef.value?.show(event.originalEvent)
+}
+
+/**
+ * 計算表格右鍵選單項目
+ */
+const contextMenuItems = computed(() => {
+  const row = selectedContextRow.value
+  if (!row) return []
+
+  const items: any[] = [
+    {
+      label: `複製料號 (${row.hhpn || '-'})`,
+      icon: 'pi pi-copy',
+      disabled: !row.hhpn,
+      command: () => copyText(row.hhpn)
+    },
+    {
+      label: '複製規格描述 (Copy Description)',
+      icon: 'pi pi-align-left',
+      disabled: !row.description,
+      command: () => copyText(row.description)
+    },
+    {
+      label: `複製供應商料號 (${row.supplier_pn || '-'})`,
+      icon: 'pi pi-tag',
+      disabled: !row.supplier_pn,
+      command: () => copyText(row.supplier_pn)
+    },
+    {
+      label: '複製整列資料 (TSV)',
+      icon: 'pi pi-table',
+      command: () => copyRowTSV(row)
+    },
+    { separator: true },
+    {
+      label: '依此料號篩選 (Filter by PN)',
+      icon: 'pi pi-filter',
+      disabled: !row.hhpn,
+      command: () => {
+        searchQuery.value = row.hhpn
+      }
+    }
+  ]
+
+  // 若為有替代料的主料，提供展開/收合選項
+  if (!row.isSecondSource && row.hasSecondSources) {
+    const collapsed = isCollapsed(row.parentKey)
+    items.push({
+      label: collapsed ? '展開替代料 (Expand 2nd Source)' : '收合替代料 (Collapse 2nd Source)',
+      icon: collapsed ? 'pi pi-chevron-down' : 'pi pi-chevron-right',
+      disabled: false,
+      command: () => toggleCollapse(row.parentKey)
+    })
+  }
+
+  return items
+})
+
 onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown)
   if (props.revisionIds && props.revisionIds.length > 0) {
     loadBOMData(props.revisionIds)
   }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown)
 })
 </script>
 
@@ -749,8 +897,23 @@ onMounted(() => {
   border-bottom: 1px solid var(--surface-border);
 }
 
-:deep(.p-datatable-tbody > tr) {
-  cursor: pointer;
+/* 表格儲存格支援框選與游標標準化 */
+:deep(.p-datatable-tbody > tr > td) {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  cursor: text;
+}
+
+:deep(.p-datatable-tbody > tr > td *) {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+:deep(.toggle-ss-btn),
+:deep(.toggle-ss-btn *) {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  cursor: pointer !important;
 }
 
 /* Summary */

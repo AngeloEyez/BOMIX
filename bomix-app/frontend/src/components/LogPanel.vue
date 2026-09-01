@@ -20,20 +20,10 @@
           >{{ tab.count }}</span>
         </button>
       </div>
-      <div class="header-actions">
-        <!-- 清除日誌按鈕 -->
-        <button
-          class="action-btn"
-          title="Clear Logs"
-          @click="handleClearLogs"
-        >
-          <i class="pi pi-trash"></i>
-        </button>
-      </div>
     </div>
 
     <!-- 日誌顯示區：flex-direction: column，新資訊在下 -->
-    <div class="log-content" ref="logContentRef">
+    <div class="log-content" ref="logContentRef" @contextmenu.stop.prevent="onPanelContextMenu">
       <!--
         無日誌時：顯示單一 "Ready" 狀態文字（對齊底部，仿 VS Code 狀態列）。
       -->
@@ -46,6 +36,7 @@
         v-else-if="isSingleLine && latestLog"
         class="log-item log-single-line"
         :class="`log-level-${latestLog.level.toLowerCase()}`"
+        @contextmenu.stop.prevent="onLogItemContextMenu($event, latestLog)"
       >
         <span class="log-level-indicator"></span>
         <span class="log-level-tag">{{ latestLog.level }}</span>
@@ -60,6 +51,7 @@
           class="log-item"
           :class="`log-level-${log.level.toLowerCase()}`"
           @dblclick="log.isTaskTracker ? openTaskDetails(log) : null"
+          @contextmenu.stop.prevent="onLogItemContextMenu($event, log)"
           :style="log.isTaskTracker ? 'cursor: pointer;' : ''"
           :title="log.isTaskTracker ? 'Double click to view task details' : ''"
         >
@@ -114,6 +106,9 @@
       </div>
     </div>
 
+    <!-- 右鍵選單元件 -->
+    <ContextMenu ref="contextMenuRef" :model="contextMenuItems" />
+
     <!-- 任務日誌詳細彈窗 -->
     <Dialog
       v-model:visible="taskDialogVisible"
@@ -141,12 +136,13 @@
         </div>
         
         <!-- 彈窗內的日誌列表 -->
-        <div class="task-log-content">
+        <div class="task-log-content" @contextmenu.stop.prevent="onPanelContextMenu">
           <div
             v-for="log in filteredTaskHistory"
             :key="log.id"
             class="log-item"
             :class="`log-level-${log.level.toLowerCase()}`"
+            @contextmenu.stop.prevent="onLogItemContextMenu($event, log)"
           >
             <span class="log-level-indicator"></span>
             <span class="log-time">{{ formatTime(log.timestamp) }}</span>
@@ -168,11 +164,17 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import Dialog from 'primevue/dialog'
+import ContextMenu from 'primevue/contextmenu'
 import { useLogStore, useTaskStore } from '../stores'
 import type { LogEntry } from '../stores/log'
 
 const logStore = useLogStore()
 const taskStore = useTaskStore()
+
+/** ContextMenu 元件 ref */
+const contextMenuRef = ref()
+/** 當前右鍵點擊選中的日誌項目 */
+const selectedLogEntry = ref<LogEntry | null>(null)
 
 /** 面板根元素 ref，用於 ResizeObserver 偵測高度 */
 const panelRef = ref<HTMLElement | null>(null)
@@ -325,6 +327,117 @@ function handleClearLogs(): void {
   logStore.clearLogs()
 }
 
+// ── 右鍵選單操作函式 ───────────────────────────────────────
+
+/**
+ * 複製純文字至系統剪貼簿
+ * @param text - 要複製的字串內容
+ */
+async function copyText(text?: string): Promise<void> {
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch (err) {
+    console.error('Failed to copy text to clipboard:', err)
+  }
+}
+
+/**
+ * 複製單條日誌的完整內容（含時間、層級與屬性）
+ * @param log - 日誌物件
+ */
+function copyFullLog(log?: LogEntry | null): void {
+  if (!log) return
+  const time = formatTime(log.timestamp)
+  let line = `[${time}] [${log.level}] ${log.message}`
+  if (log.attrs && Object.keys(log.attrs).length > 0) {
+    line += ` | ${formatAttrs(log.attrs)}`
+  }
+  copyText(line)
+}
+
+/**
+ * 複製當前篩選視圖下的所有日誌
+ */
+function copyAllLogs(): void {
+  const lines = filteredLogs.value.map(log => {
+    const time = formatTime(log.timestamp)
+    let line = `[${time}] [${log.level}] ${log.message}`
+    if (log.attrs && Object.keys(log.attrs).length > 0) {
+      line += ` | ${formatAttrs(log.attrs)}`
+    }
+    return line
+  })
+  copyText(lines.join('\n'))
+}
+
+/**
+ * 處理日誌條目右鍵事件，彈出自定義選單
+ * @param event - 原生滑鼠事件
+ * @param log - 當前右鍵點擊的日誌條目
+ */
+function onLogItemContextMenu(event: MouseEvent, log: LogEntry): void {
+  selectedLogEntry.value = log
+  contextMenuRef.value?.show(event)
+}
+
+/**
+ * 處理日誌面板空白區域右鍵事件
+ * @param event - 原生滑鼠事件
+ */
+function onPanelContextMenu(event: MouseEvent): void {
+  selectedLogEntry.value = null
+  contextMenuRef.value?.show(event)
+}
+
+/**
+ * 動態計算右鍵選單項目
+ */
+const contextMenuItems = computed(() => {
+  if (selectedLogEntry.value) {
+    return [
+      {
+        label: '複製訊息 (Copy Message)',
+        icon: 'pi pi-copy',
+        command: () => copyText(selectedLogEntry.value?.message)
+      },
+      {
+        label: '複製整條日誌 (Copy Full Log)',
+        icon: 'pi pi-file',
+        command: () => copyFullLog(selectedLogEntry.value)
+      },
+      { separator: true },
+      {
+        label: '複製所有日誌 (Copy All Logs)',
+        icon: 'pi pi-clone',
+        disabled: filteredLogs.value.length === 0,
+        command: copyAllLogs
+      },
+      {
+        label: '清除日誌 (Clear Logs)',
+        icon: 'pi pi-trash',
+        disabled: logStore.logs.length === 0,
+        command: handleClearLogs
+      }
+    ]
+  }
+
+  return [
+    {
+      label: '複製所有日誌 (Copy All Logs)',
+      icon: 'pi pi-clone',
+      disabled: filteredLogs.value.length === 0,
+      command: copyAllLogs
+    },
+    {
+      label: '清除日誌 (Clear Logs)',
+      icon: 'pi pi-trash',
+      disabled: logStore.logs.length === 0,
+      command: handleClearLogs
+    }
+  ]
+})
+
 // ── 任務彈窗邏輯 ──────────────────────────────────────────
 const taskDialogVisible = ref(false)
 const selectedTaskTracker = ref<LogEntry | null>(null)
@@ -436,37 +549,6 @@ const filteredTaskHistory = computed(() => {
 .tab-button.active .tab-count {
   background: rgba(255, 255, 255, 0.25);
   color: #fff;
-}
-
-/* 操作按鈕區（清除等） */
-.header-actions {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.action-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border: none;
-  background: transparent;
-  color: var(--text-color-secondary);
-  cursor: pointer;
-  border-radius: 3px;
-  transition: background 0.15s, color 0.15s;
-  padding: 0;
-}
-
-.action-btn:hover {
-  background: var(--surface-hover);
-  color: var(--text-color);
-}
-
-.action-btn i {
-  font-size: 10px;
 }
 
 /* ── 日誌內容區 ─────────────────────────────────────────── */

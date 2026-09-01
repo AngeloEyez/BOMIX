@@ -88,7 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
@@ -104,6 +104,14 @@ const appStore = useAppStore()
 const projectStore = useProjectStore()
 const logStore = useLogStore()
 const taskStore = useTaskStore()
+
+/**
+ * 全域攔截右鍵選單，防止 WebView2 彈出瀏覽器預設網頁選單 (Reload, Back, Inspect 等)
+ * 讓特定元件可以安全使用 PrimeVue 自定義桌面 ContextMenu
+ */
+function handleGlobalContextMenu(event: MouseEvent): void {
+  event.preventDefault()
+}
 
 /**
  * 判斷 Main View (BOM) 按鈕之 Active 高亮狀態
@@ -176,6 +184,9 @@ let startY = 0
 let startHeight = 0
 
 onMounted(async () => {
+  // 註冊全域右鍵選單攔截
+  window.addEventListener('contextmenu', handleGlobalContextMenu)
+
   // Start listening to events
   logStore.startListening()
   taskStore.startListening()
@@ -203,6 +214,10 @@ onMounted(async () => {
 
   // Check for auto-open last file
   checkAutoOpen()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('contextmenu', handleGlobalContextMenu)
 })
 
 // Watch for series open changes
