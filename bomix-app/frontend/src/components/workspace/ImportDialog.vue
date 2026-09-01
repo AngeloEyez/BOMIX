@@ -176,10 +176,18 @@ const appStore = useAppStore()
  */
 const visibleModel = computed({
   get: () => props.visible,
-  set: (val: boolean) => emit('update:visible', val)
+  set: (val: boolean) => {
+    if (!val) {
+      appStore.closeImportDialog()
+    }
+    emit('update:visible', val)
+  }
 })
 
-const importFilePaths = ref<string[]>([])
+/**
+ * 直接綁定 Store 之匯入檔案清單 (單一真實來源)
+ */
+const importFilePaths = computed(() => appStore.importFiles)
 
 /**
  * 雙向連動 appStore 與持久化 Config 設定
@@ -204,37 +212,13 @@ onMounted(() => {
 })
 
 /**
- * 當開啟對話框時，自動重置選取檔案列表，若有拖曳進來的檔案則自動載入
+ * 監聽對話框開啟狀態，初始化相關設定
  */
 watch(
   () => props.visible,
   (newVal) => {
     if (newVal) {
       appStore.initSettings()
-
-      if (appStore.droppedFiles && appStore.droppedFiles.length > 0) {
-        importFilePaths.value = [...appStore.droppedFiles]
-        appStore.clearDroppedFiles()
-      } else {
-        importFilePaths.value = []
-      }
-    }
-  }
-)
-
-/**
- * 監聽外部是否有新的拖曳檔案傳入
- */
-watch(
-  () => appStore.droppedFiles,
-  (newFiles) => {
-    if (newFiles && newFiles.length > 0 && props.visible) {
-      const set = new Set(importFilePaths.value)
-      for (const f of newFiles) {
-        set.add(f)
-      }
-      importFilePaths.value = Array.from(set)
-      appStore.clearDroppedFiles()
     }
   }
 )
@@ -275,14 +259,14 @@ const matrixFiles = computed(() => importFilePaths.value.filter(p => isMatrix(p)
  * @param {number} index - 欲移除之檔案索引
  */
 function removeImportFile(index: number): void {
-  importFilePaths.value.splice(index, 1)
+  appStore.removeImportFile(index)
 }
 
 /**
  * 清除所有已選取的匯入檔案
  */
 function clearImportFiles(): void {
-  importFilePaths.value = []
+  appStore.clearImportFiles()
 }
 
 /**
@@ -300,12 +284,8 @@ async function browseFiles(): Promise<void> {
     })
 
     if (selectedPaths && selectedPaths.length > 0) {
-      const currentSet = new Set(importFilePaths.value)
-      for (const p of selectedPaths) {
-        currentSet.add(p)
-      }
-      importFilePaths.value = Array.from(currentSet)
-      logStore.addLogEntry('DEBUG', `已選取 ${selectedPaths.length} 個匯入檔案，目前累計 ${importFilePaths.value.length} 個`)
+      appStore.addImportFiles(selectedPaths)
+      logStore.addLogEntry('DEBUG', `已選取 ${selectedPaths.length} 個匯入檔案，目前累計 ${appStore.importFiles.length} 個`)
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
@@ -318,7 +298,8 @@ async function browseFiles(): Promise<void> {
  */
 async function executeImport(): Promise<void> {
   try {
-    const results = await ImportExcel(importFilePaths.value, confirmOverwrite.value)
+    const filesToImport = [...appStore.importFiles]
+    const results = await ImportExcel(filesToImport, confirmOverwrite.value)
     
     // 向 taskStore 登記任務狀態
     for (const r of results) {
@@ -336,7 +317,7 @@ async function executeImport(): Promise<void> {
 
     logStore.addLogEntry('INFO', `已提交 ${results.length} 個匯入作業任務`)
     emit('importSuccess', results)
-    visibleModel.value = false
+    appStore.closeImportDialog()
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     logStore.addLogEntry('ERROR', `匯入作業失敗：${msg}`)

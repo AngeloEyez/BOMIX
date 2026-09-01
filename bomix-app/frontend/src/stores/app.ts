@@ -125,9 +125,9 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  // 全域匯入對話框與拖曳檔案狀態管理
+  // 全域匯入對話框與檔案清單狀態管理 (Single Source of Truth)
   const importDialogVisible = ref(false)
-  const droppedFiles = ref<string[]>([])
+  const importFiles = ref<string[]>([])
   const confirmOverwrite = ref(true)
 
   /**
@@ -135,7 +135,6 @@ export const useAppStore = defineStore('app', () => {
    */
   async function initSettings(): Promise<void> {
     try {
-      const s = await GetSeriesInfo() // ensure initialized
       const settings = await (await import('../services/api')).GetSettings()
       if (settings?.import) {
         confirmOverwrite.value = settings.import.confirmOverwrite ?? true
@@ -166,25 +165,67 @@ export const useAppStore = defineStore('app', () => {
   }
 
   /**
-   * 處理拖曳 Excel 檔案進應用程式事件
-   * @param {string[]} paths - 拖曳進來的檔案完整路徑清單
+   * 開啟匯入對話框
+   * @param {string[]} [files] - 選擇性傳入之預設匯入檔案清單 (例如拖曳檔案時)，若未傳入則重置為空清單
    */
-  function handleDroppedFiles(paths: string[]): void {
-    if (!paths || paths.length === 0) return
+  function openImportDialog(files?: string[]): void {
     if (!isOpen.value) {
       logStore.addLogEntry('WARN', '請先建立或開啟系列專案，方可匯入 BOM 檔案')
       return
     }
-    droppedFiles.value = [...paths]
+    if (files && files.length > 0) {
+      // 傳入新檔案時：合併進現有清單 (自動去重)
+      const combined = Array.from(new Set([...importFiles.value, ...files]))
+      importFiles.value = combined
+      logStore.addLogEntry('INFO', `偵測到拖曳 ${files.length} 個 Excel 檔案，已自動載入至匯入對話框`)
+    } else {
+      // 手動點擊開啟時：重置為空清單
+      importFiles.value = []
+    }
     importDialogVisible.value = true
-    logStore.addLogEntry('INFO', `偵測到拖曳 ${paths.length} 個 Excel 檔案，已自動載入至匯入對話框`)
   }
 
   /**
-   * 清除暫存的拖曳檔案清單
+   * 追加檔案至當前匯入檔案清單 (自動去重)
+   * @param {string[]} files - 欲追加之檔案路徑清單
    */
-  function clearDroppedFiles(): void {
-    droppedFiles.value = []
+  function addImportFiles(files: string[]): void {
+    if (!files || files.length === 0) return
+    const combined = Array.from(new Set([...importFiles.value, ...files]))
+    importFiles.value = combined
+  }
+
+  /**
+   * 從當前匯入檔案清單中移除指定索引之項目
+   * @param {number} index - 欲移除之項目索引
+   */
+  function removeImportFile(index: number): void {
+    if (index >= 0 && index < importFiles.value.length) {
+      importFiles.value.splice(index, 1)
+    }
+  }
+
+  /**
+   * 清空當前匯入檔案清單
+   */
+  function clearImportFiles(): void {
+    importFiles.value = []
+  }
+
+  /**
+   * 關閉匯入對話框並重置檔案清單
+   */
+  function closeImportDialog(): void {
+    importDialogVisible.value = false
+    importFiles.value = []
+  }
+
+  /**
+   * 處理拖曳 Excel 檔案進應用程式事件 (相容別名)
+   * @param {string[]} paths - 拖曳進來的檔案完整路徑清單
+   */
+  function handleDroppedFiles(paths: string[]): void {
+    openImportDialog(paths)
   }
 
   return {
@@ -196,7 +237,7 @@ export const useAppStore = defineStore('app', () => {
     currentTheme,
     workspaceView,
     importDialogVisible,
-    droppedFiles,
+    importFiles,
     confirmOverwrite,
     // Getters
     isSeriesOpen,
@@ -207,8 +248,12 @@ export const useAppStore = defineStore('app', () => {
     clearError,
     applyTheme,
     setWorkspaceView,
+    openImportDialog,
+    addImportFiles,
+    removeImportFile,
+    clearImportFiles,
+    closeImportDialog,
     handleDroppedFiles,
-    clearDroppedFiles,
     initSettings,
     setConfirmOverwrite,
   }

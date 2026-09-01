@@ -86,9 +86,6 @@ func main() {
 		logLogger.Info("WindowFilesDropped received", "count", len(droppedFiles), "files", droppedFiles)
 		if len(droppedFiles) > 0 {
 			wailsApp.Event.Emit("files:dropped", droppedFiles)
-			wailsApp.Event.Emit("files-dropped", map[string]interface{}{
-				"files": droppedFiles,
-			})
 		}
 	})
 

@@ -320,8 +320,6 @@ onMounted(async () => {
 
   // 監聽 Wails 原生與後端視窗拖放事件 (包含絕對路徑)
   ListenToEvents('files:dropped', onFilesReceived)
-  ListenToEvents('files-dropped', onFilesReceived)
-  ListenToEvents('common:WindowFilesDropped', onFilesReceived)
 
   // Start listening to events
   logStore.startListening()

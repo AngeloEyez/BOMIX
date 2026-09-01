@@ -9,7 +9,7 @@
           icon="pi pi-upload"
           text
           severity="secondary"
-          @click="importDialogVisible = true"
+          @click="appStore.openImportDialog()"
           title="匯入 BOM 檔案"
         />
         <Button
@@ -45,7 +45,7 @@
               icon="pi pi-upload"
               text
               severity="secondary"
-              @click="importDialogVisible = true"
+              @click="appStore.openImportDialog()"
             />
           </div>
           
@@ -75,7 +75,7 @@
 
     <!-- Sub-components Dialogs -->
     <ImportDialog
-      v-model:visible="importDialogVisible"
+      v-model:visible="appStore.importDialogVisible"
       @importSuccess="onImportSuccess"
     />
     
@@ -108,13 +108,6 @@ const projectStore = useProjectStore()
 const logStore = useLogStore()
 const taskStore = useTaskStore()
 
-// 對話框顯示控制狀態 (importDialogVisible 與 appStore 全域狀態同步)
-const importDialogVisible = computed({
-  get: () => appStore.importDialogVisible,
-  set: (val: boolean) => {
-    appStore.importDialogVisible = val
-  }
-})
 const importResultDialogVisible = ref(false)
 const copyMatrixDialogVisible = ref(false)
 
