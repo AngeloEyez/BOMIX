@@ -44,12 +44,11 @@
         <Tree
           :value="sortedTreeNodes"
           :expanded-keys="expandedKeys"
-          v-model:selection-keys="selectionKeys"
+          :selection-keys="selectionKeys"
           selection-mode="multiple"
           :meta-key-selection="true"
           class="compact-tree"
-          @node-select="onTreeNodeSelect"
-          @node-unselect="onTreeNodeUnselect"
+          @update:selection-keys="onTreeSelectionKeysChange"
           @node-toggle="onNodeToggle"
         >
           <template #node="slotProps">
@@ -75,7 +74,7 @@
       <div v-else class="table-container">
         <DataTable
           :value="flatRevisions"
-          v-model:selection="selectedTableRows"
+          :selection="selectedTableRows"
           selection-mode="multiple"
           :meta-key-selection="true"
           data-key="id"
@@ -88,8 +87,7 @@
           :sort-field="currentSortField"
           :sort-order="currentSortOrderNumber"
           @sort="onTableSort"
-          @row-select="onTableRowSelect"
-          @row-unselect="onTableRowUnselect"
+          @update:selection="onTableSelectionChange"
         >
           <!-- Project 欄位 (可排序) -->
           <Column field="projectCode" sortable style="min-width: 80px;">
@@ -369,7 +367,7 @@ watch(
       expandedKeys.value = keys
     }
   },
-  { immediate: true, deep: true }
+  { immediate: true }
 )
 
 /**
@@ -403,7 +401,7 @@ watch(
       }
     }
   },
-  { immediate: true, deep: true }
+  { immediate: true }
 )
 
 /**
@@ -460,28 +458,22 @@ function onTableSort(event: any): void {
 }
 
 /**
- * 樹狀節點選取事件處理
- * @param {any} _node - 選取的樹節點
+ * 樹狀選取 Keys 變更事件處理常式
+ * @param {Record<string, boolean>} newKeys - Tree 最新選取的鍵值字典
  */
-function onTreeNodeSelect(_node: any): void {
-  syncTreeSelectionToStore()
-}
-
-/**
- * 樹狀節點取消選取事件處理
- * @param {any} _node - 取消選取的樹節點
- */
-function onTreeNodeUnselect(_node: any): void {
-  syncTreeSelectionToStore()
+function onTreeSelectionKeysChange(newKeys: Record<string, boolean>): void {
+  selectionKeys.value = newKeys
+  syncTreeKeysToStore(newKeys)
 }
 
 /**
  * 將 Tree 的 selectionKeys 狀態解析並即時同步至 projectStore
+ * @param {Record<string, boolean>} [keys] - 選取的鍵值字典，未傳入時取 selectionKeys.value
  */
-function syncTreeSelectionToStore(): void {
-  const keys = selectionKeys.value || {}
-  const revIds = Object.keys(keys)
-    .filter((k) => !k.startsWith('p_') && keys[k])
+function syncTreeKeysToStore(keys?: Record<string, boolean>): void {
+  const currentKeys = keys || selectionKeys.value || {}
+  const revIds = Object.keys(currentKeys)
+    .filter((k) => !k.startsWith('p_') && currentKeys[k])
     .map((k) => parseInt(k, 10))
     .filter((id) => !isNaN(id))
 
@@ -491,7 +483,7 @@ function syncTreeSelectionToStore(): void {
     }
   } else {
     // 若無選取 Revision，檢查是否有選中 Project 節點
-    const projKeys = Object.keys(keys).filter((k) => k.startsWith('p_') && keys[k])
+    const projKeys = Object.keys(currentKeys).filter((k) => k.startsWith('p_') && currentKeys[k])
     if (projKeys.length > 0) {
       const projId = parseInt(projKeys[0].replace('p_', ''), 10)
       if (projectStore.selectedProjectId !== projId || projectStore.selectedRevisionIds.length > 0) {
@@ -514,26 +506,12 @@ function onNodeToggle(_node: any): void {
 }
 
 /**
- * 表格列選取事件處理
- * @param {any} _event - DataTable row-select 事件
+ * 表格選取 Rows 變更處理常式
+ * @param {FlatRevisionRow[]} rows - DataTable 最新選取的資料列
  */
-function onTableRowSelect(_event: any): void {
-  syncTableSelectionToStore()
-}
-
-/**
- * 表格列取消選取事件處理
- * @param {any} _event - DataTable row-unselect 事件
- */
-function onTableRowUnselect(_event: any): void {
-  syncTableSelectionToStore()
-}
-
-/**
- * 將 Table 的 selectedTableRows 狀態解析並即時同步至 projectStore
- */
-function syncTableSelectionToStore(): void {
-  const revIds = selectedTableRows.value.map((r) => r.id)
+function onTableSelectionChange(rows: FlatRevisionRow[]): void {
+  selectedTableRows.value = rows || []
+  const revIds = (rows || []).map((r) => r.id)
   if (!areNumberArraysEqual(revIds, projectStore.selectedRevisionIds)) {
     projectStore.setSelectedRevisionIds(revIds)
   }

@@ -53,6 +53,7 @@
       :scrollable="true"
       scroll-height="flex"
       scroll-direction="both"
+      :virtual-scroller-options="{ itemSize: 36 }"
       :row-hover="true"
       :row-class="getRowClass"
       striped-rows
@@ -180,7 +181,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, shallowRef, computed, watch, onMounted } from 'vue'
 import DataTable, { type DataTableSortEvent } from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'
@@ -255,8 +256,8 @@ const currentRevisionId = computed(() => {
   return 0
 })
 
-const aggregatedParts = ref<ViewPartGroup[]>([])
-const currentRevisionMetadata = ref<ViewRevision | null>(null)
+const aggregatedParts = shallowRef<ViewPartGroup[]>([])
+const currentRevisionMetadata = shallowRef<ViewRevision | null>(null)
 
 const smdPartsCount = computed(() => {
   return aggregatedParts.value.filter(p => p.type === 'SMD').length
@@ -342,8 +343,8 @@ const sortedAggregatedParts = computed<ViewPartGroup[]>(() => {
       valA = a.remark || ''
       valB = b.remark || ''
     } else {
-      valA = (a as Record<string, unknown>)[field] || ''
-      valB = (b as Record<string, unknown>)[field] || ''
+      valA = (a as unknown as Record<string, unknown>)[field] || ''
+      valB = (b as unknown as Record<string, unknown>)[field] || ''
     }
 
     let compareRes = 0
