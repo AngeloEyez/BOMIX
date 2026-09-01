@@ -11,27 +11,47 @@
         </div>
       </div>
       <div class="header-right">
+        <!-- 1. Main View (BOM) -->
+        <Button
+          icon="pi pi-home"
+          label="BOM"
+          text
+          :severity="isMainViewActive ? 'primary' : 'secondary'"
+          :class="['title-bar-btn', { 'title-bar-btn-active': isMainViewActive }]"
+          @click="handleMainViewClick"
+          title="Main View (BOM Table)"
+        />
+
+        <!-- 2. Export (僅在系列開啟時顯示/可用) -->
+        <Button
+          v-if="appStore.isOpen"
+          icon="pi pi-download"
+          label="Export"
+          text
+          :severity="isExportActive ? 'primary' : 'secondary'"
+          :class="['title-bar-btn', { 'title-bar-btn-active': isExportActive }]"
+          @click="handleExportClick"
+          title="Export BOM"
+        />
+
+        <!-- 3. Close Series (僅在系列開啟時顯示) -->
         <Button
           v-if="appStore.isOpen"
           icon="pi pi-sign-out"
           text
           severity="secondary"
+          class="title-bar-btn"
           @click="handleCloseSeries"
           title="Close Series"
         />
-        <Button
-          icon="pi pi-home"
-          label="BOM"
-          text
-          severity="secondary"
-          @click="$router.push(appStore.isOpen ? '/workspace' : '/')"
-          title="Main View"
-        />
+
+        <!-- 4. Settings -->
         <Button
           icon="pi pi-cog"
           text
-          severity="secondary"
-          @click="$router.push('/settings')"
+          :severity="isSettingsActive ? 'primary' : 'secondary'"
+          :class="['title-bar-btn', { 'title-bar-btn-active': isSettingsActive }]"
+          @click="handleSettingsClick"
           title="Settings"
         />
       </div>
@@ -69,7 +89,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
 import Button from 'primevue/button'
@@ -78,11 +98,73 @@ import LogPanel from './components/LogPanel.vue'
 import SidebarPanel from './components/SidebarPanel.vue'
 import { GetSettings } from './services/api'
 
+const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const projectStore = useProjectStore()
 const logStore = useLogStore()
 const taskStore = useTaskStore()
+
+/**
+ * 判斷 Main View (BOM) 按鈕之 Active 高亮狀態
+ */
+const isMainViewActive = computed(() => {
+  if (route.path === '/settings') return false
+  if (route.path === '/workspace') {
+    return appStore.workspaceView === 'table'
+  }
+  return route.path === '/'
+})
+
+/**
+ * 判斷 Export 匯出按鈕之 Active 高亮狀態
+ */
+const isExportActive = computed(() => {
+  return route.path === '/workspace' && appStore.workspaceView === 'export'
+})
+
+/**
+ * 判斷 Settings 設定按鈕之 Active 高亮狀態
+ */
+const isSettingsActive = computed(() => {
+  return route.path === '/settings'
+})
+
+/**
+ * 處理 Main View (BOM Table) 按鈕點擊事件
+ */
+function handleMainViewClick(): void {
+  if (appStore.isOpen) {
+    appStore.setWorkspaceView('table')
+    if (route.path !== '/workspace') {
+      router.push('/workspace')
+    }
+  } else {
+    if (route.path !== '/') {
+      router.push('/')
+    }
+  }
+}
+
+/**
+ * 處理 Export 按鈕點擊事件
+ */
+function handleExportClick(): void {
+  if (!appStore.isOpen) return
+  appStore.setWorkspaceView('export')
+  if (route.path !== '/workspace') {
+    router.push('/workspace')
+  }
+}
+
+/**
+ * 處理 Settings 按鈕點擊事件
+ */
+function handleSettingsClick(): void {
+  if (route.path !== '/settings') {
+    router.push('/settings')
+  }
+}
 
 // Sidebar width management
 const sidebarWidth = ref(20) // Default 20%
@@ -262,7 +344,21 @@ body {
 
 .header-right {
   display: flex;
+  align-items: center;
   gap: 0.25rem;
+}
+
+.title-bar-btn {
+  height: 26px;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.5rem;
+  transition: all 0.15s ease;
+}
+
+.title-bar-btn-active {
+  background: var(--primary-color) !important;
+  color: #ffffff !important;
+  font-weight: 600;
 }
 
 /* Main Splitter */

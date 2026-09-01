@@ -85,6 +85,16 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  const workspaceView = ref<'table' | 'export'>('table')
+
+  /**
+   * 設定工作區主畫面顯示之視圖模式 ('table' 表格 或 'export' 匯出)
+   * @param {'table' | 'export'} view - 視圖模式
+   */
+  function setWorkspaceView(view: 'table' | 'export'): void {
+    workspaceView.value = view
+  }
+
   async function closeSeries(): Promise<void> {
     try {
       await CloseSeries()
@@ -95,6 +105,7 @@ export const useAppStore = defineStore('app', () => {
     } finally {
       isOpen.value = false
       seriesInfo.value = null
+      workspaceView.value = 'table'
     }
   }
 
@@ -121,6 +132,7 @@ export const useAppStore = defineStore('app', () => {
     isLoading,
     error,
     currentTheme,
+    workspaceView,
     // Getters
     isSeriesOpen,
     // Actions
@@ -129,5 +141,6 @@ export const useAppStore = defineStore('app', () => {
     closeSeries,
     clearError,
     applyTheme,
+    setWorkspaceView,
   }
 })

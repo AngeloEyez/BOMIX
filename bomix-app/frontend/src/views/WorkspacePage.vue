@@ -13,14 +13,6 @@
           title="匯入 BOM 檔案"
         />
         <Button
-          label="Export"
-          icon="pi pi-download"
-          text
-          severity="secondary"
-          @click="openExportDialog"
-          title="匯出 Excel 矩陣"
-        />
-        <Button
           label="複製 Matrix"
           icon="pi pi-copy"
           text
@@ -31,45 +23,54 @@
       </div>
     </div>
 
-    <!-- Main Content Panel -->
+    <!-- Main Content Panel (依據 appStore.workspaceView 切換顯示 BOMTable 或 ExportView) -->
     <div class="main-content">
-      <BOMTable
-        v-if="projectStore.selectedRevisionIds.length > 0"
-        :revision-ids="projectStore.selectedRevisionIds"
+      <!-- 1. Export 視圖 -->
+      <ExportView
+        v-if="appStore.workspaceView === 'export'"
+        @exportSuccess="onExportSuccess"
       />
-      <div v-else class="placeholder-content">
-        <div v-if="projectStore.projects.length === 0" class="empty-state">
-          <p>No projects found in this series.</p>
-          <Button
-            label="Import BOM"
-            icon="pi pi-upload"
-            text
-            severity="secondary"
-            @click="importDialogVisible = true"
-          />
-        </div>
-        
-        <div v-else class="dashboard-stats">
-          <div class="projects-list">
-            <div class="projects-header">
-              <span class="projects-title">Latest Revisions</span>
-              <span class="projects-count">{{ projectStore.projects.length }} Projects</span>
-            </div>
-            <div class="project-items">
-              <div v-for="p in sortedProjects" :key="p.id" class="project-item">
-                <div class="project-info">
-                  <span class="project-code">{{ p.code || p.name || `Project ${p.id}` }}</span>
-                  <span class="project-desc" v-if="getImportDate(p)">{{ getImportDate(p) }}</span>
-                </div>
-                <div class="revision-info">
-                  <span class="latest-rev" v-if="getLatestRevision(p)">{{ getLatestRevision(p) }}</span>
-                  <span class="no-rev" v-else>No revisions</span>
+
+      <!-- 2. BOM Table 視圖 (選取版本時顯示 BOMTable，否則顯示專案 Dashboard) -->
+      <template v-else>
+        <BOMTable
+          v-if="projectStore.selectedRevisionIds.length > 0"
+          :revision-ids="projectStore.selectedRevisionIds"
+        />
+        <div v-else class="placeholder-content">
+          <div v-if="projectStore.projects.length === 0" class="empty-state">
+            <p>No projects found in this series.</p>
+            <Button
+              label="Import BOM"
+              icon="pi pi-upload"
+              text
+              severity="secondary"
+              @click="importDialogVisible = true"
+            />
+          </div>
+          
+          <div v-else class="dashboard-stats">
+            <div class="projects-list">
+              <div class="projects-header">
+                <span class="projects-title">Latest Revisions</span>
+                <span class="projects-count">{{ projectStore.projects.length }} Projects</span>
+              </div>
+              <div class="project-items">
+                <div v-for="p in sortedProjects" :key="p.id" class="project-item">
+                  <div class="project-info">
+                    <span class="project-code">{{ p.code || p.name || `Project ${p.id}` }}</span>
+                    <span class="project-desc" v-if="getImportDate(p)">{{ getImportDate(p) }}</span>
+                  </div>
+                  <div class="revision-info">
+                    <span class="latest-rev" v-if="getLatestRevision(p)">{{ getLatestRevision(p) }}</span>
+                    <span class="no-rev" v-else>No revisions</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </template>
     </div>
 
     <!-- Sub-components Dialogs -->
@@ -81,11 +82,6 @@
     <ImportResultsDialog
       v-model:visible="importResultDialogVisible"
       :results="importResults"
-    />
-
-    <ExportDialog
-      v-model:visible="exportDialogVisible"
-      :allRevisions="allRevisions"
     />
 
     <CopyMatrixDialog
@@ -102,7 +98,7 @@ import { useAppStore, useProjectStore, useLogStore, useTaskStore } from '../stor
 import BOMTable from '../components/BOMTable.vue'
 import ImportDialog from '../components/workspace/ImportDialog.vue'
 import ImportResultsDialog from '../components/workspace/ImportResultsDialog.vue'
-import ExportDialog, { type RevisionOption } from '../components/workspace/ExportDialog.vue'
+import ExportView, { type RevisionOption } from '../components/workspace/ExportView.vue'
 import CopyMatrixDialog from '../components/workspace/CopyMatrixDialog.vue'
 import type { ImportResult as BackendImportResult } from '../services/api'
 import type { Project, BomRevision } from '../stores/project'
@@ -115,7 +111,6 @@ const taskStore = useTaskStore()
 // 對話框顯示控制狀態
 const importDialogVisible = ref(false)
 const importResultDialogVisible = ref(false)
-const exportDialogVisible = ref(false)
 const copyMatrixDialogVisible = ref(false)
 
 // 匯入結果與版本選項列表
@@ -257,11 +252,11 @@ function onImportSuccess(results: BackendImportResult[]): void {
 }
 
 /**
- * 開啟匯出對話框前重新載入專案資料
+ * 處理匯出完成事件
+ * @param {string[]} paths - 匯出檔案路徑清單
  */
-function openExportDialog(): void {
-  loadProjects()
-  exportDialogVisible.value = true
+function onExportSuccess(paths: string[]): void {
+  logStore.addLogEntry('INFO', `匯出作業成功完成，檔案路徑: ${paths.join(', ')}`)
 }
 </script>
 

@@ -68,7 +68,7 @@ import Dialog from 'primevue/dialog'
 import Select from 'primevue/select'
 import { useLogStore, useTaskStore } from '../../stores'
 import { CopyMatrixSelections } from '../../services/api'
-import type { RevisionOption } from './ExportDialog.vue'
+import type { RevisionOption } from './ExportView.vue'
 
 /**
  * Component Props 定義
