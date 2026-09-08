@@ -311,10 +311,11 @@ Excel 檔案輸入 (SMD, PTH, BOTTOM, NI, PROTO, MP, CCL)
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ Phase 1: 解析與資料分流                                      │
-│ 1. 讀取主製程 (SMD, PTH, BOTTOM) 與 NI:                     │
+│ 1. 讀取主製程 (SMD, PTH, BOTTOM)、NI 與 MP 工作表:           │
 │    - 收集全域物料 (Supplier, SupplierPN, HHPN, Desc, Remark) │
 │    - 收集主料 Component 及原子化 Location                     │
 │    - 收集替代料關聯 (指向主料指標)                           │
+│    - MP 工作表補充僅存在於量產表之專用零件 (BomStatus='M')   │
 └─────────────────────────────────────────────────────────────┘
                        │
                        ▼

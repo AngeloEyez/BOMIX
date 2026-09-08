@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xuri/excelize/v2"
+
 	"bomix-app/backend/config"
 	"bomix-app/backend/db"
 	"bomix-app/backend/logger"
@@ -413,20 +415,14 @@ func TestAppImportExcel_TarisPCM_RealFiles(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	// 驗證兩個任務皆順利完成（EBOM 任務因 MP sheet 含有 Phase 1 未建立的位號 U19/U68 應為 Warning，Matrix 應為 Completed）
+	// 驗證兩個任務皆順利 Completed（MP sheet 已於 Phase 1 建立，故 EBOM 任務無警告，兩者皆為 Completed）
 	for _, r := range results {
 		st := app.taskMgr.GetStatus(r.TaskID)
 		if st == nil {
 			t.Fatalf("未找到任務 %s", r.TaskID)
 		}
-		if strings.Contains(st.Name, "Matrix") {
-			if st.Status != string(types.TaskCompleted) {
-				t.Errorf("任務 %s (%s) 狀態應為 Completed，實際為 %s，錯誤: %s", st.ID, st.Name, st.Status, st.Error)
-			}
-		} else {
-			if st.Status != string(types.TaskWarning) {
-				t.Errorf("EBOM 任務 %s (%s) 狀態應為 Warning，實際為 %s，錯誤: %s", st.ID, st.Name, st.Status, st.Error)
-			}
+		if st.Status != string(types.TaskCompleted) {
+			t.Errorf("任務 %s (%s) 狀態應為 Completed，實際為 %s，錯誤: %s", st.ID, st.Name, st.Status, st.Error)
 		}
 	}
 }
@@ -612,6 +608,95 @@ func TestAppImportExcel_PartialWaitingConfirm_OthersContinue(t *testing.T) {
 	finalEBOM := app.taskMgr.GetStatus(taskEBOM_ID)
 	if finalEBOM.Status != "Completed" && finalEBOM.Status != "Warning" {
 		t.Errorf("EBOM 任務預期 Completed 或 Warning，實際為 %s", finalEBOM.Status)
+	}
+}
+
+// TestAppImportExcel_DuplicateLocationFailsTask 測試當匯入含有重複 Location 的 EBOM 時，任務狀態會被設定為 Failed
+func TestAppImportExcel_DuplicateLocationFailsTask(t *testing.T) {
+	tempDBPath := filepath.Join(t.TempDir(), "test_app_dup_loc.bomx")
+	testDB, err := db.Open(tempDBPath)
+	if err != nil {
+		t.Fatalf("建立測試 DB 失敗: %v", err)
+	}
+	defer db.Close(testDB)
+	if err := db.AutoMigrate(testDB); err != nil {
+		t.Fatalf("AutoMigrate 失敗: %v", err)
+	}
+	l := logger.NewLogger(100)
+
+	series, err := db.CreateSeries(testDB, "TEST_SERIES", "Test Series")
+	if err != nil {
+		t.Fatalf("建立 Series 失敗: %v", err)
+	}
+	_, err = db.GetOrCreateProject(testDB, series.ID, "TANGLED", "Test Project")
+	if err != nil {
+		t.Fatalf("建立 Project 失敗: %v", err)
+	}
+
+	app := NewApp(nil, l, &config.Config{})
+	app.db = testDB
+
+	// 產生含有重複 Location 的臨時 Excel 檔案
+	tempDir := t.TempDir()
+	dupExcelPath := filepath.Join(tempDir, "TANGLED_DUP_LOC.xlsx")
+
+	f := excelize.NewFile()
+	f.NewSheet("SMD")
+	f.SetCellValue("SMD", "B3", "Product Code: TANGLED")
+	f.SetCellValue("SMD", "J3", "Phase: PV")
+	f.SetCellValue("SMD", "H3", "BOM Version: 0.1")
+	f.SetCellValue("SMD", "H5", "Qty")
+	f.SetCellValue("SMD", "J5", "CCL")
+
+	// SMD 含有 R1
+	f.SetCellValue("SMD", "A6", "1")
+	f.SetCellValue("SMD", "F6", "Yageo")
+	f.SetCellValue("SMD", "G6", "RC0402")
+	f.SetCellValue("SMD", "I6", "R1")
+
+	// PTH 亦含有 R1 (跨表重複)
+	f.NewSheet("PTH")
+	f.SetCellValue("PTH", "A6", "1")
+	f.SetCellValue("PTH", "F6", "Yageo")
+	f.SetCellValue("PTH", "G6", "CFR-25")
+	f.SetCellValue("PTH", "I6", "R1")
+
+	if err := f.SaveAs(dupExcelPath); err != nil {
+		t.Fatalf("儲存測試 Excel 失敗: %v", err)
+	}
+	_ = f.Close()
+
+	// 執行匯入
+	results, err := app.ImportExcel([]string{dupExcelPath}, false)
+	if err != nil {
+		t.Fatalf("ImportExcel 呼叫失敗: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("預期提交 1 個任務，實際為 %d", len(results))
+	}
+
+	taskID := results[0].TaskID
+
+	// 等待背景任務執行完畢
+	for i := 0; i < 50; i++ {
+		st := app.taskMgr.GetStatus(taskID)
+		if st != nil && (st.Status == string(types.TaskFailed) || st.Status == string(types.TaskCompleted) || st.Status == string(types.TaskWarning)) {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	finalStatus := app.taskMgr.GetStatus(taskID)
+	if finalStatus == nil {
+		t.Fatalf("無法取得任務狀態")
+	}
+
+	if finalStatus.Status != string(types.TaskFailed) {
+		t.Errorf("預期任務狀態為 Failed，但實際為: %s, 訊息: %s, 錯誤: %s", finalStatus.Status, finalStatus.Message, finalStatus.Error)
+	}
+
+	if !strings.Contains(finalStatus.Error, "duplicate location detected") {
+		t.Errorf("預期任務錯誤包含 duplicate location detected，實際為: %s", finalStatus.Error)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"bomix-app/backend/logger"
+	"bomix-app/backend/task"
 	"bomix-app/backend/types"
 
 	"gorm.io/gorm"
@@ -55,16 +56,20 @@ func (r *ReaderImpl) SetConfirmOverwriteCallback(cb func(projectCode, phase, ver
 // See product-spec section 6.3.2 匯入流程
 func (r *ReaderImpl) ImportExcel(filePaths []string) ([]types.ImportResult, error) {
 	results := make([]types.ImportResult, 0, len(filePaths))
+	var fatalErr error
 
 	for _, path := range filePaths {
 		result, err := r.importFile(path)
 		if err != nil {
 			result.Errors = append(result.Errors, err.Error())
+			if !task.IsWarningError(err) && fatalErr == nil {
+				fatalErr = err
+			}
 		}
 		results = append(results, result)
 	}
 
-	return results, nil
+	return results, fatalErr
 }
 
 // importFile imports a single Excel file

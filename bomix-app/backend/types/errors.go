@@ -15,6 +15,7 @@ var (
 	ErrInvalidSheetName      = errors.New("invalid sheet name")
 	ErrInvalidHeaderFormat   = errors.New("invalid header format")
 	ErrInvalidCellData       = errors.New("invalid cell data")
+	ErrDuplicateLocation     = errors.New("duplicate location detected")
 )
 
 // Database-related errors

@@ -32,8 +32,9 @@ type EBOMReader struct {
 //
 // 採用兩階段匯入流程：
 //
-//	Phase 1（主料建置）：處理 SMD / PTH / BOTTOM / NI sheet，
+//	Phase 1（主料建置）：處理 SMD / PTH / BOTTOM / NI / MP sheet，
 //	  依 (supplier, supplier_pn) 去重建立 Part，並為每個 location 建立原子化 PartLocation。
+//	  （部分專用零件僅存在於 MP sheet，在此階段一併載入避免遺漏）。
 //	Phase 2（狀態覆寫）：處理 PROTO / MP / CCL sheet，
 //	  僅更新 Phase 1 已建立的 PartLocation 的 BomStatus / CCL 屬性；
 //	  同時判斷 BomRevision.Mode（NPI 或 MP）。
@@ -50,7 +51,7 @@ func (r *EBOMReader) Import(f Workbook) error {
 	cclSheet := r.findSheetCaseInsensitive(sheets, "CCL")
 
 	// ─── 計算全表待處理資料列數並初始化 10% 單位 ProgressTracker ───────────────
-	allSheetsToCount := []string{smdSheet, pthSheet, bottomSheet, niSheet, protoSheet, mpSheet, cclSheet}
+	allSheetsToCount := []string{smdSheet, pthSheet, bottomSheet, niSheet, mpSheet, protoSheet, mpSheet, cclSheet}
 	totalRows := 0
 	for _, sName := range allSheetsToCount {
 		if sName != "" {
@@ -114,35 +115,43 @@ func (r *EBOMReader) Import(f Workbook) error {
 	var mainCompList []*parsedComponentMain
 	var secondCompList []*parsedComponentSecond
 
-	// phase1LocationSet 收集 Phase 1 所有已建立的 location，供 Phase 2 Mode 判斷使用
-	phase1LocationSet := make(map[string]bool)
+	// phase1LocationSheetMap 收集 Phase 1 所有已建立的 location 及其所屬 sheet，用於去重檢測與 Phase 2 Mode 判斷
+	phase1LocationSheetMap := make(map[string]string)
 
-	// 處理主製程 sheet（SMD / PTH / BOTTOM）
-	mainSheets := []struct{ name, sheetType string }{
-		{smdSheet, "SMD"},
-		{pthSheet, "PTH"},
-		{bottomSheet, "BOTTOM"},
+	// Phase 1 依序處理的工作表設定清單
+	// 製程工作表（SMD/SMT, PTH, BOTTOM）預設 bom_status = "I", Type = sheetType, strictDedupe = true (嚴格去重)
+	// NI 工作表預設 bom_status = "X", Type = "", strictDedupe = false (遇到已建立 location 自動忽略跳過)
+	// MP 工作表預設 bom_status = "M", Type = "", strictDedupe = false (遇到已建立 location 自動忽略跳過)
+	phase1Sheets := []struct {
+		sheetName     string
+		sheetType     string
+		defaultStatus string
+		strictDedupe  bool
+	}{
+		{smdSheet, "SMD", "I", true},
+		{pthSheet, "PTH", "I", true},
+		{bottomSheet, "BOTTOM", "I", true},
+		{niSheet, "", "X", false},
+		{mpSheet, "", "M", false},
 	}
-	for _, ms := range mainSheets {
-		if ms.name == "" {
+
+	for _, ps := range phase1Sheets {
+		if ps.sheetName == "" {
 			continue
 		}
-		newLocCount := r.parseMainSheetV2(f, ms.name, ms.sheetType, materialsMap, mainCompMap, &mainCompList, &secondCompList, phase1LocationSet, tracker)
-
-		if r.logger != nil {
-			r.logger.Debug(fmt.Sprintf("[EBOM Phase1] 工作表 [%s] 解析完成", ms.name),
-				"sheet", ms.name, "type", ms.sheetType,
-				"mainComps", len(mainCompList), "secondComps", len(secondCompList), "newLocations", newLocCount,
-			)
+		newLocCount, err := r.parsePhase1Sheet(
+			f, ps.sheetName, ps.sheetType, ps.defaultStatus, ps.strictDedupe,
+			materialsMap, mainCompMap, &mainCompList, &secondCompList,
+			phase1LocationSheetMap, tracker,
+		)
+		if err != nil {
+			return err
 		}
-	}
 
-	// 處理 NI sheet（bom_status = X）
-	if niSheet != "" {
-		niLocCount := r.parseNISheet(f, niSheet, materialsMap, mainCompMap, &mainCompList, phase1LocationSet, tracker)
 		if r.logger != nil {
-			r.logger.Debug("[EBOM Phase1] NI 工作表解析完成",
-				"sheet", niSheet, "locations", niLocCount,
+			r.logger.Debug(fmt.Sprintf("[EBOM Phase1] 工作表 [%s] 解析完成", ps.sheetName),
+				"sheet", ps.sheetName, "type", ps.sheetType,
+				"mainComps", len(mainCompList), "secondComps", len(secondCompList), "newLocations", newLocCount,
 			)
 		}
 	}
@@ -152,7 +161,7 @@ func (r *EBOMReader) Import(f Workbook) error {
 			"uniqueMaterials", len(materialsMap),
 			"mainComponents", len(mainCompList),
 			"secondComponents", len(secondCompList),
-			"totalLocations", len(phase1LocationSet),
+			"totalLocations", len(phase1LocationSheetMap),
 		)
 	}
 
@@ -258,7 +267,7 @@ func (r *EBOMReader) Import(f Workbook) error {
 	}
 
 	// ─── 判斷 Mode（NPI / MP）並回寫 BomRevision ───────────────────────────
-	mode := determineMode(phase1LocationSet, protoLocations, mpLocations)
+	mode := determineMode(phase1LocationSheetMap, protoLocations, mpLocations)
 	if err := r.db.Model(&db.BomRevision{}).
 		Where("id = ?", r.revisionID).
 		Update("mode", mode).Error; err != nil {
@@ -389,14 +398,14 @@ func atomizeLocations(locationStr string) []string {
 //   - 若 PROTO 任一 location 存在於 Phase 1 → NPI
 //   - 若 MP 任一 location 存在於 Phase 1 → MP
 //   - 否則預設 NPI
-func determineMode(phase1LocationSet map[string]bool, protoLocations, mpLocations []string) string {
+func determineMode(phase1LocationSheetMap map[string]string, protoLocations, mpLocations []string) string {
 	for _, loc := range protoLocations {
-		if phase1LocationSet[loc] {
+		if _, exists := phase1LocationSheetMap[loc]; exists {
 			return "NPI"
 		}
 	}
 	for _, loc := range mpLocations {
-		if phase1LocationSet[loc] {
+		if _, exists := phase1LocationSheetMap[loc]; exists {
 			return "MP"
 		}
 	}
@@ -429,21 +438,29 @@ type parsedComponentSecond struct {
 	MainComp   *parsedComponentMain // 所屬主料指標
 }
 
-// parseMainSheetV2 解析主製程 sheet（SMD / PTH / BOTTOM）。
-// 收集 Material 物料資訊、主料 Component 及其 Locations，以及替代料關聯。
-func (r *EBOMReader) parseMainSheetV2(
+// parsePhase1Sheet 解析 Phase 1 之工作表（SMD/SMT、PTH、BOTTOM、NI、MP）。
+// 統一遵循 parseMainSheetV2 原則：
+//  1. 非料件列過濾：(supplier == "" && supplierPN == "") 或 "Total:" 列予以忽略。
+//  2. 物料收集：收集 Material（HHPN, Description, Supplier, SupplierPN, Remark）。
+//  3. 主料/替代料判定：Item 有值為主料；Item 為空且緊隨主料為替代料。
+//  4. CCL 標記：檢查 Col 9 (CCL) 是否為 "Y"。
+//  5. Location 去重：
+//     - SMD/PTH/BOTTOM (strictDedupe=true)：嚴格去重，若同表或跨表重複，記錄 r.logger.Error 並回傳 ErrDuplicateLocation 致命錯誤。
+//     - NI/MP (strictDedupe=false)：遇到已建立 location 自動忽略跳過 (不中斷、不設定為任務失敗)。
+func (r *EBOMReader) parsePhase1Sheet(
 	f Workbook,
-	sheetName, sheetType string,
+	sheetName, sheetType, defaultBomStatus string,
+	strictDedupe bool,
 	materialsMap map[string]db.Material,
 	mainCompMap map[string]*parsedComponentMain,
 	mainCompList *[]*parsedComponentMain,
 	secondCompList *[]*parsedComponentSecond,
-	phase1LocationSet map[string]bool,
+	phase1LocationSheetMap map[string]string,
 	tracker *ProgressTracker,
-) int {
+) (int, error) {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
-		return 0
+		return 0, fmt.Errorf("讀取工作表 [%s] 失敗: %w", sheetName, err)
 	}
 
 	newLocCount := 0
@@ -467,13 +484,14 @@ func (r *EBOMReader) parseMainSheetV2(
 		cclVal := safeGetCol(row, 9)
 		remark := safeGetCol(row, 11)
 
-		if supplier == "" && supplierPN == "" {
+		// 1. 非料件列過濾（採用 parseMainSheetV2 原則，同時排除 Total: 統計列）
+		if (supplier == "" && supplierPN == "") || strings.EqualFold(supplierPN, "total:") || strings.EqualFold(supplier, "total:") {
 			continue
 		}
 
 		key := supplier + "|" + supplierPN
 
-		// 收集 Material 物料資訊（供全域 Material Upsert）
+		// 收集 Material 物料資訊（供全域 Material Upsert，包含 Remark）
 		materialsMap[key] = db.Material{
 			Supplier:    supplier,
 			SupplierPN:  supplierPN,
@@ -482,6 +500,7 @@ func (r *EBOMReader) parseMainSheetV2(
 			Remark:      remark,
 		}
 
+		// 1. 主料、替代料判定（採用 parseMainSheetV2 原則）
 		if item != "" {
 			// 主料 (Main Source)
 			mainComp, exists := mainCompMap[key]
@@ -496,20 +515,41 @@ func (r *EBOMReader) parseMainSheetV2(
 			}
 			currentMainComp = mainComp
 
+			// CCL 標記（Col 9 是否為 "Y"）
 			isCCL := strings.EqualFold(cclVal, "Y")
 			for _, loc := range atomizeLocations(locationStr) {
+				// 2. Location 去重檢測：
+				// SMD/PTH/BOTTOM 嚴格去重（若同表或跨表重複，log 錯誤並失敗）；
+				// NI/MP 遇到已建立的 location 則自動忽略跳過（不中斷、不設為任務失敗）。
+				if prevSheet, exists := phase1LocationSheetMap[loc]; exists {
+					if strictDedupe {
+						var errMsg string
+						if prevSheet == sheetName {
+							errMsg = fmt.Sprintf("工作表 [%s] 發現重複的 Location: '%s' (在工作表內重複定義)", sheetName, loc)
+						} else {
+							errMsg = fmt.Sprintf("發現重複的 Location: '%s' (工作表 [%s] 與工作表 [%s] 重複)", loc, prevSheet, sheetName)
+						}
+						if r.logger != nil {
+							r.logger.Error(errMsg, "sheet", sheetName, "location", loc, "previousSheet", prevSheet)
+						}
+						return 0, fmt.Errorf("%s: %w", errMsg, types.ErrDuplicateLocation)
+					}
+					// NI / MP 遇到已建立的 location 自動忽略跳過
+					continue
+				}
+				phase1LocationSheetMap[loc] = sheetName
+
 				mainComp.Locations = append(mainComp.Locations, parsedComponentLocation{
 					Location:  loc,
 					Type:      sheetType,
-					BomStatus: "I",
+					BomStatus: defaultBomStatus,
 					CCL:       isCCL,
 				})
-				phase1LocationSet[loc] = true
 				newLocCount++
 			}
 
 			if r.logger != nil {
-				r.logger.Debug(fmt.Sprintf("[EBOM Phase1] 主料: %s / %s, type=%s, locations=%s", supplier, supplierPN, sheetType, locationStr))
+				r.logger.Debug(fmt.Sprintf("[EBOM Phase1] [%s] 主料: %s / %s, type=%s, locations=%s", sheetName, supplier, supplierPN, sheetType, locationStr))
 			}
 		} else if currentMainComp != nil {
 			// 替代料 (Second Source)
@@ -520,84 +560,30 @@ func (r *EBOMReader) parseMainSheetV2(
 			})
 
 			if r.logger != nil {
-				r.logger.Debug(fmt.Sprintf("[EBOM Phase1] 替代料: %s / %s", supplier, supplierPN))
+				r.logger.Debug(fmt.Sprintf("[EBOM Phase1] [%s] 替代料: %s / %s", sheetName, supplier, supplierPN))
 			}
 		}
 	}
 
-	return newLocCount
+	return newLocCount, nil
 }
 
-// parseNISheet 解析 NI sheet（不上件），建立 PartLocation（BomStatus='X'）。
-func (r *EBOMReader) parseNISheet(
+// parseMainSheetV2 是對 parsePhase1Sheet 的相容轉發函式（預設 bom_status = "I", strictDedupe = true）。
+func (r *EBOMReader) parseMainSheetV2(
 	f Workbook,
-	sheetName string,
+	sheetName, sheetType string,
 	materialsMap map[string]db.Material,
 	mainCompMap map[string]*parsedComponentMain,
 	mainCompList *[]*parsedComponentMain,
-	phase1LocationSet map[string]bool,
+	secondCompList *[]*parsedComponentSecond,
+	phase1LocationSheetMap map[string]string,
 	tracker *ProgressTracker,
 ) int {
-	rows, err := f.GetRows(sheetName)
-	if err != nil {
-		return 0
-	}
-
-	newLocCount := 0
-
-	for i := 5; i < len(rows); i++ {
-		if tracker != nil {
-			tracker.AddRows(1)
-		}
-		row := rows[i]
-		if len(row) == 0 {
-			continue
-		}
-
-		hhpn := safeGetCol(row, 1)
-		description := safeGetCol(row, 4)
-		supplier := strings.TrimSpace(safeGetCol(row, 5))
-		supplierPN := strings.TrimSpace(safeGetCol(row, 6))
-		locationStr := safeGetCol(row, 8)
-
-		if supplier == "" && supplierPN == "" {
-			continue
-		}
-
-		key := supplier + "|" + supplierPN
-		materialsMap[key] = db.Material{
-			Supplier:    supplier,
-			SupplierPN:  supplierPN,
-			HHPN:        hhpn,
-			Description: description,
-		}
-
-		mainComp, exists := mainCompMap[key]
-		if !exists {
-			mainComp = &parsedComponentMain{
-				Supplier:   supplier,
-				SupplierPN: supplierPN,
-			}
-			mainCompMap[key] = mainComp
-			*mainCompList = append(*mainCompList, mainComp)
-		}
-
-		for _, loc := range atomizeLocations(locationStr) {
-			mainComp.Locations = append(mainComp.Locations, parsedComponentLocation{
-				Location:  loc,
-				Type:      "",
-				BomStatus: "X",
-				CCL:       false,
-			})
-			phase1LocationSet[loc] = true
-			newLocCount++
-		}
-
-		if r.logger != nil {
-			r.logger.Debug(fmt.Sprintf("[EBOM Phase1] NI 物料: %s / %s, locations=%s", supplier, supplierPN, locationStr))
-		}
-	}
-
+	newLocCount, _ := r.parsePhase1Sheet(
+		f, sheetName, sheetType, "I", true,
+		materialsMap, mainCompMap, mainCompList, secondCompList,
+		phase1LocationSheetMap, tracker,
+	)
 	return newLocCount
 }
 

@@ -1,15 +1,18 @@
 package excel
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
-	"github.com/xuri/excelize/v2"
 	"github.com/glebarez/sqlite"
+	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
+
 	"bomix-app/backend/db"
 	"bomix-app/backend/logger"
 	"bomix-app/backend/task"
+	"bomix-app/backend/types"
 )
 
 // TestParseHeader tests header parsing from EBOM format
@@ -138,9 +141,9 @@ func TestMainVsSecondSource(t *testing.T) {
 	mainCompMap := make(map[string]*parsedComponentMain)
 	var mainCompList []*parsedComponentMain
 	var secondCompList []*parsedComponentSecond
-	cclByLoc := make(map[string]bool)
+	locSheetMap := make(map[string]string)
 
-	_ = reader.parseMainSheetV2(wb, "SMD", "SMD", matMap, mainCompMap, &mainCompList, &secondCompList, cclByLoc, nil)
+	_, _ = reader.parsePhase1Sheet(wb, "SMD", "SMD", "I", true, matMap, mainCompMap, &mainCompList, &secondCompList, locSheetMap, nil)
 
 	if len(mainCompList) != 1 {
 		t.Errorf("Expected 1 Main Source component, got %d", len(mainCompList))
@@ -716,12 +719,17 @@ func TestEBOMReader_Phase2UnestablishedLocationsWarning(t *testing.T) {
 	f.SetCellValue("PROTO", "G6", "RC0402")
 	f.SetCellValue("PROTO", "I6", "R99")
 
-	// 建立 MP sheet（包含一個未在 Phase 1 建立的位號 U99）
+	// 建立 MP sheet（僅存在於 MP 工作表之零件 U99 與其替代料）
 	f.NewSheet("MP")
 	f.SetCellValue("MP", "A6", "1")
 	f.SetCellValue("MP", "F6", "TI")
 	f.SetCellValue("MP", "G6", "TPS54331")
 	f.SetCellValue("MP", "I6", "U99")
+	f.SetCellValue("MP", "J6", "Y")
+
+	// 替代料（Item 為空，無 Location）
+	f.SetCellValue("MP", "F7", "MPS")
+	f.SetCellValue("MP", "G7", "MP2307")
 
 	logBuffer := logger.NewLogger(100)
 	reader := &EBOMReader{
@@ -731,7 +739,7 @@ func TestEBOMReader_Phase2UnestablishedLocationsWarning(t *testing.T) {
 
 	err = reader.Import(wb)
 	if err == nil {
-		t.Fatalf("預期 Import 回傳 WarningError，但得到 nil")
+		t.Fatalf("預期 Import 回傳 WarningError (因 PROTO R99 未在 Phase 1 建立)，但得到 nil")
 	}
 
 	if !task.IsWarningError(err) {
@@ -742,15 +750,352 @@ func TestEBOMReader_Phase2UnestablishedLocationsWarning(t *testing.T) {
 	if !strings.Contains(errMsg, "PROTO location 'R99' 在 Phase 1 中未建立，略過") {
 		t.Errorf("錯誤訊息應包含 PROTO location 'R99' 未建立警告，實際為: %s", errMsg)
 	}
-	if !strings.Contains(errMsg, "MP location 'U99' 在 Phase 1 中未建立，略過") {
-		t.Errorf("錯誤訊息應包含 MP location 'U99' 未建立警告，實際為: %s", errMsg)
-	}
 
-	// 驗證 Phase 1 的合法零件 R1 依然有正常寫入資料庫
-	var loc db.PartLocation
-	if err := database.Where("location = ?", "R1").First(&loc).Error; err != nil {
+	// 驗證 Phase 1 SMD 零件 R1 依然有正常寫入資料庫
+	var locR1 db.PartLocation
+	if err := database.Where("location = ?", "R1").First(&locR1).Error; err != nil {
 		t.Errorf("合法零件 R1 應已建立在資料庫中: %v", err)
 	}
+	if locR1.BomStatus != "I" {
+		t.Errorf("R1 BomStatus 應為 'I'，實際為 %s", locR1.BomStatus)
+	}
+
+	// 驗證僅存在於 MP sheet 的零件 U99 確實有在 Phase 1 建立，且 BomStatus='M'，CCL=true
+	var locU99 db.PartLocation
+	if err := database.Where("location = ?", "U99").First(&locU99).Error; err != nil {
+		t.Fatalf("MP 專用零件 U99 應在 Phase 1 成功建立: %v", err)
+	}
+	if locU99.BomStatus != "M" {
+		t.Errorf("U99 BomStatus 應為 'M'，實際為 %s", locU99.BomStatus)
+	}
+	if !locU99.CCL {
+		t.Errorf("U99 CCL 應為 true，實際為 false")
+	}
+
+	// 驗證 MP sheet 中的替代料 MPS MP2307 也有成功建立並關聯到 U99 所屬之主料 Component
+	var secComp db.RevisionComponent
+	if err := database.Where("role = 'S' AND parent_component_id = ?", locU99.ComponentID).First(&secComp).Error; err != nil {
+		t.Errorf("MP sheet 替代料應已建立並指向 U99 之 ComponentID: %v", err)
+	}
+}
+
+func setupEBOMTestDB(t *testing.T) *gorm.DB {
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("Failed to connect database: %v", err)
+	}
+	if err := db.AutoMigrate(database); err != nil {
+		t.Fatalf("AutoMigrate failed: %v", err)
+	}
+	return database
+}
+
+// TestEBOMReader_DuplicateLocation 測試同表與跨工作表 Location 去重與錯誤中斷機制
+func TestEBOMReader_DuplicateLocation(t *testing.T) {
+	t.Run("同工作表內重複Location應報錯並回傳ErrDuplicateLocation", func(t *testing.T) {
+		database := setupEBOMTestDB(t)
+		series, err := db.CreateSeries(database, "TEST_SERIES", "Test Series")
+		if err != nil {
+			t.Fatalf("CreateSeries failed: %v", err)
+		}
+		_, err = db.GetOrCreateProject(database, series.ID, "TANGLED", "Test Project")
+		if err != nil {
+			t.Fatalf("GetOrCreateProject failed: %v", err)
+		}
+
+		f := excelize.NewFile()
+		wb := &ExcelizeWorkbook{f: f}
+		defer f.Close()
+
+		f.NewSheet("SMD")
+		f.SetCellValue("SMD", "B3", "Product Code: TANGLED")
+		f.SetCellValue("SMD", "J3", "Phase: PV")
+		f.SetCellValue("SMD", "H3", "BOM Version: 0.1")
+
+		// 第一筆主料包含 R1, R2
+		f.SetCellValue("SMD", "A6", "1")
+		f.SetCellValue("SMD", "F6", "Yageo")
+		f.SetCellValue("SMD", "G6", "RC0402")
+		f.SetCellValue("SMD", "I6", "R1, R2")
+
+		// 第二筆主料又包含 R2 (同表重複)
+		f.SetCellValue("SMD", "A7", "2")
+		f.SetCellValue("SMD", "F7", "Panasonic")
+		f.SetCellValue("SMD", "G7", "ERJ-2GE")
+		f.SetCellValue("SMD", "I7", "R2, R3")
+
+		logBuffer := logger.NewLogger(100)
+		reader := &EBOMReader{
+			db:     database,
+			logger: logBuffer,
+		}
+
+		err = reader.Import(wb)
+		if err == nil {
+			t.Fatalf("預期 Import 失敗，但得到 nil")
+		}
+		if !errors.Is(err, types.ErrDuplicateLocation) {
+			t.Fatalf("預期錯誤包含 types.ErrDuplicateLocation，實際得到: %v", err)
+		}
+		if !strings.Contains(err.Error(), "工作表 [SMD] 發現重複的 Location: 'R2' (在工作表內重複定義)") {
+			t.Errorf("錯誤訊息不符預期: %s", err.Error())
+		}
+	})
+
+	t.Run("跨工作表重複Location應報錯並回傳ErrDuplicateLocation", func(t *testing.T) {
+		database := setupEBOMTestDB(t)
+		series, err := db.CreateSeries(database, "TEST_SERIES", "Test Series")
+		if err != nil {
+			t.Fatalf("CreateSeries failed: %v", err)
+		}
+		_, err = db.GetOrCreateProject(database, series.ID, "TANGLED", "Test Project")
+		if err != nil {
+			t.Fatalf("GetOrCreateProject failed: %v", err)
+		}
+
+		f := excelize.NewFile()
+		wb := &ExcelizeWorkbook{f: f}
+		defer f.Close()
+
+		f.NewSheet("SMD")
+		f.SetCellValue("SMD", "B3", "Product Code: TANGLED")
+		f.SetCellValue("SMD", "J3", "Phase: PV")
+		f.SetCellValue("SMD", "H3", "BOM Version: 0.1")
+
+		// SMD 表包含 R1, R2
+		f.SetCellValue("SMD", "A6", "1")
+		f.SetCellValue("SMD", "F6", "Yageo")
+		f.SetCellValue("SMD", "G6", "RC0402")
+		f.SetCellValue("SMD", "I6", "R1, R2")
+
+		// PTH 表包含 R1 (跨表重複)
+		f.NewSheet("PTH")
+		f.SetCellValue("PTH", "A6", "1")
+		f.SetCellValue("PTH", "F6", "Yageo")
+		f.SetCellValue("PTH", "G6", "CFR-25")
+		f.SetCellValue("PTH", "I6", "R1, R10")
+
+		logBuffer := logger.NewLogger(100)
+		reader := &EBOMReader{
+			db:     database,
+			logger: logBuffer,
+		}
+
+		err = reader.Import(wb)
+		if err == nil {
+			t.Fatalf("預期 Import 失敗，但得到 nil")
+		}
+		if !errors.Is(err, types.ErrDuplicateLocation) {
+			t.Fatalf("預期錯誤包含 types.ErrDuplicateLocation，實際得到: %v", err)
+		}
+		if !strings.Contains(err.Error(), "發現重複的 Location: 'R1' (工作表 [SMD] 與工作表 [PTH] 重複)") {
+			t.Errorf("錯誤訊息不符預期: %s", err.Error())
+		}
+	})
+
+	t.Run("NI與MP工作表遇到已建立Location自動忽略跳過不中斷", func(t *testing.T) {
+		database := setupEBOMTestDB(t)
+		series, err := db.CreateSeries(database, "TEST_SERIES", "Test Series")
+		if err != nil {
+			t.Fatalf("CreateSeries failed: %v", err)
+		}
+		_, err = db.GetOrCreateProject(database, series.ID, "TANGLED", "Test Project")
+		if err != nil {
+			t.Fatalf("GetOrCreateProject failed: %v", err)
+		}
+
+		f := excelize.NewFile()
+		wb := &ExcelizeWorkbook{f: f}
+		defer f.Close()
+
+		f.NewSheet("SMD")
+		f.SetCellValue("SMD", "B3", "Product Code: TANGLED")
+		f.SetCellValue("SMD", "J3", "Phase: PV")
+		f.SetCellValue("SMD", "H3", "BOM Version: 0.1")
+		f.SetCellValue("SMD", "A6", "1")
+		f.SetCellValue("SMD", "F6", "Yageo")
+		f.SetCellValue("SMD", "G6", "RC0402")
+		f.SetCellValue("SMD", "I6", "R1")
+
+		// NI 表包含 R1 (已在 SMD 建立，應自動略過) 以及 D1 (新位號，應建立)
+		f.NewSheet("NI")
+		f.SetCellValue("NI", "A6", "1")
+		f.SetCellValue("NI", "F6", "Vishay")
+		f.SetCellValue("NI", "G6", "RC0402-ALT")
+		f.SetCellValue("NI", "I6", "R1")
+		f.SetCellValue("NI", "A7", "2")
+		f.SetCellValue("NI", "F7", "Diodes")
+		f.SetCellValue("NI", "G7", "1N4148")
+		f.SetCellValue("NI", "I7", "D1")
+
+		// MP 表包含 U1 (新位號，建立為 'M') 以及重複的 U1 (在 MP 內重複，應自動略過)
+		f.NewSheet("MP")
+		f.SetCellValue("MP", "A6", "1")
+		f.SetCellValue("MP", "F6", "TI")
+		f.SetCellValue("MP", "G6", "TPS54331")
+		f.SetCellValue("MP", "I6", "U1")
+		f.SetCellValue("MP", "A7", "2")
+		f.SetCellValue("MP", "F7", "TI-ALT")
+		f.SetCellValue("MP", "G7", "TPS54331-ALT")
+		f.SetCellValue("MP", "I7", "U1")
+
+		logBuffer := logger.NewLogger(100)
+		reader := &EBOMReader{
+			db:     database,
+			logger: logBuffer,
+		}
+
+		err = reader.Import(wb)
+		if err != nil {
+			t.Fatalf("預期 Import 成功 (NI/MP 應自動略過重複位號)，但得到錯誤: %v", err)
+		}
+
+		// 驗證 R1 依然是 SMD 之 'I' 狀態，未被 NI 重複覆蓋
+		var plR1 db.PartLocation
+		if err := database.Where("location = ?", "R1").First(&plR1).Error; err != nil {
+			t.Fatalf("R1 應存在於資料庫: %v", err)
+		}
+		if plR1.BomStatus != "I" {
+			t.Errorf("R1 BomStatus 應為 'I'，實際為 %s", plR1.BomStatus)
+		}
+
+		// 驗證 D1 成功建立為 NI 之 'X' 狀態
+		var plD1 db.PartLocation
+		if err := database.Where("location = ?", "D1").First(&plD1).Error; err != nil {
+			t.Fatalf("D1 應存在於資料庫: %v", err)
+		}
+		if plD1.BomStatus != "X" {
+			t.Errorf("D1 BomStatus 應為 'X'，實際為 %s", plD1.BomStatus)
+		}
+
+		// 驗證 U1 成功建立為 MP 之 'M' 狀態
+		var plU1 db.PartLocation
+		if err := database.Where("location = ?", "U1").First(&plU1).Error; err != nil {
+			t.Fatalf("U1 應存在於資料庫: %v", err)
+		}
+		if plU1.BomStatus != "M" {
+			t.Errorf("U1 BomStatus 應為 'M'，實際為 %s", plU1.BomStatus)
+		}
+	})
+
+	t.Run("PTH與BOTTOM製程工作表跨表重複Location應報錯", func(t *testing.T) {
+		database := setupEBOMTestDB(t)
+		series, err := db.CreateSeries(database, "TEST_SERIES", "Test Series")
+		if err != nil {
+			t.Fatalf("CreateSeries failed: %v", err)
+		}
+		_, err = db.GetOrCreateProject(database, series.ID, "TANGLED", "Test Project")
+		if err != nil {
+			t.Fatalf("GetOrCreateProject failed: %v", err)
+		}
+
+		f := excelize.NewFile()
+		wb := &ExcelizeWorkbook{f: f}
+		defer f.Close()
+
+		f.NewSheet("SMD")
+		f.SetCellValue("SMD", "B3", "Product Code: TANGLED")
+		f.SetCellValue("SMD", "J3", "Phase: PV")
+		f.SetCellValue("SMD", "H3", "BOM Version: 0.1")
+
+		f.NewSheet("PTH")
+		f.SetCellValue("PTH", "A6", "1")
+		f.SetCellValue("PTH", "F6", "Nichicon")
+		f.SetCellValue("PTH", "G6", "UVZ")
+		f.SetCellValue("PTH", "I6", "C100")
+
+		f.NewSheet("BOTTOM")
+		f.SetCellValue("BOTTOM", "A6", "1")
+		f.SetCellValue("BOTTOM", "F6", "Rubycon")
+		f.SetCellValue("BOTTOM", "G6", "YXA")
+		f.SetCellValue("BOTTOM", "I6", "C100") // 跨 PTH 與 BOTTOM 重複
+
+		logBuffer := logger.NewLogger(100)
+		reader := &EBOMReader{
+			db:     database,
+			logger: logBuffer,
+		}
+
+		err = reader.Import(wb)
+		if err == nil {
+			t.Fatalf("預期 Import 失敗，但得到 nil")
+		}
+		if !errors.Is(err, types.ErrDuplicateLocation) {
+			t.Fatalf("預期錯誤包含 types.ErrDuplicateLocation，實際得到: %v", err)
+		}
+		if !strings.Contains(err.Error(), "發現重複的 Location: 'C100' (工作表 [PTH] 與工作表 [BOTTOM] 重複)") {
+			t.Errorf("錯誤訊息不符預期: %s", err.Error())
+		}
+	})
+
+	t.Run("各工作表無重複Location應正常匯入成功", func(t *testing.T) {
+		database := setupEBOMTestDB(t)
+		series, err := db.CreateSeries(database, "TEST_SERIES", "Test Series")
+		if err != nil {
+			t.Fatalf("CreateSeries failed: %v", err)
+		}
+		_, err = db.GetOrCreateProject(database, series.ID, "TANGLED", "Test Project")
+		if err != nil {
+			t.Fatalf("GetOrCreateProject failed: %v", err)
+		}
+
+		f := excelize.NewFile()
+		wb := &ExcelizeWorkbook{f: f}
+		defer f.Close()
+
+		f.NewSheet("SMD")
+		f.SetCellValue("SMD", "B3", "Product Code: TANGLED")
+		f.SetCellValue("SMD", "J3", "Phase: PV")
+		f.SetCellValue("SMD", "H3", "BOM Version: 0.1")
+		f.SetCellValue("SMD", "A6", "1")
+		f.SetCellValue("SMD", "F6", "Yageo")
+		f.SetCellValue("SMD", "G6", "RC0402")
+		f.SetCellValue("SMD", "I6", "R1, R2")
+
+		f.NewSheet("PTH")
+		f.SetCellValue("PTH", "A6", "1")
+		f.SetCellValue("PTH", "F6", "Nichicon")
+		f.SetCellValue("PTH", "G6", "UVZ")
+		f.SetCellValue("PTH", "I6", "C1")
+
+		f.NewSheet("BOTTOM")
+		f.SetCellValue("BOTTOM", "A6", "1")
+		f.SetCellValue("BOTTOM", "F6", "TDK")
+		f.SetCellValue("BOTTOM", "G6", "VLS")
+		f.SetCellValue("BOTTOM", "I6", "L1")
+
+		f.NewSheet("NI")
+		f.SetCellValue("NI", "A6", "1")
+		f.SetCellValue("NI", "F6", "Diodes")
+		f.SetCellValue("NI", "G6", "1N4148")
+		f.SetCellValue("NI", "I6", "D1")
+
+		f.NewSheet("MP")
+		f.SetCellValue("MP", "A6", "1")
+		f.SetCellValue("MP", "F6", "TI")
+		f.SetCellValue("MP", "G6", "TPS54331")
+		f.SetCellValue("MP", "I6", "U1")
+
+		logBuffer := logger.NewLogger(100)
+		reader := &EBOMReader{
+			db:     database,
+			logger: logBuffer,
+		}
+
+		err = reader.Import(wb)
+		if err != nil {
+			t.Fatalf("預期 Import 成功，但得到錯誤: %v", err)
+		}
+
+		// 驗證 6 個位號全部成功寫入
+		expectedLocs := []string{"R1", "R2", "C1", "L1", "D1", "U1"}
+		for _, loc := range expectedLocs {
+			var pl db.PartLocation
+			if err := database.Where("location = ?", loc).First(&pl).Error; err != nil {
+				t.Errorf("位號 %s 應已寫入資料庫: %v", loc, err)
+			}
+		}
+	})
 }
 
 
