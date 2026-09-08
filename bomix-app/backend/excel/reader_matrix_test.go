@@ -22,16 +22,7 @@ func setupMatrixTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to open memory db: %v", err)
 	}
 
-	err = gdb.AutoMigrate(
-		&db.Series{},
-		&db.Project{},
-		&db.BomRevision{},
-		&db.Part{},
-		&db.PartLocation{},
-		&db.SecondSource{},
-		&db.MatrixModel{},
-		&db.MatrixSelection{},
-	)
+	err = db.AutoMigrate(gdb)
 	if err != nil {
 		t.Fatalf("failed to migrate DB: %v", err)
 	}
@@ -70,34 +61,54 @@ func TestParseHeader_Matrix(t *testing.T) {
 		t.Fatalf("parseHeader error: %v", err)
 	}
 
-	if projectCode != "PROJ_TEST" {
-		t.Errorf("expected projectCode 'PROJ_TEST', got '%s'", projectCode)
+	if phase != "EVT" || version != "0.1" || projectCode != "PROJ_TEST" {
+		t.Errorf("parseHeader unexpected: phase=%s, version=%s, proj=%s", phase, version, projectCode)
 	}
-	if phase != "EVT" {
-		t.Errorf("expected phase 'EVT', got '%s'", phase)
-	}
-	if version != "0.1" {
-		t.Errorf("expected version '0.1', got '%s'", version)
-	}
-	if description != "Test Matrix Description" {
-		t.Errorf("expected description 'Test Matrix Description', got '%s'", description)
-	}
-	if schematicVersion != "S1.0" {
-		t.Errorf("expected schematicVersion 'S1.0', got '%s'", schematicVersion)
-	}
-	if pcbVersion != "P1.0" {
-		t.Errorf("expected pcbVersion 'P1.0', got '%s'", pcbVersion)
-	}
-	if pcaPn != "PCA12345" {
-		t.Errorf("expected pcaPn 'PCA12345', got '%s'", pcaPn)
-	}
-	if date != "2026-08-06" {
-		t.Errorf("expected date '2026-08-06', got '%s'", date)
+	if description != "Test Matrix Description" || schematicVersion != "S1.0" || pcbVersion != "P1.0" || pcaPn != "PCA12345" || date != "2026-08-06" {
+		t.Errorf("parseHeader details unexpected: desc=%s, sch=%s, pcb=%s, pca=%s, date=%s", description, schematicVersion, pcbVersion, pcaPn, date)
 	}
 }
 
-// TestParseValidModels_Matrix 測試 Matrix Model 數量與 Qty 篩選
+// TestParseValidModels_Matrix 測試 Model 欄位與數量解析
 func TestParseValidModels_Matrix(t *testing.T) {
+	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	defer f.Close()
+
+	smdSheet := "SMD"
+	f.NewSheet(smdSheet)
+
+	// SMD 工作表: Model A (qty 10), Model B (qty 20)
+	f.SetCellValue(smdSheet, "K4", "Model_A")
+	f.SetCellValue(smdSheet, "K5", "10")
+	f.SetCellValue(smdSheet, "L4", "Model_B")
+	f.SetCellValue(smdSheet, "L5", "20")
+
+	reader := &MatrixReader{}
+	models, err := reader.parseValidModels(wb, smdSheet)
+	if err != nil {
+		t.Fatalf("parseValidModels error: %v", err)
+	}
+
+	if len(models) != 2 {
+		t.Fatalf("expected 2 models, got %d", len(models))
+	}
+
+	modelMap := make(map[string]validModelInfo)
+	for _, m := range models {
+		modelMap[m.ModelName] = m
+	}
+
+	if mA, ok := modelMap["Model_A"]; !ok || mA.Qty != 10 {
+		t.Errorf("Model_A mismatch: %+v", mA)
+	}
+	if mB, ok := modelMap["Model_B"]; !ok || mB.Qty != 20 {
+		t.Errorf("Model_B mismatch: %+v", mB)
+	}
+}
+
+// TestParseValidModels_Matrix_Filters 測試 Matrix Model 數量與 Qty 篩選
+func TestParseValidModels_Matrix_Filters(t *testing.T) {
 	f := excelize.NewFile()
 	wb := &ExcelizeWorkbook{f: f}
 	defer f.Close()
@@ -180,11 +191,11 @@ func TestMatrixReader_RevisionNotFound(t *testing.T) {
 	}
 }
 
-// TestMatrixReader_ImportSuccess 測試完整匯入成功流程 (包含清空舊資料、寫入 Model Qty 與 Selection)
-func TestMatrixReader_ImportSuccess(t *testing.T) {
+// TestImport_Matrix_CleanAndOverwriteOldData 測試匯入 Matrix 時能清理原本舊的 Model 與 Selection
+func TestImport_Matrix_CleanAndOverwriteOldData(t *testing.T) {
 	gdb := setupMatrixTestDB(t)
 
-	// 1. 建立測試基礎資料庫環境 (Series -> Project -> BomRevision -> Part)
+	// 1. 建立測試基礎資料庫環境 (Series -> Project -> BomRevision -> Material -> Component)
 	series, err := db.GetSeriesInfo(gdb)
 	if err != nil {
 		t.Fatalf("failed to get series info: %v", err)
@@ -203,15 +214,17 @@ func TestMatrixReader_ImportSuccess(t *testing.T) {
 	}
 	gdb.Create(&revision)
 
-	// 主料 1
-	part1 := db.Part{
-		RevisionID: revision.ID,
-		Item:       "1",
-		HHPN:       "HH001",
-		Supplier:   "SUPP_A",
-		SupplierPN: "PN_A",
-	}
-	gdb.Create(&part1)
+	// 物料 1 (主料)
+	mat1 := db.Material{Supplier: "SUPP_A", SupplierPN: "PN_A", HHPN: "HH001"}
+	gdb.Create(&mat1)
+	comp1 := db.RevisionComponent{RevisionID: revision.ID, MaterialID: mat1.ID, Role: "M", Item: "1"}
+	gdb.Create(&comp1)
+
+	// 物料 2 (替代料)
+	mat2 := db.Material{Supplier: "SUPP_B", SupplierPN: "PN_B", HHPN: "HH002"}
+	gdb.Create(&mat2)
+	comp2 := db.RevisionComponent{RevisionID: revision.ID, MaterialID: mat2.ID, Role: "S", ParentComponentID: comp1.ID}
+	gdb.Create(&comp2)
 
 	// 2. 建立原本舊的 MatrixModel 與 MatrixSelection (測試是否會被清空覆蓋)
 	oldModel := db.MatrixModel{RevisionID: revision.ID, ModelName: "OldModel", Qty: 99}
@@ -220,11 +233,9 @@ func TestMatrixReader_ImportSuccess(t *testing.T) {
 	oldSel := db.MatrixSelection{
 		RevisionID:         revision.ID,
 		ModelID:            oldModel.ID,
-		PartID:             part1.ID,
-		Group:              "SUPP_A|PN_A",
-		Material:           "SUPP_A|PN_A",
-		SelectedSupplier:   "SUPP_A",
-		SelectedSupplierPn: "PN_A",
+		ComponentID:        comp1.ID,
+		MainMaterialID:     mat1.ID,
+		SelectedMaterialID: mat1.ID,
 	}
 	gdb.Create(&oldSel)
 
@@ -237,15 +248,16 @@ func TestMatrixReader_ImportSuccess(t *testing.T) {
 	f.NewSheet(smdSheet)
 
 	// 表頭
-	f.SetCellValue(smdSheet, "B3", "PROJ_TEST")
-	f.SetCellValue(smdSheet, "H3", "0.1")
-	f.SetCellValue(smdSheet, "J3", "EVT")
+	f.SetCellValue(smdSheet, "B3", "Product Code: PROJ_TEST")
+	f.SetCellValue(smdSheet, "B4", "Description: Matrix Import Test")
+	f.SetCellValue(smdSheet, "H3", "BOM Version: 0.1")
+	f.SetCellValue(smdSheet, "J3", "Phase: EVT")
 
-	// Models: K5=1 (Model A), L5=2 (Model B)
-	f.SetCellValue(smdSheet, "K4", "Model A")
-	f.SetCellValue(smdSheet, "K5", "1")
-	f.SetCellValue(smdSheet, "L4", "Model B")
-	f.SetCellValue(smdSheet, "L5", "2")
+	// Model 欄位 (K, L)
+	f.SetCellValue(smdSheet, "K4", "Model_A")
+	f.SetCellValue(smdSheet, "K5", "5")
+	f.SetCellValue(smdSheet, "L4", "Model_B")
+	f.SetCellValue(smdSheet, "L5", "15")
 
 	// Row 6 (Index 5) 物料列表
 	// A6=1, E6=SUPP_A, F6=PN_A, K6="V" (Model A 選擇主料), L6=""
@@ -290,15 +302,15 @@ func TestMatrixReader_ImportSuccess(t *testing.T) {
 	}
 
 	// 驗證新的 selection 內容
-	selMap := make(map[string]db.MatrixSelection)
+	selMap := make(map[int64]db.MatrixSelection)
 	for _, s := range selections {
-		selMap[s.SelectedSupplierPn] = s
+		selMap[s.SelectedMaterialID] = s
 	}
 
-	if sA, ok := selMap["PN_A"]; !ok || sA.SelectedSupplier != "SUPP_A" {
-		t.Errorf("PN_A selection mismatch: %+v", sA)
+	if sA, ok := selMap[mat1.ID]; !ok || sA.MainMaterialID != mat1.ID {
+		t.Errorf("mat1 selection mismatch: %+v", sA)
 	}
-	if sB, ok := selMap["PN_B"]; !ok || sB.SelectedSupplier != "SUPP_B" {
-		t.Errorf("PN_B selection mismatch: %+v", sB)
+	if sB, ok := selMap[mat2.ID]; !ok || sB.MainMaterialID != mat1.ID {
+		t.Errorf("mat2 selection mismatch: %+v", sB)
 	}
 }

@@ -8,56 +8,75 @@ import (
 	"bomix-app/backend/types"
 )
 
-// Aggregator handles data aggregation logic
+// Aggregator 負責將單一 Revision 的 RevisionComponent 與 PartLocation 聚合為 types.AggregatedPart 列表。
 type Aggregator struct{}
 
-// NewAggregator creates a new aggregator instance
+// NewAggregator 建立一個新的聚合器實例。
 func NewAggregator() *Aggregator {
 	return &Aggregator{}
 }
 
-// Aggregate aggregates parts by (supplier, supplier_pn) and merges them with partLocations.
-func (a *Aggregator) Aggregate(parts []db.Part, locations []db.PartLocation, secondSources []db.SecondSource) []types.AggregatedPart {
-	// Build partID -> Part lookup
-	partByID := make(map[int64]db.Part)
-	for _, p := range parts {
-		partByID[p.ID] = p
+// Aggregate 依 (supplier, supplier_pn) 聚合主料與其替代料，並整合 PartLocations 計算數量與狀態。
+//
+// 參數：
+//   - components: Revision 包含的所有零件（主料 Role="M"、替代料 Role="S"）
+//   - materials: 物料資料庫快取（用於查詢物料屬性）
+//   - locations: 零件位置資訊（關聯至 ComponentID）
+//
+// 回傳：
+//   - []types.AggregatedPart: 聚合後的零件視圖 DTO 列表
+func (a *Aggregator) Aggregate(components []db.RevisionComponent, materials []db.Material, locations []db.PartLocation) []types.AggregatedPart {
+	// 建立 MaterialID -> Material 映射
+	materialByID := make(map[int64]db.Material, len(materials))
+	for _, m := range materials {
+		materialByID[m.ID] = m
 	}
 
-	// Group locations by partID
-	locsByPartID := make(map[int64][]db.PartLocation)
+	// 建立 ComponentID -> Locations 映射
+	locsByCompID := make(map[int64][]db.PartLocation, len(locations))
 	for _, loc := range locations {
-		locsByPartID[loc.PartID] = append(locsByPartID[loc.PartID], loc)
+		locsByCompID[loc.ComponentID] = append(locsByCompID[loc.ComponentID], loc)
 	}
 
-	// Group parts by (supplier, supplier_pn)
-	groups := make(map[string][]db.Part)
-	for _, part := range parts {
-		key := a.makeGroupKey(part.Supplier, part.SupplierPN)
-		groups[key] = append(groups[key], part)
+	// 分離主料與替代料
+	var mainComponents []db.RevisionComponent
+	secondSourcesByParentID := make(map[int64][]db.RevisionComponent)
+
+	for _, c := range components {
+		if c.Role == "M" {
+			mainComponents = append(mainComponents, c)
+		} else if c.Role == "S" {
+			secondSourcesByParentID[c.ParentComponentID] = append(secondSourcesByParentID[c.ParentComponentID], c)
+		}
 	}
 
-	// Build second source lookup by group key
-	ssByGroup := a.buildSecondSourceMap(secondSources, parts)
+	// 依 (Supplier, SupplierPN) 分組主料
+	groups := make(map[string][]db.RevisionComponent)
+	for _, comp := range mainComponents {
+		mat := materialByID[comp.MaterialID]
+		key := a.makeGroupKey(mat.Supplier, mat.SupplierPN)
+		groups[key] = append(groups[key], comp)
+	}
 
-	// Create aggregated parts
 	var result []types.AggregatedPart
 
-	for key, groupParts := range groups {
+	for key, groupComps := range groups {
 		locationSet := make(map[string]bool)
-		var firstPart db.Part
+		var firstComp db.RevisionComponent
 		hasCCL := false
 		validLocCount := 0
 		pCount := 0
 		mCount := 0
-
 		partType := ""
-		for _, p := range groupParts {
-			if firstPart.Supplier == "" {
-				firstPart = p
+
+		var allSecondSources []db.RevisionComponent
+
+		for _, c := range groupComps {
+			if firstComp.ID == 0 {
+				firstComp = c
 			}
-			partLocs := locsByPartID[p.ID]
-			for _, loc := range partLocs {
+			compLocs := locsByCompID[c.ID]
+			for _, loc := range compLocs {
 				if loc.Type != "" && partType == "" {
 					partType = loc.Type
 				}
@@ -77,6 +96,11 @@ func (a *Aggregator) Aggregate(parts []db.Part, locations []db.PartLocation, sec
 					}
 				}
 			}
+
+			// 收集該主料底下的替代料
+			if sss, ok := secondSourcesByParentID[c.ID]; ok {
+				allSecondSources = append(allSecondSources, sss...)
+			}
 		}
 
 		bomStatus := "I"
@@ -88,40 +112,39 @@ func (a *Aggregator) Aggregate(parts []db.Part, locations []db.PartLocation, sec
 			}
 		}
 
-		// Sort locations for consistent output
 		locList := make([]string, 0, len(locationSet))
 		for loc := range locationSet {
 			locList = append(locList, loc)
 		}
 		sort.Strings(locList)
 
-		quantity := len(locList)
 		supplier, supplierPN := a.parseGroupKey(key)
+		firstMat := materialByID[firstComp.MaterialID]
 
-		var ssDTOs []types.SecondSourceDTO
-		if groupSS, ok := ssByGroup[key]; ok {
-			for _, ss := range groupSS {
-				ssDTOs = append(ssDTOs, types.SecondSourceDTO{
-					Hhpn:        ss.HHPN,
-					Supplier:    ss.Supplier,
-					SupplierPn:  ss.SupplierPN,
-					Description: ss.Description,
-				})
-			}
+		// 組裝 SecondSourceDTO
+		ssDTOs := make([]types.SecondSourceDTO, 0, len(allSecondSources))
+		for _, ssComp := range allSecondSources {
+			ssMat := materialByID[ssComp.MaterialID]
+			ssDTOs = append(ssDTOs, types.SecondSourceDTO{
+				Hhpn:        ssMat.HHPN,
+				Supplier:    ssMat.Supplier,
+				SupplierPn:  ssMat.SupplierPN,
+				Description: ssMat.Description,
+			})
 		}
 
 		aggregated := types.AggregatedPart{
-			Item:           firstPart.Item,
+			Item:           firstComp.Item,
 			MainSupplier:   supplier,
 			MainSupplierPn: supplierPN,
-			Hhpn:           firstPart.HHPN,
-			Description:    firstPart.Description,
+			Hhpn:           firstMat.HHPN,
+			Description:    firstMat.Description,
 			Type:           partType,
-			Qty:            quantity,
+			Qty:            len(locList),
 			Locations:      strings.Join(locList, ","),
 			BOMStatus:      bomStatus,
 			CCL:            hasCCL,
-			Remark:         firstPart.Remark,
+			Remark:         firstMat.Remark,
 			SecondSources:  ssDTOs,
 		}
 
@@ -131,12 +154,12 @@ func (a *Aggregator) Aggregate(parts []db.Part, locations []db.PartLocation, sec
 	return result
 }
 
-// makeGroupKey creates a group key from supplier and supplier_pn
+// makeGroupKey 產生分組鍵：supplier|supplier_pn
 func (a *Aggregator) makeGroupKey(supplier, supplierPN string) string {
 	return supplier + "|" + supplierPN
 }
 
-// parseGroupKey parses a group key into supplier and supplier_pn
+// parseGroupKey 解析分組鍵
 func (a *Aggregator) parseGroupKey(key string) (string, string) {
 	parts := strings.SplitN(key, "|", 2)
 	supplier := parts[0]
@@ -147,29 +170,7 @@ func (a *Aggregator) parseGroupKey(key string) (string, string) {
 	return supplier, supplierPN
 }
 
-// buildSecondSourceMap builds a map of second sources by group key
-// It uses the PartID to look up the corresponding part and build the group key
-func (a *Aggregator) buildSecondSourceMap(secondSources []db.SecondSource, parts []db.Part) map[string][]db.SecondSource {
-	// Build a lookup map from PartID to Part
-	partByID := make(map[int64]db.Part)
-	for _, p := range parts {
-		partByID[p.ID] = p
-	}
-
-	// Build second source map by group key
-	ssByGroup := make(map[string][]db.SecondSource)
-
-	for _, ss := range secondSources {
-		if part, ok := partByID[ss.PartID]; ok {
-			key := a.makeGroupKey(part.Supplier, part.SupplierPN)
-			ssByGroup[key] = append(ssByGroup[key], ss)
-		}
-	}
-
-	return ssByGroup
-}
-
-// FormatLocations formats locations as a comma-separated string
+// FormatLocations 將 location slice 格式化為逗號分隔字串
 func FormatLocations(locations []string) string {
 	return strings.Join(locations, ",")
 }

@@ -360,7 +360,7 @@ SQLite 對於並發寫入 (Concurrent Writes) 支援有限，若多個匯入任�
 
 ### 4.3 Second Source（替代料）
 
-每個 BOM Main Item 可附帶 **0 到多個** Second Source：
+每個 BOM Main Item 可附帶 **0 到多個** Second Source（替代料）：
 
 | 欄位 | 資料庫欄位名 | 說明 | 範例 |
 |------|-------------|------|------|
@@ -368,25 +368,27 @@ SQLite 對於並發寫入 (Concurrent Writes) 支援有限，若多個匯入任�
 | Supplier | `supplier` | 供應商名稱 | Yageo |
 | Supplier PN | `supplier_pn` | 供應商料號 | RC0402FR-0710KL |
 | Description | `description` | 零件描述 | CAP,22uF,... |
+| Remark | `remark` | 註記 | — |
 
-- Second Source **不包含** Location、Type、BOM Status 等欄位
-- 透過 `(bom_revision_id, main_supplier, main_supplier_pn)` 邏輯鍵關聯至主料群組
+- Second Source 物料屬性同樣統一登錄於全域 `materials` 表。
+- 在版本中透過 `revision_components` 表以 `Role='S'` 記錄，並以 `parent_component_id` 外鍵關聯至主料 `revision_components.id`。
+- Second Source **不包含** Location、Type、BOM Status 等欄位。
 
 ### 4.4 資料層次結構
 
 ```
 Series (.bomx 資料庫檔案)
-├── series_meta              # 系列元資料
-├── Project A
-│   ├── BOM Revision 0.1     # Phase + Version
-│   │   ├── Parts            # 原子化零件紀錄
-│   │   ├── Second Sources   # 替代料
-│   │   └── Matrix Models    # Model 定義 + 選擇紀錄
-│   ├── BOM Revision 0.2
-│   └── ...
-└── Project B
-    └── ...
+├── materials                # 全域物料庫 (跨版本物料去重與純化)
+├── series                   # 系列元資料與匯出設定
+├── projects                 # 專案列表
+└── bom_revisions            # BOM 版本
+    ├── revision_components  # 版本零件關聯 (Role: 'M' 主料 / 'S' 替代料)
+    │   └── part_locations   # 原子化位置紀錄 (關聯主料 ComponentID)
+    ├── matrix_models        # Matrix Model 定義
+    └── matrix_selections    # 數值鍵選取紀錄 (關聯 ComponentID 與 MaterialID)
 ```
+
+> 完整資料庫欄位定義、實體關聯圖與 View 系統 Late-Binding 規格請參閱 [DB_Spec.md](./DB_Spec.md)。
 
 ### 4.5 Phase 與版本
 

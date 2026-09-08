@@ -16,6 +16,7 @@ export interface ViewModelSelection {
     "sort_order": number;
     "model_name": string;
     "model_qty": number;
+    "selected_material_id"?: number;
 
     /**
      * 被選中的 SupplierPN（空字串=未勾選或尚未設定）
@@ -47,6 +48,12 @@ export interface ViewModelSelection {
  *     → Frontend 顯示：加特殊標記
  */
 export interface ViewPartGroup {
+    /**
+     * 內部關聯鍵
+     * 主料全域物料 ID（用於聚合與 Late-Binding）
+     */
+    "material_id"?: number;
+
     /**
      * 群組識別鍵
      */
@@ -186,6 +193,10 @@ export interface ViewRevision {
  * 用於讓下游（Export/Frontend）判斷「此替代料在特定 revision 中是否存在」。
  */
 export interface ViewSecondSource {
+    /**
+     * 全域物料 ID
+     */
+    "material_id"?: number;
     "hhpn": string;
     "supplier": string;
     "supplier_pn": string;

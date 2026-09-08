@@ -68,7 +68,6 @@ export interface Part {
   supplier: string
   supplierPn: string
   description: string
-  cost: number
   remark: string
   createdAt: string
   updatedAt: string
@@ -82,7 +81,6 @@ export interface SecondSource {
   supplier: string
   supplierPn: string
   description: string
-  cost: number
   createdAt: string
   updatedAt: string
 }

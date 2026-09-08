@@ -8,6 +8,8 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"bomix-app/backend/db"
+	"bomix-app/backend/logger"
+	"bomix-app/backend/task"
 )
 
 // TestParseHeader tests header parsing from EBOM format
@@ -129,25 +131,32 @@ func TestMainVsSecondSource(t *testing.T) {
 	f.SetCellValue("SMD", "J7", "N")
 
 	reader := &EBOMReader{}
-	partMap := make(map[string]*db.Part)
-	var partList []*db.Part
-	locations, secondSources := reader.parseMainSheetV2(wb, "SMD", "SMD", partMap, &partList, nil)
+	matMap := map[string]db.Material{
+		"Samsung|CL10A106MQ8NNNC":   {ID: 1, Supplier: "Samsung", SupplierPN: "CL10A106MQ8NNNC"},
+		"Murata|GRM188R61A106KE15D": {ID: 2, Supplier: "Murata", SupplierPN: "GRM188R61A106KE15D"},
+	}
+	mainCompMap := make(map[string]*parsedComponentMain)
+	var mainCompList []*parsedComponentMain
+	var secondCompList []*parsedComponentSecond
+	cclByLoc := make(map[string]bool)
 
-	if len(partList) != 1 {
-		t.Errorf("Expected 1 Main Source part, got %d", len(partList))
+	_ = reader.parseMainSheetV2(wb, "SMD", "SMD", matMap, mainCompMap, &mainCompList, &secondCompList, cclByLoc, nil)
+
+	if len(mainCompList) != 1 {
+		t.Errorf("Expected 1 Main Source component, got %d", len(mainCompList))
 	}
-	if len(secondSources) != 1 {
-		t.Errorf("Expected 1 Second Source, got %d", len(secondSources))
+	if len(secondCompList) != 1 {
+		t.Errorf("Expected 1 Second Source component, got %d", len(secondCompList))
 	}
-	if len(locations) != 3 {
-		t.Errorf("Expected 3 locations, got %d", len(locations))
+	if len(mainCompList[0].Locations) != 3 {
+		t.Errorf("Expected 3 locations, got %d", len(mainCompList[0].Locations))
 	}
 
-	if partList[0].Supplier != "Samsung" {
-		t.Errorf("Expected Main Source supplier 'Samsung', got '%s'", partList[0].Supplier)
+	if mainCompList[0].Supplier != "Samsung" {
+		t.Errorf("Expected Main Source Supplier Samsung, got %s", mainCompList[0].Supplier)
 	}
-	if secondSources[0].secondSource.Supplier != "Murata" {
-		t.Errorf("Expected Second Source supplier 'Murata', got '%s'", secondSources[0].secondSource.Supplier)
+	if secondCompList[0].Supplier != "Murata" {
+		t.Errorf("Expected Second Source Supplier Murata, got %s", secondCompList[0].Supplier)
 	}
 }
 
@@ -212,185 +221,117 @@ func TestMergeAlgorithm(t *testing.T) {
 		t.Fatalf("Failed to create revision: %v", err)
 	}
 
-	// Create old parts and second sources (simulating existing database state)
-	mainPart := db.Part{
-		RevisionID: revision.ID,
-		Supplier:   "SupplierX",
-		SupplierPN: "PN-001",
-		Description: "Main Part P1",
+	// 建立物料 (P1=主料, P2=將被刪除的替代料, P3=保留的替代料, P4=新增的替代料)
+	mats := []db.Material{
+		{ID: 1, Supplier: "SupplierX", SupplierPN: "PN-001", Description: "Main Part P1"},
+		{ID: 2, Supplier: "SupplierY", SupplierPN: "PN-002", Description: "Old 2nd Source P2"},
+		{ID: 3, Supplier: "SupplierZ", SupplierPN: "PN-003", Description: "Old 2nd Source P3"},
+		{ID: 4, Supplier: "SupplierW", SupplierPN: "PN-004", Description: "New 2nd Source P4"},
 	}
-	if err := database.Create(&mainPart).Error; err != nil {
-		t.Fatalf("Failed to create main part: %v", err)
-	}
-
-	oldSecondSources := []db.SecondSource{
-		{
-			RevisionID: revision.ID,
-			PartID:     mainPart.ID,
-			Supplier:   "SupplierY",
-			SupplierPN: "PN-002",
-			Description: "Old 2nd Source P2 (will be removed)",
-		},
-		{
-			RevisionID: revision.ID,
-			PartID:     mainPart.ID,
-			Supplier:   "SupplierZ",
-			SupplierPN: "PN-003",
-			Description: "Old 2nd Source P3 (will remain)",
-		},
-	}
-	for _, ss := range oldSecondSources {
-		if err := database.Create(&ss).Error; err != nil {
-			t.Fatalf("Failed to create second source: %v", err)
+	for _, m := range mats {
+		if err := database.Create(&m).Error; err != nil {
+			t.Fatalf("Failed to create material: %v", err)
 		}
 	}
 
+	// 初始 RevisionComponents: P1 為主料，P2 與 P3 為替代料
+	mainComp := db.RevisionComponent{
+		RevisionID: revision.ID,
+		MaterialID: 1,
+		Role:       "M",
+		Item:       "1",
+	}
+	_ = database.Create(&mainComp).Error
+
+	secComp2 := db.RevisionComponent{
+		RevisionID:        revision.ID,
+		MaterialID:        2,
+		Role:              "S",
+		ParentComponentID: mainComp.ID,
+	}
+	secComp3 := db.RevisionComponent{
+		RevisionID:        revision.ID,
+		MaterialID:        3,
+		Role:              "S",
+		ParentComponentID: mainComp.ID,
+	}
+	_ = database.Create(&secComp2).Error
+	_ = database.Create(&secComp3).Error
+
 	// Create MatrixModels
-	modelA := db.MatrixModel{
-		RevisionID: revision.ID,
-		SortOrder:  0,
-		ModelName:  "A",
-		Qty:        1,
-	}
-	if err := database.Create(&modelA).Error; err != nil {
-		t.Fatalf("Failed to create model A: %v", err)
-	}
+	modelA := db.MatrixModel{RevisionID: revision.ID, SortOrder: 0, ModelName: "A", Qty: 1}
+	modelB := db.MatrixModel{RevisionID: revision.ID, SortOrder: 1, ModelName: "B", Qty: 1}
+	modelC := db.MatrixModel{RevisionID: revision.ID, SortOrder: 2, ModelName: "C", Qty: 1}
+	_ = database.Create(&modelA).Error
+	_ = database.Create(&modelB).Error
+	_ = database.Create(&modelC).Error
 
-	modelB := db.MatrixModel{
-		RevisionID: revision.ID,
-		SortOrder:  1,
-		ModelName:  "B",
-		Qty:        1,
-	}
-	if err := database.Create(&modelB).Error; err != nil {
-		t.Fatalf("Failed to create model B: %v", err)
-	}
-
-	modelC := db.MatrixModel{
-		RevisionID: revision.ID,
-		SortOrder:  2,
-		ModelName:  "C",
-		Qty:        1,
-	}
-	if err := database.Create(&modelC).Error; err != nil {
-		t.Fatalf("Failed to create model C: %v", err)
-	}
-
-	// Create MatrixSelections (before merge)
+	// Create MatrixSelections
 	selections := []db.MatrixSelection{
 		{
 			RevisionID:         revision.ID,
 			ModelID:            modelA.ID,
-			PartID:             mainPart.ID,
-			Group:              "SupplierX|PN-001",
-			Material:           "SupplierX|PN-001",
-			SelectedSupplier:   "SupplierX",
-			SelectedSupplierPn: "PN-001",
+			ComponentID:        mainComp.ID,
+			MainMaterialID:     1,
+			SelectedMaterialID: 1, // 選主料 P1
 		},
 		{
 			RevisionID:         revision.ID,
 			ModelID:            modelB.ID,
-			PartID:             mainPart.ID,
-			Group:              "SupplierX|PN-001",
-			Material:           "SupplierY|PN-002",
-			SelectedSupplier:   "SupplierY",
-			SelectedSupplierPn: "PN-002",
+			ComponentID:        mainComp.ID,
+			MainMaterialID:     1,
+			SelectedMaterialID: 2, // 選替代料 P2
 		},
 		{
 			RevisionID:         revision.ID,
 			ModelID:            modelC.ID,
-			PartID:             mainPart.ID,
-			Group:              "SupplierX|PN-001",
-			Material:           "SupplierZ|PN-003",
-			SelectedSupplier:   "SupplierZ",
-			SelectedSupplierPn: "PN-003",
+			ComponentID:        mainComp.ID,
+			MainMaterialID:     1,
+			SelectedMaterialID: 3, // 選替代料 P3
 		},
 	}
 	for _, sel := range selections {
-		if err := database.Create(&sel).Error; err != nil {
-			t.Fatalf("Failed to create selection: %v", err)
-		}
+		_ = database.Create(&sel).Error
 	}
 
-	// Now simulate new EBOM data (after merge)
-	// New second sources: P3 (kept), P4 (new)
-	newSecondSources := []db.SecondSource{
-		{
-			RevisionID: revision.ID,
-			PartID:     mainPart.ID,
-			Supplier:   "SupplierZ",
-			SupplierPN: "PN-003",
-			Description: "Old 2nd Source P3 (updated)",
-		},
-		{
-			RevisionID: revision.ID,
-			PartID:     mainPart.ID,
-			Supplier:   "SupplierW",
-			SupplierPN: "PN-004",
-			Description: "New 2nd Source P4",
-		},
+	// 模擬新 EBOM 匯入後更新元件：P2 被移除，P4 被加入
+	_ = database.Delete(&secComp2).Error
+	secComp4 := db.RevisionComponent{
+		RevisionID:        revision.ID,
+		MaterialID:        4,
+		Role:              "S",
+		ParentComponentID: mainComp.ID,
+	}
+	_ = database.Create(&secComp4).Error
+
+	// 執行清理無效 Selection
+	reader := &EBOMReader{db: database, revisionID: revision.ID}
+	if err := reader.cleanInvalidMatrixSelections(); err != nil {
+		t.Fatalf("cleanInvalidMatrixSelections failed: %v", err)
 	}
 
-	// Apply merge algorithm
-	reader := &EBOMReader{db: database}
-	if err := reader.applyMergeAlgorithm(revision.ID, newSecondSources); err != nil {
-		t.Fatalf("applyMergeAlgorithm failed: %v", err)
+	// 驗證 Selection：
+	// Model A (選主料 P1) 應保留
+	var selA []db.MatrixSelection
+	database.Where("revision_id = ? AND model_id = ?", revision.ID, modelA.ID).Find(&selA)
+	if len(selA) != 1 {
+		t.Errorf("Expected Model A selection to be preserved, got %d", len(selA))
 	}
 
-	// Verify results
-	// Check second sources
-	var remainingSecondSources []db.SecondSource
-	if err := database.Where("revision_id = ?", revision.ID).Find(&remainingSecondSources).Error; err != nil {
-		t.Fatalf("Failed to query second sources: %v", err)
+	// Model B (選已被移除的替代料 P2) 應被刪除
+	var selB []db.MatrixSelection
+	database.Where("revision_id = ? AND model_id = ?", revision.ID, modelB.ID).Find(&selB)
+	if len(selB) != 0 {
+		t.Errorf("Expected Model B selection to be deleted, got %d", len(selB))
 	}
 
-	if len(remainingSecondSources) != 2 {
-		t.Errorf("Expected 2 second sources after merge, got %d", len(remainingSecondSources))
+	// Model C (選保留的替代料 P3) 應保留
+	var selC []db.MatrixSelection
+	database.Where("revision_id = ? AND model_id = ?", revision.ID, modelC.ID).Find(&selC)
+	if len(selC) != 1 {
+		t.Errorf("Expected Model C selection to be preserved, got %d", len(selC))
 	}
 
-	// Check that P2 was deleted
-	var p2Count int64
-	database.Model(&db.SecondSource{}).Where("supplier = ? AND supplier_pn = ?", "SupplierY", "PN-002").Count(&p2Count)
-	if p2Count != 0 {
-		t.Error("Expected P2 (SupplierY|PN-002) to be deleted")
-	}
-
-	// Check that P4 was added
-	var p4Count int64
-	database.Model(&db.SecondSource{}).Where("supplier = ? AND supplier_pn = ?", "SupplierW", "PN-004").Count(&p4Count)
-	if p4Count != 1 {
-		t.Error("Expected P4 (SupplierW|PN-004) to be added")
-	}
-
-	// Check MatrixSelections
-	// Model B selection (pointing to P2 which was deleted) should be removed
-	var modelBSelections []db.MatrixSelection
-	if err := database.Where("revision_id = ? AND model_id = ?", revision.ID, modelB.ID).Find(&modelBSelections).Error; err != nil {
-		t.Fatalf("Failed to query Model B selections: %v", err)
-	}
-
-	if len(modelBSelections) != 0 {
-		t.Errorf("Expected Model B selection to be removed (P2 deleted), got %d selections", len(modelBSelections))
-	}
-
-	// Model A and Model C selections should remain
-	var modelASelections []db.MatrixSelection
-	if err := database.Where("revision_id = ? AND model_id = ?", revision.ID, modelA.ID).Find(&modelASelections).Error; err != nil {
-		t.Fatalf("Failed to query Model A selections: %v", err)
-	}
-
-	if len(modelASelections) != 1 {
-		t.Errorf("Expected Model A selection to remain, got %d selections", len(modelASelections))
-	}
-
-	var modelCSelections []db.MatrixSelection
-	if err := database.Where("revision_id = ? AND model_id = ?", revision.ID, modelC.ID).Find(&modelCSelections).Error; err != nil {
-		t.Fatalf("Failed to query Model C selections: %v", err)
-	}
-
-	if len(modelCSelections) != 1 {
-		t.Errorf("Expected Model C selection to remain, got %d selections", len(modelCSelections))
-	}
 }
 
 // TestImportMatrixSelections tests the Matrix selection import functionality
@@ -434,15 +375,24 @@ func TestImportMatrixSelections(t *testing.T) {
 		t.Fatalf("Failed to create target revision: %v", err)
 	}
 
-	// Create parts in source revision
-	sourcePart := db.Part{
-		RevisionID: sourceRevision.ID,
-		Supplier:   "Samsung",
-		SupplierPN: "CL10A106MQ8NNNC",
+	// 建立物料
+	mat := db.Material{
+		Supplier:    "Samsung",
+		SupplierPN:  "CL10A106MQ8NNNC",
 		Description: "CAPACITOR 10uF",
 	}
-	if err := database.Create(&sourcePart).Error; err != nil {
-		t.Fatalf("Failed to create source part: %v", err)
+	if err := database.Create(&mat).Error; err != nil {
+		t.Fatalf("Failed to create material: %v", err)
+	}
+
+	// Create component in source revision
+	sourceComp := db.RevisionComponent{
+		RevisionID: sourceRevision.ID,
+		MaterialID: mat.ID,
+		Role:       "M",
+	}
+	if err := database.Create(&sourceComp).Error; err != nil {
+		t.Fatalf("Failed to create source component: %v", err)
 	}
 
 	// Create MatrixModels in source revision
@@ -470,20 +420,16 @@ func TestImportMatrixSelections(t *testing.T) {
 		{
 			RevisionID:         sourceRevision.ID,
 			ModelID:            sourceModelA.ID,
-			PartID:             sourcePart.ID,
-			Group:              "Samsung|CL10A106MQ8NNNC",
-			Material:           "Samsung|CL10A106MQ8NNNC",
-			SelectedSupplier:   "Samsung",
-			SelectedSupplierPn: "CL10A106MQ8NNNC",
+			ComponentID:        sourceComp.ID,
+			MainMaterialID:     mat.ID,
+			SelectedMaterialID: mat.ID,
 		},
 		{
 			RevisionID:         sourceRevision.ID,
 			ModelID:            sourceModelB.ID,
-			PartID:             sourcePart.ID,
-			Group:              "Samsung|CL10A106MQ8NNNC",
-			Material:           "Samsung|CL10A106MQ8NNNC",
-			SelectedSupplier:   "Samsung",
-			SelectedSupplierPn: "CL10A106MQ8NNNC",
+			ComponentID:        sourceComp.ID,
+			MainMaterialID:     mat.ID,
+			SelectedMaterialID: mat.ID,
 		},
 	}
 	for _, sel := range sourceSelections {
@@ -492,15 +438,14 @@ func TestImportMatrixSelections(t *testing.T) {
 		}
 	}
 
-	// Create matching part in target revision
-	targetPart := db.Part{
+	// Create matching component in target revision
+	targetComp := db.RevisionComponent{
 		RevisionID: targetRevision.ID,
-		Supplier:   "Samsung",
-		SupplierPN: "CL10A106MQ8NNNC",
-		Description: "CAPACITOR 10uF",
+		MaterialID: mat.ID,
+		Role:       "M",
 	}
-	if err := database.Create(&targetPart).Error; err != nil {
-		t.Fatalf("Failed to create target part: %v", err)
+	if err := database.Create(&targetComp).Error; err != nil {
+		t.Fatalf("Failed to create target component: %v", err)
 	}
 
 	// Create MatrixModels in target revision
@@ -721,6 +666,93 @@ func colToLetter(col int) string {
 	}
 	return result
 }
+
+// TestEBOMReader_Phase2UnestablishedLocationsWarning 測試當 PROTO 或 MP sheet 含有 Phase 1 未建立的 location 時，回傳 WarningError 並記錄警告
+func TestEBOMReader_Phase2UnestablishedLocationsWarning(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("Failed to connect database: %v", err)
+	}
+	if err := db.AutoMigrate(database); err != nil {
+		t.Fatalf("AutoMigrate failed: %v", err)
+	}
+
+	// 建立系列與專案
+	series, err := db.CreateSeries(database, "TEST_SERIES", "Test Series")
+	if err != nil {
+		t.Fatalf("CreateSeries failed: %v", err)
+	}
+	_, err = db.GetOrCreateProject(database, series.ID, "TANGLED", "Test Project")
+	if err != nil {
+		t.Fatalf("GetOrCreateProject failed: %v", err)
+	}
+
+	f := excelize.NewFile()
+	wb := &ExcelizeWorkbook{f: f}
+	defer f.Close()
+
+	// 建立 SMD sheet（表頭與一個 Phase 1 零件 R1）
+	f.NewSheet("SMD")
+	f.SetCellValue("SMD", "B3", "Product Code: TANGLED")
+	f.SetCellValue("SMD", "B4", "Description: Test Board")
+	f.SetCellValue("SMD", "D3", "Schematic Version: 1.0")
+	f.SetCellValue("SMD", "J3", "Phase: PV")
+	f.SetCellValue("SMD", "F3", "PCB Version: 2.1")
+	f.SetCellValue("SMD", "F4", "PCA PN: ABC-123")
+	f.SetCellValue("SMD", "H3", "BOM Version: 0.1")
+	f.SetCellValue("SMD", "H4", "Date: 2026-01-15")
+
+	f.SetCellValue("SMD", "A6", "1")
+	f.SetCellValue("SMD", "B6", "HHPN-001")
+	f.SetCellValue("SMD", "E6", "RESISTOR 10K")
+	f.SetCellValue("SMD", "F6", "Yageo")
+	f.SetCellValue("SMD", "G6", "RC0402")
+	f.SetCellValue("SMD", "I6", "R1")
+
+	// 建立 PROTO sheet（包含一個未在 Phase 1 建立的位號 R99）
+	f.NewSheet("PROTO")
+	f.SetCellValue("PROTO", "A6", "1")
+	f.SetCellValue("PROTO", "F6", "Yageo")
+	f.SetCellValue("PROTO", "G6", "RC0402")
+	f.SetCellValue("PROTO", "I6", "R99")
+
+	// 建立 MP sheet（包含一個未在 Phase 1 建立的位號 U99）
+	f.NewSheet("MP")
+	f.SetCellValue("MP", "A6", "1")
+	f.SetCellValue("MP", "F6", "TI")
+	f.SetCellValue("MP", "G6", "TPS54331")
+	f.SetCellValue("MP", "I6", "U99")
+
+	logBuffer := logger.NewLogger(100)
+	reader := &EBOMReader{
+		db:     database,
+		logger: logBuffer,
+	}
+
+	err = reader.Import(wb)
+	if err == nil {
+		t.Fatalf("預期 Import 回傳 WarningError，但得到 nil")
+	}
+
+	if !task.IsWarningError(err) {
+		t.Fatalf("預期回傳 task.WarningError，實際得到: %T (%v)", err, err)
+	}
+
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "PROTO location 'R99' 在 Phase 1 中未建立，略過") {
+		t.Errorf("錯誤訊息應包含 PROTO location 'R99' 未建立警告，實際為: %s", errMsg)
+	}
+	if !strings.Contains(errMsg, "MP location 'U99' 在 Phase 1 中未建立，略過") {
+		t.Errorf("錯誤訊息應包含 MP location 'U99' 未建立警告，實際為: %s", errMsg)
+	}
+
+	// 驗證 Phase 1 的合法零件 R1 依然有正常寫入資料庫
+	var loc db.PartLocation
+	if err := database.Where("location = ?", "R1").First(&loc).Error; err != nil {
+		t.Errorf("合法零件 R1 應已建立在資料庫中: %v", err)
+	}
+}
+
 
 
 

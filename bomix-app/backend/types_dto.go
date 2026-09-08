@@ -61,32 +61,30 @@ type BomRevision struct {
 
 // Part represents a part for the frontend
 type Part struct {
-	ID          int64   `json:"id"`
-	RevisionID  int64   `json:"revisionId"`
-	Type        string  `json:"type"`
-	Item        string  `json:"item"`
-	HHPN        string  `json:"hhpn"`
-	Supplier    string  `json:"supplier"`
-	SupplierPn  string  `json:"supplierPn"`
-	Description string  `json:"description"`
-	Cost        float64 `json:"cost"`
-	Remark      string  `json:"remark"`
-	CreatedAt   string  `json:"createdAt"`
-	UpdatedAt   string  `json:"updatedAt"`
+	ID          int64  `json:"id"`
+	RevisionID  int64  `json:"revisionId"`
+	Type        string `json:"type"`
+	Item        string `json:"item"`
+	HHPN        string `json:"hhpn"`
+	Supplier    string `json:"supplier"`
+	SupplierPn  string `json:"supplierPn"`
+	Description string `json:"description"`
+	Remark      string `json:"remark"`
+	CreatedAt   string `json:"createdAt"`
+	UpdatedAt   string `json:"updatedAt"`
 }
 
 // SecondSource represents a second source for the frontend
 type SecondSource struct {
-	ID          int64   `json:"id"`
-	RevisionID  int64   `json:"revisionId"`
-	PartID      int64   `json:"partId"`
-	HHPN        string  `json:"hhpn"`
-	Supplier    string  `json:"supplier"`
-	SupplierPn  string  `json:"supplierPn"`
-	Description string  `json:"description"`
-	Cost        float64 `json:"cost"`
-	CreatedAt   string  `json:"createdAt"`
-	UpdatedAt   string  `json:"updatedAt"`
+	ID          int64  `json:"id"`
+	RevisionID  int64  `json:"revisionId"`
+	PartID      int64  `json:"partId"`
+	HHPN        string `json:"hhpn"`
+	Supplier    string `json:"supplier"`
+	SupplierPn  string `json:"supplierPn"`
+	Description string `json:"description"`
+	CreatedAt   string `json:"createdAt"`
+	UpdatedAt   string `json:"updatedAt"`
 }
 
 // MatrixModel represents a matrix model for the frontend

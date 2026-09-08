@@ -37,15 +37,9 @@ func TestFullMatrixImportExportFlow(t *testing.T) {
 	var revs []db.BomRevision
 	gdb.Find(&revs)
 	t.Logf("Revisions in DB after EBOM import: %d", len(revs))
-	var dbParts []db.Part
-	gdb.Where("revision_id = ?", 2).Find(&dbParts)
-	t.Logf("Parts in DB for Rev 2: %d", len(dbParts))
-	for _, p := range dbParts {
-		if strings.Contains(p.SupplierPN, "AZC199") || strings.Contains(p.SupplierPN, "AP22818") || strings.Contains(p.SupplierPN, "LBSS139") {
-			t.Logf("DB Part: ID=%d, RevID=%d, Sup=%s, PN=%s, Item=%s",
-				p.ID, p.RevisionID, p.Supplier, p.SupplierPN, p.Item)
-		}
-	}
+	var dbComps []db.RevisionComponent
+	gdb.Where("revision_id = ?", 2).Find(&dbComps)
+	t.Logf("Components in DB for Rev 2: %d", len(dbComps))
 
 	t.Log("=== 2. Importing Matrix BOM ===")
 	results2, err := reader.ImportExcel([]string{matrixPath})
@@ -65,10 +59,8 @@ func TestFullMatrixImportExportFlow(t *testing.T) {
 	gdb.Find(&selections)
 	t.Logf("MatrixSelections in DB: %d", len(selections))
 	for _, s := range selections {
-		if strings.Contains(s.SelectedSupplierPn, "LMBT3906") || strings.Contains(s.SelectedSupplierPn, "MMDT3906") {
-			t.Logf("Selection: ID=%d, RevID=%d, ModelID=%d, Group=%s, Material=%s, SelectedPN=%s",
-				s.ID, s.RevisionID, s.ModelID, s.Group, s.Material, s.SelectedSupplierPn)
-		}
+		t.Logf("Selection: ID=%d, RevID=%d, ModelID=%d, CompID=%d, MainMatID=%d, SelMatID=%d",
+			s.ID, s.RevisionID, s.ModelID, s.ComponentID, s.MainMaterialID, s.SelectedMaterialID)
 	}
 
 	t.Log("=== 3. Querying View Service ===")

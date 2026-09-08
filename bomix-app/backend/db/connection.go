@@ -101,9 +101,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&Series{},
 		&Project{},
 		&BomRevision{},
-		&Part{},
+		&Material{},
+		&RevisionComponent{},
 		&PartLocation{},
-		&SecondSource{},
 		&MatrixModel{},
 		&MatrixSelection{},
 	); err != nil {

@@ -50,12 +50,15 @@ type ExportOptions struct {
 // ImportResult contains the result of an import operation.
 // See product-spec section 10.1.5
 type ImportResult struct {
-	FileName      string
-	Format        BOMFormat
-	PartsCount    int
-	SecondSources int
-	SkippedRows   int
-	Errors        []string
+	FileName          string
+	Format            BOMFormat
+	PartsCount        int
+	SecondSources     int
+	ComponentsCount   int // 主料 + 替代料總筆數
+	MaterialsInserted int // 新增 Material 筆數
+	MaterialsUpdated  int // 更新 Material 筆數
+	SkippedRows       int
+	Errors            []string
 }
 
 // SecondSourceDTO represents a second source for a part (DTO for frontend).

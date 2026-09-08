@@ -69,13 +69,13 @@ func TestEndToEnd_ImportExport(t *testing.T) {
 	}
 	t.Logf("Import result: %d parts, format: %s", results[0].PartsCount, results[0].Format)
 
-	// Query parts from database
-	var parts []db.Part
-	if err := database.Where("revision_id = ?", 1).Find(&parts).Error; err != nil {
-		t.Fatalf("Failed to query parts: %v", err)
+	// Query components from database
+	var comps []db.RevisionComponent
+	if err := database.Where("revision_id = ?", 1).Find(&comps).Error; err != nil {
+		t.Fatalf("Failed to query components: %v", err)
 	}
 
-	t.Logf("Parts in database: %d", len(parts))
+	t.Logf("Components in database: %d", len(comps))
 
 	// Note: This test currently expects 0 parts due to a known bug in EBOM reader
 	// The bug is that second sources are parsed with PartID = 0 because the

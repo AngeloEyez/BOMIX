@@ -34,6 +34,7 @@ type ViewQuery struct {
 // SourceRevisionIDs 記錄此替代料出現在哪些 BOM Revision 中，
 // 用於讓下游（Export/Frontend）判斷「此替代料在特定 revision 中是否存在」。
 type ViewSecondSource struct {
+	MaterialID        int64           `json:"material_id,omitempty"` // 全域物料 ID
 	HHPN              string          `json:"hhpn"`
 	Supplier          string          `json:"supplier"`
 	SupplierPN        string          `json:"supplier_pn"`
@@ -48,13 +49,14 @@ type ViewSecondSource struct {
 // 此 struct 為 ViewPartGroup.Selections 的元素，代表在某個 revision 的
 // 某個 Model 中，此物料群組被選中的是哪顆料（主料或替代料）。
 type ViewModelSelection struct {
-	RevisionID       int64  `json:"revision_id"`
-	SortOrder        int    `json:"sort_order"`        // 0-based 排序索引
-	ModelName        string `json:"model_name"`
-	ModelQty         int    `json:"model_qty"`
-	SelectedPN       string `json:"selected_pn"`       // 被選中的 SupplierPN（空字串=未勾選或尚未設定）
-	SelectedSupplier string `json:"selected_supplier"` // 被選中的 Supplier（廠牌）
-	SelectedMaterial string `json:"selected_material"` // 被選中的完整物料識別鍵 (Supplier|SupplierPN)
+	RevisionID         int64  `json:"revision_id"`
+	SortOrder          int    `json:"sort_order"`        // 0-based 排序索引
+	ModelName          string `json:"model_name"`
+	ModelQty           int    `json:"model_qty"`
+	SelectedMaterialID int64  `json:"selected_material_id,omitempty"`
+	SelectedPN         string `json:"selected_pn"`       // 被選中的 SupplierPN（空字串=未勾選或尚未設定）
+	SelectedSupplier   string `json:"selected_supplier"` // 被選中的 Supplier（廠牌）
+	SelectedMaterial   string `json:"selected_material"` // 被選中的完整物料識別鍵 (Supplier|SupplierPN)
 }
 
 // ViewPartGroup 聚合後的物料群組，是 View 系統的核心輸出單元。
@@ -69,6 +71,9 @@ type ViewModelSelection struct {
 //     → BigMatrix 匯出：填灰色底色
 //     → Frontend 顯示：加特殊標記
 type ViewPartGroup struct {
+	// 內部關聯鍵
+	MaterialID int64 `json:"material_id,omitempty"` // 主料全域物料 ID（用於聚合與 Late-Binding）
+
 	// 群組識別鍵
 	MainSupplier   string `json:"main_supplier"`
 	MainSupplierPN string `json:"main_supplier_pn"`

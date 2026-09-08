@@ -170,23 +170,44 @@ func (r *MatrixReader) Import(f Workbook) error {
 		)
 	}
 
-	// ─── 步驟 5：讀取物料主檔以供關聯比對 ──────────────────────────────────────────
-	var parts []db.Part
-	if err := r.db.Where("revision_id = ?", revision.ID).Find(&parts).Error; err != nil {
-		return fmt.Errorf("載入 Parts 失敗: %w", err)
+	// ─── 步驟 5：讀取該 Revision 的 RevisionComponent 與關聯 Material ────────────
+	var components []db.RevisionComponent
+	if err := r.db.Where("revision_id = ?", revision.ID).Find(&components).Error; err != nil {
+		return fmt.Errorf("載入 RevisionComponent 失敗: %w", err)
 	}
 
-	// 建立 (supplier|supplier_pn) -> *db.Part 映射
-	partMap := make(map[string]*db.Part, len(parts))
-	for i := range parts {
-		key := fmt.Sprintf("%s|%s", strings.TrimSpace(parts[i].Supplier), strings.TrimSpace(parts[i].SupplierPN))
-		partMap[key] = &parts[i]
+	matIDs := make([]int64, 0, len(components))
+	for _, c := range components {
+		matIDs = append(matIDs, c.MaterialID)
+	}
+
+	matMap, err := db.GetMaterialsMapByIDs(r.db, matIDs)
+	if err != nil {
+		return fmt.Errorf("載入 Material 失敗: %w", err)
+	}
+
+	type compMatchInfo struct {
+		ComponentID int64
+		MaterialID  int64
+		Role        string
+	}
+
+	compBySupplierPN := make(map[string]compMatchInfo, len(components))
+	for _, c := range components {
+		if m, ok := matMap[c.MaterialID]; ok {
+			key := fmt.Sprintf("%s|%s", strings.TrimSpace(m.Supplier), strings.TrimSpace(m.SupplierPN))
+			compBySupplierPN[key] = compMatchInfo{
+				ComponentID: c.ID,
+				MaterialID:  c.MaterialID,
+				Role:        c.Role,
+			}
+		}
 	}
 
 	// ─── 步驟 6：依序讀取 SMD, PTH, BOTTOM 頁面，讀取物料與 Model 勾選 ─────────────
 	targetSheets := []string{"SMD", "PTH", "BOTTOM"}
 	var selectionsToCreate []db.MatrixSelection
-	seenSelections := make(map[string]bool) // Key: modelID|group|material 用於去重，防止違反 UNIQUE 約束
+	seenSelections := make(map[string]bool) // Key: modelID|mainMatID|selectedMatID 用於去重
 
 	// 計算全表待處理資料列數並初始化 ProgressTracker
 	totalRows := 0
@@ -202,7 +223,7 @@ func (r *MatrixReader) Import(f Workbook) error {
 	if r.logger != nil {
 		r.logger.Info("[Matrix] 開始掃描工作表物料勾選",
 			"targetSheets", targetSheets,
-			"partMapSize", len(partMap),
+			"compMapSize", len(compBySupplierPN),
 		)
 	}
 
@@ -227,8 +248,7 @@ func (r *MatrixReader) Import(f Workbook) error {
 			r.logger.Debug("[Matrix] 開始解析工作表", "sheet", sheetName, "totalRows", len(rows))
 		}
 
-		var currentMainPart *db.Part
-		var currentGroupKey string
+		var currentMainComp *compMatchInfo
 
 		// 從 Row 6 (Index 5) 開始讀取
 		for i := 5; i < len(rows); i++ {
@@ -249,14 +269,13 @@ func (r *MatrixReader) Import(f Workbook) error {
 				continue
 			}
 
-			var materialSupplier string
-			var materialSupplierPN string
+			key := fmt.Sprintf("%s|%s", supplier, supplierPN)
+			var rowMatch compMatchInfo
 
 			if item != "" {
-				// 主料 (Main Source)
-				key := fmt.Sprintf("%s|%s", supplier, supplierPN)
-				p, exists := partMap[key]
-				if !exists {
+				// 主料列 (Main Source)
+				c, exists := compBySupplierPN[key]
+				if !exists || c.Role != "M" {
 					if r.logger != nil {
 						r.logger.Debug("[Matrix] 主料在 DB 中未找到，跳過此物料列",
 							"sheet", sheetName,
@@ -265,27 +284,24 @@ func (r *MatrixReader) Import(f Workbook) error {
 							"supplierPN", supplierPN,
 						)
 					}
-					currentMainPart = nil
-					currentGroupKey = ""
+					currentMainComp = nil
 					continue
 				}
-				currentMainPart = p
-				currentGroupKey = key
-				materialSupplier = supplier
-				materialSupplierPN = supplierPN
+				currentMainComp = &c
+				rowMatch = c
 			} else {
-				// 2nd Source (替代料)
-				if currentMainPart == nil {
-					// 沒有關聯的主料，無法判斷群組
+				// 替代料列 (Second Source)
+				if currentMainComp == nil {
 					continue
 				}
-				materialSupplier = supplier
-				materialSupplierPN = supplierPN
+				c, exists := compBySupplierPN[key]
+				if !exists {
+					continue
+				}
+				rowMatch = c
 			}
 
-			materialKey := fmt.Sprintf("%s|%s", materialSupplier, materialSupplierPN)
-
-			// 檢查各大有效 Model 的勾選欄位 (K=10 ... Q=16)
+			// 檢查各大有效 Model 的勾選欄位
 			for _, vm := range validModels {
 				mark := safeGetCol(row, vm.ColIndex)
 				if strings.EqualFold(mark, "V") {
@@ -294,18 +310,9 @@ func (r *MatrixReader) Import(f Workbook) error {
 						continue
 					}
 
-					// 唯一性約束鍵 (ModelID, Group, Material)
-					dedupKey := fmt.Sprintf("%d|%s|%s", modelID, currentGroupKey, materialKey)
+					// 唯一性去重鍵 (ModelID, MainMaterialID, SelectedMaterialID)
+					dedupKey := fmt.Sprintf("%d|%d|%d", modelID, currentMainComp.MaterialID, rowMatch.MaterialID)
 					if seenSelections[dedupKey] {
-						if r.logger != nil {
-							r.logger.Debug("[Matrix] 重複的物料勾選 (已由先前頁面/列記錄，自動去重略過)",
-								"sheet", sheetName,
-								"row", i+1,
-								"model", vm.ModelName,
-								"group", currentGroupKey,
-								"material", materialKey,
-							)
-						}
 						continue
 					}
 					seenSelections[dedupKey] = true
@@ -313,26 +320,14 @@ func (r *MatrixReader) Import(f Workbook) error {
 					sel := db.MatrixSelection{
 						RevisionID:         revision.ID,
 						ModelID:            modelID,
-						PartID:             currentMainPart.ID,
-						Group:              currentGroupKey,
-						Material:           materialKey,
-						SelectedSupplier:   materialSupplier,
-						SelectedSupplierPn: materialSupplierPN,
+						ComponentID:        currentMainComp.ComponentID,
+						MainMaterialID:     currentMainComp.MaterialID,
+						SelectedMaterialID: rowMatch.MaterialID,
 						IsAutoSelected:     false,
 						CreatedAt:          time.Now(),
 						UpdatedAt:          time.Now(),
 					}
 					selectionsToCreate = append(selectionsToCreate, sel)
-
-					if r.logger != nil {
-						r.logger.Debug("[Matrix] 記錄物料勾選",
-							"sheet", sheetName,
-							"row", i+1,
-							"model", vm.ModelName,
-							"group", currentGroupKey,
-							"selectedMaterial", sel.Material,
-						)
-					}
 				}
 			}
 		}

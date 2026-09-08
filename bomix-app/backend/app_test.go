@@ -3,6 +3,7 @@ package backend
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -412,14 +413,20 @@ func TestAppImportExcel_TarisPCM_RealFiles(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	// 驗證兩個任務皆順利 Completed
+	// 驗證兩個任務皆順利完成（EBOM 任務因 MP sheet 含有 Phase 1 未建立的位號 U19/U68 應為 Warning，Matrix 應為 Completed）
 	for _, r := range results {
 		st := app.taskMgr.GetStatus(r.TaskID)
 		if st == nil {
 			t.Fatalf("未找到任務 %s", r.TaskID)
 		}
-		if st.Status != "Completed" {
-			t.Errorf("任務 %s (%s) 狀態應為 Completed，實際為 %s，錯誤: %s", st.ID, st.Name, st.Status, st.Error)
+		if strings.Contains(st.Name, "Matrix") {
+			if st.Status != string(types.TaskCompleted) {
+				t.Errorf("任務 %s (%s) 狀態應為 Completed，實際為 %s，錯誤: %s", st.ID, st.Name, st.Status, st.Error)
+			}
+		} else {
+			if st.Status != string(types.TaskWarning) {
+				t.Errorf("EBOM 任務 %s (%s) 狀態應為 Warning，實際為 %s，錯誤: %s", st.ID, st.Name, st.Status, st.Error)
+			}
 		}
 	}
 }
@@ -457,7 +464,7 @@ func TestAppImportExcel_ConfirmOverwrite(t *testing.T) {
 	}
 	for i := 0; i < 100; i++ {
 		st := app.taskMgr.GetStatus(results1[0].TaskID)
-		if st != nil && st.Status == "Completed" {
+		if st != nil && (st.Status == "Completed" || st.Status == "Warning") {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -494,7 +501,7 @@ func TestAppImportExcel_ConfirmOverwrite(t *testing.T) {
 	isCompleted := false
 	for i := 0; i < 100; i++ {
 		st := app.taskMgr.GetStatus(taskID)
-		if st != nil && st.Status == "Completed" {
+		if st != nil && (st.Status == "Completed" || st.Status == "Warning") {
 			isCompleted = true
 			break
 		}
@@ -596,15 +603,15 @@ func TestAppImportExcel_PartialWaitingConfirm_OthersContinue(t *testing.T) {
 	// 等待 EBOM 任務完成
 	for i := 0; i < 100; i++ {
 		stEBOM := app.taskMgr.GetStatus(taskEBOM_ID)
-		if stEBOM != nil && stEBOM.Status == "Completed" {
+		if stEBOM != nil && (stEBOM.Status == "Completed" || stEBOM.Status == "Warning") {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 
 	finalEBOM := app.taskMgr.GetStatus(taskEBOM_ID)
-	if finalEBOM.Status != "Completed" {
-		t.Errorf("EBOM 任務預期 Completed，實際為 %s", finalEBOM.Status)
+	if finalEBOM.Status != "Completed" && finalEBOM.Status != "Warning" {
+		t.Errorf("EBOM 任務預期 Completed 或 Warning，實際為 %s", finalEBOM.Status)
 	}
 }
 

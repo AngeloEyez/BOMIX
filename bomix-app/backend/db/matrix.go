@@ -72,67 +72,29 @@ func GetMatrixSelectionsByRevision(db *gorm.DB, revisionID int64) ([]MatrixSelec
 	return selections, nil
 }
 
-// GetMatrixSelectionsByGroup returns matrix selections by group for a revision
-func GetMatrixSelectionsByGroup(db *gorm.DB, revisionID int64, group string) ([]MatrixSelection, error) {
+// GetMatrixSelectionsByGroupMaterial 依據主料 MaterialID 查詢指定 Revision 的 MatrixSelections
+func GetMatrixSelectionsByGroupMaterial(db *gorm.DB, revisionID int64, mainMaterialID int64) ([]MatrixSelection, error) {
 	var selections []MatrixSelection
-	if err := db.Where("revision_id = ? AND group = ?", revisionID, group).Find(&selections).Error; err != nil {
+	if err := db.Where("revision_id = ? AND main_material_id = ?", revisionID, mainMaterialID).Find(&selections).Error; err != nil {
 		return nil, err
 	}
 	return selections, nil
 }
 
-// GetSecondSourcesByRevision returns all second sources for a revision
-func GetSecondSourcesByRevision(db *gorm.DB, revisionID int64) ([]SecondSource, error) {
-	var sources []SecondSource
-	if err := db.Where("revision_id = ?", revisionID).Find(&sources).Error; err != nil {
-		return nil, err
-	}
-	return sources, nil
-}
-
-// CreateSecondSourcesInBatch creates second sources in batch
-func CreateSecondSourcesInBatch(db *gorm.DB, sources []SecondSource) error {
-	return db.Create(&sources).Error
-}
-
-// DeleteSecondSourcesByRevision deletes all second sources for a revision
-func DeleteSecondSourcesByRevision(db *gorm.DB, revisionID int64) error {
-	return db.Where("revision_id = ?", revisionID).Delete(&SecondSource{}).Error
-}
-
-// DeleteSecondSource deletes a second source by ID
-func DeleteSecondSource(db *gorm.DB, id int64) error {
-	return db.Delete(&SecondSource{}, id).Error
-}
-
-// UpdateSecondSource updates a second source
-func UpdateSecondSource(db *gorm.DB, source *SecondSource) error {
-	return db.Save(source).Error
-}
-
-// DeleteInvalidSelections deletes invalid matrix selections based on removed groups or materials
-// This is used during EBOM merge to clean up selections for parts that no longer exist
-func DeleteInvalidSelections(db *gorm.DB, revisionID int64, removedGroups []string, removedMaterials []string) error {
-	if len(removedGroups) == 0 && len(removedMaterials) == 0 {
+// DeleteInvalidSelections 根據移除的主料 MaterialIDs 或選中 MaterialIDs 刪除無效的 MatrixSelection
+// 於 EBOM merge 或零件異動時清理
+func DeleteInvalidSelections(db *gorm.DB, revisionID int64, removedMainMaterialIDs []int64, removedSelectedMaterialIDs []int64) error {
+	if len(removedMainMaterialIDs) == 0 && len(removedSelectedMaterialIDs) == 0 {
 		return nil
 	}
 
 	query := db.Where("revision_id = ?", revisionID)
-
-	// Delete selections where the group is in the removed groups list
-	// Note: "group" is a reserved keyword in SQL, so we use "group" in quotes
-	if len(removedGroups) > 0 {
-		query = query.Where("`group` IN ?", removedGroups)
-	}
-
-	// Delete selections where the material is in the removed materials list
-	// Note: This is an OR condition - if either group or material is removed, delete the selection
-	if len(removedMaterials) > 0 {
-		if len(removedGroups) > 0 {
-			query = query.Where("`group` IN ? OR material IN ?", removedGroups, removedMaterials)
-		} else {
-			query = query.Where("material IN ?", removedMaterials)
-		}
+	if len(removedMainMaterialIDs) > 0 && len(removedSelectedMaterialIDs) > 0 {
+		query = query.Where("main_material_id IN ? OR selected_material_id IN ?", removedMainMaterialIDs, removedSelectedMaterialIDs)
+	} else if len(removedMainMaterialIDs) > 0 {
+		query = query.Where("main_material_id IN ?", removedMainMaterialIDs)
+	} else {
+		query = query.Where("selected_material_id IN ?", removedSelectedMaterialIDs)
 	}
 
 	return query.Delete(&MatrixSelection{}).Error
@@ -161,15 +123,15 @@ type ImportMatrixStats struct {
 // ImportMatrixSelections 將 Source Revision 的 Matrix Model 結構與 Selection 複製到 Target Revision。
 //
 // 設計原則：
-//   - Model 對應：以 SortOrder（順序索引 0, 1, 2...）區分 Model，不使用 Model Name。
-//   - 物料對應：以 Supplier + SupplierPN 作為物料識別鍵，在 Target Revision 中尋找對應物料。
+//   - Model 對應：以 SortOrder（順序索引 0, 1, 2...）區分 Model。
+//   - 物料對應：以 MainMaterialID 與 SelectedMaterialID（全域 Material ID）精準比對。
 //   - 覆蓋模式：先清空 Target Revision 原有的 MatrixModel 與 MatrixSelection，再寫入新資料。
 //
 // 參數：
 //   - db: GORM 資料庫連線
 //   - sourceRevisionID: 來源版本 ID
 //   - targetRevisionID: 目標版本 ID
-//   - lg: MatrixLogger 介面實例（可為 nil，nil 時跳過 log 輸出）
+//   - lg: MatrixLogger 介面實例（可為 nil）
 //
 // 回傳：
 //   - *ImportMatrixStats: 執行結果統計
@@ -224,7 +186,6 @@ func ImportMatrixSelections(db *gorm.DB, sourceRevisionID, targetRevisionID int6
 	}
 
 	// ─── Step 4：複製 MatrixModel 結構至 Target（維持 SortOrder）────────────
-	// sourceModelIDToTargetID：source model ID → 新建立的 target model ID
 	sourceModelIDToTargetID := make(map[int64]int64, len(sourceModels))
 
 	for _, sm := range sourceModels {
@@ -245,27 +206,22 @@ func ImportMatrixSelections(db *gorm.DB, sourceRevisionID, targetRevisionID int6
 			len(sourceModels), targetRevisionID))
 	}
 
-	// ─── Step 5：以 Target 的物料建立快速查找 map ─────────────────────────────
-	// Target 主料 map：key = "supplier|supplier_pn" → Part.ID
-	var targetParts []Part
-	if err := db.Where("revision_id = ?", targetRevisionID).Find(&targetParts).Error; err != nil {
-		return nil, fmt.Errorf("讀取 target Part 清單失敗: %w", err)
-	}
-	targetPartMap := make(map[string]int64, len(targetParts))
-	for _, tp := range targetParts {
-		key := tp.Supplier + "|" + tp.SupplierPN
-		targetPartMap[key] = tp.ID
+	// ─── Step 5：以 Target 的 RevisionComponent 建立快速查找 map ─────────────
+	var targetComponents []RevisionComponent
+	if err := db.Where("revision_id = ?", targetRevisionID).Find(&targetComponents).Error; err != nil {
+		return nil, fmt.Errorf("讀取 target RevisionComponent 清單失敗: %w", err)
 	}
 
-	// Target 2nd Source map：key = "supplier|supplier_pn" → 所屬主料 Part.ID
-	var targetSecondSources []SecondSource
-	if err := db.Where("revision_id = ?", targetRevisionID).Find(&targetSecondSources).Error; err != nil {
-		return nil, fmt.Errorf("讀取 target SecondSource 清單失敗: %w", err)
-	}
-	targetSecondSourceMap := make(map[string]int64, len(targetSecondSources))
-	for _, ss := range targetSecondSources {
-		key := ss.Supplier + "|" + ss.SupplierPN
-		targetSecondSourceMap[key] = ss.PartID // 儲存對應主料的 PartID
+	// targetMainCompMap: MainMaterialID -> RevisionComponent.ID（主料 ComponentID）
+	targetMainCompMap := make(map[int64]int64, len(targetComponents))
+	// targetComponentMaterials: 該 Revision 擁有的所有 MaterialID 集合（主料與替代料）
+	targetComponentMaterials := make(map[int64]bool, len(targetComponents))
+
+	for _, tc := range targetComponents {
+		targetComponentMaterials[tc.MaterialID] = true
+		if tc.Role == "M" {
+			targetMainCompMap[tc.MaterialID] = tc.ID
+		}
 	}
 
 	// ─── Step 6：逐筆比對 Source Selection 並複製至 Target ───────────────────
@@ -275,50 +231,37 @@ func ImportMatrixSelections(db *gorm.DB, sourceRevisionID, targetRevisionID int6
 		// 6a：以 Source ModelID 查出對應的 Target Model ID（依 SortOrder 對應）
 		targetModelID, exists := sourceModelIDToTargetID[sourceSel.ModelID]
 		if !exists {
-			// source model 不在複製清單中（不應發生），略過
-			if lg != nil {
-				lg.Debug(fmt.Sprintf("[ImportMatrix] Source Selection ModelID=%d 無對應 Target Model，略過", sourceSel.ModelID))
-			}
 			continue
 		}
 
-		// 6b：以 Group key 確認 Target 有對應的主料
-		// Group 欄位格式為 "supplier|supplier_pn"（主料識別鍵）
-		mainKey := sourceSel.Group
-		targetMainPartID, mainExists := targetPartMap[mainKey]
+		// 6b：確認 Target 有對應的主料（Role="M" 且 MaterialID 相符）
+		targetMainCompID, mainExists := targetMainCompMap[sourceSel.MainMaterialID]
 		if !mainExists {
-			// Target 不存在此主料（target 新增料件），計入統計
 			stats.IgnoredMainParts++
 			if lg != nil {
-				lg.Debug(fmt.Sprintf("[ImportMatrix] Target 不存在主料 '%s'，略過（Source ModelID=%d）",
-					mainKey, sourceSel.ModelID))
+				lg.Debug(fmt.Sprintf("[ImportMatrix] Target 不存在主料 MaterialID=%d，略過（Source ModelID=%d）",
+					sourceSel.MainMaterialID, sourceSel.ModelID))
 			}
 			continue
 		}
 
-		// 6c：以被選中物料的 key 確認 Target 中存在（主料或 2nd Source）
-		selectedKey := sourceSel.SelectedSupplier + "|" + sourceSel.SelectedSupplierPn
-		_, selectedInParts := targetPartMap[selectedKey]
-		_, selectedInSecond := targetSecondSourceMap[selectedKey]
-		if !selectedInParts && !selectedInSecond {
-			// Target 不存在被選中的物料（2nd 替代料可能新增或移除），計入統計
+		// 6c：確認被選中物料 (SelectedMaterialID) 在 Target 中存在
+		if !targetComponentMaterials[sourceSel.SelectedMaterialID] {
 			stats.IgnoredSecondParts++
 			if lg != nil {
-				lg.Debug(fmt.Sprintf("[ImportMatrix] Target 不存在被選中物料 '%s'（主料 '%s' 存在），略過",
-					selectedKey, mainKey))
+				lg.Debug(fmt.Sprintf("[ImportMatrix] Target 不存在選中物料 MaterialID=%d（主料 MaterialID=%d 存在），略過",
+					sourceSel.SelectedMaterialID, sourceSel.MainMaterialID))
 			}
 			continue
 		}
 
-		// 6d：建立新的 MatrixSelection（PartID 存主料的 Part.ID）
+		// 6d：建立新的 MatrixSelection
 		selectionsToCreate = append(selectionsToCreate, MatrixSelection{
 			RevisionID:         targetRevisionID,
 			ModelID:            targetModelID,
-			PartID:             targetMainPartID, // 儲存主料的 Part.ID
-			Group:              sourceSel.Group,
-			Material:           sourceSel.Material,
-			SelectedSupplier:   sourceSel.SelectedSupplier,
-			SelectedSupplierPn: sourceSel.SelectedSupplierPn,
+			ComponentID:        targetMainCompID,
+			MainMaterialID:     sourceSel.MainMaterialID,
+			SelectedMaterialID: sourceSel.SelectedMaterialID,
 			IsAutoSelected:     true,
 		})
 	}

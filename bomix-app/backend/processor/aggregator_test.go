@@ -11,7 +11,7 @@ func TestAggregator_Aggregate(t *testing.T) {
 	aggregator := NewAggregator()
 
 	t.Run("merge parts with same supplier and supplier_pn", func(t *testing.T) {
-		parts := []db.Part{
+		materials := []db.Material{
 			{
 				ID:          1,
 				Supplier:    "Samsung",
@@ -20,15 +20,21 @@ func TestAggregator_Aggregate(t *testing.T) {
 			},
 		}
 
-		locations := []db.PartLocation{
-			{PartID: 1, Location: "C1", Type: "SMD", BomStatus: "I", CCL: true},
-			{PartID: 1, Location: "C2", Type: "SMD", BomStatus: "I", CCL: true},
-			{PartID: 1, Location: "C3", Type: "SMD", BomStatus: "I", CCL: true},
+		components := []db.RevisionComponent{
+			{
+				ID:         1,
+				MaterialID: 1,
+				Role:       "M",
+			},
 		}
 
-		secondSources := []db.SecondSource{}
+		locations := []db.PartLocation{
+			{ComponentID: 1, Location: "C1", Type: "SMD", BomStatus: "I", CCL: true},
+			{ComponentID: 1, Location: "C2", Type: "SMD", BomStatus: "I", CCL: true},
+			{ComponentID: 1, Location: "C3", Type: "SMD", BomStatus: "I", CCL: true},
+		}
 
-		result := aggregator.Aggregate(parts, locations, secondSources)
+		result := aggregator.Aggregate(components, materials, locations)
 
 		assert.Len(t, result, 1)
 		assert.Equal(t, "Samsung", result[0].MainSupplier)
@@ -42,7 +48,7 @@ func TestAggregator_Aggregate(t *testing.T) {
 	})
 
 	t.Run("calculate qty from location count", func(t *testing.T) {
-		parts := []db.Part{
+		materials := []db.Material{
 			{
 				ID:          1,
 				Supplier:    "Murata",
@@ -51,14 +57,20 @@ func TestAggregator_Aggregate(t *testing.T) {
 			},
 		}
 
-		locations := []db.PartLocation{
-			{PartID: 1, Location: "C10", Type: "PTH", BomStatus: "I", CCL: false},
-			{PartID: 1, Location: "C11", Type: "PTH", BomStatus: "I", CCL: false},
+		components := []db.RevisionComponent{
+			{
+				ID:         1,
+				MaterialID: 1,
+				Role:       "M",
+			},
 		}
 
-		secondSources := []db.SecondSource{}
+		locations := []db.PartLocation{
+			{ComponentID: 1, Location: "C10", Type: "PTH", BomStatus: "I", CCL: false},
+			{ComponentID: 1, Location: "C11", Type: "PTH", BomStatus: "I", CCL: false},
+		}
 
-		result := aggregator.Aggregate(parts, locations, secondSources)
+		result := aggregator.Aggregate(components, materials, locations)
 
 		assert.Len(t, result, 1)
 		assert.Equal(t, 2, result[0].Qty)
@@ -67,7 +79,7 @@ func TestAggregator_Aggregate(t *testing.T) {
 	})
 
 	t.Run("merge locations as comma-separated string", func(t *testing.T) {
-		parts := []db.Part{
+		materials := []db.Material{
 			{
 				ID:          1,
 				Supplier:    "Yageo",
@@ -76,15 +88,21 @@ func TestAggregator_Aggregate(t *testing.T) {
 			},
 		}
 
-		locations := []db.PartLocation{
-			{PartID: 1, Location: "R1", Type: "SMD", BomStatus: "I", CCL: false},
-			{PartID: 1, Location: "R2", Type: "SMD", BomStatus: "I", CCL: false},
-			{PartID: 1, Location: "R3", Type: "SMD", BomStatus: "I", CCL: false},
+		components := []db.RevisionComponent{
+			{
+				ID:         1,
+				MaterialID: 1,
+				Role:       "M",
+			},
 		}
 
-		secondSources := []db.SecondSource{}
+		locations := []db.PartLocation{
+			{ComponentID: 1, Location: "R1", Type: "SMD", BomStatus: "I", CCL: false},
+			{ComponentID: 1, Location: "R2", Type: "SMD", BomStatus: "I", CCL: false},
+			{ComponentID: 1, Location: "R3", Type: "SMD", BomStatus: "I", CCL: false},
+		}
 
-		result := aggregator.Aggregate(parts, locations, secondSources)
+		result := aggregator.Aggregate(components, materials, locations)
 
 		assert.Len(t, result, 1)
 		locs := result[0].Locations
@@ -94,29 +112,40 @@ func TestAggregator_Aggregate(t *testing.T) {
 	})
 
 	t.Run("attach second sources to aggregated part", func(t *testing.T) {
-		parts := []db.Part{
+		materials := []db.Material{
 			{
 				ID:          1,
 				Supplier:    "Samsung",
 				SupplierPN:  "CL05B104KO5NNNC",
 				Description: "CAP,22uF,+/-20%,X5R,6.3V,SMD0603",
 			},
-		}
-
-		locations := []db.PartLocation{
-			{PartID: 1, Location: "C1", Type: "SMD", BomStatus: "I", CCL: true},
-		}
-
-		secondSources := []db.SecondSource{
 			{
-				PartID:      1,
+				ID:          2,
 				Supplier:    "Yageo",
 				SupplierPN:  "CC0603KRX7R9BB224",
 				Description: "CAP,220nF,+/-10%,X7R,10V,SMD0603",
 			},
 		}
 
-		result := aggregator.Aggregate(parts, locations, secondSources)
+		components := []db.RevisionComponent{
+			{
+				ID:         1,
+				MaterialID: 1,
+				Role:       "M",
+			},
+			{
+				ID:                2,
+				MaterialID:        2,
+				Role:              "S",
+				ParentComponentID: 1,
+			},
+		}
+
+		locations := []db.PartLocation{
+			{ComponentID: 1, Location: "C1", Type: "SMD", BomStatus: "I", CCL: true},
+		}
+
+		result := aggregator.Aggregate(components, materials, locations)
 
 		assert.Len(t, result, 1)
 		assert.Len(t, result[0].SecondSources, 1)

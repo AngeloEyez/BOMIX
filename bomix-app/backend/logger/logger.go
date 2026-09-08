@@ -102,6 +102,9 @@ func (l *Logger) formatMsg(msg string, attrs map[string]string) string {
 
 // Debug logs a debug message
 func (l *Logger) Debug(msg string, attrs ...any) {
+	if l == nil {
+		return
+	}
 	combined := append(append([]any{}, l.defaultAttrs...), attrs...)
 	m := extractAttrs(combined...)
 	l.Logger.Debug(l.formatMsg(msg, m), attrs...)
@@ -110,6 +113,9 @@ func (l *Logger) Debug(msg string, attrs ...any) {
 
 // Info logs an info message
 func (l *Logger) Info(msg string, attrs ...any) {
+	if l == nil {
+		return
+	}
 	combined := append(append([]any{}, l.defaultAttrs...), attrs...)
 	m := extractAttrs(combined...)
 	l.Logger.Info(l.formatMsg(msg, m), attrs...)
@@ -118,6 +124,9 @@ func (l *Logger) Info(msg string, attrs ...any) {
 
 // Warn logs a warning message
 func (l *Logger) Warn(msg string, attrs ...any) {
+	if l == nil {
+		return
+	}
 	combined := append(append([]any{}, l.defaultAttrs...), attrs...)
 	m := extractAttrs(combined...)
 	l.Logger.Warn(l.formatMsg(msg, m), attrs...)
@@ -126,6 +135,9 @@ func (l *Logger) Warn(msg string, attrs ...any) {
 
 // Error logs an error message
 func (l *Logger) Error(msg string, attrs ...any) {
+	if l == nil {
+		return
+	}
 	combined := append(append([]any{}, l.defaultAttrs...), attrs...)
 	m := extractAttrs(combined...)
 	l.Logger.Error(l.formatMsg(msg, m), attrs...)
@@ -134,11 +146,17 @@ func (l *Logger) Error(msg string, attrs ...any) {
 
 // GetLogs returns log entries filtered by level
 func (l *Logger) GetLogs(level string, limit int) []*LogEntry {
+	if l == nil {
+		return nil
+	}
 	return l.buffer.GetEntries(level, limit)
 }
 
 // ClearLogs clears all log entries
 func (l *Logger) ClearLogs() {
+	if l == nil {
+		return
+	}
 	l.buffer.Clear()
 }
 

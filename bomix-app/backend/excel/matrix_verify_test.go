@@ -382,14 +382,18 @@ func TestVerifyMatrixExport_TARIS_SI1_02(t *testing.T) {
 					t.Logf("[SMD 頁面] 導出的 %s Location = %q (包含 DB 中該物料所有 Status=I 且 CCL=true 之有效位置)", targetPN, foundExp.Location)
 
 					// 查詢 DB 中此物料的所有 Location 屬性
-					var targetParts []db.Part
-					database.Where("revision_id = ? AND supplier_pn = ?", targetRev.ID, targetPN).Find(&targetParts)
-					for _, p := range targetParts {
-						var locs []db.PartLocation
-						database.Where("part_id = ?", p.ID).Find(&locs)
-						t.Logf("DB 中 %s (Part ID %d) 共 %d 個 PartLocation:", targetPN, p.ID, len(locs))
-						for _, l := range locs {
-							t.Logf("   -> Loc=%s, Type=%s, Status=%s, CCL=%v", l.Location, l.Type, l.BomStatus, l.CCL)
+					var targetMats []db.Material
+					database.Where("supplier_pn = ?", targetPN).Find(&targetMats)
+					for _, m := range targetMats {
+						var comps []db.RevisionComponent
+						database.Where("revision_id = ? AND material_id = ?", targetRev.ID, m.ID).Find(&comps)
+						for _, c := range comps {
+							var locs []db.PartLocation
+							database.Where("component_id = ?", c.ID).Find(&locs)
+							t.Logf("DB 中 %s (Comp ID %d) 共 %d 個 PartLocation:", targetPN, c.ID, len(locs))
+							for _, l := range locs {
+								t.Logf("   -> Loc=%s, Type=%s, Status=%s, CCL=%v", l.Location, l.Type, l.BomStatus, l.CCL)
+							}
 						}
 					}
 
@@ -402,9 +406,7 @@ func TestVerifyMatrixExport_TARIS_SI1_02(t *testing.T) {
 						database.Where("model_id = ?", m.ID).Find(&sels)
 						t.Logf("  Model ID %d (%s, Order %d, Qty %d) 有 %d 個 MatrixSelections", m.ID, m.ModelName, m.SortOrder, m.Qty, len(sels))
 						for _, s := range sels {
-							if strings.Contains(s.Material, targetPN) || strings.Contains(s.Group, targetPN) {
-								t.Logf("     Selection -> PartID=%d, Group=%s, Mat=%s, SelPN=%s", s.PartID, s.Group, s.Material, s.SelectedSupplierPn)
-							}
+							t.Logf("     Selection -> CompID=%d, MainMatID=%d, SelMatID=%d", s.ComponentID, s.MainMaterialID, s.SelectedMaterialID)
 						}
 					}
 				} else {
@@ -435,27 +437,22 @@ func TestVerifyMatrixExport_TARIS_SI1_02(t *testing.T) {
 					key := b.Supplier + "|" + b.SupplierPN
 					if _, exists := expGroupMap[key]; !exists {
 						missingInExp++
-						var parts []db.Part
-						database.Where("revision_id = ? AND supplier = ? AND supplier_pn = ?", targetRev.ID, b.Supplier, b.SupplierPN).Find(&parts)
-						if len(parts) > 0 {
-							p := parts[0]
-							var locs []db.PartLocation
-							database.Where("part_id = ?", p.ID).Find(&locs)
-							hasCCL := false
-							var statuses []string
-							for _, l := range locs {
-								if l.CCL {
-									hasCCL = true
+						var mat db.Material
+						if err := database.Where("supplier = ? AND supplier_pn = ?", b.Supplier, b.SupplierPN).First(&mat).Error; err == nil {
+							var comp db.RevisionComponent
+							if err := database.Where("revision_id = ? AND material_id = ?", targetRev.ID, mat.ID).First(&comp).Error; err == nil {
+								var locs []db.PartLocation
+								database.Where("component_id = ?", comp.ID).Find(&locs)
+								hasCCL := false
+								var statuses []string
+								for _, l := range locs {
+									if l.CCL {
+										hasCCL = true
+									}
+									statuses = append(statuses, l.BomStatus)
 								}
-								statuses = append(statuses, l.BomStatus)
-							}
-							firstType := ""
-							if len(locs) > 0 {
-								firstType = locs[0].Type
-							}
-							if missingInExp <= 5 {
-								t.Logf("  基準有但導出無: Supp=%s, SuppPN=%s, PartType=%q, DB_CCL=%v, LocStatuses=%v",
-									b.Supplier, b.SupplierPN, firstType, hasCCL, statuses)
+								t.Logf("   - 缺少物料: %s | %s (Comp ID %d, Locations %d 個, CCL=%v, Statuses=%v)",
+									b.Supplier, b.SupplierPN, comp.ID, len(locs), hasCCL, statuses)
 							}
 						}
 					}

@@ -316,11 +316,17 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 		return err
 	}
 
+	type bigMatrixCompMatch struct {
+		ComponentID int64
+		MaterialID  int64
+		Role        string
+	}
+
 	// revisionModelMap 紀錄每個 revisionID 下 (sortOrder -> MatrixModel.ID) 的映射
 	revisionModelMap := make(map[int64]map[int]int64, len(configs))
-	partMapByRev := make(map[int64]map[string]*db.Part, len(configs))
+	compMapByRev := make(map[int64]map[string]bigMatrixCompMatch, len(configs))
 
-	// 在 Transaction 中清空舊 Selection/Model，依據 Excel 欄位資訊重新建立 MatrixModel，並載入 Parts
+	// 在 Transaction 中清空舊 Selection/Model，依據 Excel 欄位資訊重新建立 MatrixModel，並載入 Components
 	if r.db != nil {
 		err = r.db.Transaction(func(tx *gorm.DB) error {
 			for _, config := range configs {
@@ -352,17 +358,32 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 				}
 				revisionModelMap[config.RevisionID] = modelIDMap
 
-				// 4. 載入該 Revision 的所有既有 Parts，建立 (supplier|supplierPN) -> *db.Part 映射
-				var parts []db.Part
-				if err := tx.Where("revision_id = ?", config.RevisionID).Find(&parts).Error; err != nil {
-					return fmt.Errorf("載入 Parts 失敗 (revisionID=%d): %w", config.RevisionID, err)
+				// 4. 載入該 Revision 的所有既有 RevisionComponent 與關聯 Material
+				var comps []db.RevisionComponent
+				if err := tx.Where("revision_id = ?", config.RevisionID).Find(&comps).Error; err != nil {
+					return fmt.Errorf("載入 RevisionComponent 失敗 (revisionID=%d): %w", config.RevisionID, err)
 				}
-				pMap := make(map[string]*db.Part, len(parts))
-				for i := range parts {
-					key := fmt.Sprintf("%s|%s", strings.TrimSpace(parts[i].Supplier), strings.TrimSpace(parts[i].SupplierPN))
-					pMap[key] = &parts[i]
+				matIDs := make([]int64, 0, len(comps))
+				for _, c := range comps {
+					matIDs = append(matIDs, c.MaterialID)
 				}
-				partMapByRev[config.RevisionID] = pMap
+				matMap, err := db.GetMaterialsMapByIDs(tx, matIDs)
+				if err != nil {
+					return fmt.Errorf("載入 Material 失敗 (revisionID=%d): %w", config.RevisionID, err)
+				}
+
+				cMap := make(map[string]bigMatrixCompMatch, len(comps))
+				for _, c := range comps {
+					if m, ok := matMap[c.MaterialID]; ok {
+						key := fmt.Sprintf("%s|%s", strings.TrimSpace(m.Supplier), strings.TrimSpace(m.SupplierPN))
+						cMap[key] = bigMatrixCompMatch{
+							ComponentID: c.ID,
+							MaterialID:  c.MaterialID,
+							Role:        c.Role,
+						}
+					}
+				}
+				compMapByRev[config.RevisionID] = cMap
 			}
 			return nil
 		})
@@ -374,9 +395,8 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 	var selectionsToCreate []db.MatrixSelection
 	seenSelections := make(map[string]bool)
 
-	// 追蹤每個 Revision 當前群組的主料 Part 指標與 Group Key
-	currentMainPartMap := make(map[int64]*db.Part)
-	currentGroupKeyMap := make(map[int64]string)
+	// 追蹤每個 Revision 當前群組的主料 Component 指標
+	currentMainCompMap := make(map[int64]*bigMatrixCompMatch)
 
 	validPartCount := 0
 	// 從 Row 6 開始逐行讀取零件與 Model 勾選 (0-indexed 為 5)
@@ -397,24 +417,23 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 
 		rowSupplierKey := fmt.Sprintf("%s|%s", partData.supplier, partData.supplierPN)
 
-		// 更新每個 BOM Revision 當前的主料與群組狀態
+		// 更新每個 BOM Revision 當前的主料狀態
 		for _, config := range configs {
 			if config.RevisionID == 0 {
 				continue
 			}
-			pMap := partMapByRev[config.RevisionID]
+			cMap := compMapByRev[config.RevisionID]
 
 			if partData.item != "" {
 				// 主料列 (Main Source)
-				if p, exists := pMap[rowSupplierKey]; exists {
-					currentMainPartMap[config.RevisionID] = p
-					currentGroupKeyMap[config.RevisionID] = rowSupplierKey
+				if c, exists := cMap[rowSupplierKey]; exists && c.Role == "M" {
+					cCopy := c
+					currentMainCompMap[config.RevisionID] = &cCopy
 				} else {
-					currentMainPartMap[config.RevisionID] = nil
-					currentGroupKeyMap[config.RevisionID] = ""
+					currentMainCompMap[config.RevisionID] = nil
 				}
 			}
-			// 若為 2nd Source 列（item == ""），則自動沿用 currentMainPartMap[config.RevisionID] 與 currentGroupKeyMap[config.RevisionID]
+			// 若為 2nd Source 列（item == ""），則自動沿用 currentMainCompMap[config.RevisionID]
 		}
 
 		// 對於每個 BOM config 檢查勾選狀態 ("V")
@@ -427,10 +446,14 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 				continue
 			}
 
-			mainPart := currentMainPartMap[config.RevisionID]
-			groupKey := currentGroupKeyMap[config.RevisionID]
-			if mainPart == nil || groupKey == "" {
-				// 該 Revision 不存在對應的主料群組，跳過
+			mainComp := currentMainCompMap[config.RevisionID]
+			if mainComp == nil {
+				continue
+			}
+
+			cMap := compMapByRev[config.RevisionID]
+			cRow, exists := cMap[rowSupplierKey]
+			if !exists {
 				continue
 			}
 
@@ -444,9 +467,7 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 						continue
 					}
 
-					materialKey := rowSupplierKey
-					dedupKey := fmt.Sprintf("%d|%s|%s", matrixModelID, groupKey, materialKey)
-
+					dedupKey := fmt.Sprintf("%d|%d|%d", matrixModelID, mainComp.MaterialID, cRow.MaterialID)
 					if seenSelections[dedupKey] {
 						continue
 					}
@@ -455,11 +476,9 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 					selection := db.MatrixSelection{
 						RevisionID:         config.RevisionID,
 						ModelID:            matrixModelID,
-						PartID:             mainPart.ID, // 永遠連至該群組的主料 PartID
-						Group:              groupKey,    // 主料 Group
-						Material:           materialKey, // 本列物料 (主料或 2nd Source)
-						SelectedSupplier:   partData.supplier,
-						SelectedSupplierPn: partData.supplierPN,
+						ComponentID:        mainComp.ComponentID,
+						MainMaterialID:     mainComp.MaterialID,
+						SelectedMaterialID: cRow.MaterialID,
 						IsAutoSelected:     false,
 					}
 					selectionsToCreate = append(selectionsToCreate, selection)
@@ -573,20 +592,6 @@ func (r *BigMatrixReader) updateModelQty(config BOMConfig) error {
 		}
 	}
 	return nil
-}
-
-// findExistingPart 依 revisionID, supplier, supplierPN 尋找既有 Part。
-// BigMatrix 匯入不更新/新增任何 Part 資料，若找不到 Part 則回傳錯誤。
-func (r *BigMatrixReader) findExistingPart(revisionID int64, supplier, supplierPN string) (int64, error) {
-	var part db.Part
-	err := r.db.Where("revision_id = ? AND supplier = ? AND supplier_pn = ?",
-		revisionID, supplier, supplierPN).
-		First(&part).Error
-
-	if err != nil {
-		return 0, err
-	}
-	return part.ID, nil
 }
 
 // findOrCreateMatrixModel finds or creates a MatrixModel in the database

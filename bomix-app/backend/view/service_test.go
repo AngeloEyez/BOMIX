@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"bomix-app/backend/db"
+	"gorm.io/gorm"
 )
 
 // ==================== ViewQuery 與 ViewType 常數測試 ====================
@@ -358,23 +359,45 @@ func TestIsEffectiveBOMStatus(t *testing.T) {
 	})
 }
 
+// setupTestDBForView 建立測試用資料庫
+func setupTestDBForView(t *testing.T) *gorm.DB {
+	database, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatalf("建立記憶體資料庫失敗: %v", err)
+	}
+	if err := db.AutoMigrate(database); err != nil {
+		t.Fatalf("AutoMigrate 失敗: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Close(database)
+	})
+	return database
+}
+
 // TestMergeRevisions_LocationAndQtyAggregation 測試同一 Revision 内同 Type/CCL 的 Location 去重合併與 Qty 重新計算
 func TestMergeRevisions_LocationAndQtyAggregation(t *testing.T) {
-	svc := &Service{}
+	database := setupTestDBForView(t)
+	svc := NewService(database)
+
+	// 建立物料
+	mats := []db.Material{
+		{ID: 1, Supplier: "Samsung", SupplierPN: "CL05B104"},
+	}
+	_ = database.Create(&mats).Error
 
 	rev1Data := &rawRevisionData{
 		revision: db.BomRevision{ID: 1},
-		parts: []db.Part{
-			{ID: 101, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Item: "1"},
-			{ID: 102, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Item: "1"},
-			{ID: 103, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Item: "2"},
+		components: []db.RevisionComponent{
+			{ID: 101, RevisionID: 1, MaterialID: 1, Role: "M", Item: "1"},
+			{ID: 102, RevisionID: 1, MaterialID: 1, Role: "M", Item: "1"},
+			{ID: 103, RevisionID: 1, MaterialID: 1, Role: "M", Item: "2"},
 		},
 		partLocations: []db.PartLocation{
-			{ID: 1, PartID: 101, Location: "C1", Type: "SMD", BomStatus: "I", CCL: false},
-			{ID: 2, PartID: 101, Location: "C2", Type: "SMD", BomStatus: "I", CCL: false},
-			{ID: 3, PartID: 102, Location: "C2", Type: "SMD", BomStatus: "I", CCL: true},
-			{ID: 4, PartID: 102, Location: "C3", Type: "SMD", BomStatus: "I", CCL: true},
-			{ID: 5, PartID: 103, Location: "C4", Type: "PTH", BomStatus: "I", CCL: false},
+			{ID: 1, ComponentID: 101, Location: "C1", Type: "SMD", BomStatus: "I", CCL: false},
+			{ID: 2, ComponentID: 101, Location: "C2", Type: "SMD", BomStatus: "I", CCL: false},
+			{ID: 3, ComponentID: 102, Location: "C2", Type: "SMD", BomStatus: "I", CCL: true},
+			{ID: 4, ComponentID: 102, Location: "C3", Type: "SMD", BomStatus: "I", CCL: true},
+			{ID: 5, ComponentID: 103, Location: "C4", Type: "PTH", BomStatus: "I", CCL: false},
 		},
 	}
 
@@ -382,6 +405,8 @@ func TestMergeRevisions_LocationAndQtyAggregation(t *testing.T) {
 	query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewAll}
 
 	groups := svc.mergeRevisions(rawData, query)
+	_ = svc.hydratePartGroups(groups)
+
 	if len(groups) != 2 {
 		t.Fatalf("期望 2 個物料群組（1個SMD，1個PTH），實際得到 %d 個", len(groups))
 	}
@@ -410,36 +435,41 @@ func TestMergeRevisions_LocationAndQtyAggregation(t *testing.T) {
 
 // TestMergeRevisions_MultipleRevisionsAnd2ndSources 測試多個 Revision 聚合與 2nd Source 判斷組裝
 func TestMergeRevisions_MultipleRevisionsAnd2ndSources(t *testing.T) {
-	svc := &Service{}
+	database := setupTestDBForView(t)
+	svc := NewService(database)
+
+	mats := []db.Material{
+		{ID: 1, Supplier: "Samsung", SupplierPN: "CL05B104"},
+		{ID: 2, Supplier: "Murata", SupplierPN: "GRM155R71C104KA88D"},
+		{ID: 10, Supplier: "Yageo", SupplierPN: "CC0402KRX7R9BB104", HHPN: "HH1001"},
+		{ID: 11, Supplier: "Walsin", SupplierPN: "0402B104K500CT", HHPN: "HH1002"},
+	}
+	_ = database.Create(&mats).Error
 
 	// Rev 1: Part A (Main) + 2nd Source S1
 	rev1Data := &rawRevisionData{
 		revision: db.BomRevision{ID: 1},
-		parts: []db.Part{
-			{ID: 1, RevisionID: 1, Supplier: "Samsung", SupplierPN: "CL05B104", Item: "1"},
+		components: []db.RevisionComponent{
+			{ID: 1, RevisionID: 1, MaterialID: 1, Role: "M", Item: "1"},
+			{ID: 10, RevisionID: 1, MaterialID: 10, Role: "S", ParentComponentID: 1},
 		},
 		partLocations: []db.PartLocation{
-			{ID: 1, PartID: 1, Location: "C1", Type: "SMD", BomStatus: "I", CCL: false},
-		},
-		secondSources: []db.SecondSource{
-			{ID: 10, RevisionID: 1, PartID: 1, Supplier: "Yageo", SupplierPN: "CC0402KRX7R9BB104", HHPN: "HH1001"},
+			{ID: 1, ComponentID: 1, Location: "C1", Type: "SMD", BomStatus: "I", CCL: false},
 		},
 	}
 
 	// Rev 2: Part A (Main) + 2nd Source S1 & S2, plus Part B (Main)
 	rev2Data := &rawRevisionData{
 		revision: db.BomRevision{ID: 2},
-		parts: []db.Part{
-			{ID: 2, RevisionID: 2, Supplier: "Samsung", SupplierPN: "CL05B104", Item: "1"},
-			{ID: 3, RevisionID: 2, Supplier: "Murata", SupplierPN: "GRM155R71C104KA88D", Item: "2"},
+		components: []db.RevisionComponent{
+			{ID: 2, RevisionID: 2, MaterialID: 1, Role: "M", Item: "1"},
+			{ID: 3, RevisionID: 2, MaterialID: 2, Role: "M", Item: "2"},
+			{ID: 11, RevisionID: 2, MaterialID: 10, Role: "S", ParentComponentID: 2},
+			{ID: 12, RevisionID: 2, MaterialID: 11, Role: "S", ParentComponentID: 2},
 		},
 		partLocations: []db.PartLocation{
-			{ID: 2, PartID: 2, Location: "C1", Type: "SMD", BomStatus: "I", CCL: false},
-			{ID: 3, PartID: 3, Location: "C5", Type: "SMD", BomStatus: "I", CCL: false},
-		},
-		secondSources: []db.SecondSource{
-			{ID: 11, RevisionID: 2, PartID: 2, Supplier: "Yageo", SupplierPN: "CC0402KRX7R9BB104", HHPN: "HH1001"},
-			{ID: 12, RevisionID: 2, PartID: 2, Supplier: "Walsin", SupplierPN: "0402B104K500CT", HHPN: "HH1002"},
+			{ID: 2, ComponentID: 2, Location: "C1", Type: "SMD", BomStatus: "I", CCL: false},
+			{ID: 3, ComponentID: 3, Location: "C5", Type: "SMD", BomStatus: "I", CCL: false},
 		},
 	}
 
@@ -447,6 +477,8 @@ func TestMergeRevisions_MultipleRevisionsAnd2ndSources(t *testing.T) {
 	query := ViewQuery{RevisionIDs: []int64{1, 2}, ViewType: ViewAll}
 
 	groups := svc.mergeRevisions(rawData, query)
+	_ = svc.hydratePartGroups(groups)
+
 	if len(groups) != 2 {
 		t.Fatalf("期望 2 個物料群組，實際得到 %d 個", len(groups))
 	}
@@ -490,7 +522,13 @@ func TestMergeRevisions_MultipleRevisionsAnd2ndSources(t *testing.T) {
 // TestMergeRevisions_SequentialModels 驗證當多個 Model 名稱完全相同（如全為 "" 或 "Model"）時，
 // mergeRevisions 仍可依據 SortOrder 順序性正確聚合每個 Model 的 Selection，不會導致舊 Model 被覆蓋。
 func TestMergeRevisions_SequentialModels(t *testing.T) {
-	svc := &Service{}
+	database := setupTestDBForView(t)
+	svc := NewService(database)
+
+	mats := []db.Material{
+		{ID: 1, Supplier: "Yageo", SupplierPN: "R100K"},
+	}
+	_ = database.Create(&mats).Error
 
 	rev1Data := &rawRevisionData{
 		revision: db.BomRevision{ID: 1},
@@ -500,16 +538,16 @@ func TestMergeRevisions_SequentialModels(t *testing.T) {
 			{ID: 11, RevisionID: 1, SortOrder: 1, ModelName: "Model", Qty: 5},
 			{ID: 12, RevisionID: 1, SortOrder: 2, ModelName: "Model", Qty: 10},
 		},
-		parts: []db.Part{
-			{ID: 100, RevisionID: 1, Supplier: "Yageo", SupplierPN: "R100K", Item: "1"},
+		components: []db.RevisionComponent{
+			{ID: 100, RevisionID: 1, MaterialID: 1, Role: "M", Item: "1"},
 		},
 		partLocations: []db.PartLocation{
-			{ID: 1000, PartID: 100, Location: "R1", Type: "SMD", BomStatus: "I", CCL: true},
+			{ID: 1000, ComponentID: 100, Location: "R1", Type: "SMD", BomStatus: "I", CCL: true},
 		},
 		selections: []db.MatrixSelection{
-			{ID: 1, RevisionID: 1, ModelID: 10, PartID: 100, Group: "Yageo|R100K", SelectedSupplierPn: "R100K"},
-			{ID: 2, RevisionID: 1, ModelID: 11, PartID: 100, Group: "Yageo|R100K", SelectedSupplierPn: "R100K"},
-			{ID: 3, RevisionID: 1, ModelID: 12, PartID: 100, Group: "Yageo|R100K", SelectedSupplierPn: "R100K"},
+			{ID: 1, RevisionID: 1, ModelID: 10, ComponentID: 100, MainMaterialID: 1, SelectedMaterialID: 1},
+			{ID: 2, RevisionID: 1, ModelID: 11, ComponentID: 100, MainMaterialID: 1, SelectedMaterialID: 1},
+			{ID: 3, RevisionID: 1, ModelID: 12, ComponentID: 100, MainMaterialID: 1, SelectedMaterialID: 1},
 		},
 	}
 
@@ -517,6 +555,8 @@ func TestMergeRevisions_SequentialModels(t *testing.T) {
 	query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewAll}
 
 	groups := svc.mergeRevisions(rawData, query)
+	_ = svc.hydratePartGroups(groups)
+
 	if len(groups) != 1 {
 		t.Fatalf("期望 1 個物料群組，實際得到 %d 個", len(groups))
 	}
@@ -586,22 +626,29 @@ func TestBuildViewRevisions_Order(t *testing.T) {
 
 // TestMergeRevisions_AllProtoRequiredForPStatus 驗證物料群組必須全部 location 為 P 時 BOMStatus 才為 P
 func TestMergeRevisions_AllProtoRequiredForPStatus(t *testing.T) {
-	svc := &Service{}
+	database := setupTestDBForView(t)
+	svc := NewService(database)
+
+	mats := []db.Material{
+		{ID: 1, Supplier: "Samsung", SupplierPN: "MIXED_PN"},
+		{ID: 2, Supplier: "Samsung", SupplierPN: "ALL_P_PN"},
+	}
+	_ = database.Create(&mats).Error
 
 	revData := &rawRevisionData{
 		revision: db.BomRevision{ID: 1},
-		parts: []db.Part{
-			{ID: 1, RevisionID: 1, Supplier: "Samsung", SupplierPN: "MIXED_PN", Item: "1"},
-			{ID: 2, RevisionID: 1, Supplier: "Samsung", SupplierPN: "ALL_P_PN", Item: "2"},
+		components: []db.RevisionComponent{
+			{ID: 1, RevisionID: 1, MaterialID: 1, Role: "M", Item: "1"},
+			{ID: 2, RevisionID: 1, MaterialID: 2, Role: "M", Item: "2"},
 		},
 		partLocations: []db.PartLocation{
 			// Part 1 (MIXED_PN): 有 2 個 location，一個是 P，一個是 I
-			{ID: 1, PartID: 1, Location: "C1", Type: "SMD", BomStatus: "P", CCL: false},
-			{ID: 2, PartID: 1, Location: "C2", Type: "SMD", BomStatus: "I", CCL: false},
+			{ID: 1, ComponentID: 1, Location: "C1", Type: "SMD", BomStatus: "P", CCL: false},
+			{ID: 2, ComponentID: 1, Location: "C2", Type: "SMD", BomStatus: "I", CCL: false},
 
 			// Part 2 (ALL_P_PN): 有 2 個 location，全都是 P
-			{ID: 3, PartID: 2, Location: "C3", Type: "SMD", BomStatus: "P", CCL: false},
-			{ID: 4, PartID: 2, Location: "C4", Type: "SMD", BomStatus: "P", CCL: false},
+			{ID: 3, ComponentID: 2, Location: "C3", Type: "SMD", BomStatus: "P", CCL: false},
+			{ID: 4, ComponentID: 2, Location: "C4", Type: "SMD", BomStatus: "P", CCL: false},
 		},
 	}
 
@@ -609,6 +656,8 @@ func TestMergeRevisions_AllProtoRequiredForPStatus(t *testing.T) {
 	query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewAll}
 
 	groups := svc.mergeRevisions(rawData, query)
+	_ = svc.hydratePartGroups(groups)
+
 	if len(groups) != 2 {
 		t.Fatalf("期望 2 個物料群組，實際得到 %d 個", len(groups))
 	}
