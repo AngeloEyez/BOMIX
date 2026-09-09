@@ -82,6 +82,7 @@ export interface ViewPartGroup {
      */
     "ccl": boolean;
     "remark": string;
+    "notes": string;
 
     /**
      * 聚合結果（取自第一份有此物料的 revision）
@@ -202,6 +203,7 @@ export interface ViewSecondSource {
     "supplier_pn": string;
     "description": string;
     "remark": string;
+    "notes": string;
 
     /**
      * 包含此替代料的 Revision ID 列表

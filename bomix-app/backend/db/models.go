@@ -71,6 +71,7 @@ type Material struct {
 	HHPN        string         // HH 內部料號（依附於 supplier + supplier_pn）
 	Description string         // 規格描述
 	Remark      string         // 備註（若匯入為空則清空）
+	Notes       string         // 筆記/註記說明（BigMatrix 專用）
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   gorm.DeletedAt `gorm:"index"`

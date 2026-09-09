@@ -248,6 +248,73 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		return newID
 	}
 
+	// notesDataStyleCache 樣式快取：以 [2]int{styleID, isProto(0/1)} 為鍵，
+	// 快取繼承自左側儲存格格式（字體、斑馬紋底色、框線），並設定解鎖、文字靠左對齊、自動換行的樣式。
+	notesDataStyleCache := make(map[[2]int]int)
+
+	// getNotesDataStyle 依據左側儲存格樣式產生 Notes 專屬樣式：
+	// 繼承字體、斑馬紋底色、邊框，並將文字設定為靠左對齊、自動換行、垂直置中，以及設定 Protection.Locked: false。
+	getNotesDataStyle := func(leftSid int, isProto bool) int {
+		if leftSid <= 0 {
+			return leftSid
+		}
+		protoFlag := 0
+		if isProto {
+			protoFlag = 1
+		}
+		key := [2]int{leftSid, protoFlag}
+		if cached, ok := notesDataStyleCache[key]; ok {
+			return cached
+		}
+
+		styleDef, err := f.GetStyle(leftSid)
+		if err != nil || styleDef == nil {
+			return leftSid
+		}
+
+		cp := *styleDef
+		// 1. 解鎖：確保在工作表保護啟用時仍可自由編輯 Notes
+		cp.Protection = &excelize.Protection{Locked: false}
+
+		// 2. 對齊：文字靠左對齊、自動換行、垂直置中 (Row 6 以下)
+		if cp.Alignment != nil {
+			alignCp := *cp.Alignment
+			alignCp.Horizontal = "left"
+			alignCp.WrapText = true
+			if alignCp.Vertical == "" {
+				alignCp.Vertical = "center"
+			}
+			cp.Alignment = &alignCp
+		} else {
+			cp.Alignment = &excelize.Alignment{
+				Horizontal: "left",
+				Vertical:   "center",
+				WrapText:   true,
+			}
+		}
+
+		// 3. PROTO 物料文字色彩支援
+		if isProto {
+			if cp.Font != nil {
+				fontCopy := *cp.Font
+				fontCopy.Color = "#8080C0"
+				cp.Font = &fontCopy
+			} else {
+				cp.Font = &excelize.Font{
+					Color: "#8080C0",
+				}
+			}
+		}
+
+		newID, err := f.NewStyle(&cp)
+		if err != nil || newID <= 0 {
+			notesDataStyleCache[key] = leftSid
+			return leftSid
+		}
+		notesDataStyleCache[key] = newID
+		return newID
+	}
+
 	// 解鎖 BigMatrix 範本靜態區域（行 1-7，欄 A-G）的所有儲存格。
 	// Excel 預設儲存格 Locked: true，若不明確解鎖，啟用工作表保護後這些欄位也會被鎖定。
 	for row := 1; row <= 7; row++ {
@@ -397,6 +464,41 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		currentCol += revModelCount
 	}
 
+	// Notes 欄位：固定置於所有 BOM Revision 之後的最末欄
+	notesCol := currentCol
+	notesColName := getColName(notesCol)
+	leftColName := getColName(notesCol - 1)
+
+	// 為 Notes 欄位的 Row 2~5 表頭套用繼承自左側的樣式（字體、底色、框線）
+	for r := 2; r <= 5; r++ {
+		leftCell := fmt.Sprintf("%s%d", leftColName, r)
+		leftSid, _ := f.GetCellStyle("BigMatrix", leftCell)
+		st := makeUnlocked(leftSid)
+		// 確保字體為粗體，且水平與垂直皆置中對齊
+		if stDef, err := f.GetStyle(st); err == nil && stDef != nil {
+			cp := *stDef
+			cp.Alignment = &excelize.Alignment{
+				Horizontal: "center",
+				Vertical:   "center",
+			}
+			if cp.Font != nil {
+				fontCp := *cp.Font
+				fontCp.Bold = true
+				cp.Font = &fontCp
+			} else {
+				cp.Font = &excelize.Font{Bold: true}
+			}
+			if newID, err := f.NewStyle(&cp); err == nil && newID > 0 {
+				st = newID
+			}
+		}
+		_ = f.SetCellStyle("BigMatrix", fmt.Sprintf("%s%d", notesColName, r), fmt.Sprintf("%s%d", notesColName, r), st)
+	}
+
+	// 合併 Notes 欄位 Row 2~5 並填入 "Notes" 標題
+	_ = f.MergeCell("BigMatrix", fmt.Sprintf("%s2", notesColName), fmt.Sprintf("%s5", notesColName))
+	f.SetCellValue("BigMatrix", fmt.Sprintf("%s2", notesColName), "Notes")
+
 	// Calculate and apply uniform column width for all model columns (H onwards)
 	maxColWidthReq := 3.0
 	padding := 0.5 // 欄寬邊距 (margin) 設定為 1.0
@@ -451,6 +553,9 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		_ = f.SetColWidth("BigMatrix", startColStr, endColStr, maxColWidthReq)
 	}
 
+	// 設定 Notes 欄寬為 55.0，確保備註文字清晰好讀
+	_ = f.SetColWidth("BigMatrix", notesColName, notesColName, 55.0)
+
 	// Helper function to apply styles to a row (columns A-G and dynamic Model columns)
 	applyFullRowStyle := func(f *excelize.File, sheet string, row int, isEven bool, isProto bool) {
 		refRow := 6
@@ -491,6 +596,14 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			}
 			cIdx += revModelCount
 		}
+
+		// Notes 欄：繼承該 row 左側的格式（包含字體、斑馬紋底色、框線），並設定文字靠左對齊、自動換行、解鎖
+		leftColStr := getColName(notesCol - 1)
+		leftCell := fmt.Sprintf("%s%d", leftColStr, row)
+		leftSid, _ := f.GetCellStyle(sheet, leftCell)
+		notesSt := getNotesDataStyle(leftSid, isProto)
+		notesCell := fmt.Sprintf("%s%d", notesColName, row)
+		_ = f.SetCellStyle(sheet, notesCell, notesCell, notesSt)
 	}
 
 	// 灰色底色樣式快取：以 [4]bool{左粗黑, 右粗黑, 頂細黑, 底細黑} 為鍵，動態建立並快取。
@@ -639,7 +752,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	}
 
 	// 清空範本檔在 Row 6 與 Row 7 殘留的預設範例文字 (避免替代料列或資料列少於 2 列時殘留範本舊文字)
-	maxClearCols := currentCol
+	maxClearCols := notesCol + 1
 	if maxClearCols < 26 {
 		maxClearCols = 26
 	}
@@ -669,6 +782,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		f.SetCellValue("BigMatrix", fmt.Sprintf("E%d", rowIndex), stringOrNil(part.SupplierPn))
 		f.SetCellValue("BigMatrix", fmt.Sprintf("F%d", rowIndex), part.Qty)
 		f.SetCellValue("BigMatrix", fmt.Sprintf("G%d", rowIndex), stringOrNil(part.Location))
+		f.SetCellValue("BigMatrix", fmt.Sprintf("%s%d", notesColName, rowIndex), stringOrNil(part.Notes))
 
 		// 8.1.5.3 - Write Model selections
 		// 若物料在某 BOM Revision 中不存在，將對應的所有 Model 欄位填入灰色底色
@@ -735,6 +849,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			f.SetCellValue("BigMatrix", fmt.Sprintf("C%d", rowIndex), stringOrNil(ss.Description))
 			f.SetCellValue("BigMatrix", fmt.Sprintf("D%d", rowIndex), stringOrNil(ss.Supplier))
 			f.SetCellValue("BigMatrix", fmt.Sprintf("E%d", rowIndex), stringOrNil(ss.SupplierPn))
+			f.SetCellValue("BigMatrix", fmt.Sprintf("%s%d", notesColName, rowIndex), stringOrNil(ss.Notes))
 
 			// 替代料也需要處理灰色底色
 			// 規則：當主料在當前 rev 本身不存在，或該 2nd Source 不在對應 rev 中，填入灰色底色
@@ -1041,6 +1156,12 @@ func getRevisionModelCount(rev RevisionData, parts []PartData, override int) int
 				}
 			}
 		}
+	}
+
+	// 若該 Revision 存在基本資訊 (ProjectCode, Phase, Version 等)，但尚未定義任何 Model 或 Qty，
+	// 預設至少提供 1 個 Model 欄位 (Model A)，避免整份 Revision 在 Excel 匯出中遺失。
+	if count == 0 && (rev.ID != "" || rev.ProjectCode != "" || rev.Phase != "" || rev.Version != "") {
+		count = 1
 	}
 
 	return count

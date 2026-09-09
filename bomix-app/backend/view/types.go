@@ -40,6 +40,7 @@ type ViewSecondSource struct {
 	SupplierPN        string          `json:"supplier_pn"`
 	Description       string          `json:"description"`
 	Remark            string          `json:"remark"`
+	Notes             string          `json:"notes"`
 	SourceRevisionIDs []int64         `json:"source_revision_ids"` // 包含此替代料的 Revision ID 列表
 	SelectionsByOrder map[int]bool    `json:"selections_by_order"` // Model SortOrder -> 該 2nd Source 是否被勾選
 }
@@ -86,6 +87,7 @@ type ViewPartGroup struct {
 	BOMStatus   string `json:"bom_status"` // I, X, P, M
 	CCL         bool   `json:"ccl"`        // 是否含有 CCL location (bool)
 	Remark      string `json:"remark"`
+	Notes       string `json:"notes"`
 
 	// 聚合結果（取自第一份有此物料的 revision）
 	Qty       int    `json:"qty"`

@@ -125,6 +125,10 @@ func (r *BigMatrixReader) parseBOMConfigs(f Workbook, sheetName string) ([]BOMCo
 		if strings.TrimSpace(valProj) == "" {
 			break
 		}
+		// 若遇到 Notes 欄位（Row 2="Notes" 且 Row 3~5 為空），代表已達最末欄，停止掃描 BOM
+		if isNotesColumn(f, sheetName, startCol) {
+			break
+		}
 		projectCode := parseHeaderField(valProj, "Product Code", "Project Code")
 
 		// 讀取 Row 3 取得 Revision（如 "PV-0.3"），解析 Phase 與 Version
@@ -150,8 +154,11 @@ func (r *BigMatrixReader) parseBOMConfigs(f Workbook, sheetName string) ([]BOMCo
 		var models []ModelConfig
 		colIdx := startCol
 		for {
-			// 若非該 BOM 的第一欄，檢查是否遇到下一個 BOM 區段的開頭。
+			// 若非該 BOM 的第一欄，檢查是否遇到下一個 BOM 區段的開頭或 Notes 欄位。
 			if colIdx > startCol {
+				if isNotesColumn(f, sheetName, colIdx) {
+					break
+				}
 				nextModelName, _ := f.GetCellValue(sheetName, colToCell(colIdx, 4))
 				nextModelName = strings.TrimSpace(nextModelName)
 
@@ -277,6 +284,54 @@ func colToCell(col int, row int) string {
 	return fmt.Sprintf("%s%d", colStr, row)
 }
 
+// isNotesColumn 判定特定欄位是否為 Notes 欄位。
+// 依據規格與實作特性：
+//   1. Row 2 必須為 "Notes"（不分大小寫）。
+//   2. 未合併儲存格時：Row 3~5 皆為空值。
+//   3. 合併儲存格（Row 2~5 合併）時：在 Excelize 中讀取子儲存格亦會回傳 Master Cell 之內容 ("Notes")。
+//   因此，若 Row 2=="Notes"，且 Row 3~5 之值皆為空值或皆為 "Notes"（非相異之版本、品名、數量內容），則認定為 Notes 欄位。
+func isNotesColumn(f Workbook, sheetName string, col int) bool {
+	val2, _ := f.GetCellValue(sheetName, colToCell(col, 2))
+	if !strings.EqualFold(strings.TrimSpace(val2), "notes") {
+		return false
+	}
+
+	val3, _ := f.GetCellValue(sheetName, colToCell(col, 3))
+	val4, _ := f.GetCellValue(sheetName, colToCell(col, 4))
+	val5, _ := f.GetCellValue(sheetName, colToCell(col, 5))
+
+	isChildEmptyOrNotes := func(v string) bool {
+		trimmed := strings.TrimSpace(v)
+		return trimmed == "" || strings.EqualFold(trimmed, "notes")
+	}
+
+	return isChildEmptyOrNotes(val3) && isChildEmptyOrNotes(val4) && isChildEmptyOrNotes(val5)
+}
+
+// findNotesColumn 尋找 BigMatrix 表格中的 Notes 欄位索引。
+// 從 H 欄（索引 7）開始向右搜尋，若符合 Row 2="Notes" 且 Row 3~5 為空則回傳該 0-based 欄號；
+// 若未找到則回傳 -1。
+func findNotesColumn(f Workbook, sheetName string) int {
+	for col := 7; col < 200; col++ {
+		if isNotesColumn(f, sheetName, col) {
+			return col
+		}
+		// 若連續多欄的 Row 2~5 皆為空，代表已超出資料表範圍，提前結束搜尋
+		val2, _ := f.GetCellValue(sheetName, colToCell(col, 2))
+		val3, _ := f.GetCellValue(sheetName, colToCell(col, 3))
+		val4, _ := f.GetCellValue(sheetName, colToCell(col, 4))
+		val5, _ := f.GetCellValue(sheetName, colToCell(col, 5))
+		if strings.TrimSpace(val2) == "" && strings.TrimSpace(val3) == "" &&
+			strings.TrimSpace(val4) == "" && strings.TrimSpace(val5) == "" {
+			nextVal2, _ := f.GetCellValue(sheetName, colToCell(col+1, 2))
+			if strings.TrimSpace(nextVal2) == "" {
+				break
+			}
+		}
+	}
+	return -1
+}
+
 // findExistingBOMRevision 在資料庫中查詢符合 ProjectCode、Phase、Version 的 BOM Revision。
 // BigMatrix 匯入不建立新的 Project 或 Revision，若找不到則回傳 found=false。
 // 回傳值：(revisionID int64, found bool, err error)
@@ -395,6 +450,10 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 	var selectionsToCreate []db.MatrixSelection
 	seenSelections := make(map[string]bool)
 
+	// 檢測是否存在 Notes 欄位（Row 2="Notes" 且 Row 3~5 為空）
+	notesCol := findNotesColumn(f, sheetName)
+	notesMap := make(map[string]string)
+
 	// 追蹤每個 Revision 當前群組的主料 Component 指標
 	currentMainCompMap := make(map[int64]*bigMatrixCompMatch)
 
@@ -416,6 +475,12 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 		validPartCount++
 
 		rowSupplierKey := fmt.Sprintf("%s|%s", partData.supplier, partData.supplierPN)
+
+		// 若存在 Notes 欄位，讀取此列物料對應的 notes 內容
+		if notesCol >= 0 {
+			notesVal, _ := f.GetCellValue(sheetName, colToCell(notesCol, i+1))
+			notesMap[rowSupplierKey] = strings.TrimSpace(notesVal)
+		}
 
 		// 更新每個 BOM Revision 當前的主料狀態
 		for _, config := range configs {
@@ -491,6 +556,17 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 	if len(selectionsToCreate) > 0 && r.db != nil {
 		if err := r.db.Create(&selectionsToCreate).Error; err != nil {
 			return fmt.Errorf("批次建立 MatrixSelections 失敗: %w", err)
+		}
+	}
+
+	// 批次更新 Material 表的 notes 欄位（僅更新 notes，不變動其餘屬性）
+	if notesCol >= 0 && len(notesMap) > 0 && r.db != nil {
+		updatedNotesCount, err := db.UpdateMaterialNotes(r.db, notesMap, r.logger)
+		if err != nil {
+			return fmt.Errorf("批次更新 Material notes 失敗: %w", err)
+		}
+		if r.result != nil {
+			r.result.MaterialsUpdated = updatedNotesCount
 		}
 	}
 

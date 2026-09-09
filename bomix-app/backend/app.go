@@ -1168,6 +1168,7 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64, gro
 				SupplierPn:        ss.SupplierPN,
 				Description:       ss.Description,
 				Remark:            ss.Remark,
+				Notes:             ss.Notes,
 				SourceRevisionIDs: ss.SourceRevisionIDs,
 				SelectionsByOrder: ss.SelectionsByOrder,
 			})
@@ -1185,6 +1186,7 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64, gro
 			BOMStatus:                    pg.BOMStatus,
 			CCL:                          pg.CCL,
 			Remark:                       pg.Remark,
+			Notes:                        pg.Notes,
 			SecondSources:                ssData,
 			Selections:                   selections,
 			SelectionsByOrder:            selectionsByOrder,

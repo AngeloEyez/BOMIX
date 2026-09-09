@@ -49,6 +49,7 @@ type PartData struct {
 	BOMStatus                    string
 	CCL                          bool
 	Remark                       string
+	Notes                        string
 	SecondSources                []SecondSourceData
 	Selections                   map[string]string            // Model Name -> Supplier PN mapping (單一 Revision)
 	SelectionsByOrder            map[int]string               // Model SortOrder (0,1,2...) -> Supplier PN mapping (單一 Revision)
@@ -73,6 +74,7 @@ type SecondSourceData struct {
 	SupplierPn        string
 	Description       string
 	Remark            string
+	Notes             string
 	SourceRevisionIDs []int64      // 包含此替代料的 Revision ID 列表
 	SelectionsByOrder map[int]bool // Model SortOrder -> 該 2nd Source 是否被勾選
 }

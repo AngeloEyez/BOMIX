@@ -670,6 +670,7 @@ func (s *Service) hydratePartGroups(partGroups []ViewPartGroup) error {
 			g.HHPN = mat.HHPN
 			g.Description = mat.Description
 			g.Remark = mat.Remark
+			g.Notes = mat.Notes
 		}
 
 		for j := range g.SecondSources {
@@ -680,6 +681,7 @@ func (s *Service) hydratePartGroups(partGroups []ViewPartGroup) error {
 				ss.HHPN = mat.HHPN
 				ss.Description = mat.Description
 				ss.Remark = mat.Remark
+				ss.Notes = mat.Notes
 			}
 		}
 
@@ -873,6 +875,7 @@ func MergePartGroupsByMaterial(groups []ViewPartGroup) []ViewPartGroup {
 					BOMStatus:             g.BOMStatus,
 					CCL:                   g.CCL,
 					Remark:                g.Remark,
+					Notes:                 g.Notes,
 					SourceRevisionIDs:     append([]int64(nil), g.SourceRevisionIDs...),
 					MainSelectionsByOrder: mainSelMap,
 				},
@@ -901,6 +904,9 @@ func MergePartGroupsByMaterial(groups []ViewPartGroup) []ViewPartGroup {
 			}
 			if b.group.Remark == "" && g.Remark != "" {
 				b.group.Remark = g.Remark
+			}
+			if b.group.Notes == "" && g.Notes != "" {
+				b.group.Notes = g.Notes
 			}
 
 			// Locations 聯集
@@ -954,6 +960,9 @@ func MergePartGroupsByMaterial(groups []ViewPartGroup) []ViewPartGroup {
 				} else {
 					for _, rID := range ss.SourceRevisionIDs {
 						existingSS.SourceRevisionIDs = appendUnique(existingSS.SourceRevisionIDs, rID)
+					}
+					if existingSS.Notes == "" && ss.Notes != "" {
+						existingSS.Notes = ss.Notes
 					}
 					for order, isSel := range ss.SelectionsByOrder {
 						if isSel {

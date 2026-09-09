@@ -94,6 +94,7 @@ erDiagram
         string hhpn "內部料號 (空白防護)"
         string description "物料描述 (空白防護)"
         string remark "註記 (允許清空為空白)"
+        string notes "筆記/備註說明 (BigMatrix 專用)"
         datetime created_at "建立時間"
         datetime updated_at "更新時間"
     }
@@ -209,6 +210,7 @@ erDiagram
 | `hhpn` | `string` / `TEXT` | | 內部料號（具備空白覆寫防護） |
 | `description` | `string` / `TEXT` | | 物料描述（具備空白覆寫防護） |
 | `remark` | `string` / `TEXT` | | 註記（排除空白防護，允許更新為空字串） |
+| `notes` | `string` / `TEXT` | | 筆記/備註說明（BigMatrix 專用，匯入時僅更新此欄位） |
 | `created_at` | `time.Time` / `DATETIME` | | 建立時間 |
 | `updated_at` | `time.Time` / `DATETIME` | | 更新時間 |
 

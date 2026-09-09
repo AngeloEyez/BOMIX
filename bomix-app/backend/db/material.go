@@ -289,3 +289,82 @@ func GetMaterialsMapByIDs(db *gorm.DB, ids []int64) (map[int64]Material, error) 
 func GetMaterialMapBySupplierPNs(db *gorm.DB, keys []string) (map[string]Material, error) {
 	return getExistingMaterialsMap(db, keys)
 }
+
+// UpdateMaterialNotes 依據 (supplier|supplier_pn) 鍵值映射批次更新 Material 的 notes 欄位。
+// 僅在 BigMatrix 匯入時呼叫。
+//
+// 處理原則：
+//   1. 僅更新資料庫中已存在的 Material，若物料不存在則忽略，不新增資料。
+//   2. 僅更新 notes 與 updated_at，不變動 supplier, supplier_pn, hhpn, description, remark 等其餘屬性。
+//   3. 當 notes 內容與既有值不同時（包含清空為空字串）才執行 UPDATE。
+//
+// 參數：
+//   - db：GORM 資料庫連線
+//   - notesMap：以 "supplier|supplier_pn" 為鍵，notes 內容為值的字典
+//   - lg：日誌記錄器（可為 nil）
+//
+// 回傳：
+//   - updated：實際更新的 Material 筆數
+//   - err：資料庫操作錯誤
+func UpdateMaterialNotes(db *gorm.DB, notesMap map[string]string, lg MatrixLogger) (int, error) {
+	if lg != nil {
+		v := reflect.ValueOf(lg)
+		if v.Kind() == reflect.Ptr && v.IsNil() {
+			lg = nil
+		}
+	}
+
+	if len(notesMap) == 0 {
+		return 0, nil
+	}
+
+	keys := make([]string, 0, len(notesMap))
+	for k := range notesMap {
+		keys = append(keys, k)
+	}
+
+	updated := 0
+	err := db.Transaction(func(tx *gorm.DB) error {
+		existingMap, err := getExistingMaterialsMap(tx, keys)
+		if err != nil {
+			return fmt.Errorf("查詢既有 Material 失敗: %w", err)
+		}
+
+		now := time.Now()
+		for key, newNotes := range notesMap {
+			existing, found := existingMap[key]
+			if !found {
+				// 規格要求：僅更新既有物料，不新增，亦不變動其他屬性
+				continue
+			}
+
+			// 若 notes 內容有變更，才執行更新（包含清空為空字串）
+			if strings.TrimSpace(existing.Notes) != newNotes {
+				updates := map[string]any{
+					"notes":      newNotes,
+					"updated_at": now,
+				}
+				if err := tx.Model(&Material{}).Where("id = ?", existing.ID).Updates(updates).Error; err != nil {
+					return fmt.Errorf("更新 Material (ID=%d) notes 失敗: %w", existing.ID, err)
+				}
+				updated++
+				if lg != nil {
+					lg.Debug(fmt.Sprintf("[Material Notes 更新] %s (ID=%d): '%s' -> '%s'",
+						key, existing.ID, existing.Notes, newNotes))
+				}
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	if lg != nil && updated > 0 {
+		lg.Info(fmt.Sprintf("[Material Notes 更新完成] 成功更新: %d 筆", updated))
+	}
+
+	return updated, nil
+}
+
