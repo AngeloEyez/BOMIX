@@ -686,4 +686,61 @@ func TestMergeRevisions_AllProtoRequiredForPStatus(t *testing.T) {
 	}
 }
 
+// TestMergeRevisions_NIViewSupport 驗證不上件 (BomStatus=X) 物料能正確歸納為 X 並在 NI 視圖中被查詢出
+func TestMergeRevisions_NIViewSupport(t *testing.T) {
+	database := setupTestDBForView(t)
+	svc := NewService(database)
+
+	mats := []db.Material{
+		{ID: 10, Supplier: "Foxconn", SupplierPN: "PHCX01G11012"},
+		{ID: 11, Supplier: "Naxin", SupplierPN: "101068500"},
+	}
+	_ = database.Create(&mats).Error
+
+	revData := &rawRevisionData{
+		revision: db.BomRevision{ID: 1},
+		components: []db.RevisionComponent{
+			{ID: 101, RevisionID: 1, MaterialID: 10, Role: "M", Item: "5"},
+			{ID: 102, RevisionID: 1, MaterialID: 11, Role: "M", Item: "6"},
+		},
+		partLocations: []db.PartLocation{
+			// Part 10 (Foxconn): 只有一個 location @U4，狀態為 X
+			{ID: 1, ComponentID: 101, Location: "@U4", Type: "", BomStatus: "X", CCL: true},
+			// Part 11 (Naxin): location 為 @U4，狀態為 I (PTH)
+			{ID: 2, ComponentID: 102, Location: "@U4", Type: "PTH", BomStatus: "I", CCL: true},
+		},
+	}
+
+	rawData := map[int64]*rawRevisionData{1: revData}
+
+	// 1. 測試 mergeRevisions 聚合結果
+	groups := svc.mergeRevisions(rawData, ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewAll})
+	_ = svc.hydratePartGroups(groups)
+
+	if len(groups) != 2 {
+		t.Fatalf("mergeRevisions 期望產出 2 個物料群組（Foxconn NI 與 Naxin PTH），實際得到 %d 個", len(groups))
+	}
+
+	filter := NewFilter()
+
+	// 2. 測試 NI 視圖過濾
+	niResult := filter.Apply(groups, ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewNI})
+	if len(niResult) != 1 {
+		t.Fatalf("ViewNI 視圖期望過濾出 1 個群組，實際得到 %d 個", len(niResult))
+	}
+	if niResult[0].MainSupplierPN != "PHCX01G11012" || niResult[0].BOMStatus != "X" || niResult[0].Locations != "@U4" {
+		t.Errorf("ViewNI 結果不符預期: %+v", niResult[0])
+	}
+
+	// 3. 測試 ALL 視圖過濾（應排除 X，僅保留 Naxin）
+	allResult := filter.Apply(groups, ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewAll})
+	if len(allResult) != 1 {
+		t.Fatalf("ViewAll 視圖期望過濾出 1 個群組，實際得到 %d 個", len(allResult))
+	}
+	if allResult[0].MainSupplierPN != "101068500" || allResult[0].BOMStatus != "I" {
+		t.Errorf("ViewAll 結果不符預期: %+v", allResult[0])
+	}
+}
+
+
 

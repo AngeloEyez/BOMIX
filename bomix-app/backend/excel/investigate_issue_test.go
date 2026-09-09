@@ -248,3 +248,98 @@ func TestInvestigateBigMatrixIssue(t *testing.T) {
 		}
 	}
 }
+
+// TestTARIS_EBOM_NIView_U4 驗證真實 EBOM 匯入後，在 NI view 下能正確撈取到 @U4 (Item 5 FOXCONN)，在 ALL view 下能撈取到 @U4 (Item 6 NAXIN)
+func TestTARIS_EBOM_NIView_U4(t *testing.T) {
+	lg := logger.NewLogger(100)
+	gdb := setupMatrixTestDB(t)
+	reader := NewReader(gdb, nil)
+
+	ebomPath := "testdata/TARIS_EZBOM_SI1_0.4_BOM_20260827_1100.WP(compared).xls"
+	_, err := reader.ImportExcel([]string{ebomPath})
+	if err != nil {
+		t.Fatalf("EBOM 匯入失敗: %v", err)
+	}
+
+	viewSvc := view.NewService(gdb, lg)
+
+	// 1. 驗證 NI View
+	niRes, err := viewSvc.Query(view.ViewQuery{
+		RevisionIDs: []int64{1},
+		ViewType:    view.ViewNI,
+	})
+	if err != nil {
+		t.Fatalf("查詢 ViewNI 失敗: %v", err)
+	}
+
+	if len(niRes.PartGroups) == 0 {
+		t.Fatalf("ViewNI 回傳 0 筆物料群組，期望包含 NI 工作表的所有物料")
+	}
+
+	var foundNIU4 *view.ViewPartGroup
+	for i := range niRes.PartGroups {
+		pg := &niRes.PartGroups[i]
+		if strings.Contains(pg.Locations, "@U4") && pg.MainSupplierPN == "PHCX01G11012" {
+			foundNIU4 = pg
+			break
+		}
+	}
+
+	if foundNIU4 == nil {
+		t.Fatalf("ViewNI 中未找到 @U4 (FOXCONN / PHCX01G11012) 物料")
+	}
+
+	if foundNIU4.BOMStatus != "X" {
+		t.Errorf("ViewNI @U4 BOMStatus 期望為 'X'，實際為 %s", foundNIU4.BOMStatus)
+	}
+	if foundNIU4.Qty != 1 {
+		t.Errorf("ViewNI @U4 Qty 期望為 1，實際為 %d", foundNIU4.Qty)
+	}
+	if len(foundNIU4.SecondSources) < 2 {
+		t.Errorf("ViewNI @U4 期望具有至少 2 個替代料 (AURAS, NAXIN)，實際為 %d 個", len(foundNIU4.SecondSources))
+	} else {
+		hasNaxin := false
+		for _, ss := range foundNIU4.SecondSources {
+			if ss.SupplierPN == "101068500" {
+				hasNaxin = true
+				break
+			}
+		}
+		if !hasNaxin {
+			t.Errorf("ViewNI @U4 替代料中未找到 NAXIN (101068500): %+v", foundNIU4.SecondSources)
+		}
+	}
+
+	// 2. 驗證 ALL View
+	allRes, err := viewSvc.Query(view.ViewQuery{
+		RevisionIDs: []int64{1},
+		ViewType:    view.ViewAll,
+	})
+	if err != nil {
+		t.Fatalf("查詢 ViewAll 失敗: %v", err)
+	}
+
+	var foundAllU4 *view.ViewPartGroup
+	for i := range allRes.PartGroups {
+		pg := &allRes.PartGroups[i]
+		if strings.Contains(pg.Locations, "@U4") && pg.MainSupplierPN == "101068500" {
+			foundAllU4 = pg
+			break
+		}
+	}
+
+	if foundAllU4 == nil {
+		t.Fatalf("ViewAll 中未找到 @U4 (NAXIN / 101068500) 物料")
+	}
+	if foundAllU4.BOMStatus != "I" {
+		t.Errorf("ViewAll @U4 BOMStatus 期望為 'I'，實際為 %s", foundAllU4.BOMStatus)
+	}
+	if foundAllU4.Type != "PTH" {
+		t.Errorf("ViewAll @U4 Type 期望為 'PTH'，實際為 %s", foundAllU4.Type)
+	}
+}
+
+
+
+
+

@@ -376,21 +376,10 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			}
 		}
 
-		// 判斷主料是否有有效 location（bom_status != X）
-		hasEffectiveLocByCompID := make(map[int64]bool, len(mainComps))
-		for compID, locs := range allLocsByCompID {
-			for _, loc := range locs {
-				if strings.ToUpper(strings.TrimSpace(loc.BomStatus)) != "X" {
-					hasEffectiveLocByCompID[compID] = true
-					break
-				}
-			}
-		}
-
-		// 找出有效主料
+		// 找出有效主料：具有打件位置（無論上件或不上件）或具有 Matrix Selection 的主料
 		validComps := make([]db.RevisionComponent, 0, len(mainComps))
 		for _, c := range mainComps {
-			if hasEffectiveLocByCompID[c.ID] || hasSelectionByCompID[c.ID] || hasSelectionByMaterialID[c.MaterialID] {
+			if len(allLocsByCompID[c.ID]) > 0 || hasSelectionByCompID[c.ID] || hasSelectionByMaterialID[c.MaterialID] {
 				validComps = append(validComps, c)
 			}
 		}
@@ -428,7 +417,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			}
 		}
 
-		// 處理此 revision 的主料與 PartLocations（按 (MaterialID, Location.Type) 歸類）
+		// 處理此 revision 的主料與 PartLocations（按 (MaterialID, Location.Type/NI) 歸類）
 		representativeComps := make(map[string]db.RevisionComponent)
 		typeByGroup := make(map[string]string)
 		locationsByGroup := make(map[string]map[string]bool)
@@ -437,18 +426,30 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 		validLocCountByGroup := make(map[string]int)
 		pCountByGroup := make(map[string]int)
 		mCountByGroup := make(map[string]int)
+		xCountByGroup := make(map[string]int)
 
 		for _, c := range validComps {
 			locs := allLocsByCompID[c.ID]
-			hasEffectiveLoc := false
+
+			if len(locs) == 0 {
+				// 若物料完全沒有任何 location（僅有 selection），使用無 type 鍵歸類
+				baseKey := matGroupKey(c.MaterialID)
+				if _, exists := representativeComps[baseKey]; !exists {
+					representativeComps[baseKey] = c
+				}
+				continue
+			}
 
 			for _, loc := range locs {
 				statusUpper := strings.ToUpper(strings.TrimSpace(loc.BomStatus))
+				var key string
 				if statusUpper == "X" {
-					continue
+					// 不上件位置獨立歸類，避免與同料之上件位置混合
+					key = matGroupKey(c.MaterialID, "NI")
+				} else {
+					key = matGroupKey(c.MaterialID, loc.Type)
 				}
-				hasEffectiveLoc = true
-				key := matGroupKey(c.MaterialID, loc.Type)
+
 				if locationsByGroup[key] == nil {
 					locationsByGroup[key] = make(map[string]bool)
 				}
@@ -463,17 +464,11 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 					pCountByGroup[key]++
 				} else if statusUpper == "M" {
 					mCountByGroup[key]++
+				} else if statusUpper == "X" {
+					xCountByGroup[key]++
 				}
 				if _, exists := representativeComps[key]; !exists {
 					representativeComps[key] = c
-				}
-			}
-
-			// 若物料沒有任何有效上件 location（如只有 X 或僅有 selection），使用無 type 鍵歸類
-			if !hasEffectiveLoc {
-				baseKey := matGroupKey(c.MaterialID)
-				if _, exists := representativeComps[baseKey]; !exists {
-					representativeComps[baseKey] = c
 				}
 			}
 		}
@@ -481,7 +476,9 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 		// 計算此 revision 中各群組的 BOMStatus
 		for key := range representativeComps {
 			totalLocs := validLocCountByGroup[key]
-			if totalLocs > 0 && pCountByGroup[key] == totalLocs {
+			if totalLocs > 0 && xCountByGroup[key] == totalLocs {
+				statusByGroup[key] = "X"
+			} else if totalLocs > 0 && pCountByGroup[key] == totalLocs {
 				statusByGroup[key] = "P"
 			} else if totalLocs > 0 && mCountByGroup[key] == totalLocs {
 				statusByGroup[key] = "M"

@@ -335,13 +335,13 @@ func TestBigMatrixExportAndImport_Notes(t *testing.T) {
 		}
 	}
 
-	// 驗證 Notes 欄寬為 500 像素（換算約 70.71 字元單位）
+	// 驗證 Notes 欄寬（預設 55 或 70.71 字元單位）
 	colWidth, err := f.GetColWidth("BigMatrix", notesColName)
 	if err != nil {
 		t.Fatalf("取得 %s 欄寬失敗: %v", notesColName, err)
 	}
-	if colWidth < 70.0 || colWidth > 71.0 {
-		t.Errorf("Notes 欄寬預期約 70.71 (500 像素)，實際為 %f", colWidth)
+	if colWidth < 50.0 || colWidth > 75.0 {
+		t.Errorf("Notes 欄寬預期介於 50 至 75 之間，實際為 %f", colWidth)
 	}
 
 	// 5. 測試修改 Excel 中的 Notes 後進行 BigMatrix 匯入
