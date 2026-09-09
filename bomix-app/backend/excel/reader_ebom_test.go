@@ -946,7 +946,7 @@ func TestEBOMReader_DuplicateLocation(t *testing.T) {
 		}
 
 		err = reader.Import(wb)
-		if err != nil {
+		if err != nil && !task.IsWarningError(err) {
 			t.Fatalf("預期 Import 成功 (NI/MP 應自動略過重複位號)，但得到錯誤: %v", err)
 		}
 
@@ -1098,6 +1098,188 @@ func TestEBOMReader_DuplicateLocation(t *testing.T) {
 	})
 }
 
+// TestEBOM_NILocationDuplicationAndPhase2StrictOverride 測試：
+// 1. NI 工作表之 Location 允許與主製程 (SMD/PTH/BOTTOM) 重複並成功成立獨立記錄 (BomStatus="X")
+// 2. 主製程 (SMD/PTH) 之間若有重複 Location 依然嚴格報錯 ErrDuplicateLocation
+// 3. Phase 2 狀態覆寫依 (Supplier, SupplierPN, Location) 複合鍵嚴格比對
+// 4. PROTO 僅覆蓋 BomStatus="I" 的記錄；MP 僅覆蓋 BomStatus="X" 的記錄；CCL 則全面覆蓋
+func TestEBOM_NILocationDuplicationAndPhase2StrictOverride(t *testing.T) {
+	t.Run("NI 表與 SMD 重複 Location 正常成立紀錄，且 Phase 2 依複合鍵與前置條件嚴格覆寫", func(t *testing.T) {
+		database := setupEBOMTestDB(t)
+		series, err := db.CreateSeries(database, "TEST_SERIES", "Test Series")
+		if err != nil {
+			t.Fatalf("CreateSeries failed: %v", err)
+		}
+		_, err = db.GetOrCreateProject(database, series.ID, "PROJ_DUP_TEST", "Test Project")
+		if err != nil {
+			t.Fatalf("GetOrCreateProject failed: %v", err)
+		}
 
+		f := excelize.NewFile()
+		wb := &ExcelizeWorkbook{f: f}
+		defer f.Close()
 
+		f.NewSheet("SMD")
+		f.SetCellValue("SMD", "B3", "Product Code: PROJ_DUP_TEST")
+		f.SetCellValue("SMD", "J3", "Phase: EVT")
+		f.SetCellValue("SMD", "H3", "BOM Version: 0.1")
+		// SMD 主料 A: @U4, R1
+		f.SetCellValue("SMD", "A6", "1")
+		f.SetCellValue("SMD", "F6", "SupplierA")
+		f.SetCellValue("SMD", "G6", "PN-A")
+		f.SetCellValue("SMD", "I6", "@U4, R1")
 
+		f.NewSheet("PTH")
+		// PTH 主料 PTH: C1
+		f.SetCellValue("PTH", "A6", "1")
+		f.SetCellValue("PTH", "F6", "SupplierPTH")
+		f.SetCellValue("PTH", "G6", "PN-PTH")
+		f.SetCellValue("PTH", "I6", "C1")
+
+		f.NewSheet("NI")
+		// NI 主料 B: @U4, R2 （其中 @U4 與 SMD 的主料 A 重複）
+		f.SetCellValue("NI", "A6", "1")
+		f.SetCellValue("NI", "F6", "SupplierB")
+		f.SetCellValue("NI", "G6", "PN-B")
+		f.SetCellValue("NI", "I6", "@U4, R2")
+
+		f.NewSheet("PROTO")
+		// PROTO 1: 指向 SupplierA / PN-A 的 @U4（原狀態為 "I" -> 應成功覆寫為 "P"）
+		f.SetCellValue("PROTO", "F6", "SupplierA")
+		f.SetCellValue("PROTO", "G6", "PN-A")
+		f.SetCellValue("PROTO", "I6", "@U4")
+		// PROTO 2: 指向 SupplierB / PN-B 的 @U4（原狀態為 "X"，非 "I" -> 不應被 PROTO 覆寫，維持 "X"）
+		f.SetCellValue("PROTO", "F7", "SupplierB")
+		f.SetCellValue("PROTO", "G7", "PN-B")
+		f.SetCellValue("PROTO", "I7", "@U4")
+
+		f.NewSheet("MP")
+		// MP 1: 指向 SupplierB / PN-B 的 R2（原狀態為 "X" -> 應成功覆寫為 "M"）
+		f.SetCellValue("MP", "F6", "SupplierB")
+		f.SetCellValue("MP", "G6", "PN-B")
+		f.SetCellValue("MP", "I6", "R2")
+		// MP 2: 指向 SupplierA / PN-A 的 R1（原狀態為 "I"，非 "X" -> 不應被 MP 覆寫，維持 "I"）
+		f.SetCellValue("MP", "F7", "SupplierA")
+		f.SetCellValue("MP", "G7", "PN-A")
+		f.SetCellValue("MP", "I7", "R1")
+
+		f.NewSheet("CCL")
+		// CCL 1: 指向 SupplierA / PN-A 的 @U4（全面覆蓋 -> 應成功設為 ccl=true）
+		f.SetCellValue("CCL", "F6", "SupplierA")
+		f.SetCellValue("CCL", "G6", "PN-A")
+		f.SetCellValue("CCL", "I6", "@U4")
+
+		logBuffer := logger.NewLogger(100)
+		reader := &EBOMReader{
+			db:     database,
+			logger: logBuffer,
+		}
+
+		if err := reader.Import(wb); err != nil {
+			t.Fatalf("匯入失敗: %v", err)
+		}
+
+		// 1. 驗證資料庫中存在兩筆 @U4 紀錄
+		var u4Locations []db.PartLocation
+		if err := database.Where("location = ?", "@U4").Find(&u4Locations).Error; err != nil {
+			t.Fatalf("查詢 @U4 失敗: %v", err)
+		}
+		if len(u4Locations) != 2 {
+			t.Fatalf("預期 @U4 有 2 筆獨立紀錄，實際取得 %d 筆", len(u4Locations))
+		}
+
+		// 2. 驗證各自 Component 的 Supplier 與狀態
+		for _, loc := range u4Locations {
+			var comp db.RevisionComponent
+			if err := database.First(&comp, loc.ComponentID).Error; err != nil {
+				t.Fatalf("查詢 Component 失敗: %v", err)
+			}
+			var mat db.Material
+			if err := database.First(&mat, comp.MaterialID).Error; err != nil {
+				t.Fatalf("查詢 Material 失敗: %v", err)
+			}
+
+			if mat.Supplier == "SupplierA" && mat.SupplierPN == "PN-A" {
+				// 物料 A 的 @U4 應被 PROTO 覆寫為 "P"，且被 CCL 設為 true
+				if loc.BomStatus != "P" {
+					t.Errorf("預期 SupplierA 之 @U4 狀態為 'P'，實際為 '%s'", loc.BomStatus)
+				}
+				if !loc.CCL {
+					t.Errorf("預期 SupplierA 之 @U4 CCL 為 true，實際為 false")
+				}
+			} else if mat.Supplier == "SupplierB" && mat.SupplierPN == "PN-B" {
+				// 物料 B 的 @U4 原為 "X"，不符合 PROTO 前置條件，應維持 "X"，CCL 為 false
+				if loc.BomStatus != "X" {
+					t.Errorf("預期 SupplierB 之 @U4 狀態維持 'X'，實際為 '%s'", loc.BomStatus)
+				}
+				if loc.CCL {
+					t.Errorf("預期 SupplierB 之 @U4 CCL 為 false，實際為 true")
+				}
+			} else {
+				t.Errorf("意外的物料: %s %s", mat.Supplier, mat.SupplierPN)
+			}
+		}
+
+		// 3. 驗證 R1（原狀態為 "I"，遭 MP 略過，維持 "I"）
+		var r1Loc db.PartLocation
+		if err := database.Where("location = ?", "R1").First(&r1Loc).Error; err != nil {
+			t.Fatalf("查詢 R1 失敗: %v", err)
+		}
+		if r1Loc.BomStatus != "I" {
+			t.Errorf("預期 R1 狀態維持 'I'，實際為 '%s'", r1Loc.BomStatus)
+		}
+
+		// 4. 驗證 R2（原狀態為 "X"，符合 MP 前置條件，應覆寫為 "M"）
+		var r2Loc db.PartLocation
+		if err := database.Where("location = ?", "R2").First(&r2Loc).Error; err != nil {
+			t.Fatalf("查詢 R2 失敗: %v", err)
+		}
+		if r2Loc.BomStatus != "M" {
+			t.Errorf("預期 R2 狀態覆寫為 'M'，實際為 '%s'", r2Loc.BomStatus)
+		}
+	})
+
+	t.Run("主製程 (SMD 與 PTH) 若重複 Location 依然拋出 ErrDuplicateLocation 錯誤", func(t *testing.T) {
+		database := setupEBOMTestDB(t)
+		series, err := db.CreateSeries(database, "TEST_SERIES", "Test Series")
+		if err != nil {
+			t.Fatalf("CreateSeries failed: %v", err)
+		}
+		_, err = db.GetOrCreateProject(database, series.ID, "PROJ_DUP_ERR", "Test Project")
+		if err != nil {
+			t.Fatalf("GetOrCreateProject failed: %v", err)
+		}
+
+		f := excelize.NewFile()
+		wb := &ExcelizeWorkbook{f: f}
+		defer f.Close()
+
+		f.NewSheet("SMD")
+		f.SetCellValue("SMD", "B3", "Product Code: PROJ_DUP_ERR")
+		f.SetCellValue("SMD", "J3", "Phase: EVT")
+		f.SetCellValue("SMD", "H3", "BOM Version: 0.1")
+		f.SetCellValue("SMD", "A6", "1")
+		f.SetCellValue("SMD", "F6", "Supplier1")
+		f.SetCellValue("SMD", "G6", "PN-1")
+		f.SetCellValue("SMD", "I6", "C100")
+
+		f.NewSheet("PTH")
+		// PTH 與 SMD 同時使用 C100
+		f.SetCellValue("PTH", "A6", "1")
+		f.SetCellValue("PTH", "F6", "Supplier2")
+		f.SetCellValue("PTH", "G6", "PN-2")
+		f.SetCellValue("PTH", "I6", "C100")
+
+		reader := &EBOMReader{
+			db: database,
+		}
+
+		err = reader.Import(wb)
+		if err == nil {
+			t.Fatalf("預期主製程重複應拋出錯誤，但成功匯入")
+		}
+		if !errors.Is(err, types.ErrDuplicateLocation) {
+			t.Errorf("預期錯誤包含 ErrDuplicateLocation，實際錯誤: %v", err)
+		}
+	})
+}

@@ -316,8 +316,12 @@ Excel 檔案輸入 (SMD, PTH, BOTTOM, NI, PROTO, MP, CCL)
 │ 1. 讀取主製程 (SMD, PTH, BOTTOM)、NI 與 MP 工作表:           │
 │    - 收集全域物料 (Supplier, SupplierPN, HHPN, Desc, Remark) │
 │    - 收集主料 Component 及原子化 Location                     │
+│    - Location 去重規範：                                     │
+│      * SMD / PTH / BOTTOM 主製程間嚴格去重（重複則報錯）     │
+│      * NI 工作表允許與主製程 Location 重複，並獨立為其主料    │
+│        Component 建立 PartLocation 紀錄 (BomStatus='X')      │
+│      * MP 工作表補充僅存在於量產表之專用零件 (BomStatus='M') │
 │    - 收集替代料關聯 (指向主料指標)                           │
-│    - MP 工作表補充僅存在於量產表之專用零件 (BomStatus='M')   │
 └─────────────────────────────────────────────────────────────┘
                        │
                        ▼
@@ -345,10 +349,13 @@ Excel 檔案輸入 (SMD, PTH, BOTTOM, NI, PROTO, MP, CCL)
                        │
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ Phase 2: 狀態屬性覆寫與 Mode 自動判斷 (不更動 Material)      │
-│ 1. 讀取 PROTO Sheet: 批次 UPDATE 匹配 Location 之 bom_status='P'│
-│ 2. 讀取 MP Sheet:    批次 UPDATE 匹配 Location 之 bom_status='M'│
-│ 3. 讀取 CCL Sheet:   批次 UPDATE 匹配 Location 之 ccl=true     │
+│ Phase 2: 複合鍵狀態覆寫與 Mode 自動判斷 (不更動 Material)     │
+│ 複合比對鍵: (Supplier, SupplierPN, Location) 三元組匹配     │
+│ 1. 讀取 PROTO Sheet: 僅覆蓋 BomStatus='I' 之記錄為 'P'       │
+│    * 原狀態不符合者 (如 'X') 僅記錄 Debug log，不產生 Warning│
+│ 2. 讀取 MP Sheet:    僅覆蓋 BomStatus='X' 之記錄為 'M'       │
+│    * 原狀態不符合者 (如 'I') 僅記錄 Debug log，不產生 Warning│
+│ 3. 讀取 CCL Sheet:   全面 UPDATE 匹配記錄之 ccl=true         │
 │ 4. determineMode(): 比對位置交集更新 BomRevision.Mode        │
 └─────────────────────────────────────────────────────────────┘
                        │

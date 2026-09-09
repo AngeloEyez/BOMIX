@@ -178,27 +178,51 @@ func (r *EBOMReader) Import(f Workbook) error {
 	}
 
 	// ─── Phase 2：Location 狀態覆寫 + Mode 判斷 ───────────────────────────────
-	// 建立 location → *db.PartLocation 快速查詢映射（來自已儲存後的 savedLocations）
-	locIndexMap := make(map[string]*db.PartLocation, len(savedLocations))
+	// 1. 建立 ComponentID -> (Supplier, SupplierPN) 映射
+	compMaterialMap := make(map[int64]struct{ Supplier, SupplierPN string }, len(mainCompList))
+	for _, mc := range mainCompList {
+		compMaterialMap[mc.ID] = struct{ Supplier, SupplierPN string }{
+			Supplier:   mc.Supplier,
+			SupplierPN: mc.SupplierPN,
+		}
+	}
+
+	// 2. 建立 (Supplier|SupplierPN|Location) -> []*db.PartLocation 複合查詢映射（指向 savedLocations 實體以同步記憶體狀態）
+	locIndexMap := make(map[string][]*db.PartLocation, len(savedLocations))
 	for i := range savedLocations {
-		locIndexMap[savedLocations[i].Location] = &savedLocations[i]
+		matInfo := compMaterialMap[savedLocations[i].ComponentID]
+		key := makePartLocMatchKey(matInfo.Supplier, matInfo.SupplierPN, savedLocations[i].Location)
+		locIndexMap[key] = append(locIndexMap[key], &savedLocations[i])
 	}
 
 	// 收集 PROTO / MP 頁面的 locations，用於 Mode 判斷
 	var protoLocations []string
 	var mpLocations []string
 
-	// 處理 PROTO sheet（更新 bom_status = P）
+	// 處理 PROTO sheet（更新 bom_status = P，嚴格前置條件：僅覆蓋 BomStatus == "I" 的紀錄）
 	if protoSheet != "" {
-		protoLocations = r.parsePhase2Sheet(f, protoSheet, tracker)
+		protoItems := r.parsePhase2Items(f, protoSheet, tracker)
 		var locationIDsToUpdate []int64
-		for _, loc := range protoLocations {
-			if target, exists := locIndexMap[loc]; exists {
-				locationIDsToUpdate = append(locationIDsToUpdate, target.ID)
+		for _, item := range protoItems {
+			protoLocations = append(protoLocations, item.Location)
+			key := makePartLocMatchKey(item.Supplier, item.SupplierPN, item.Location)
+			if targets, exists := locIndexMap[key]; exists {
+				for _, target := range targets {
+					if target.BomStatus == "I" {
+						locationIDsToUpdate = append(locationIDsToUpdate, target.ID)
+						target.BomStatus = "P" // 同步更新記憶體狀態
+					} else {
+						// 原狀態不符合者僅記錄 debug log，不產生 warning
+						if r.logger != nil {
+							r.logger.Debug(fmt.Sprintf("[EBOM Phase2] PROTO location '%s' (Supplier: '%s', PN: '%s') 原狀態為 '%s' (非 'I')，略過覆寫",
+								item.Location, item.Supplier, item.SupplierPN, target.BomStatus))
+						}
+					}
+				}
 			} else {
-				warnMsg := fmt.Sprintf("[EBOM Phase2] PROTO location '%s' 在 Phase 1 中未建立，略過", loc)
+				warnMsg := fmt.Sprintf("[EBOM Phase2] PROTO location '%s' 在 Phase 1 中未建立，略過 (Supplier: '%s', PN: '%s')", item.Location, item.Supplier, item.SupplierPN)
 				if r.logger != nil {
-					r.logger.Warn(warnMsg, "sheet", protoSheet, "location", loc)
+					r.logger.Warn(warnMsg, "sheet", protoSheet, "location", item.Location, "supplier", item.Supplier, "supplierPN", item.SupplierPN)
 				}
 				r.warnings = append(r.warnings, warnMsg)
 			}
@@ -212,23 +236,36 @@ func (r *EBOMReader) Import(f Workbook) error {
 		}
 		if r.logger != nil {
 			r.logger.Debug("[EBOM Phase2] PROTO 覆寫完成",
-				"totalLocations", len(protoLocations),
+				"totalItems", len(protoItems),
 				"updatedLocations", len(locationIDsToUpdate),
 			)
 		}
 	}
 
-	// 處理 MP sheet（更新 bom_status = M）
+	// 處理 MP sheet（更新 bom_status = M，嚴格前置條件：僅覆蓋 BomStatus == "X" 的紀錄）
 	if mpSheet != "" {
-		mpLocations = r.parsePhase2Sheet(f, mpSheet, tracker)
+		mpItems := r.parsePhase2Items(f, mpSheet, tracker)
 		var locationIDsToUpdate []int64
-		for _, loc := range mpLocations {
-			if target, exists := locIndexMap[loc]; exists {
-				locationIDsToUpdate = append(locationIDsToUpdate, target.ID)
+		for _, item := range mpItems {
+			mpLocations = append(mpLocations, item.Location)
+			key := makePartLocMatchKey(item.Supplier, item.SupplierPN, item.Location)
+			if targets, exists := locIndexMap[key]; exists {
+				for _, target := range targets {
+					if target.BomStatus == "X" {
+						locationIDsToUpdate = append(locationIDsToUpdate, target.ID)
+						target.BomStatus = "M" // 同步更新記憶體狀態
+					} else {
+						// 原狀態不符合者僅記錄 debug log，不產生 warning
+						if r.logger != nil {
+							r.logger.Debug(fmt.Sprintf("[EBOM Phase2] MP location '%s' (Supplier: '%s', PN: '%s') 原狀態為 '%s' (非 'X')，略過覆寫",
+								item.Location, item.Supplier, item.SupplierPN, target.BomStatus))
+						}
+					}
+				}
 			} else {
-				warnMsg := fmt.Sprintf("[EBOM Phase2] MP location '%s' 在 Phase 1 中未建立，略過", loc)
+				warnMsg := fmt.Sprintf("[EBOM Phase2] MP location '%s' 在 Phase 1 中未建立，略過 (Supplier: '%s', PN: '%s')", item.Location, item.Supplier, item.SupplierPN)
 				if r.logger != nil {
-					r.logger.Warn(warnMsg, "sheet", mpSheet, "location", loc)
+					r.logger.Warn(warnMsg, "sheet", mpSheet, "location", item.Location, "supplier", item.Supplier, "supplierPN", item.SupplierPN)
 				}
 				r.warnings = append(r.warnings, warnMsg)
 			}
@@ -242,19 +279,29 @@ func (r *EBOMReader) Import(f Workbook) error {
 		}
 		if r.logger != nil {
 			r.logger.Debug("[EBOM Phase2] MP 覆寫完成",
-				"totalLocations", len(mpLocations),
+				"totalItems", len(mpItems),
 				"updatedLocations", len(locationIDsToUpdate),
 			)
 		}
 	}
 
-	// 處理 CCL sheet（更新 ccl = true）
+	// 處理 CCL sheet（更新 ccl = true，全面覆蓋，不限制 BomStatus）
 	if cclSheet != "" {
-		cclLocations := r.parsePhase2Sheet(f, cclSheet, tracker)
+		cclItems := r.parsePhase2Items(f, cclSheet, tracker)
 		var locationIDsToUpdate []int64
-		for _, loc := range cclLocations {
-			if target, exists := locIndexMap[loc]; exists {
-				locationIDsToUpdate = append(locationIDsToUpdate, target.ID)
+		for _, item := range cclItems {
+			key := makePartLocMatchKey(item.Supplier, item.SupplierPN, item.Location)
+			if targets, exists := locIndexMap[key]; exists {
+				for _, target := range targets {
+					locationIDsToUpdate = append(locationIDsToUpdate, target.ID)
+					target.CCL = true
+				}
+			} else {
+				warnMsg := fmt.Sprintf("[EBOM Phase2] CCL location '%s' 在 Phase 1 中未建立，略過 (Supplier: '%s', PN: '%s')", item.Location, item.Supplier, item.SupplierPN)
+				if r.logger != nil {
+					r.logger.Warn(warnMsg, "sheet", cclSheet, "location", item.Location, "supplier", item.Supplier, "supplierPN", item.SupplierPN)
+				}
+				r.warnings = append(r.warnings, warnMsg)
 			}
 		}
 		if len(locationIDsToUpdate) > 0 {
@@ -263,6 +310,12 @@ func (r *EBOMReader) Import(f Workbook) error {
 				Update("ccl", true).Error; err != nil {
 				return fmt.Errorf("failed to update CCL locations: %w", err)
 			}
+		}
+		if r.logger != nil {
+			r.logger.Debug("[EBOM Phase2] CCL 覆寫完成",
+				"totalItems", len(cclItems),
+				"updatedLocations", len(locationIDsToUpdate),
+			)
 		}
 	}
 
@@ -465,6 +518,7 @@ func (r *EBOMReader) parsePhase1Sheet(
 
 	newLocCount := 0
 	var currentMainComp *parsedComponentMain
+	niSeenLocations := make(map[string]bool)
 
 	for i := 5; i < len(rows); i++ {
 		if tracker != nil {
@@ -520,7 +574,9 @@ func (r *EBOMReader) parsePhase1Sheet(
 			for _, loc := range atomizeLocations(locationStr) {
 				// 2. Location 去重檢測：
 				// SMD/PTH/BOTTOM 嚴格去重（若同表或跨表重複，log 錯誤並失敗）；
-				// NI/MP 遇到已建立的 location 則自動忽略跳過（不中斷、不設為任務失敗）。
+				// NI/MP 遇到已建立的 location 處理：
+				//   - NI 工作表：允許與主製程 (SMD/PTH/BOTTOM) 重複並成立紀錄 (BomStatus="X")，表內自身去重
+				//   - MP 工作表：自動忽略跳過 (不中斷、不設為任務失敗)
 				if prevSheet, exists := phase1LocationSheetMap[loc]; exists {
 					if strictDedupe {
 						var errMsg string
@@ -534,10 +590,33 @@ func (r *EBOMReader) parsePhase1Sheet(
 						}
 						return 0, fmt.Errorf("%s: %w", errMsg, types.ErrDuplicateLocation)
 					}
-					// NI / MP 遇到已建立的 location 自動忽略跳過
+
+					// ─── 針對 NI 工作表的特殊處理 ───
+					if strings.EqualFold(sheetName, "NI") {
+						if niSeenLocations[loc] {
+							continue // 若在同一個 NI sheet 內重複定義，則跳過，避免在 NI 中重複建檔
+						}
+						niSeenLocations[loc] = true
+
+						mainComp.Locations = append(mainComp.Locations, parsedComponentLocation{
+							Location:  loc,
+							Type:      sheetType,
+							BomStatus: defaultBomStatus,
+							CCL:       isCCL,
+						})
+						newLocCount++
+						continue
+					}
+
+					// 其他工作表（如 MP）遇到已建立的 location 自動忽略跳過
 					continue
 				}
+
+				// 首次出現的 Location 正常記錄
 				phase1LocationSheetMap[loc] = sheetName
+				if strings.EqualFold(sheetName, "NI") {
+					niSeenLocations[loc] = true
+				}
 
 				mainComp.Locations = append(mainComp.Locations, parsedComponentLocation{
 					Location:  loc,
@@ -587,14 +666,28 @@ func (r *EBOMReader) parseMainSheetV2(
 	return newLocCount
 }
 
-// parsePhase2Sheet 解析 Phase 2 狀態 sheet（PROTO / MP / CCL），僅收集 location 字串清單。
-func (r *EBOMReader) parsePhase2Sheet(f Workbook, sheetName string, tracker *ProgressTracker) []string {
+// Phase2Item 暫存 Phase 2 狀態工作表解析項目
+type Phase2Item struct {
+	Supplier   string
+	SupplierPN string
+	Location   string
+}
+
+// makePartLocMatchKey 產生標準化比對鍵值 (Supplier|SupplierPN|Location)
+func makePartLocMatchKey(supplier, supplierPN, location string) string {
+	return strings.ToLower(strings.TrimSpace(supplier)) + "|" +
+		strings.ToLower(strings.TrimSpace(supplierPN)) + "|" +
+		strings.ToUpper(strings.TrimSpace(location))
+}
+
+// parsePhase2Items 解析 Phase 2 狀態 sheet（PROTO / MP / CCL），收集包含 Supplier, SupplierPN 與 Location 的結構化清單。
+func (r *EBOMReader) parsePhase2Items(f Workbook, sheetName string, tracker *ProgressTracker) []Phase2Item {
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return nil
 	}
 
-	var locations []string
+	var items []Phase2Item
 	for i := 5; i < len(rows); i++ {
 		if tracker != nil {
 			tracker.AddRows(1)
@@ -603,13 +696,29 @@ func (r *EBOMReader) parsePhase2Sheet(f Workbook, sheetName string, tracker *Pro
 		if len(row) == 0 {
 			continue
 		}
-		supplier := safeGetCol(row, 5)
-		supplierPN := safeGetCol(row, 6)
+		supplier := strings.TrimSpace(safeGetCol(row, 5))
+		supplierPN := strings.TrimSpace(safeGetCol(row, 6))
 		if supplier == "" || supplierPN == "" {
 			continue
 		}
 		locationStr := safeGetCol(row, 8)
-		locations = append(locations, atomizeLocations(locationStr)...)
+		for _, loc := range atomizeLocations(locationStr) {
+			items = append(items, Phase2Item{
+				Supplier:   supplier,
+				SupplierPN: supplierPN,
+				Location:   loc,
+			})
+		}
+	}
+	return items
+}
+
+// parsePhase2Sheet 解析 Phase 2 狀態 sheet（PROTO / MP / CCL），僅收集 location 字串清單（保留向後相容）。
+func (r *EBOMReader) parsePhase2Sheet(f Workbook, sheetName string, tracker *ProgressTracker) []string {
+	items := r.parsePhase2Items(f, sheetName, tracker)
+	locations := make([]string, len(items))
+	for i, it := range items {
+		locations[i] = it.Location
 	}
 	return locations
 }
