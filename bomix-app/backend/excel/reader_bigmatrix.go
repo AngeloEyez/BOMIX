@@ -380,6 +380,7 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 	// revisionModelMap 紀錄每個 revisionID 下 (sortOrder -> MatrixModel.ID) 的映射
 	revisionModelMap := make(map[int64]map[int]int64, len(configs))
 	compMapByRev := make(map[int64]map[string]bigMatrixCompMatch, len(configs))
+	matMapByRev := make(map[int64]map[string]int64, len(configs))
 
 	// 在 Transaction 中清空舊 Selection/Model，依據 Excel 欄位資訊重新建立 MatrixModel，並載入 Components
 	if r.db != nil {
@@ -427,18 +428,26 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 					return fmt.Errorf("載入 Material 失敗 (revisionID=%d): %w", config.RevisionID, err)
 				}
 
-				cMap := make(map[string]bigMatrixCompMatch, len(comps))
+				// mainCompMap 專門存放主料 (Role == "M")，避免同料號在其他群組充當替代料時覆蓋主料
+				mainCompMap := make(map[string]bigMatrixCompMatch, len(comps))
+				// matMapByPN 存放所有料號 Supplier|SupplierPN -> MaterialID 的映射
+				matMapByPN := make(map[string]int64, len(comps))
+
 				for _, c := range comps {
 					if m, ok := matMap[c.MaterialID]; ok {
 						key := fmt.Sprintf("%s|%s", strings.TrimSpace(m.Supplier), strings.TrimSpace(m.SupplierPN))
-						cMap[key] = bigMatrixCompMatch{
-							ComponentID: c.ID,
-							MaterialID:  c.MaterialID,
-							Role:        c.Role,
+						matMapByPN[key] = c.MaterialID
+						if c.Role == "M" {
+							mainCompMap[key] = bigMatrixCompMatch{
+								ComponentID: c.ID,
+								MaterialID:  c.MaterialID,
+								Role:        c.Role,
+							}
 						}
 					}
 				}
-				compMapByRev[config.RevisionID] = cMap
+				compMapByRev[config.RevisionID] = mainCompMap
+				matMapByRev[config.RevisionID] = matMapByPN
 			}
 			return nil
 		})
@@ -487,11 +496,11 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 			if config.RevisionID == 0 {
 				continue
 			}
-			cMap := compMapByRev[config.RevisionID]
+			mainMap := compMapByRev[config.RevisionID]
 
 			if partData.item != "" {
 				// 主料列 (Main Source)
-				if c, exists := cMap[rowSupplierKey]; exists && c.Role == "M" {
+				if c, exists := mainMap[rowSupplierKey]; exists {
 					cCopy := c
 					currentMainCompMap[config.RevisionID] = &cCopy
 				} else {
@@ -516,8 +525,8 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 				continue
 			}
 
-			cMap := compMapByRev[config.RevisionID]
-			cRow, exists := cMap[rowSupplierKey]
+			matMap := matMapByRev[config.RevisionID]
+			selectedMatID, exists := matMap[rowSupplierKey]
 			if !exists {
 				continue
 			}
@@ -532,7 +541,7 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 						continue
 					}
 
-					dedupKey := fmt.Sprintf("%d|%d|%d", matrixModelID, mainComp.MaterialID, cRow.MaterialID)
+					dedupKey := fmt.Sprintf("%d|%d|%d", matrixModelID, mainComp.MaterialID, selectedMatID)
 					if seenSelections[dedupKey] {
 						continue
 					}
@@ -543,7 +552,7 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 						ModelID:            matrixModelID,
 						ComponentID:        mainComp.ComponentID,
 						MainMaterialID:     mainComp.MaterialID,
-						SelectedMaterialID: cRow.MaterialID,
+						SelectedMaterialID: selectedMatID,
 						IsAutoSelected:     false,
 					}
 					selectionsToCreate = append(selectionsToCreate, selection)

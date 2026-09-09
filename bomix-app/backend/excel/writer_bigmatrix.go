@@ -553,8 +553,8 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		_ = f.SetColWidth("BigMatrix", startColStr, endColStr, maxColWidthReq)
 	}
 
-	// 設定 Notes 欄寬為 55.0，確保備註文字清晰好讀
-	_ = f.SetColWidth("BigMatrix", notesColName, notesColName, 55.0)
+	// 設定 Notes 欄寬為 55，確保備註文字清晰好讀
+	_ = f.SetColWidth("BigMatrix", notesColName, notesColName, 55)
 
 	// Helper function to apply styles to a row (columns A-G and dynamic Model columns)
 	applyFullRowStyle := func(f *excelize.File, sheet string, row int, isEven bool, isProto bool) {

@@ -192,14 +192,22 @@ func (r *MatrixReader) Import(f Workbook) error {
 		Role        string
 	}
 
-	compBySupplierPN := make(map[string]compMatchInfo, len(components))
+	// mainCompBySupplierPN 專門存放主料 Component (Role == "M")
+	// 避免同一個物料在其他群組充當替代料 (Role == "S") 時覆蓋掉主料的 ComponentID 與 Role
+	mainCompBySupplierPN := make(map[string]compMatchInfo, len(components))
+	// materialIDBySupplierPN 記錄物料 Supplier|SupplierPN 到 MaterialID 的映射
+	materialIDBySupplierPN := make(map[string]int64, len(components))
+
 	for _, c := range components {
 		if m, ok := matMap[c.MaterialID]; ok {
 			key := fmt.Sprintf("%s|%s", strings.TrimSpace(m.Supplier), strings.TrimSpace(m.SupplierPN))
-			compBySupplierPN[key] = compMatchInfo{
-				ComponentID: c.ID,
-				MaterialID:  c.MaterialID,
-				Role:        c.Role,
+			materialIDBySupplierPN[key] = c.MaterialID
+			if c.Role == "M" {
+				mainCompBySupplierPN[key] = compMatchInfo{
+					ComponentID: c.ID,
+					MaterialID:  c.MaterialID,
+					Role:        c.Role,
+				}
 			}
 		}
 	}
@@ -223,7 +231,7 @@ func (r *MatrixReader) Import(f Workbook) error {
 	if r.logger != nil {
 		r.logger.Info("[Matrix] 開始掃描工作表物料勾選",
 			"targetSheets", targetSheets,
-			"compMapSize", len(compBySupplierPN),
+			"mainCompMapSize", len(mainCompBySupplierPN),
 		)
 	}
 
@@ -274,8 +282,8 @@ func (r *MatrixReader) Import(f Workbook) error {
 
 			if item != "" {
 				// 主料列 (Main Source)
-				c, exists := compBySupplierPN[key]
-				if !exists || c.Role != "M" {
+				c, exists := mainCompBySupplierPN[key]
+				if !exists {
 					if r.logger != nil {
 						r.logger.Debug("[Matrix] 主料在 DB 中未找到，跳過此物料列",
 							"sheet", sheetName,
@@ -294,11 +302,15 @@ func (r *MatrixReader) Import(f Workbook) error {
 				if currentMainComp == nil {
 					continue
 				}
-				c, exists := compBySupplierPN[key]
+				matID, exists := materialIDBySupplierPN[key]
 				if !exists {
 					continue
 				}
-				rowMatch = c
+				rowMatch = compMatchInfo{
+					ComponentID: 0,
+					MaterialID:  matID,
+					Role:        "S",
+				}
 			}
 
 			// 檢查各大有效 Model 的勾選欄位
