@@ -26,18 +26,38 @@
           <span v-if="appStore.seriesInfo?.name" class="logo-text">
             {{ appStore.seriesInfo.name }}
           </span>
+          <!-- Close Series 按鈕 (僅在系列開啟時顯示，緊接著系列名稱) -->
+          <Button
+            v-if="appStore.isOpen"
+            icon="pi pi-sign-out"
+            text
+            severity="secondary"
+            class="title-bar-btn close-series-btn"
+            @click="handleCloseSeries"
+            title="Close Series"
+          />
         </div>
       </div>
       <div class="header-right">
-        <!-- 1. Main View (BOM) -->
-        <Button
+        <!-- 1. Main View (BOM) with Dropdown (Import & Matrix) -->
+        <SplitButton
           icon="pi pi-home"
           label="BOM"
           text
+          size="small"
+          dropdown-icon="pi pi-chevron-down"
           :severity="isMainViewActive ? 'primary' : 'secondary'"
-          :class="['title-bar-btn', { 'title-bar-btn-active': isMainViewActive }]"
+          :class="['title-bar-splitbtn', { 'title-bar-splitbtn-active': isMainViewActive }]"
+          :model="bomMenuItems"
           @click="handleMainViewClick"
-          title="Main View (BOM Table)"
+          :button-props="{
+            title: 'Main View (BOM Table)',
+            class: 'title-bar-splitbtn-action'
+          }"
+          :menu-button-props="{
+            title: 'BOM Actions (Import / Matrix)',
+            class: 'title-bar-splitbtn-dropdown'
+          }"
         />
 
         <!-- 2. Export (僅在系列開啟時顯示/可用) -->
@@ -52,18 +72,7 @@
           title="Export BOM"
         />
 
-        <!-- 3. Close Series (僅在系列開啟時顯示) -->
-        <Button
-          v-if="appStore.isOpen"
-          icon="pi pi-sign-out"
-          text
-          severity="secondary"
-          class="title-bar-btn"
-          @click="handleCloseSeries"
-          title="Close Series"
-        />
-
-        <!-- 4. Settings -->
+        <!-- 3. Settings -->
         <Button
           icon="pi pi-cog"
           text
@@ -110,7 +119,9 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Splitter from 'primevue/splitter'
 import SplitterPanel from 'primevue/splitterpanel'
+import SplitButton from 'primevue/splitbutton'
 import Button from 'primevue/button'
+import type { MenuItem } from 'primevue/menuitem'
 import { useAppStore, useProjectStore, useLogStore, useTaskStore } from './stores'
 import LogPanel from './components/LogPanel.vue'
 import SidebarPanel from './components/SidebarPanel.vue'
@@ -171,6 +182,58 @@ function handleMainViewClick(): void {
     }
   }
 }
+
+/**
+ * 處理下拉選單點擊 Import 事件
+ */
+function handleImportClick(): void {
+  if (!appStore.isOpen) {
+    logStore.addLogEntry('WARN', '請先建立或開啟系列專案，方可匯入 BOM 檔案')
+    return
+  }
+  if (route.path !== '/workspace') {
+    appStore.setWorkspaceView('table')
+    router.push('/workspace')
+  }
+  appStore.openImportDialog()
+}
+
+/**
+ * 處理下拉選單點擊 Matrix 事件
+ */
+function handleCopyMatrixClick(): void {
+  if (!appStore.isOpen) {
+    logStore.addLogEntry('WARN', '請先建立或開啟系列專案，方可複製 Matrix')
+    return
+  }
+  if (route.path !== '/workspace') {
+    appStore.setWorkspaceView('table')
+    router.push('/workspace')
+  }
+  appStore.openCopyMatrixDialog()
+}
+
+/**
+ * Main View (BOM) SplitButton 下拉選單項目模型
+ */
+const bomMenuItems = computed<MenuItem[]>(() => [
+  {
+    label: 'Import',
+    icon: 'pi pi-upload',
+    disabled: !appStore.isOpen,
+    command: () => {
+      handleImportClick()
+    }
+  },
+  {
+    label: 'Matrix',
+    icon: 'pi pi-copy',
+    disabled: !appStore.isOpen,
+    command: () => {
+      handleCopyMatrixClick()
+    }
+  }
+])
 
 /**
  * 處理 Export 按鈕點擊事件
@@ -542,6 +605,17 @@ body {
   letter-spacing: 0.05em;
 }
 
+.close-series-btn {
+  margin-left: 0.25rem;
+  opacity: 0.85;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.close-series-btn:hover {
+  opacity: 1;
+  color: var(--text-color) !important;
+}
+
 .header-right {
   display: flex;
   align-items: center;
@@ -561,6 +635,86 @@ body {
 
 .title-bar-btn.title-bar-btn-active {
   color: var(--primary-color) !important;
+  background-color: var(--surface-hover) !important;
+}
+
+/* SplitButton in Title Bar */
+.title-bar-splitbtn {
+  height: 28px !important;
+  min-height: 28px !important;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+:deep(.title-bar-splitbtn .p-splitbutton-button) {
+  height: 28px !important;
+  min-height: 28px !important;
+  font-size: 0.82rem;
+  padding: 0 0.4rem 0 0.5rem !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-right: none !important;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+:deep(.title-bar-splitbtn .p-splitbutton-dropdown) {
+  height: 28px !important;
+  min-height: 28px !important;
+  width: 20px !important;
+  min-width: 20px !important;
+  max-width: 20px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  gap: 0 !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  border-left: 1px solid var(--surface-border) !important;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* 移除 PrimeVue 按鈕預設的 ::after 偽元素，防止 flex gap 造成圖示偏左 */
+:deep(.title-bar-splitbtn .p-splitbutton-dropdown::after) {
+  display: none !important;
+  content: none !important;
+  width: 0 !important;
+  margin: 0 !important;
+}
+
+/* 確保下拉箭頭大小與主按鈕中的 icon (pi-home) 大小相同且精準置中 */
+:deep(.title-bar-splitbtn .p-splitbutton-button .p-button-icon),
+:deep(.title-bar-splitbtn .p-splitbutton-dropdown .p-button-icon),
+:deep(.title-bar-splitbtn .p-splitbutton-dropdown svg) {
+  font-size: 0.72rem !important;
+  width: 0.72rem !important;
+  height: 0.72rem !important;
+  line-height: 1 !important;
+}
+
+:deep(.title-bar-splitbtn .p-splitbutton-dropdown .p-button-icon) {
+  margin: 0 !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+}
+
+:deep(.title-bar-splitbtn-active .p-splitbutton-button),
+:deep(.title-bar-splitbtn-active .p-splitbutton-dropdown) {
+  color: var(--primary-color) !important;
+  background-color: var(--surface-hover) !important;
+}
+
+:deep(.title-bar-splitbtn .p-splitbutton-button:hover),
+:deep(.title-bar-splitbtn .p-splitbutton-dropdown:hover) {
   background-color: var(--surface-hover) !important;
 }
 

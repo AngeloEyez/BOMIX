@@ -130,6 +130,27 @@ export const useAppStore = defineStore('app', () => {
   const importFiles = ref<string[]>([])
   const confirmOverwrite = ref(true)
 
+  // 全域 Matrix 複製對話框狀態管理
+  const copyMatrixDialogVisible = ref(false)
+
+  /**
+   * 開啟 Matrix 複製對話框
+   */
+  function openCopyMatrixDialog(): void {
+    if (!isOpen.value) {
+      logStore.addLogEntry('WARN', '請先建立或開啟系列專案，方可複製 Matrix')
+      return
+    }
+    copyMatrixDialogVisible.value = true
+  }
+
+  /**
+   * 關閉 Matrix 複製對話框
+   */
+  function closeCopyMatrixDialog(): void {
+    copyMatrixDialogVisible.value = false
+  }
+
   /**
    * 初始化載入全域設定
    */
@@ -239,6 +260,7 @@ export const useAppStore = defineStore('app', () => {
     importDialogVisible,
     importFiles,
     confirmOverwrite,
+    copyMatrixDialogVisible,
     // Getters
     isSeriesOpen,
     // Actions
@@ -253,6 +275,8 @@ export const useAppStore = defineStore('app', () => {
     removeImportFile,
     clearImportFiles,
     closeImportDialog,
+    openCopyMatrixDialog,
+    closeCopyMatrixDialog,
     handleDroppedFiles,
     initSettings,
     setConfirmOverwrite,

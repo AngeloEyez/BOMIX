@@ -1,28 +1,5 @@
 <template>
   <div class="workspace-page">
-    <!-- Top Toolbar -->
-    <div class="top-toolbar">
-      <div class="toolbar-left"></div>
-      <div class="toolbar-right">
-        <Button
-          label="Import"
-          icon="pi pi-upload"
-          text
-          severity="secondary"
-          @click="appStore.openImportDialog()"
-          title="匯入 BOM 檔案"
-        />
-        <Button
-          label="複製 Matrix"
-          icon="pi pi-copy"
-          text
-          severity="secondary"
-          @click="copyMatrixDialogVisible = true"
-          title="手動從指定版本複製 Matrix Selection 到另一版本"
-        />
-      </div>
-    </div>
-
     <!-- Main Content Panel (依據 appStore.workspaceView 切換顯示 BOMTable 或 ExportView) -->
     <div class="main-content">
       <!-- 1. Export 視圖 -->
@@ -85,7 +62,7 @@
     />
 
     <CopyMatrixDialog
-      v-model:visible="copyMatrixDialogVisible"
+      v-model:visible="appStore.copyMatrixDialogVisible"
       :allRevisions="allRevisions"
     />
   </div>
@@ -109,7 +86,6 @@ const logStore = useLogStore()
 const taskStore = useTaskStore()
 
 const importResultDialogVisible = ref(false)
-const copyMatrixDialogVisible = ref(false)
 
 // 匯入結果與版本選項列表
 const importResults = ref<BackendImportResult[]>([])
@@ -266,26 +242,6 @@ function onExportSuccess(paths: string[]): void {
   overflow: hidden;
 }
 
-.top-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  height: 36px;
-  padding: 0 0.5rem;
-  background: var(--surface-card);
-  border-bottom: 1px solid var(--surface-border);
-  flex-shrink: 0;
-}
-
-.toolbar-left {
-  display: flex;
-  align-items: center;
-}
-
-.toolbar-right {
-  display: flex;
-  gap: 0.25rem;
-}
 
 .main-content {
   flex: 1;
