@@ -53,7 +53,12 @@
       </div>
 
       <!-- 卡片清單區塊 -->
-      <div class="selected-cards-container">
+      <div
+        class="selected-cards-container"
+        @dragenter="onContainerDragEnter"
+        @dragover="onContainerDragOver"
+        @drop="onContainerDrop"
+      >
         <!-- 未選擇任何版本時的提示 -->
         <div v-if="selectedCards.length === 0" class="empty-revisions-tip">
           <i class="pi pi-info-circle"></i>
@@ -64,16 +69,27 @@
         <div
           v-for="(card, index) in selectedCards"
           :key="card.id"
-          :class="['revision-card', { 'is-draggable': exportFormat.toLowerCase() === 'bigmatrix' }]"
-          :draggable="exportFormat.toLowerCase() === 'bigmatrix'"
+          :class="[
+            'revision-card',
+            {
+              'is-draggable': isDraggable,
+              'is-dragging': draggedIndex === index,
+              'drop-before': dragOverIndex === index && dropPosition === 'before' && draggedIndex !== index,
+              'drop-after': dragOverIndex === index && dropPosition === 'after' && draggedIndex !== index
+            }
+          ]"
+          :draggable="isDraggable"
           @dragstart="onDragStart($event, index)"
-          @dragover.prevent="onDragOver($event, index)"
+          @dragenter="onDragEnter($event, index)"
+          @dragover="onDragOver($event, index)"
+          @dragleave="onDragLeave($event, index)"
           @drop="onDrop($event, index)"
+          @dragend="onDragEnd"
         >
           <!-- 左側：拖曳把手 (僅 BigMatrix 顯示)、專案代碼、版本資訊 -->
           <div class="card-left">
             <i
-              v-if="exportFormat.toLowerCase() === 'bigmatrix'"
+              v-if="isDraggable"
               class="pi pi-bars drag-handle"
               title="拖曳以重新排序"
             ></i>
@@ -83,9 +99,9 @@
             </span>
           </div>
 
-          <!-- 右側：Model 數量輸入與移除按鈕 -->
-          <div class="card-right">
-            <div class="model-count-group" v-if="exportFormat.toLowerCase() === 'bigmatrix'">
+          <!-- 右側：Model 數量輸入與移除按鈕 (阻止 mousedown 冒泡避免誤觸卡片拖曳) -->
+          <div class="card-right" @mousedown.stop>
+            <div class="model-count-group" v-if="isDraggable">
               <span class="mc-label">Model Count:</span>
               <InputNumber
                 v-model="card.modelCount"
@@ -146,7 +162,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import Button from 'primevue/button'
 import SelectButton from 'primevue/selectbutton'
 import InputNumber from 'primevue/inputnumber'
@@ -203,8 +219,19 @@ const exportFormat = ref<'BigMatrix' | 'Matrix'>('BigMatrix')
 const exportDescription = ref('')
 const exportOutputPath = ref('')
 const selectedCards = ref<SelectedRevisionCard[]>([])
-const draggedIndex = ref<number | null>(null)
 const isExporting = ref(false)
+
+/** 是否處於 BigMatrix 格式（支援卡片拖曳排序） */
+const isDraggable = computed(() => exportFormat.value.toLowerCase() === 'bigmatrix')
+
+/** 正在被拖曳之卡片索引 */
+const draggedIndex = ref<number | null>(null)
+
+/** 目前拖曳懸停之目標卡片索引 */
+const dragOverIndex = ref<number | null>(null)
+
+/** 目前拖曳落點位置（目標卡片前方或後方） */
+const dropPosition = ref<'before' | 'after' | null>(null)
 
 // 匯出格式選項清單
 const exportFormatOptions = [
@@ -423,32 +450,209 @@ function removeCard(index: number): void {
   saveProjectOrderFromCards()
 }
 
-// 拖曳排序處理函數 (僅 BigMatrix 模式啟用)
+/**
+ * 依據拖曳起始索引、目標索引及放置位置 ('before' | 'after') 計算插入的新索引
+ * @param {number} fromIndex - 拖曳起始卡片索引
+ * @param {number} targetIndex - 目標卡片索引
+ * @param {'before' | 'after'} position - 放置位置（目標卡片的前方或後方）
+ * @returns {number} 元素自陣列移除後應該插入的新索引位置
+ */
+function getInsertIndex(fromIndex: number, targetIndex: number, position: 'before' | 'after'): number {
+  if (targetIndex < fromIndex) {
+    return position === 'before' ? targetIndex : targetIndex + 1
+  }
+  if (targetIndex > fromIndex) {
+    return position === 'before' ? targetIndex - 1 : targetIndex
+  }
+  return fromIndex
+}
+
+/**
+ * 卡片拖曳開始事件處理函式
+ * @param {DragEvent} event - 原生拖曳事件
+ * @param {number} index - 拖曳起始的卡片索引
+ */
 function onDragStart(event: DragEvent, index: number): void {
-  if (exportFormat.value.toLowerCase() !== 'bigmatrix') return
+  if (!isDraggable.value) return
   draggedIndex.value = index
+
   if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move'
+    // 使用 copyMove 或 all 以相容 Windows OLE 拖放判定，避免出現禁止符號
+    event.dataTransfer.effectAllowed = 'copyMove'
+    event.dataTransfer.setData('text/plain', String(index))
+    event.dataTransfer.setData('text', String(index))
   }
 }
 
-function onDragOver(event: DragEvent, _index: number): void {
-  if (exportFormat.value.toLowerCase() !== 'bigmatrix') return
+/**
+ * 卡片拖曳進入事件處理函式
+ * 遵循 HTML5 規範，必須在 dragenter 呼叫 preventDefault 並設定 dropEffect，否則瀏覽器會視為不允許 drop 並顯示禁止符號
+ * @param {DragEvent} event - 原生拖曳事件
+ * @param {number} _index - 目前進入之目標卡片索引
+ */
+function onDragEnter(event: DragEvent, _index: number): void {
+  // 僅當正在拖曳卡片時 (draggedIndex !== null) 才處理，避免干擾外部檔案拖曳
+  if (!isDraggable.value || draggedIndex.value === null) return
   event.preventDefault()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
 }
 
-function onDrop(event: DragEvent, dropIndex: number): void {
-  if (exportFormat.value.toLowerCase() !== 'bigmatrix') return
+/**
+ * 卡片拖曳懸停事件處理函式
+ * 依據游標在目標卡片垂直位置判斷落點是在上半部 (before) 或下半部 (after)
+ * @param {DragEvent} event - 原生拖曳事件
+ * @param {number} index - 目前懸停之目標卡片索引
+ */
+function onDragOver(event: DragEvent, index: number): void {
+  // 僅當正在拖曳卡片時才處理排序位移指示，避免覆蓋外部檔案拖曳的 copy 模式
+  if (!isDraggable.value || draggedIndex.value === null) return
   event.preventDefault()
-  if (draggedIndex.value === null || draggedIndex.value === dropIndex) return
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
 
-  const itemToMove = selectedCards.value[draggedIndex.value]
-  selectedCards.value.splice(draggedIndex.value, 1)
-  selectedCards.value.splice(dropIndex, 0, itemToMove)
+  const target = event.currentTarget as HTMLElement | null
+  if (target) {
+    const rect = target.getBoundingClientRect()
+    const offsetY = event.clientY - rect.top
+    const isTopHalf = offsetY < rect.height / 2
+    dragOverIndex.value = index
+    dropPosition.value = isTopHalf ? 'before' : 'after'
+  }
+}
 
+/**
+ * 卡片拖曳離開事件處理函式
+ * @param {DragEvent} event - 原生拖曳事件
+ * @param {number} index - 目標卡片索引
+ */
+function onDragLeave(event: DragEvent, index: number): void {
+  // 非卡片拖曳直接忽略
+  if (draggedIndex.value === null) return
+
+  const currentTarget = event.currentTarget as HTMLElement | null
+  const relatedTarget = event.relatedTarget as Node | null
+  // 若移動範圍仍在當前卡片內部子元素，不清除指示線
+  if (currentTarget && relatedTarget && currentTarget.contains(relatedTarget)) {
+    return
+  }
+  if (dragOverIndex.value === index) {
+    dragOverIndex.value = null
+    dropPosition.value = null
+  }
+}
+
+/**
+ * 卡片放置 (Drop) 事件處理函式
+ * 根據落點精準重排陣列，並即時更新檔名與儲存順序設定
+ * @param {DragEvent} event - 原生拖曳事件
+ * @param {number} index - 放開時目標卡片的索引
+ */
+function onDrop(event: DragEvent, index: number): void {
+  // 嚴格前置判斷：若非卡片排序拖曳（例如外部檔案拖入），絕不攔截或阻止事件冒泡！
+  if (!isDraggable.value || draggedIndex.value === null) return
+  event.preventDefault()
+  event.stopPropagation()
+
+  const fromIndexStr = event.dataTransfer?.getData('text/plain') || event.dataTransfer?.getData('text')
+  const fromIndex = draggedIndex.value !== null
+    ? draggedIndex.value
+    : (fromIndexStr ? parseInt(fromIndexStr, 10) : null)
+
+  const pos = dropPosition.value || 'before'
+
+  // 清除拖曳指示狀態
   draggedIndex.value = null
+  dragOverIndex.value = null
+  dropPosition.value = null
+
+  if (
+    fromIndex === null ||
+    isNaN(fromIndex) ||
+    fromIndex < 0 ||
+    fromIndex >= selectedCards.value.length ||
+    index < 0 ||
+    index >= selectedCards.value.length
+  ) {
+    return
+  }
+
+  const targetInsertIndex = getInsertIndex(fromIndex, index, pos)
+  if (targetInsertIndex === fromIndex) return
+
+  // 執行陣列位移
+  const itemToMove = selectedCards.value[fromIndex]
+  selectedCards.value.splice(fromIndex, 1)
+  selectedCards.value.splice(targetInsertIndex, 0, itemToMove)
+
+  logStore.addLogEntry('DEBUG', `[ExportView] 卡片拖曳排序變更：[${itemToMove.projectCode}] 從第 ${fromIndex + 1} 位移至第 ${targetInsertIndex + 1} 位`)
+
+  // 更新預設檔名與儲存 Series 專案順序
   updateBigMatrixFilenameIfNeed()
   saveProjectOrderFromCards()
+}
+
+/**
+ * 拖曳操作結束事件處理函式（包含成功放下或使用者取消）
+ */
+function onDragEnd(): void {
+  draggedIndex.value = null
+  dragOverIndex.value = null
+  dropPosition.value = null
+}
+
+/**
+ * 卡片清單容器拖曳進入事件處理函式
+ * @param {DragEvent} event - 原生拖曳事件
+ */
+function onContainerDragEnter(event: DragEvent): void {
+  if (!isDraggable.value || draggedIndex.value === null) return
+  event.preventDefault()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
+}
+
+/**
+ * 卡片清單容器拖曳懸停事件處理函式
+ * @param {DragEvent} event - 原生拖曳事件
+ */
+function onContainerDragOver(event: DragEvent): void {
+  if (!isDraggable.value || draggedIndex.value === null) return
+  event.preventDefault()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
+}
+
+/**
+ * 卡片清單容器放置事件處理函式（拖曳至底部空白區時自動移至陣列末尾）
+ * @param {DragEvent} event - 原生拖曳事件
+ */
+function onContainerDrop(event: DragEvent): void {
+  if (!isDraggable.value || draggedIndex.value === null) return
+  event.preventDefault()
+  event.stopPropagation()
+
+  // 僅當放開目標為容器本體（下方空白處）時觸發
+  if (event.target === event.currentTarget) {
+    const fromIndex = draggedIndex.value
+    draggedIndex.value = null
+    dragOverIndex.value = null
+    dropPosition.value = null
+
+    if (fromIndex < selectedCards.value.length - 1) {
+      const itemToMove = selectedCards.value[fromIndex]
+      selectedCards.value.splice(fromIndex, 1)
+      selectedCards.value.push(itemToMove)
+
+      logStore.addLogEntry('DEBUG', `[ExportView] 卡片拖曳至底部空白區：[${itemToMove.projectCode}] 移至末位`)
+      updateBigMatrixFilenameIfNeed()
+      saveProjectOrderFromCards()
+    }
+  }
 }
 
 /**
@@ -745,6 +949,27 @@ async function executeExport(): Promise<void> {
 .revision-card:hover {
   border-color: var(--primary-color);
   background: var(--surface-hover, rgba(255, 255, 255, 0.04));
+}
+
+/* 拖曳中卡片樣式：半透明與虛線邊框 */
+.revision-card.is-dragging {
+  opacity: 0.4;
+  border-style: dashed;
+}
+
+/* 拖曳插入指示線：在目標卡片上方或下方顯示顯眼的 primary 提示線 */
+.revision-card.drop-before {
+  border-top: 2px solid var(--primary-color) !important;
+}
+
+.revision-card.drop-after {
+  border-bottom: 2px solid var(--primary-color) !important;
+}
+
+/* 讓卡片左側子元素對滑鼠事件透明，避免子元素觸發 dragenter 導致 Chromium 將游標判定為禁止符號 */
+.revision-card.is-draggable .card-left,
+.revision-card.is-draggable .card-left * {
+  pointer-events: none;
 }
 
 .card-left {

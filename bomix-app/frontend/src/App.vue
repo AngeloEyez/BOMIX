@@ -7,8 +7,11 @@
     <div
       v-if="isDraggingOver"
       class="global-drag-overlay"
+      @dragover.prevent
+      @drop="handleDrop"
+      @click="resetDragState"
     >
-      <div class="drag-card">
+      <div class="drag-card" @click.stop>
         <i class="pi pi-file-excel drag-icon"></i>
         <span class="drag-title">釋放滑鼠以匯入 BOM 檔案</span>
         <span class="drag-sub">支援 EBOM, BigMatrix, Matrix Excel 檔案 (.xlsx, .xls)</span>
@@ -194,7 +197,16 @@ const isDraggingOver = ref(false)
 let dragCounter = 0
 
 /**
+ * 重置全域拖曳狀態，關閉拖曳提示遮罩
+ */
+function resetDragState(): void {
+  dragCounter = 0
+  isDraggingOver.value = false
+}
+
+/**
  * 處理拖曳進入視窗事件
+ * @param {DragEvent} e - 原生拖曳事件
  */
 function handleDragEnter(e: DragEvent): void {
   e.preventDefault()
@@ -206,6 +218,7 @@ function handleDragEnter(e: DragEvent): void {
 
 /**
  * 處理拖曳懸浮視窗事件
+ * @param {DragEvent} e - 原生拖曳事件
  */
 function handleDragOver(e: DragEvent): void {
   e.preventDefault()
@@ -216,18 +229,39 @@ function handleDragOver(e: DragEvent): void {
 
 /**
  * 處理拖曳離開視窗事件
+ * @param {DragEvent} e - 原生拖曳事件
  */
 function handleDragLeave(e: DragEvent): void {
   e.preventDefault()
   dragCounter--
   if (dragCounter <= 0) {
-    dragCounter = 0
-    isDraggingOver.value = false
+    resetDragState()
+  }
+}
+
+/**
+ * 全域鍵盤按鍵事件處理 (按下 ESC 鍵時安全重置拖曳遮罩)
+ * @param {KeyboardEvent} e - 原生鍵盤事件
+ */
+function handleGlobalKeyDown(e: KeyboardEvent): void {
+  if (e.key === 'Escape' && isDraggingOver.value) {
+    resetDragState()
+  }
+}
+
+/**
+ * 視窗失焦防護處理 (當視窗失焦或切換至外部程式時自動重置拖曳遮罩)
+ */
+function handleWindowBlur(): void {
+  if (isDraggingOver.value) {
+    resetDragState()
   }
 }
 
 /**
  * 判斷路徑是否為絕對磁碟路徑
+ * @param {string} path - 檔案路徑字串
+ * @returns {boolean} 是否為合法絕對路徑
  */
 function isAbsolutePath(path: string): boolean {
   if (!path) return false
@@ -236,6 +270,8 @@ function isAbsolutePath(path: string): boolean {
 
 /**
  * 安全解析各類事件格式中的檔案清單 (字串陣列、單一字串、物件包裝)
+ * @param {any} data - 事件資料物件或字串
+ * @returns {string[]} 解析出之檔案路徑陣列
  */
 function extractFileList(data: any): string[] {
   if (!data) return []
@@ -260,9 +296,13 @@ function extractFileList(data: any): string[] {
 }
 
 /**
- * 處理接收到的拖放檔案清單
+ * 處理接收到的拖放檔案清單 (Wails 原生視窗拖放事件)
+ * @param {any} data - Wails 後端推送之拖放資料 (支援路徑陣列或物件格式)
  */
 function onFilesReceived(data: any): void {
+  // 原生拖放作業已完成，無論檔案過濾結果為何，均應立即重置拖曳提示狀態
+  resetDragState()
+
   const paths = extractFileList(data)
   const validPaths = paths.filter(path => {
     const p = String(path).toLowerCase()
@@ -276,10 +316,10 @@ function onFilesReceived(data: any): void {
 
 /**
  * 處理放開拖曳檔案事件 (HTML5 原生事件處理)
+ * @param {DragEvent} e - 原生拖曳事件物件
  */
 function handleDrop(e: DragEvent): void {
-  dragCounter = 0
-  isDraggingOver.value = false
+  resetDragState()
 
   const files = e.dataTransfer?.files
   if (!files || files.length === 0) return
@@ -311,12 +351,14 @@ let startY = 0
 let startHeight = 0
 
 onMounted(async () => {
-  // 註冊全域右鍵選單攔截與全域拖曳防護
+  // 註冊全域右鍵選單攔截與全域拖曳防護 (capture 模式優先監聽 drop 與 blur/keydown)
   window.addEventListener('contextmenu', handleGlobalContextMenu)
   window.addEventListener('dragenter', handleDragEnter)
   window.addEventListener('dragover', handleDragOver)
   window.addEventListener('dragleave', handleDragLeave)
-  window.addEventListener('drop', handleDrop)
+  window.addEventListener('drop', handleDrop, true)
+  window.addEventListener('keydown', handleGlobalKeyDown)
+  window.addEventListener('blur', handleWindowBlur)
 
   // 監聽 Wails 原生與後端視窗拖放事件 (包含絕對路徑)
   ListenToEvents('files:dropped', onFilesReceived)
@@ -358,7 +400,9 @@ onUnmounted(() => {
   window.removeEventListener('dragenter', handleDragEnter)
   window.removeEventListener('dragover', handleDragOver)
   window.removeEventListener('dragleave', handleDragLeave)
-  window.removeEventListener('drop', handleDrop)
+  window.removeEventListener('drop', handleDrop, true)
+  window.removeEventListener('keydown', handleGlobalKeyDown)
+  window.removeEventListener('blur', handleWindowBlur)
 })
 
 // Watch for series open changes
@@ -576,7 +620,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .drag-card {
@@ -591,6 +636,7 @@ body {
   border-radius: 6px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
   animation: pulse-border 1.5s infinite ease-in-out;
+  cursor: default;
 }
 
 .drag-icon {
