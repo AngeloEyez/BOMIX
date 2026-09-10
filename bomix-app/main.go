@@ -78,6 +78,8 @@ func main() {
 		},
 		BackgroundColour: application.NewRGB(6, 7, 15),
 		URL:              "/",
+		DevToolsEnabled:  isDevMode,
+		KeyBindings:      setupKeyBindings(),
 	})
 
 	// 監聽視窗原生檔案拖放事件，取得真正的本機絕對路徑並推送至前端

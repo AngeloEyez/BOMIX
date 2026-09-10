@@ -1,5 +1,5 @@
 <template>
-  <div class="bom-table-container">
+  <div class="bom-table-container" ref="tableWrapperRef">
     <!-- View Filter & Mode Toolbar (PrimeVue Toolbar) -->
     <Toolbar class="bom-toolbar">
       <template #start>
@@ -53,7 +53,7 @@
       size="small"
       :scrollable="true"
       scroll-height="flex"
-      :virtual-scroller-options="{ itemSize: 28 }"
+      :virtual-scroller-options="{ itemSize: 26 }"
       :total-records="displayRows.length"
       :row-hover="true"
       :row-class="getRowClass"
@@ -69,7 +69,7 @@
       @row-contextmenu="onRowContextMenu"
     >
       <!-- Item 欄位 (合併開合符號與 Item 號碼，緊湊間距，點擊符號切換收合，點擊標題依 Item 排序) -->
-      <Column field="item" sortable style="width: 62px" class="item-col" header-class="item-header-col">
+      <Column field="item" sortable :style="{ width: columnWidths.item + 'px' }" class="item-col" header-class="item-header-col">
         <template #header>
           <div class="item-header-content">
             <Button
@@ -82,7 +82,7 @@
               :title="isAllCollapsed ? '全部展開替代料 (Expand All)' : '全部收合替代料 (Collapse All)'"
               @click.stop="toggleAllCollapse"
             />
-            <span class="item-header-label">Item</span>
+            <span class="p-datatable-column-title item-header-label" data-pc-section="columntitle">#</span>
           </div>
         </template>
         <template #body="slotProps">
@@ -103,10 +103,10 @@
         </template>
       </Column>
 
-      <!-- HHPN (2nd 替代料具縮排效果) -->
-      <Column field="hhpn" header="HHPN" style="width: 150px" sortable>
+      <!-- HHPN -->
+      <Column field="hhpn" header="HHPN" :style="{ width: columnWidths.hhpn + 'px' }" sortable>
         <template #body="slotProps">
-          <div :class="{'ss-indented': slotProps.data.isSecondSource}">
+          <div class="cell-text" v-tooltip.bottom="slotProps.data.hhpn">
             <template v-for="(part, idx) in getHighlightedParts(slotProps.data.hhpn, searchQuery)" :key="idx">
               <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
               <span v-else>{{ part.text }}</span>
@@ -116,50 +116,64 @@
       </Column>
 
       <!-- Description -->
-      <Column field="description" header="Description" style="width: 220px">
+      <Column field="description" header="Description" :style="{ width: columnWidths.description + 'px', minWidth: '250px' }" sortable>
         <template #body="slotProps">
-          <template v-for="(part, idx) in getHighlightedParts(slotProps.data.description, searchQuery)" :key="idx">
-            <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
-            <span v-else>{{ part.text }}</span>
-          </template>
+          <div class="cell-text" v-tooltip.bottom="slotProps.data.description">
+            <template v-for="(part, idx) in getHighlightedParts(slotProps.data.description, searchQuery)" :key="idx">
+              <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
+              <span v-else>{{ part.text }}</span>
+            </template>
+          </div>
         </template>
       </Column>
 
       <!-- Supplier -->
-      <Column field="supplier" header="Supplier" style="width: 130px" sortable>
+      <Column field="supplier" header="Supplier" :style="{ width: columnWidths.supplier + 'px' }" sortable>
         <template #body="slotProps">
-          <template v-for="(part, idx) in getHighlightedParts(slotProps.data.supplier, searchQuery)" :key="idx">
-            <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
-            <span v-else>{{ part.text }}</span>
-          </template>
+          <div class="cell-text" v-tooltip.bottom="slotProps.data.supplier">
+            <template v-for="(part, idx) in getHighlightedParts(slotProps.data.supplier, searchQuery)" :key="idx">
+              <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
+              <span v-else>{{ part.text }}</span>
+            </template>
+          </div>
         </template>
       </Column>
 
       <!-- Supplier PN -->
-      <Column field="supplier_pn" header="Supplier PN" style="width: 160px" sortable>
+      <Column field="supplier_pn" header="Supplier PN" :style="{ width: columnWidths.supplier_pn + 'px' }" sortable>
         <template #body="slotProps">
-          <template v-for="(part, idx) in getHighlightedParts(slotProps.data.supplier_pn, searchQuery)" :key="idx">
-            <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
-            <span v-else>{{ part.text }}</span>
-          </template>
+          <div class="cell-text" v-tooltip.bottom="slotProps.data.supplier_pn">
+            <template v-for="(part, idx) in getHighlightedParts(slotProps.data.supplier_pn, searchQuery)" :key="idx">
+              <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
+              <span v-else>{{ part.text }}</span>
+            </template>
+          </div>
         </template>
       </Column>
 
       <!-- Qty -->
-      <Column field="qty" header="Qty" style="width: 65px" sortable />
+      <Column field="qty" header="Qty" :style="{ width: columnWidths.qty + 'px' }" sortable>
+        <template #body="slotProps">
+          <div class="cell-text" v-tooltip.bottom="String(slotProps.data.qty ?? '')">
+            {{ slotProps.data.qty }}
+          </div>
+        </template>
+      </Column>
 
       <!-- Location -->
-      <Column field="locations" header="Location" style="width: 140px">
+      <Column field="locations" header="Location" :style="{ width: columnWidths.locations + 'px', minWidth: '150px' }">
         <template #body="slotProps">
-          <template v-for="(part, idx) in getHighlightedParts(slotProps.data.locations, searchQuery)" :key="idx">
-            <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
-            <span v-else>{{ part.text }}</span>
-          </template>
+          <div class="cell-text" v-tooltip.bottom="slotProps.data.locations">
+            <template v-for="(part, idx) in getHighlightedParts(slotProps.data.locations, searchQuery)" :key="idx">
+              <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
+              <span v-else>{{ part.text }}</span>
+            </template>
+          </div>
         </template>
       </Column>
 
       <!-- CCL -->
-      <Column field="ccl" header="CCL" style="width: 60px" sortable>
+      <Column field="ccl" header="CCL" :style="{ width: columnWidths.ccl + 'px' }" sortable>
         <template #body="slotProps">
           <span v-if="slotProps.data.ccl" :class="getCCLClass(slotProps.data.ccl)">
             Y
@@ -168,12 +182,14 @@
       </Column>
 
       <!-- Remark -->
-      <Column field="remark" header="Remark" style="width: 140px">
+      <Column field="remark" header="Remark" :style="{ width: columnWidths.remark + 'px' }">
         <template #body="slotProps">
-          <template v-for="(part, idx) in getHighlightedParts(slotProps.data.remark, searchQuery)" :key="idx">
-            <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
-            <span v-else>{{ part.text }}</span>
-          </template>
+          <div class="cell-text" v-tooltip.bottom="slotProps.data.remark">
+            <template v-for="(part, idx) in getHighlightedParts(slotProps.data.remark, searchQuery)" :key="idx">
+              <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
+              <span v-else>{{ part.text }}</span>
+            </template>
+          </div>
         </template>
       </Column>
 
@@ -182,12 +198,16 @@
         v-for="modelName in currentRevisionModels"
         :key="modelName"
         :header="`${modelName} (Qty: ${getModelQty(modelName)})`"
-        style="width: 130px"
+        :style="{ width: (columnWidths.models[modelName] || 110) + 'px' }"
       >
         <template #body="slotProps">
-          <span :class="{'model-selected': isModelSelected(slotProps.data, modelName)}">
+          <div
+            class="cell-text"
+            :class="{'model-selected': isModelSelected(slotProps.data, modelName)}"
+            v-tooltip.bottom="getModelSelectedPN(slotProps.data, modelName)"
+          >
             {{ getModelSelectedPN(slotProps.data, modelName) || '-' }}
-          </span>
+          </div>
         </template>
       </Column>
     </DataTable>
@@ -205,7 +225,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, shallowRef, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import DataTable, { type DataTableSortEvent } from 'primevue/datatable'
 import Column from 'primevue/column'
 import Toolbar from 'primevue/toolbar'
@@ -217,6 +237,252 @@ import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useProjectStore, useLogStore } from '../stores'
 import { GetBOMView, type ViewPartGroup, type ViewRevision } from '../services/api'
+
+// ── 欄寬計算與狀態管理 ────
+interface ColumnWidthConfig {
+  item: number
+  hhpn: number
+  description: number
+  supplier: number
+  supplier_pn: number
+  qty: number
+  locations: number
+  ccl: number
+  remark: number
+  models: Record<string, number>
+}
+
+const defaultColumnWidths: ColumnWidthConfig = {
+  item: 54,
+  hhpn: 140,
+  description: 240,
+  supplier: 120,
+  supplier_pn: 150,
+  qty: 55,
+  locations: 220,
+  ccl: 50,
+  remark: 130,
+  models: {}
+}
+
+const columnWidths = ref<ColumnWidthConfig>({ ...defaultColumnWidths })
+/** 表格容器 template ref，用於精準讀取可用寬度 */
+const tableWrapperRef = ref<HTMLElement | null>(null)
+let measureCanvas: HTMLCanvasElement | null = null
+let resizeObserver: ResizeObserver | null = null
+
+/**
+ * 測量文字在指定字體下的像素寬度 (使用離屏 Canvas API 避免觸發 DOM 重新排版)
+ * @param {string} text - 待測量的文字字串
+ * @param {boolean} [isHeader=false] - 是否為表頭 (表頭使用加粗 600 字重)
+ * @returns {number} 文字像素寬度
+ */
+function measureTextWidth(text: string, isHeader = false): number {
+  if (!text) return 0
+  if (!measureCanvas) {
+    measureCanvas = document.createElement('canvas')
+  }
+  const ctx = measureCanvas.getContext('2d')
+  if (!ctx) {
+    return text.length * 7.5
+  }
+  ctx.font = isHeader
+    ? '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    : '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  return ctx.measureText(text).width
+}
+
+/**
+ * 取得 DataTable 實際可用欄寬總量（最精準量測策略）
+ *
+ * 量測優先順序：
+ * 1. 讀取 DataTable 內部 VirtualScroller 的 clientWidth
+ *    - VirtualScroller 是 DataTable body 的直接捲動容器（帶有垂直 scrollbar）
+ *    - clientWidth 已自動扣除垂直 scrollbar 佔用的寬度，無需手動估算
+ * 2. 回退到 tableWrapperRef.clientWidth 並扣除 scrollbar 估算值
+ * 3. 最後回退使用 window.innerWidth 粗估
+ *
+ * @returns {number} DataTable 可用欄寬總量 (像素)
+ */
+function getWorkspaceVisibleWidth(): number {
+  const wrapperEl = tableWrapperRef.value
+
+  // 優先讀取 DataTable 內部 VirtualScroller 的 clientWidth
+  // VirtualScroller 的 clientWidth 已自動扣除垂直 scrollbar，是最精準的量測基準
+  if (wrapperEl) {
+    const vscroller = wrapperEl.querySelector('[data-pc-name="virtualscroller"]') as HTMLElement | null
+    if (vscroller && vscroller.clientWidth > 0) {
+      // 減去 1px 避免瀏覽器次像素浮點數捨入引發 1px 溢出
+      return Math.max(vscroller.clientWidth - 1, 400)
+    }
+
+    // 回退：直接讀取容器寬度，並扣除垂直 scrollbar 估算值
+    // 在 Chromium / WebView2 上 Windows 預設 scrollbar 寬度約 15-17px，取 17 較保守
+    if (wrapperEl.clientWidth > 0) {
+      return Math.max(wrapperEl.clientWidth - 17, 400)
+    }
+  }
+
+  // 最後回退：以 window.innerWidth 粗估（不建議，僅防止計算出 NaN 或 0）
+  return Math.max(window.innerWidth / 2, 400)
+}
+
+/**
+ * 計算各欄位最適欄寬 (包含最小寬度、Location 初始 30 字元、以及 Description 剩餘空間分配)
+ * 依據規則：
+ * 1. Description 欄位 min-width 為 250px，Location 欄位 min-width 為 150px。
+ * 2. 總寬度以 app 整體分配給 Workspace 的可視寬度計算。
+ * 3. 若可視寬度能滿足每個欄位的 min-width，欄位總寬度精確配合可視寬度，不出現橫向捲軸。
+ * 4. 僅在可視寬度不足以滿足各欄 min-width 時，各欄退守 min-width 並以最緊湊寬度呈現。
+ * 5. 拖曳 main content splitter、切換 revision/view、或視窗縮放時皆即時重新計算。
+ */
+function computeColumnWidths(): void {
+  const rows = displayRows.value
+  const models = currentRevisionModels.value
+
+  const MIN_DESC_WIDTH = 250
+  const MIN_LOC_WIDTH = 150
+
+  // 1. 固定欄位最小寬度計算
+  const itemWidth = 46
+
+  // 各欄位表頭標題測量 (加上 padding 8px 與排序箭頭 16px)
+  let maxHhpn = measureTextWidth('HHPN', true) + 20
+  let maxSupplier = measureTextWidth('Supplier', true) + 20
+  let maxSupplierPn = measureTextWidth('Supplier PN', true) + 20
+  let maxQty = measureTextWidth('Qty', true) + 20
+  let maxRemark = measureTextWidth('Remark', true) + 14
+  let maxDesc = measureTextWidth('Description', true) + 20
+
+  // 動態 Model 欄位文字寬度需求
+  const modelMaxMap: Record<string, number> = {}
+  for (const m of models) {
+    const headerTitle = `${m} (Qty: ${getModelQty(m)})`
+    modelMaxMap[m] = measureTextWidth(headerTitle, true) + 20
+  }
+
+  // 遍歷當前所有顯示列資料以取得實際長度
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]
+    if (row.hhpn) {
+      const w = measureTextWidth(row.hhpn) + 12
+      if (w > maxHhpn) maxHhpn = w
+    }
+    if (row.supplier) {
+      const w = measureTextWidth(row.supplier) + 12
+      if (w > maxSupplier) maxSupplier = w
+    }
+    if (row.supplier_pn) {
+      const w = measureTextWidth(row.supplier_pn) + 12
+      if (w > maxSupplierPn) maxSupplierPn = w
+    }
+    if (row.qty !== '' && row.qty !== undefined && row.qty !== null) {
+      const w = measureTextWidth(String(row.qty)) + 12
+      if (w > maxQty) maxQty = w
+    }
+    if (row.remark) {
+      const w = measureTextWidth(row.remark) + 12
+      if (w > maxRemark) maxRemark = w
+    }
+    if (row.description) {
+      const w = measureTextWidth(row.description) + 12
+      if (w > maxDesc) maxDesc = w
+    }
+    for (const m of models) {
+      const pn = getModelSelectedPN(row, m)
+      if (pn) {
+        const w = measureTextWidth(pn) + 12
+        if (w > modelMaxMap[m]) modelMaxMap[m] = w
+      }
+    }
+  }
+
+  // 限制各固定欄位緊湊最小安全寬度 (根據內容長度緊貼，不浪費多餘像素)
+  const hhpnColWidth = Math.ceil(Math.min(150, Math.max(80, maxHhpn)))
+  const supplierColWidth = Math.ceil(Math.min(140, Math.max(65, maxSupplier)))
+  const supplierPnColWidth = Math.ceil(Math.min(160, Math.max(85, maxSupplierPn)))
+  const qtyColWidth = Math.ceil(Math.min(60, Math.max(40, maxQty)))
+  const cclColWidth = 38
+  const remarkColWidth = Math.ceil(Math.min(140, Math.max(55, maxRemark)))
+
+  const finalModelWidths: Record<string, number> = {}
+  let totalModelsWidth = 0
+  for (const m of models) {
+    const w = Math.ceil(Math.min(130, Math.max(85, modelMaxMap[m] || 85)))
+    finalModelWidths[m] = w
+    totalModelsWidth += w
+  }
+
+  // 固定欄位最小寬度總和
+  const fixedTotal = itemWidth + hhpnColWidth + supplierColWidth + supplierPnColWidth + qtyColWidth + cclColWidth + remarkColWidth + totalModelsWidth
+  // 所有欄位 min-width 需求總和
+  const totalRequiredMinWidth = fixedTotal + MIN_LOC_WIDTH + MIN_DESC_WIDTH
+
+  // 2. 取得 App 真正分配給 Workspace 的可視寬度 (不受內部 Table 寬度污染)
+  const visibleWidth = getWorkspaceVisibleWidth()
+
+  let finalDescWidth = MIN_DESC_WIDTH
+  let finalLocWidth = MIN_LOC_WIDTH
+
+  if (visibleWidth <= totalRequiredMinWidth) {
+    // 情況 1：可視寬度不足以容納所有欄位的 min-width，退守至各自 min-width，以緊湊寬度呈現
+    finalDescWidth = MIN_DESC_WIDTH
+    finalLocWidth = MIN_LOC_WIDTH
+  } else {
+    // 情況 2：可視寬度足以滿足所有欄位的 min-width：所有欄位寬度總和完全貼合可視寬度，不出現橫向捲軸！
+    // 預留 1px 避免瀏覽器次像素浮點數微幅溢出
+    const safeTotal = Math.floor(visibleWidth) - 1
+    const rem = safeTotal - fixedTotal // 供 Description 與 Location 瓜分之總空間 (必定 >= 400px)
+
+    // Location 初始理想寬度 (容納 30 個字元，約 210px，但不低於 MIN_LOC_WIDTH 150px)
+    const thirtyCharsWidth = measureTextWidth('0'.repeat(30))
+    const locInit = Math.max(MIN_LOC_WIDTH, Math.ceil(thirtyCharsWidth + 12))
+
+    if (rem - locInit >= MIN_DESC_WIDTH) {
+      // 扣除 30 字元 Location 後，Description 至少能拿到 250px
+      let descW = rem - locInit
+      let locW = locInit
+
+      // 檢查 Description 是否已足夠完整顯示其所有資料
+      const descNeeded = Math.max(MIN_DESC_WIDTH, Math.ceil(maxDesc + 14))
+      if (descW > descNeeded) {
+        // Description 已足夠完整顯示，多餘寬度再全額分配給 Location
+        const surplus = descW - descNeeded
+        descW = descNeeded
+        locW = locW + surplus
+      }
+
+      finalDescWidth = descW
+      finalLocWidth = locW
+    } else {
+      // 空間大於 400px 但扣除 30 字元 Location 後 Description 不足 250px，
+      // 優先保障 Description 的 250px min-width，其餘全部分配給 Location
+      finalDescWidth = MIN_DESC_WIDTH
+      finalLocWidth = rem - MIN_DESC_WIDTH
+    }
+  }
+
+  columnWidths.value = {
+    item: itemWidth,
+    hhpn: hhpnColWidth,
+    description: finalDescWidth,
+    supplier: supplierColWidth,
+    supplier_pn: supplierPnColWidth,
+    qty: qtyColWidth,
+    locations: finalLocWidth,
+    ccl: cclColWidth,
+    remark: remarkColWidth,
+    models: finalModelWidths
+  }
+
+  console.debug('[BOMTable 欄寬計算]', {
+    visibleWidth,
+    fixedTotal,
+    finalDescWidth,
+    finalLocWidth,
+    totalAssigned: fixedTotal + finalDescWidth + finalLocWidth
+  })
+}
 
 // Display row interface for flattened table rendering
 export interface BOMDisplayRow {
@@ -274,7 +540,7 @@ const viewOptions = [
 const dataTableRef = ref()
 const selectedView = ref('all')
 const collapsedParents = ref<Set<string>>(new Set())
-const sortField = ref('item')
+const sortField = ref('')
 const sortOrder = ref(1)
 const searchQuery = ref('')
 
@@ -346,6 +612,19 @@ const sortedAggregatedParts = computed<ViewPartGroup[]>(() => {
 
   const field = sortField.value
   const order = sortOrder.value
+
+  if (!field) {
+    // 預設依 item 自然數字序排序，保持穩定次序
+    list.sort((a, b) => {
+      const itemA = parseFloat(a.item)
+      const itemB = parseFloat(b.item)
+      if (!isNaN(itemA) && !isNaN(itemB)) {
+        return itemA - itemB
+      }
+      return String(a.item || '').localeCompare(String(b.item || ''), undefined, { numeric: true, sensitivity: 'base' })
+    })
+    return list
+  }
 
   list.sort((a, b) => {
     let valA: unknown = ''
@@ -840,21 +1119,67 @@ const contextMenuItems = computed(() => {
   return items
 })
 
+// 監聽 displayRows 變化 (切換 revision、篩選、展開收合替代料等)，重新精確計算各欄最適欄寬
+watch(
+  () => displayRows.value,
+  () => {
+    // nextTick 確保 Vue 完成響應式更新，requestAnimationFrame 確保瀏覽器完成一次 layout pass
+    // 這樣 DataTable 的 VirtualScroller 才會被完整渲染，clientWidth 才能讀到正確值
+    nextTick(() => {
+      requestAnimationFrame(() => {
+        computeColumnWidths()
+      })
+    })
+  },
+  { deep: false }
+)
+
+/**
+ * 視窗大小變更時重新計算欄寬
+ * 使用 requestAnimationFrame 確保瀏覽器 layout 穩定後再量測
+ */
+function onWindowResize(): void {
+  requestAnimationFrame(() => {
+    computeColumnWidths()
+  })
+}
+
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown)
+  window.addEventListener('resize', onWindowResize)
   if (props.revisionIds && props.revisionIds.length > 0) {
     loadBOMData(props.revisionIds)
+  }
+
+  // 監聽表格容器尺寸變化 (視窗縮放或側邊欄拖曳)，動態重新計算分配欄寬
+  // 使用 templateRef 直接綁定，避免 querySelector 的跨元件選擇器衝突風險
+  const containerEl = tableWrapperRef.value
+  if (containerEl && typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => {
+      // requestAnimationFrame 確保 layout 穩定後再量測，避免讀到過渡中的錯誤值
+      requestAnimationFrame(() => {
+        computeColumnWidths()
+      })
+    })
+    resizeObserver.observe(containerEl)
   }
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('resize', onWindowResize)
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
 })
 </script>
 
 <style scoped>
 .bom-table-container {
   height: 100%;
+  width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -955,6 +1280,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -962,30 +1289,82 @@ onUnmounted(() => {
 :deep(.p-datatable-wrapper) {
   flex: 1;
   min-height: 0;
+  width: 100%;
+  min-width: 0;
 }
+
+/* table-layout: fixed 已移除——與 PrimeVue VirtualScroller 的行高計算機制衝突，無法正確使用 */
 
 :deep(.p-datatable-header) {
   background: var(--surface-ground);
   border-bottom: 1px solid var(--surface-border);
 }
 
+/* 標題列：背景微調為 surface-100 (暗黑模式為 surface-800)，搭配清楚的底線，避免與斑馬紋重複 */
 :deep(.bom-table .p-datatable-thead > tr > th) {
-  padding: 0.2rem 0.35rem !important;
+  padding: 0.12rem 0.25rem !important;
   font-size: 0.75rem !important;
   font-weight: 600;
-  height: 28px !important;
+  height: 26px !important;
   white-space: nowrap;
-  border-bottom: 1px solid var(--surface-border);
-  background: var(--surface-section);
+  border-bottom: 2px solid var(--surface-300, #cbd5e1) !important;
+  background: var(--surface-100, #f1f5f9) !important;
+  position: relative !important;
 }
 
+:global(.app-dark) :deep(.bom-table .p-datatable-thead > tr > th) {
+  background: var(--surface-800, #1e293b) !important;
+  border-bottom: 2px solid var(--surface-700, #334155) !important;
+}
+
+/* 調整欄寬時的拖曳控柄 (Resizer) 樣式 */
+:deep(.bom-table .p-datatable-column-resizer) {
+  width: 8px !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  cursor: col-resize !important;
+  position: absolute !important;
+  z-index: 10 !important;
+}
+
+:deep(.bom-table .p-datatable-column-resizer:hover) {
+  background-color: var(--primary-color) !important;
+  opacity: 0.4;
+}
+
+/* 標題列排序符號微調為 10px 高緊湊風格 */
+:deep(.bom-table .p-datatable-sort-icon),
+:deep(.bom-table .p-datatable-sort-icon svg) {
+  width: 10px !important;
+  height: 10px !important;
+  min-width: 10px !important;
+  min-height: 10px !important;
+  font-size: 10px !important;
+  transition: color 0.15s ease;
+}
+
+/* 排序符號生效時，採用與整體 UI 按鈕生效同款綠色 */
+:deep(.bom-table th.p-datatable-column-sorted .p-datatable-sort-icon),
+:deep(.bom-table th[data-p-sorted="true"] .p-datatable-sort-icon),
+:deep(.bom-table th[aria-sort="ascending"] .p-datatable-sort-icon),
+:deep(.bom-table th[aria-sort="descending"] .p-datatable-sort-icon),
+:deep(.bom-table th.p-datatable-column-sorted .p-datatable-sort-icon svg),
+:deep(.bom-table th[data-p-sorted="true"] .p-datatable-sort-icon svg),
+:deep(.bom-table th[aria-sort="ascending"] .p-datatable-sort-icon svg),
+:deep(.bom-table th[aria-sort="descending"] .p-datatable-sort-icon svg) {
+  color: var(--primary-color) !important;
+  fill: var(--primary-color) !important;
+}
+
+/* 資料列高度緊湊化為 26px，左右內距縮小至 0.25rem，最大化可視範圍 */
 :deep(.bom-table .p-datatable-tbody > tr) {
-  height: 28px !important;
-  max-height: 28px !important;
+  height: 26px !important;
+  max-height: 26px !important;
 }
 
 :deep(.bom-table .p-datatable-tbody > tr > td) {
-  padding: 0.1rem 0.35rem !important;
+  padding: 0.05rem 0.25rem !important;
   font-size: 0.75rem !important;
   line-height: 1.25 !important;
   white-space: nowrap;
@@ -999,6 +1378,18 @@ onUnmounted(() => {
 :deep(.bom-table .p-datatable-tbody > tr > td *) {
   -webkit-user-select: text !important;
   user-select: text !important;
+}
+
+/* 儲存格文字容器：單行 CSS 截斷、支援鼠標完整選取拖拽 */
+.cell-text {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  cursor: text;
 }
 
 /* 合併欄位：Item + 開合按鈕 (緊湊半字元間距) */
@@ -1015,7 +1406,7 @@ onUnmounted(() => {
 :deep(.item-header-col .p-datatable-column-header-content) {
   display: flex !important;
   align-items: center !important;
-  gap: 0.1rem;
+  gap: 0.25rem !important; /* 與一般欄位保持一致的圖示間距 */
 }
 
 .item-header-content {
@@ -1027,6 +1418,10 @@ onUnmounted(() => {
 .item-header-label {
   cursor: pointer;
   user-select: none;
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+  color: inherit !important;
+  line-height: 1;
 }
 
 .item-cell-content {

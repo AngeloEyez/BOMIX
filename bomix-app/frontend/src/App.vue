@@ -85,12 +85,15 @@
     </header>
 
     <!-- Main Content with Splitter -->
-    <Splitter class="main-splitter">
+    <Splitter
+      class="main-splitter"
+      @resize="onSplitterResize"
+      @resizeend="onSplitterResize"
+    >
       <!-- Sidebar Panel -->
       <SplitterPanel
         :size="sidebarWidth"
         :min-size="0"
-        @resize="onSidebarResize"
         @dblclick="resetSidebarWidth"
       >
         <SidebarPanel />
@@ -492,12 +495,23 @@ async function loadProjects(): Promise<void> {
   }
 }
 
-function onSidebarResize(event: any): void {
-  sidebarWidth.value = event.size || event
+/**
+ * 處理 Main Splitter (側邊欄與工作區) 拖曳分割條事件
+ * 廣播 window resize 事件，確保 BOMTable 即時重新計算欄寬並消除不必要的橫向捲軸
+ * @param {any} event - PrimeVue Splitter resize 事件物件
+ */
+function onSplitterResize(event: any): void {
+  if (event && event.sizes && event.sizes.length > 0) {
+    sidebarWidth.value = event.sizes[0]
+  } else if (typeof event === 'number') {
+    sidebarWidth.value = event
+  }
+  window.dispatchEvent(new Event('resize'))
 }
 
 function resetSidebarWidth(): void {
   sidebarWidth.value = 20
+  window.dispatchEvent(new Event('resize'))
 }
 
 function startBottomResize(event: MouseEvent): void {
@@ -548,6 +562,18 @@ html,
 body {
   height: 100%;
   overflow: hidden;
+}
+
+.main-splitter {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+:deep(.main-splitter .p-splitterpanel) {
+  overflow: hidden !important;
+  min-width: 0 !important;
 }
 
 #app {

@@ -239,14 +239,18 @@ function onExportSuccess(paths: string[]): void {
   display: flex;
   flex-direction: column;
   height: 100%;
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
 }
-
 
 .main-content {
   flex: 1;
   display: flex;
   flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
   background: var(--surface-ground);
 }
