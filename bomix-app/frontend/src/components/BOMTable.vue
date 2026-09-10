@@ -924,6 +924,28 @@ onUnmounted(() => {
   font-size: 0.75rem !important;
   font-weight: 600;
   height: 26px !important;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+:deep(.bom-type-toggle .p-togglebutton:not(.p-togglebutton-checked):not([data-p-checked="true"])) {
+  color: var(--text-color-secondary) !important;
+}
+
+/* 切換 EBOM / Matrix 的 SelectButton 選中狀態高亮 (參照 App.vue Title Bar 按鈕風格) */
+:deep(.bom-type-toggle .p-togglebutton.p-togglebutton-checked),
+:deep(.bom-type-toggle .p-togglebutton[data-p-checked="true"]) {
+  color: var(--primary-color) !important;
+  background-color: var(--surface-hover) !important;
+  font-weight: 700 !important;
+}
+
+:deep(.bom-type-toggle .p-togglebutton.p-togglebutton-checked .p-togglebutton-label),
+:deep(.bom-type-toggle .p-togglebutton[data-p-checked="true"] .p-togglebutton-label) {
+  color: var(--primary-color) !important;
+}
+
+:deep(.bom-type-toggle .p-togglebutton:hover) {
+  background-color: var(--surface-hover) !important;
 }
 
 /* Table styling - VS Code 風格高緊湊表格，最大化可視範圍 */
