@@ -1,59 +1,60 @@
 <template>
   <div class="bom-table-container">
-    <!-- View Filter Toolbar -->
-    <div class="view-toolbar">
-      <div class="view-filters">
-        <span class="filter-label">View:</span>
-        <Select
-          v-model="selectedView"
-          :options="viewOptions"
-          option-label="label"
-          option-value="value"
-          placeholder="Select View"
-          class="view-dropdown"
-          @change="onViewChange"
-        />
-        <div class="search-input-wrapper">
-          <InputText
-            v-model="searchQuery"
-            placeholder="Filter"
-            class="search-input"
+    <!-- View Filter & Mode Toolbar (PrimeVue Toolbar) -->
+    <Toolbar class="bom-toolbar">
+      <template #start>
+        <div class="toolbar-start">
+          <span class="filter-label">View:</span>
+          <Select
+            v-model="selectedView"
+            :options="viewOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="Select View"
+            size="small"
+            class="view-dropdown"
+            @change="onViewChange"
           />
-          <i
-            v-if="searchQuery"
-            class="pi pi-times clear-btn"
-            title="Clear filter"
-            @click="searchQuery = ''"
+          <div class="search-input-wrapper">
+            <InputText
+              v-model="searchQuery"
+              placeholder="Filter"
+              size="small"
+              class="search-input"
+            />
+            <i
+              v-if="searchQuery"
+              class="pi pi-times clear-btn"
+              title="Clear filter"
+              @click="searchQuery = ''"
+            />
+          </div>
+        </div>
+      </template>
+
+      <template #end>
+        <div class="toolbar-end">
+          <SelectButton
+            v-model="selectedBomType"
+            :options="bomTypeOptions"
+            :allow-empty="false"
+            size="small"
+            class="bom-type-toggle"
           />
         </div>
-      </div>
-
-      <div class="view-actions">
-        <Button
-          label="Expand All"
-          icon="pi pi-angle-down"
-          text
-          severity="secondary"
-          @click="expandAll"
-        />
-        <Button
-          label="Collapse All"
-          icon="pi pi-angle-right"
-          text
-          severity="secondary"
-          @click="collapseAll"
-        />
-      </div>
-    </div>
+      </template>
+    </Toolbar>
 
     <!-- BOM Data Table (Flattened single table with shared columns) -->
     <DataTable
+      ref="dataTableRef"
       :value="displayRows"
       dataKey="rowId"
+      size="small"
       :scrollable="true"
       scroll-height="flex"
-      scroll-direction="both"
-      :virtual-scroller-options="{ itemSize: 36 }"
+      :virtual-scroller-options="{ itemSize: 28 }"
+      :total-records="displayRows.length"
       :row-hover="true"
       :row-class="getRowClass"
       striped-rows
@@ -67,27 +68,43 @@
       v-model:contextMenuSelection="selectedContextRow"
       @row-contextmenu="onRowContextMenu"
     >
-      <!-- 收合 / 展開 控制欄 -->
-      <Column style="width: 3.2rem" header="">
+      <!-- Item 欄位 (合併開合符號與 Item 號碼，緊湊間距，點擊符號切換收合，點擊標題依 Item 排序) -->
+      <Column field="item" sortable style="width: 62px" class="item-col" header-class="item-header-col">
+        <template #header>
+          <div class="item-header-content">
+            <Button
+              :icon="isAllCollapsed ? 'pi pi-chevron-right' : 'pi pi-chevron-down'"
+              text
+              rounded
+              size="small"
+              class="toggle-all-btn"
+              :disabled="totalExpandableCount === 0"
+              :title="isAllCollapsed ? '全部展開替代料 (Expand All)' : '全部收合替代料 (Collapse All)'"
+              @click.stop="toggleAllCollapse"
+            />
+            <span class="item-header-label">Item</span>
+          </div>
+        </template>
         <template #body="slotProps">
-          <Button
-            v-if="!slotProps.data.isSecondSource && slotProps.data.hasSecondSources"
-            :icon="isCollapsed(slotProps.data.parentKey) ? 'pi pi-chevron-right' : 'pi pi-chevron-down'"
-            text
-            rounded
-            size="small"
-            class="toggle-ss-btn"
-            :title="isCollapsed(slotProps.data.parentKey) ? '展開替代料' : '收合替代料'"
-            @click.stop="toggleCollapse(slotProps.data.parentKey)"
-          />
+          <div v-if="!slotProps.data.isSecondSource" class="item-cell-content">
+            <Button
+              v-if="slotProps.data.hasSecondSources"
+              :icon="isCollapsed(slotProps.data.parentKey) ? 'pi pi-chevron-right' : 'pi pi-chevron-down'"
+              text
+              rounded
+              size="small"
+              class="toggle-ss-btn"
+              :title="isCollapsed(slotProps.data.parentKey) ? '展開替代料' : '收合替代料'"
+              @click.stop="toggleCollapse(slotProps.data.parentKey)"
+            />
+            <span v-else class="toggle-placeholder" />
+            <span class="item-number">{{ slotProps.data.item }}</span>
+          </div>
         </template>
       </Column>
 
-      <!-- Item (2nd 替代料該欄位為空白) -->
-      <Column field="item" header="Item" style="width: 80px" sortable />
-
       <!-- HHPN (2nd 替代料具縮排效果) -->
-      <Column field="hhpn" header="HHPN" style="width: 170px" sortable>
+      <Column field="hhpn" header="HHPN" style="width: 150px" sortable>
         <template #body="slotProps">
           <div :class="{'ss-indented': slotProps.data.isSecondSource}">
             <template v-for="(part, idx) in getHighlightedParts(slotProps.data.hhpn, searchQuery)" :key="idx">
@@ -109,7 +126,7 @@
       </Column>
 
       <!-- Supplier -->
-      <Column field="supplier" header="Supplier" style="width: 150px" sortable>
+      <Column field="supplier" header="Supplier" style="width: 130px" sortable>
         <template #body="slotProps">
           <template v-for="(part, idx) in getHighlightedParts(slotProps.data.supplier, searchQuery)" :key="idx">
             <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
@@ -119,7 +136,7 @@
       </Column>
 
       <!-- Supplier PN -->
-      <Column field="supplier_pn" header="Supplier PN" style="width: 180px" sortable>
+      <Column field="supplier_pn" header="Supplier PN" style="width: 160px" sortable>
         <template #body="slotProps">
           <template v-for="(part, idx) in getHighlightedParts(slotProps.data.supplier_pn, searchQuery)" :key="idx">
             <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
@@ -129,10 +146,10 @@
       </Column>
 
       <!-- Qty -->
-      <Column field="qty" header="Qty" style="width: 80px" sortable />
+      <Column field="qty" header="Qty" style="width: 65px" sortable />
 
       <!-- Location -->
-      <Column field="locations" header="Location" style="width: 150px">
+      <Column field="locations" header="Location" style="width: 140px">
         <template #body="slotProps">
           <template v-for="(part, idx) in getHighlightedParts(slotProps.data.locations, searchQuery)" :key="idx">
             <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
@@ -142,7 +159,7 @@
       </Column>
 
       <!-- CCL -->
-      <Column field="ccl" header="CCL" style="width: 80px" sortable>
+      <Column field="ccl" header="CCL" style="width: 60px" sortable>
         <template #body="slotProps">
           <span v-if="slotProps.data.ccl" :class="getCCLClass(slotProps.data.ccl)">
             Y
@@ -151,7 +168,7 @@
       </Column>
 
       <!-- Remark -->
-      <Column field="remark" header="Remark" style="width: 150px">
+      <Column field="remark" header="Remark" style="width: 140px">
         <template #body="slotProps">
           <template v-for="(part, idx) in getHighlightedParts(slotProps.data.remark, searchQuery)" :key="idx">
             <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
@@ -165,7 +182,7 @@
         v-for="modelName in currentRevisionModels"
         :key="modelName"
         :header="`${modelName} (Qty: ${getModelQty(modelName)})`"
-        style="width: 150px"
+        style="width: 130px"
       >
         <template #body="slotProps">
           <span :class="{'model-selected': isModelSelected(slotProps.data, modelName)}">
@@ -191,6 +208,8 @@
 import { ref, shallowRef, computed, watch, onMounted, onUnmounted } from 'vue'
 import DataTable, { type DataTableSortEvent } from 'primevue/datatable'
 import Column from 'primevue/column'
+import Toolbar from 'primevue/toolbar'
+import SelectButton from 'primevue/selectbutton'
 import ContextMenu from 'primevue/contextmenu'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
@@ -229,10 +248,15 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'part-selected', part: ViewPartGroup): void
+  (e: 'update:bom-type', type: 'EBOM' | 'Matrix'): void
 }>()
 
 const projectStore = useProjectStore()
 const logStore = useLogStore()
+
+// BOM 視圖模式選項 (EBOM / Matrix 互斥選項，資料切換後續實現)
+const bomTypeOptions = ['EBOM', 'Matrix']
+const selectedBomType = ref<'EBOM' | 'Matrix'>('EBOM')
 
 // View options
 const viewOptions = [
@@ -247,6 +271,7 @@ const viewOptions = [
 ]
 
 // State
+const dataTableRef = ref()
 const selectedView = ref('all')
 const collapsedParents = ref<Set<string>>(new Set())
 const sortField = ref('item')
@@ -391,7 +416,7 @@ const displayRows = computed<BOMDisplayRow[]>(() => {
   const rows: BOMDisplayRow[] = []
 
   sortedAggregatedParts.value.forEach((part) => {
-    const parentKey = `${part.main_supplier}|${part.main_supplier_pn}`
+    const parentKey = getPartKey(part)
     const hasSS = Boolean(part.second_sources && part.second_sources.length > 0)
     const ssCount = part.second_sources ? part.second_sources.length : 0
 
@@ -428,7 +453,7 @@ const displayRows = computed<BOMDisplayRow[]>(() => {
     if (hasSS && part.second_sources && !collapsedParents.value.has(parentKey)) {
       part.second_sources.forEach((ss, idx) => {
         rows.push({
-          rowId: `${parentKey}-ss-${idx}`,
+          rowId: `${parentKey}-ss-${idx}-${ss.supplier_pn || idx}`,
           parentKey: parentKey,
           isSecondSource: true,
           hasSecondSources: false,
@@ -465,8 +490,19 @@ function onSort(event: DataTableSortEvent): void {
   }
 }
 
+/**
+ * 取得物料群組唯一識別鍵
+ * 結合 item、type、main_supplier 與 main_supplier_pn，確保每個主料群組（包含同料不同上件類型）皆具備獨立唯一的鍵值
+ * 
+ * @param part 物料群組資料
+ * @returns 唯一識別字串
+ */
 function getPartKey(part: ViewPartGroup): string {
-  return `${part.main_supplier}|${part.main_supplier_pn}`
+  const item = part.item || ''
+  const pType = part.type || ''
+  const supplier = part.main_supplier || ''
+  const pn = part.main_supplier_pn || ''
+  return `${item}|${pType}|${supplier}|${pn}`
 }
 
 function isCollapsed(parentKey: string): boolean {
@@ -483,18 +519,63 @@ function toggleCollapse(parentKey: string): void {
   collapsedParents.value = newSet
 }
 
+/**
+ * 所有具有替代料的主料群組唯一識別鍵集合
+ */
+const allExpandableKeys = computed<Set<string>>(() => {
+  const keys = new Set<string>()
+  aggregatedParts.value.forEach(part => {
+    if (part.second_sources && part.second_sources.length > 0) {
+      keys.add(getPartKey(part))
+    }
+  })
+  return keys
+})
+
+/**
+ * 具有替代料的主料群組數量 (依據唯一識別鍵統計)
+ */
+const totalExpandableCount = computed(() => {
+  return allExpandableKeys.value.size
+})
+
+/**
+ * 判斷是否所有替代料群組皆處於收合狀態
+ */
+const isAllCollapsed = computed(() => {
+  if (allExpandableKeys.value.size === 0) return false
+  if (collapsedParents.value.size < allExpandableKeys.value.size) return false
+  for (const key of allExpandableKeys.value) {
+    if (!collapsedParents.value.has(key)) {
+      return false
+    }
+  }
+  return true
+})
+
+/**
+ * 全部展開所有替代料
+ */
 function expandAll(): void {
   collapsedParents.value = new Set()
 }
 
+/**
+ * 全部收合所有替代料
+ */
 function collapseAll(): void {
-  const allKeys = new Set<string>()
-  aggregatedParts.value.forEach(part => {
-    if (part.second_sources && part.second_sources.length > 0) {
-      allKeys.add(getPartKey(part))
-    }
-  })
-  collapsedParents.value = allKeys
+  collapsedParents.value = new Set(allExpandableKeys.value)
+}
+
+/**
+ * 切換所有替代料群組之展開 / 收合狀態 (供表頭第一欄圖標點擊使用)
+ */
+function toggleAllCollapse(): void {
+  if (isAllCollapsed.value) {
+    expandAll()
+  } else {
+    collapseAll()
+  }
 }
 
 function getRowClass(data: BOMDisplayRow) {
@@ -779,17 +860,18 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.view-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.75rem 1rem;
+/* PrimeVue Toolbar - VS Code 風格高緊湊工具列 */
+:deep(.bom-toolbar) {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0;
+  border-width: 0 0 1px 0;
+  border-color: var(--surface-border);
   background: var(--surface-ground);
-  border-bottom: 1px solid var(--surface-border);
-  margin-bottom: 0.5rem;
+  min-height: unset;
 }
 
-.view-filters {
+.toolbar-start,
+.toolbar-end {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -797,32 +879,39 @@ onUnmounted(() => {
 
 .filter-label {
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   color: var(--text-color);
 }
 
 .view-dropdown {
-  min-width: 150px;
+  min-width: 100px;
+  font-size: 0.75rem;
+}
+
+:deep(.view-dropdown .p-select-label) {
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
 }
 
 .search-input-wrapper {
   position: relative;
   display: inline-flex;
   align-items: center;
-  margin-left: 0.5rem;
 }
 
 .search-input {
-  width: 250px;
-  padding-right: 2rem !important;
+  width: 180px;
+  padding: 0.15rem 1.6rem 0.15rem 0.4rem !important;
+  font-size: 0.75rem !important;
+  height: 26px !important;
 }
 
 .clear-btn {
   position: absolute;
-  right: 0.6rem;
+  right: 0.4rem;
   cursor: pointer;
   color: var(--text-color-secondary);
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   transition: color 0.2s;
 }
 
@@ -830,55 +919,16 @@ onUnmounted(() => {
   color: var(--text-color);
 }
 
-.view-actions {
-  display: flex;
-  gap: 0.25rem;
-  align-items: center;
-}
-
-.mode-badge {
-  margin-left: 0.5rem;
+:deep(.bom-type-toggle .p-togglebutton) {
+  padding: 0.15rem 0.5rem !important;
+  font-size: 0.75rem !important;
   font-weight: 600;
+  height: 26px !important;
 }
 
-.supplier-pn-cell {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.ss-badge {
-  font-size: 0.7rem;
-  padding: 0.15rem 0.4rem;
-}
-
-/* Flattened Table 2nd Source Row styling */
-:deep(.second-source-row) {
-  background-color: var(--surface-50, #f8fafc) !important;
-  color: var(--text-color-secondary, #475569);
-  font-size: 0.825rem;
-}
-
-:deep(.second-source-row:hover) {
-  background-color: var(--surface-100, #f1f5f9) !important;
-}
-
-.ss-indented {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding-left: 0.75rem;
-}
-
-.toggle-ss-btn {
-  width: 1.75rem !important;
-  height: 1.75rem !important;
-  padding: 0 !important;
-}
-
-/* Table styling */
+/* Table styling - VS Code 風格高緊湊表格，最大化可視範圍 */
 :deep(.p-datatable) {
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -897,18 +947,90 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--surface-border);
 }
 
-/* 表格儲存格支援框選與游標標準化 */
-:deep(.p-datatable-tbody > tr > td) {
+:deep(.bom-table .p-datatable-thead > tr > th) {
+  padding: 0.2rem 0.35rem !important;
+  font-size: 0.75rem !important;
+  font-weight: 600;
+  height: 28px !important;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-section);
+}
+
+:deep(.bom-table .p-datatable-tbody > tr) {
+  height: 28px !important;
+  max-height: 28px !important;
+}
+
+:deep(.bom-table .p-datatable-tbody > tr > td) {
+  padding: 0.1rem 0.35rem !important;
+  font-size: 0.75rem !important;
+  line-height: 1.25 !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   -webkit-user-select: text !important;
   user-select: text !important;
   cursor: text;
 }
 
-:deep(.p-datatable-tbody > tr > td *) {
+:deep(.bom-table .p-datatable-tbody > tr > td *) {
   -webkit-user-select: text !important;
   user-select: text !important;
 }
 
+/* 合併欄位：Item + 開合按鈕 (緊湊半字元間距) */
+:deep(.item-col) {
+  padding-left: 0.15rem !important;
+  padding-right: 0.15rem !important;
+}
+
+:deep(.item-header-col) {
+  padding-left: 0.15rem !important;
+  padding-right: 0.15rem !important;
+}
+
+:deep(.item-header-col .p-datatable-column-header-content) {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.1rem;
+}
+
+.item-header-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem; /* 約半個字元寬度 (~2.5px) */
+}
+
+.item-header-label {
+  cursor: pointer;
+  user-select: none;
+}
+
+.item-cell-content {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem; /* 約半個字元寬度 (~2.5px) */
+  width: 100%;
+}
+
+.toggle-all-btn,
+.toggle-ss-btn {
+  width: 0.85rem !important;
+  height: 1rem !important;
+  min-width: unset !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  flex-shrink: 0;
+}
+
+:deep(.toggle-all-btn .p-button-icon),
+:deep(.toggle-ss-btn .p-button-icon) {
+  font-size: 0.65rem !important;
+}
+
+:deep(.toggle-all-btn),
+:deep(.toggle-all-btn *),
 :deep(.toggle-ss-btn),
 :deep(.toggle-ss-btn *) {
   -webkit-user-select: none !important;
@@ -916,26 +1038,68 @@ onUnmounted(() => {
   cursor: pointer !important;
 }
 
-/* Summary */
+.toggle-placeholder {
+  display: inline-block;
+  width: 0.85rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+.item-number {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* 2nd 替代料資料列 */
+:deep(.second-source-row) {
+  background-color: var(--surface-50, #f8fafc) !important;
+  color: var(--text-color-secondary, #475569);
+  font-size: 0.75rem !important;
+}
+
+:deep(.second-source-row:hover) {
+  background-color: var(--surface-100, #f1f5f9) !important;
+}
+
+.ss-indented {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding-left: 0.5rem;
+}
+
+/* 底部統計摘要 */
 .table-summary {
   display: flex;
-  gap: 1rem;
-  padding: 0.5rem 1rem;
+  gap: 0.75rem;
+  padding: 0.2rem 0.75rem;
   background: var(--surface-ground);
   border-top: 1px solid var(--surface-border);
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--text-color-secondary);
+  line-height: 1.2;
 }
 
 .ccl-normal {
   color: var(--text-color-secondary);
 }
 
+.ccl-critical {
+  color: var(--p-red-500, #ef4444);
+  font-weight: 600;
+}
+
+.model-selected {
+  font-weight: 600;
+  color: var(--p-primary-color, #3b82f6);
+}
+
 .highlight-text {
   background-color: #fef08a;
   color: #854d0e;
   font-weight: 700;
-  padding: 0 2px;
+  padding: 0 1px;
   border-radius: 2px;
 }
 </style>

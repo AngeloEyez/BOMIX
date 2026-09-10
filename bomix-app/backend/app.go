@@ -512,6 +512,15 @@ func (a *App) GetBOMView(revisionIDs []int64, viewType string) (*view.ViewResult
 		return nil, fmt.Errorf("view query failed: %w", err)
 	}
 
+	// 根據視圖類型判定是否進行二階跨製程物料合併：
+	// ALL（含空字串）、NI、PROTO、MP、CCL 視圖將相同物料跨 Type（SMD/PTH/BOTTOM）合併為單一 Group（Qty 累加、Locations 合併去重、替代料僅顯示一組）；
+	// SMD、PTH、BOTTOM 製程視圖則維持獨立面別群組，不進行跨 Type 合併。
+	vTypeUpper := strings.ToUpper(strings.TrimSpace(viewType))
+	if vTypeUpper == "" || vTypeUpper == view.ViewAll || vTypeUpper == view.ViewNI ||
+		vTypeUpper == view.ViewProto || vTypeUpper == view.ViewMP || vTypeUpper == view.ViewCCL {
+		result.PartGroups = view.MergePartGroupsByMaterial(result.PartGroups)
+	}
+
 	a.logger.Debug(fmt.Sprintf("[GetBOMView] 查詢完成: revisions=%d, parts=%d, viewType=%s",
 		len(result.Revisions), len(result.PartGroups), viewType))
 
