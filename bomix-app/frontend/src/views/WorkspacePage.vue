@@ -72,7 +72,7 @@
 import { ref, computed, onMounted } from 'vue'
 import Button from 'primevue/button'
 import { useAppStore, useProjectStore, useLogStore, useTaskStore } from '../stores'
-import BOMTable from '../components/BOMTable.vue'
+import BOMTable from '../components/BOMTable'
 import ImportDialog from '../components/workspace/ImportDialog.vue'
 import ImportResultsDialog from '../components/workspace/ImportResultsDialog.vue'
 import ExportView, { type RevisionOption } from '../components/workspace/ExportView.vue'
