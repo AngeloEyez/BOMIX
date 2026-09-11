@@ -68,6 +68,7 @@ bomix-app/build/ios/xcode/overlay.json
 bomix-app/build/ios/xcode/gen/
 bomix-app/build/android/overlay.json
 bomix-app/build/android/gen/
+bomix-app/build/android/build/
 bomix-app/build/linux/appimage/build
 bomix-app/build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
 .gradle/

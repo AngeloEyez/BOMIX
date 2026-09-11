@@ -1,28 +1,14 @@
 import { createApp } from 'vue'
 import PrimeVue from 'primevue/config'
-import { createRouter, createWebHashHistory } from 'vue-router'
 import { createPinia } from 'pinia'
 import App from './App.vue'
+import router from './router'
 import './style.css'
 import 'primeicons/primeicons.css'
 
 // Import @primeuix/themes presets
 import Aura from '@primeuix/themes/aura'
 
-// Import views
-import WelcomePage from './views/WelcomePage.vue'
-import WorkspacePage from './views/WorkspacePage.vue'
-import SettingsPage from './views/SettingsPage.vue'
-
-// Create router instance
-const router = createRouter({
-  history: createWebHashHistory(),
-  routes: [
-    { path: '/', name: 'home', component: WelcomePage },
-    { path: '/workspace', name: 'workspace', component: WorkspacePage },
-    { path: '/settings', name: 'settings', component: SettingsPage },
-  ],
-})
 
 // Create Pinia instance
 const pinia = createPinia()
