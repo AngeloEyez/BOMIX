@@ -113,10 +113,8 @@
         <template #body="slotProps">
           <div
             class="cell-text"
-            :class="{ 'ss-indented': slotProps.data.isSecondSource }"
             v-tooltip.bottom="slotProps.data.hhpn"
           >
-            <Tag v-if="slotProps.data.isSecondSource" value="2nd" severity="secondary" class="ss-badge" />
             <template v-for="(part, idx) in getHighlightedParts(slotProps.data.hhpn, searchQuery)" :key="idx">
               <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
               <span v-else>{{ part.text }}</span>
@@ -260,7 +258,6 @@ import ContextMenu from 'primevue/contextmenu'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
-import Tag from 'primevue/tag'
 
 import type { ViewPartGroup } from '../../services/api'
 import { getHighlightedParts } from './utils/textHighlight'
@@ -647,13 +644,6 @@ onMounted(() => {
 
 :deep(.second-source-row:hover) {
   background-color: var(--surface-100, #f1f5f9) !important;
-}
-
-.ss-indented {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding-left: 0.5rem;
 }
 
 /* 底部統計摘要 */
