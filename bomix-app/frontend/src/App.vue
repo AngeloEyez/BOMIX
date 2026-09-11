@@ -571,7 +571,7 @@ body {
   overflow: hidden;
 }
 
-:deep(.main-splitter .p-splitterpanel) {
+.main-splitter .p-splitterpanel {
   overflow: hidden !important;
   min-width: 0 !important;
 }
