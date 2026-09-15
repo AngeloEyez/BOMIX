@@ -84,26 +84,29 @@
       </div>
     </header>
 
-    <!-- Main Content with Splitter -->
-    <Splitter
-      class="main-splitter"
-      @resize="onSplitterResize"
-      @resizeend="onSplitterResize"
-    >
-      <!-- Sidebar Panel -->
-      <SplitterPanel
-        :size="sidebarWidth"
-        :min-size="0"
-        @dblclick="resetSidebarWidth"
+    <!-- Main Content Area with Fixed-Pixel Resizable Sidebar -->
+    <div class="main-workspace-container">
+      <!-- Sidebar Panel (固定像素寬度，最小 5px，雙擊重置) -->
+      <aside
+        class="sidebar-container"
+        :style="{ width: `${sidebarWidth}px` }"
       >
         <SidebarPanel />
-      </SplitterPanel>
+      </aside>
 
-      <!-- Main Content Panel -->
-      <SplitterPanel :size="100 - sidebarWidth">
+      <!-- Splitter Gutter (細線分割拖曳條，雙擊重置為預設 140px) -->
+      <div
+        class="sidebar-gutter"
+        @mousedown="startSidebarResize"
+        @dblclick="resetSidebarWidth"
+        title="拖曳以調整寬度，雙擊重置為 140px"
+      ></div>
+
+      <!-- Main Content Panel (自動吸收主視窗所有剩餘橫向寬度) -->
+      <main class="main-content-container">
         <router-view />
-      </SplitterPanel>
-    </Splitter>
+      </main>
+    </div>
 
     <!-- Bottom Log Panel：resize-handle 使用與 splitter gutter 相同的細線風格 -->
     <div class="bottom-panel" :style="{ height: `${bottomPanelHeight}px` }">
@@ -120,8 +123,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import Splitter from 'primevue/splitter'
-import SplitterPanel from 'primevue/splitterpanel'
+
 import SplitButton from 'primevue/splitbutton'
 import Button from 'primevue/button'
 import type { MenuItem } from 'primevue/menuitem'
@@ -407,8 +409,11 @@ function handleDrop(e: DragEvent): void {
   }
 }
 
-// Sidebar width management
-const sidebarWidth = ref(20) // Default 20%
+// 側邊欄寬度管理 (像素制)：預設為 140px，不隨視窗縮放變動
+const sidebarWidth = ref(140)
+let isResizingSidebar = false
+let startSidebarX = 0
+let startSidebarWidth = 0
 
 // Bottom panel height
 const bottomPanelHeight = ref(window.innerHeight * 0.1) // Default 10%
@@ -469,6 +474,8 @@ onUnmounted(() => {
   window.removeEventListener('drop', handleDrop, true)
   window.removeEventListener('keydown', handleGlobalKeyDown)
   window.removeEventListener('blur', handleWindowBlur)
+  document.removeEventListener('mousemove', handleSidebarResize)
+  document.removeEventListener('mouseup', stopSidebarResize)
 })
 
 // Watch for series open changes
@@ -496,21 +503,46 @@ async function loadProjects(): Promise<void> {
 }
 
 /**
- * 處理 Main Splitter (側邊欄與工作區) 拖曳分割條事件
- * 廣播 window resize 事件，確保 BOMTable 即時重新計算欄寬並消除不必要的橫向捲軸
- * @param {any} event - PrimeVue Splitter resize 事件物件
+ * 開始拖曳調整側邊欄寬度
+ * @param {MouseEvent} event - 原生滑鼠按下事件
  */
-function onSplitterResize(event: any): void {
-  if (event && event.sizes && event.sizes.length > 0) {
-    sidebarWidth.value = event.sizes[0]
-  } else if (typeof event === 'number') {
-    sidebarWidth.value = event
-  }
+function startSidebarResize(event: MouseEvent): void {
+  isResizingSidebar = true
+  startSidebarX = event.clientX
+  startSidebarWidth = sidebarWidth.value
+  document.addEventListener('mousemove', handleSidebarResize)
+  document.addEventListener('mouseup', stopSidebarResize)
+}
+
+/**
+ * 處理側邊欄寬度拖曳過程
+ * 最小保留 5px 方便邊界還能選取拖曳，最大限制保留右側主內容區至少 200px
+ * @param {MouseEvent} event - 原生滑鼠移動事件
+ */
+function handleSidebarResize(event: MouseEvent): void {
+  if (!isResizingSidebar) return
+  const deltaX = event.clientX - startSidebarX
+  const newWidth = startSidebarWidth + deltaX
+  // 最小保留 5px，最大保留右側至少 200px 空間
+  sidebarWidth.value = Math.max(5, Math.min(newWidth, window.innerWidth - 200))
+  // 廣播 window resize 事件，通知 BOMTable 等元件即時重新計算欄位寬度
   window.dispatchEvent(new Event('resize'))
 }
 
+/**
+ * 停止側邊欄拖曳
+ */
+function stopSidebarResize(): void {
+  isResizingSidebar = false
+  document.removeEventListener('mousemove', handleSidebarResize)
+  document.removeEventListener('mouseup', stopSidebarResize)
+}
+
+/**
+ * 雙擊分割條重置側邊欄寬度為預設 140px
+ */
 function resetSidebarWidth(): void {
-  sidebarWidth.value = 20
+  sidebarWidth.value = 140
   window.dispatchEvent(new Event('resize'))
 }
 
@@ -564,16 +596,19 @@ body {
   overflow: hidden;
 }
 
-.main-splitter {
+.main-workspace-container {
+  display: flex;
+  flex-direction: row;
   flex: 1;
   min-height: 0;
   width: 100%;
   overflow: hidden;
 }
 
-.main-splitter .p-splitterpanel {
-  overflow: hidden !important;
-  min-width: 0 !important;
+.main-content-container {
+  flex: 1 1 0%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 #app {
@@ -744,23 +779,27 @@ body {
   background-color: var(--surface-hover) !important;
 }
 
-/* Main Splitter */
-.main-splitter {
-  flex: 1;
+/* 側邊欄容器：固定像素寬度，不參與 flex 伸縮 */
+.sidebar-container {
+  flex-shrink: 0;
+  flex-grow: 0;
   overflow: hidden;
-  border: none;
+  min-width: 5px;
 }
 
-:deep(.p-splitter-gutter) {
-  background-color: var(--surface-border) !important;
-  width: 4px !important;
-  transition: background-color 0.2s;
-  cursor: col-resize;
+/* 側邊欄細線拖曳條：與下方 resize-handle 保持一致的 4px 細線風格 */
+.sidebar-gutter {
+  width: 4px;
+  background-color: var(--surface-border);
   border-left: 1px solid var(--surface-hover);
   border-right: 1px solid var(--surface-hover);
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background-color 0.2s;
+  user-select: none;
 }
 
-:deep(.p-splitter-gutter:hover) {
+.sidebar-gutter:hover {
   background-color: var(--primary-color) !important;
 }
 

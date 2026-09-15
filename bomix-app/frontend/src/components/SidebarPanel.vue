@@ -51,15 +51,20 @@
           @update:selection-keys="onTreeSelectionKeysChange"
           @node-toggle="onNodeToggle"
         >
-          <template #node="slotProps">
-            <div class="tree-node">
+          <template #default="slotProps">
+            <div :class="['tree-node', { 'is-project-node': slotProps.node.type === 'project' }]">
               <span v-if="slotProps.node.type === 'project'" class="node-icon project-icon">
                 <i class="pi pi-folder"></i>
               </span>
               <span v-if="slotProps.node.type === 'revision'" class="node-icon rev-icon">
                 <i class="pi pi-file"></i>
               </span>
-              <span class="node-label" :title="slotProps.node.label">{{ slotProps.node.label }}</span>
+              <span
+                :class="['node-label', { 'project-node-label': slotProps.node.type === 'project' }]"
+                :title="slotProps.node.label"
+              >
+                {{ slotProps.node.label }}
+              </span>
             </div>
           </template>
           <template #empty>
@@ -90,39 +95,30 @@
           @update:selection="onTableSelectionChange"
         >
           <!-- Project 欄位 (可排序) -->
-          <Column field="projectCode" sortable style="min-width: 80px;">
+          <Column field="projectCode" sortable style="min-width: 54px;">
             <template #header>
               <div class="th-content" title="Project (專案)">
                 <i :class="['pi pi-folder th-icon', { 'is-active-sort-icon': sortType === 'project' }]"></i>
               </div>
             </template>
+            <template #body="slotProps">
+              <span class="project-code-cell" :title="slotProps.data.projectCode">
+                {{ slotProps.data.projectCode }}
+              </span>
+            </template>
           </Column>
 
           <!-- Phase 欄位 (可排序，僅保留排序符號) -->
-          <Column field="phase" sortable style="min-width: 38px;">
+          <Column field="phase" sortable style="min-width: 28px;">
             <template #header>
               <div class="th-content-sort-only" title="Phase (階段)"></div>
             </template>
           </Column>
 
           <!-- Version 欄位 (可排序，僅保留排序符號) -->
-          <Column field="version" sortable style="min-width: 38px;">
+          <Column field="version" sortable style="min-width: 28px;">
             <template #header>
               <div class="th-content-sort-only" title="Version (版本)"></div>
-            </template>
-          </Column>
-
-          <!-- Tag 欄位 (不可排序) -->
-          <Column field="tag" :sortable="false" style="min-width: 50px;">
-            <template #header>
-              <div class="th-content" title="Tag (標籤/描述)">
-                <i class="pi pi-tag th-icon"></i>
-              </div>
-            </template>
-            <template #body="slotProps">
-              <span class="tag-cell" :title="slotProps.data.tag || ''">
-                {{ slotProps.data.tag || '-' }}
-              </span>
             </template>
           </Column>
 
@@ -578,12 +574,13 @@ function getTableRowClass(data: FlatRevisionRow): string {
   flex-direction: column;
 }
 
-/* 樹狀圖容器：極簡 padding，填滿可捲動 */
+/* 樹狀圖容器：極簡 padding，填滿可捲動，嚴格禁止橫向捲軸 */
 .tree-container {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0.25rem 0.15rem;
+  padding: 2px 2px;
+  width: 100%;
 }
 
 /* 緊湊 VS Code 風格 Tree 覆蓋 */
@@ -591,14 +588,36 @@ function getTableRowClass(data: FlatRevisionRow): string {
   padding: 0 !important;
   background: transparent !important;
   border: none !important;
+  width: 100% !important;
+}
+
+:deep(.compact-tree .p-tree-root-children) {
+  width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+:deep(.compact-tree .p-tree-node) {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
 }
 
 :deep(.compact-tree .p-tree-node-content) {
-  padding: 2px 4px !important;
+  padding: 1px 2px !important;
   border-radius: 2px !important;
-  gap: 0.25rem !important;
+  gap: 1px !important; /* 縮小左側箭頭與檔案夾圖標之間的間距 */
   transition: background-color 0.1s ease;
-  min-height: 22px !important;
+  min-height: 20px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+  white-space: nowrap !important;
 }
 
 :deep(.compact-tree .p-tree-node-content:hover) {
@@ -610,32 +629,47 @@ function getTableRowClass(data: FlatRevisionRow): string {
   color: var(--text-color) !important;
 }
 
+/* 收合箭頭按鈕：縮小寬度，緊貼右側檔案夾圖標 */
 :deep(.compact-tree .p-tree-node-toggle-button) {
-  width: 16px !important;
-  height: 16px !important;
-  margin-right: 2px !important;
+  width: 8px !important;
+  height: 10px !important;
+  margin-right: 0 !important;
+  padding: 0 !important;
+  flex-shrink: 0 !important;
 }
 
-:deep(.compact-tree .p-tree-node-toggle-icon) {
-  font-size: 10px !important;
+/* 收合箭頭圖標：縮小為 7px */
+:deep(.compact-tree .p-tree-node-toggle-icon),
+:deep(.compact-tree .p-tree-node-toggle-button svg) {
+  font-size: 7px !important;
+  width: 7px !important;
+  height: 7px !important;
 }
 
+/* 樹狀子層縮排縮至 8px，最大化子層橫向寬度 */
 :deep(.compact-tree .p-tree-node-children) {
-  padding-left: 12px !important;
+  padding-left: 8px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
 }
 
-/* Tree Node 自訂呈現 */
+/* Tree Node 自訂呈現：圖標與文字維持舒適間距 */
 .tree-node {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 5px; /* 加大圖標與右側文字的間距 */
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
+  flex: 1;
+  white-space: nowrap;
 }
 
 .node-icon {
-  font-size: 0.8rem;
-  width: 1rem;
+  font-size: 10px;
+  width: 11px;
   text-align: center;
   flex-shrink: 0;
 }
@@ -648,13 +682,29 @@ function getTableRowClass(data: FlatRevisionRow): string {
   color: var(--primary-color);
 }
 
+/* 樹狀標籤：顯示字體設定為 10px，單行文字截斷 (Ellipsis，絕不折行) */
 .node-label {
   flex: 1;
-  font-size: 0.8125rem;
-  line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 0;
+  font-size: 10px !important;
+  line-height: 1.2;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* 專案名稱粗體顯示 */
+.project-node-label,
+.is-project-node .node-label {
+  font-weight: 700 !important;
+}
+
+:deep(.compact-tree .p-tree-node-label) {
+  font-size: 10px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  min-width: 0 !important;
 }
 
 /* 表格容器 */
@@ -676,8 +726,8 @@ function getTableRowClass(data: FlatRevisionRow): string {
 }
 
 :deep(.compact-datatable .p-datatable-thead > tr > th) {
-  padding: 4px 6px !important;
-  font-size: 0.75rem !important;
+  padding: 3px 4px !important;
+  font-size: 10px !important;
   font-weight: 600 !important;
   background: var(--surface-hover) !important;
   border-bottom: 1px solid var(--surface-border) !important;
@@ -702,7 +752,12 @@ function getTableRowClass(data: FlatRevisionRow): string {
 }
 
 .th-icon {
-  font-size: 0.8125rem;
+  font-size: 12px !important;
+  width: 12px !important;
+  height: 12px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-color);
   opacity: 0.9;
   transition: transform 0.1s ease, color 0.1s ease;
@@ -715,6 +770,15 @@ function getTableRowClass(data: FlatRevisionRow): string {
 
 :deep(.compact-datatable .p-datatable-thead > tr > th:hover .th-icon) {
   color: var(--primary-color);
+}
+
+/* 表格標題列排序箭頭設定為 10px */
+:deep(.compact-datatable .p-datatable-thead > tr > th .p-datatable-sort-icon),
+:deep(.compact-datatable .p-datatable-thead > tr > th .p-sortable-column-icon),
+:deep(.compact-datatable .p-datatable-thead > tr > th svg) {
+  width: 10px !important;
+  height: 10px !important;
+  font-size: 10px !important;
 }
 
 /* 表頭排序生效時的樣式 (Active Sorted Header Style) */
@@ -733,11 +797,20 @@ function getTableRowClass(data: FlatRevisionRow): string {
   color: var(--primary-color) !important;
   fill: var(--primary-color) !important;
   opacity: 1 !important;
+  width: 10px !important;
+  height: 10px !important;
+}
+
+/* 專案名稱粗體顯示 */
+.project-code-cell,
+:deep(.compact-datatable .p-datatable-tbody > tr > td:first-child) {
+  font-weight: 700 !important;
 }
 
 :deep(.compact-datatable .p-datatable-tbody > tr > td) {
-  padding: 3px 6px !important;
-  font-size: 0.8125rem !important;
+  padding: 2px 4px !important;
+  font-size: 10px !important;
+  line-height: 1.2 !important;
   border-bottom: 1px solid var(--surface-border) !important;
   white-space: nowrap;
   overflow: hidden;
@@ -759,15 +832,10 @@ function getTableRowClass(data: FlatRevisionRow): string {
   font-weight: 600;
 }
 
-.tag-cell {
-  color: var(--text-color-secondary);
-  font-size: 0.75rem;
-}
-
 .sidebar-empty {
-  padding: 1.5rem 0.5rem;
+  padding: 1.2rem 0.5rem;
   text-align: center;
   color: var(--text-color-secondary);
-  font-size: 0.8125rem;
+  font-size: 10px;
 }
 </style>
