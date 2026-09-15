@@ -305,7 +305,7 @@ export function useBOMData(options: UseBOMDataOptions) {
         }
 
         const qtyStr = qty > 0 ? `(${qty})` : ''
-        const headerTitle = `${rev.projectCode} ${rev.phase} ${rev.version} - Model ${alias}${qty > 0 ? ` (Qty: ${qty})` : ''}`
+        const headerTitle = [rev.projectCode, rev.phase, rev.version].filter(Boolean).join(' ')
 
         cols.push({
           key: `matrix-rev-${rev.revisionId}-model-${i}`,

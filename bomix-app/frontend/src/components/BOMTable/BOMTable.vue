@@ -261,16 +261,16 @@
                 <span
                   v-if="modelCol.showProjectCode"
                   class="project-code-label"
-                  :title="modelCol.projectCode"
+                  :title="modelCol.headerTitle"
                 >
                   {{ modelCol.projectCode }}
                 </span>
                 <!-- 佔位符確保第二行在各 Model 欄位垂直對齊 -->
                 <span v-else class="project-code-spacer">&nbsp;</span>
               </div>
-              <!-- 第二行：純字母與數量，例如 A(102)、B(147) -->
+              <!-- 第二行：純字母 (粗體) 與數量，中間以空格分隔，例如 A (102)、B (147) -->
               <div class="header-line2 model-alias-line">
-                {{ modelCol.modelAlias }}{{ modelCol.qty > 0 ? `(${modelCol.qty})` : '' }}
+                <span class="model-alias-bold">{{ modelCol.modelAlias }}</span>{{ modelCol.qty > 0 ? ` (${modelCol.qty})` : '' }}
               </div>
             </div>
           </template>
@@ -868,11 +868,46 @@ onUnmounted(() => {
   gap: 2px !important;
 }
 
-:deep(.bom-table .p-datatable-sort-icon) {
-  font-size: 10px !important;
+/* 標題列排序圖示微調為 10px 高緊湊風格 */
+:deep(.bom-table .p-datatable-sort-icon),
+:deep(.bom-table .p-datatable-sort-icon svg),
+:deep(.bom-table [data-pc-section="sorticon"]) {
   width: 10px !important;
   height: 10px !important;
+  min-width: 10px !important;
+  min-height: 10px !important;
+  font-size: 10px !important;
   margin-left: 1px !important;
+  color: var(--text-color-secondary, #94a3b8);
+  fill: currentColor;
+  transition: color 0.15s ease, fill 0.15s ease;
+}
+
+/* 排序符號生效時高亮顯示 (採用與整體 UI 主題一致之主色綠色) */
+:deep(.bom-table th.p-datatable-column-sorted .p-datatable-sort-icon),
+:deep(.bom-table th[data-p-sorted="true"] .p-datatable-sort-icon),
+:deep(.bom-table th[aria-sort="ascending"] .p-datatable-sort-icon),
+:deep(.bom-table th[aria-sort="descending"] .p-datatable-sort-icon),
+:deep(.bom-table th.p-datatable-column-sorted [data-pc-section="sorticon"]),
+:deep(.bom-table th[data-p-sorted="true"] [data-pc-section="sorticon"]),
+:deep(.bom-table th[aria-sort="ascending"] [data-pc-section="sorticon"]),
+:deep(.bom-table th[aria-sort="descending"] [data-pc-section="sorticon"]),
+:deep(.bom-table th.p-datatable-column-sorted .p-datatable-sort-icon svg),
+:deep(.bom-table th[data-p-sorted="true"] .p-datatable-sort-icon svg),
+:deep(.bom-table th[aria-sort="ascending"] .p-datatable-sort-icon svg),
+:deep(.bom-table th[aria-sort="descending"] .p-datatable-sort-icon svg),
+:deep(.bom-table th.p-datatable-column-sorted .p-datatable-sort-icon path),
+:deep(.bom-table th[data-p-sorted="true"] .p-datatable-sort-icon path),
+:deep(.bom-table th[aria-sort="ascending"] .p-datatable-sort-icon path),
+:deep(.bom-table th[aria-sort="descending"] .p-datatable-sort-icon path) {
+  color: var(--p-primary-color, var(--primary-color, #10b981)) !important;
+  fill: var(--p-primary-color, var(--primary-color, #10b981)) !important;
+}
+
+/* 排序表頭 Hover 時排序圖示預覽微高亮 */
+:deep(.bom-table th[data-p-sortable-column="true"]:hover:not([data-p-sorted="true"]):not([aria-sort="ascending"]):not([aria-sort="descending"]) .p-datatable-sort-icon) {
+  color: var(--p-primary-400, #34d399) !important;
+  fill: var(--p-primary-400, #34d399) !important;
 }
 
 /* 表格單元格緊湊化與文字截斷：3px 緊湊水平內距 */
@@ -1042,13 +1077,10 @@ onUnmounted(() => {
   line-height: 1.2;
 }
 
-.ccl-normal {
-  color: var(--text-color-secondary);
-}
-
+.ccl-normal,
 .ccl-critical {
-  color: var(--p-red-500, #ef4444);
-  font-weight: 600;
+  color: inherit;
+  font-weight: 500;
 }
 
 .model-selected {
@@ -1235,12 +1267,17 @@ onUnmounted(() => {
 
 .model-alias-line {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-color-secondary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   line-height: 13px;
   margin-top: 1px;
+}
+
+.model-alias-bold {
+  font-weight: 700;
+  color: var(--text-color);
 }
 </style>
 
