@@ -5,7 +5,7 @@
  * 本模組負責實現 VS Code 風格之高緊湊欄寬自適應演算法：
  * 1. 利用離屏 Canvas 測量文字長度，精準計算固定欄位 (Item, HHPN, Supplier, Qty, CCL 等) 之最適最小安全寬度。
  * 2. 取得 DataTable 可視工作區總寬度 (自動扣除捲軸)，並扣除固定欄位寬度總和。
- * 3. 剩餘空間由主要欄位 Description (規格描述，min 250px) 與 Location (位置標號，min 150px) 精確瓜分，
+ * 3. 剩餘空間由主要欄位 Description (規格描述，min 220px) 與 Location (位置標號，min 90px) 精確瓜分，
  *    使所有欄寬總和恰好完全貼合可視寬度，杜絕多餘的橫向捲軸。
  * 4. 透過 ResizeObserver 與視窗 resize 事件即時監聽父容器尺寸變化，自適應動態重算。
  * 
@@ -96,7 +96,7 @@ export function useColumnWidths() {
     revisionCount: number = 0
   ): void {
     const MIN_DESC_WIDTH = 220
-    const MIN_LOC_WIDTH = 130
+    const MIN_LOC_WIDTH = 90
 
     // 1. 固定欄位最小寬度計算 (序號欄)
     const itemWidth = 44
@@ -209,9 +209,9 @@ export function useColumnWidths() {
       const safeTotal = Math.floor(visibleWidth) - 1
       const rem = safeTotal - fixedTotal // 供 Description 與 Location 瓜分之空間
 
-      // Location 初始目標寬度 (容納 30 個字元，約 210px，不低於 150px)
-      const thirtyCharsWidth = measureTextWidth('0'.repeat(30))
-      const locInit = Math.max(MIN_LOC_WIDTH, Math.ceil(thirtyCharsWidth + 12))
+      // Location 初始目標寬度 (容納 20 個字元，約 140px，不低於 90px)
+      const twentyCharsWidth = measureTextWidth('0'.repeat(20))
+      const locInit = Math.max(MIN_LOC_WIDTH, Math.ceil(twentyCharsWidth + 12))
 
       if (rem - locInit >= MIN_DESC_WIDTH) {
         let descW = rem - locInit

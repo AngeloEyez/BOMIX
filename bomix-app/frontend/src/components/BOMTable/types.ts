@@ -24,7 +24,7 @@ export interface ColumnWidthConfig {
   supplier_pn: number
   /** 用量 Qty 欄位寬度 */
   qty: number
-  /** 位置標號 Location 欄位寬度 (自適應次要欄位，保證 >= 150px) */
+  /** 位置標號 Location 欄位寬度 (自適應次要欄位，保證 >= 90px) */
   locations: number
   /** CCL 關鍵物料標記欄位寬度 */
   ccl: number

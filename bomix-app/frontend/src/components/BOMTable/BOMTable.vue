@@ -125,7 +125,11 @@
       <!-- Description -->
       <Column field="description" header="Description" :style="{ width: columnWidths.description + 'px', minWidth: '220px', maxWidth: columnWidths.description + 'px' }" sortable>
         <template #body="slotProps">
-          <div class="cell-text" v-tooltip.bottom="slotProps.data.description">
+          <div
+            class="cell-text"
+            @mouseenter="handleCellMouseEnter($event, 'description', slotProps.data)"
+            @mouseleave="handleCellMouseLeave"
+          >
             <template v-for="(part, idx) in getHighlightedParts(slotProps.data.description, searchQuery)" :key="idx">
               <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
               <span v-else>{{ part.text }}</span>
@@ -159,9 +163,13 @@
       </Column>
 
       <!-- Location (所有 Revision 中使用該主料之 location 聯集) -->
-      <Column field="locations" header="Location" :style="{ width: columnWidths.locations + 'px', minWidth: '130px', maxWidth: columnWidths.locations + 'px' }">
+      <Column field="locations" header="Location" :style="{ width: columnWidths.locations + 'px', minWidth: '90px', maxWidth: columnWidths.locations + 'px' }">
         <template #body="slotProps">
-          <div class="cell-text cell-mono" v-tooltip.bottom="slotProps.data.locations">
+          <div
+            class="cell-text cell-mono"
+            @mouseenter="handleCellMouseEnter($event, 'locations', slotProps.data)"
+            @mouseleave="handleCellMouseLeave"
+          >
             <template v-for="(part, idx) in getHighlightedParts(slotProps.data.locations, searchQuery)" :key="idx">
               <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
               <span v-else>{{ part.text }}</span>
@@ -253,7 +261,11 @@
         <!-- Notes (僅 Matrix 模式顯示) -->
         <Column field="notes" header="Notes" :style="{ width: columnWidths.notes + 'px', minWidth: '100px' }">
           <template #body="slotProps">
-            <div class="cell-text" v-tooltip.bottom="slotProps.data.notes">
+            <div
+              class="cell-text"
+              @mouseenter="handleCellMouseEnter($event, 'notes', slotProps.data)"
+              @mouseleave="handleCellMouseLeave"
+            >
               <template v-for="(part, idx) in getHighlightedParts(slotProps.data.notes, searchQuery)" :key="idx">
                 <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
                 <span v-else>{{ part.text }}</span>
@@ -266,6 +278,23 @@
 
     <!-- 右鍵選單元件 -->
     <ContextMenu ref="contextMenuRef" :model="contextMenuItems" />
+
+    <!-- 儲存格互動式懸停卡片 (支援文字選取、複製與 Notes 多行編輯) -->
+    <BOMCellHoverCard
+      :visible="isCardVisible"
+      :field="activeField"
+      :row="activeRow"
+      :content="activeContent"
+      :target-rect="targetRect"
+      :is-editing="isEditing"
+      v-model:draft-notes="draftNotes"
+      @card-mouse-enter="handleCardMouseEnter"
+      @card-mouse-leave="handleCardMouseLeave"
+      @close="closeCard(true)"
+      @start-editing="startEditing"
+      @cancel-editing="cancelEditing"
+      @save-notes="handleSaveNotes"
+    />
 
     <!-- Summary Statistics -->
     <div class="table-summary">
@@ -293,7 +322,7 @@
  * - ./composables/useBOMContextMenu: 右鍵選單與 Ctrl+C 快捷鍵
  */
 
-import { ref, toRef, watch, nextTick, onMounted } from 'vue'
+import { ref, toRef, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Toolbar from 'primevue/toolbar'
@@ -310,6 +339,8 @@ import { useBOMData, VIEW_OPTIONS, BOM_TYPE_OPTIONS } from './composables/useBOM
 import { useColumnWidths } from './composables/useColumnWidths'
 import { useCellAutoScroll } from './composables/useCellAutoScroll'
 import { useBOMContextMenu } from './composables/useBOMContextMenu'
+import { useCellHoverCard } from './composables/useCellHoverCard'
+import BOMCellHoverCard from './components/BOMCellHoverCard.vue'
 import type { BOMDisplayRow } from './types'
 
 const props = withDefaults(
@@ -434,10 +465,61 @@ const {
 /** DataTable 模板引用 */
 const dataTableRef = ref()
 
+// ── 5. 儲存格互動式懸停卡片 (Description / Location / Notes) ────
+const {
+  isCardVisible,
+  activeField,
+  activeRow,
+  activeContent,
+  targetRect,
+  isEditing,
+  draftNotes,
+  handleCellMouseEnter,
+  handleCellMouseLeave,
+  handleCardMouseEnter,
+  handleCardMouseLeave,
+  closeCard,
+  startEditing,
+  cancelEditing,
+  saveNotes,
+  onTableScroll,
+} = useCellHoverCard()
+
+/**
+ * 處理 Notes 儲存操作
+ * 先更新前端資料模型，並預留後續串接後端儲存 API 之介面
+ * 
+ * @param {string} _newNotes - 新編輯的 Notes 內容
+ */
+function handleSaveNotes(_newNotes: string): void {
+  saveNotes((row, notes) => {
+    // 預留後續寫入資料庫之 hook，目前已即時同步更新至 row.notes
+    console.log(`[BOMTable] Notes updated for row ${row.rowId}:`, notes)
+  })
+}
+
+/** 虛擬滾動容器元素引用 */
+let scrollerEl: HTMLElement | null = null
+
 onMounted(() => {
   setupResizeListener(() => {
     triggerColumnWidthsCompute()
   })
+
+  // 監聽 DataTable 內部虛擬滾動容器之 scroll 事件，滾動時自動關閉懸停卡片避免漂移
+  if (tableWrapperRef.value) {
+    scrollerEl = tableWrapperRef.value.querySelector('.p-datatable-table-container, [data-pc-name="virtualscroller"]')
+    if (scrollerEl) {
+      scrollerEl.addEventListener('scroll', (e) => onTableScroll(e), { passive: true })
+    }
+  }
+})
+
+onUnmounted(() => {
+  if (scrollerEl) {
+    scrollerEl.removeEventListener('scroll', onTableScroll)
+    scrollerEl = null
+  }
 })
 </script>
 
@@ -621,11 +703,13 @@ onMounted(() => {
 /* 儲存格文字容器：預設溢出顯示省略號，選取時支援平滑滾動 */
 .cell-text {
   display: block;
+  width: 100%;
+  height: 24px;
+  line-height: 24px;
   overflow-x: scroll;
   overflow-y: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  line-height: 1.2;
   cursor: text;
   user-select: text;
   -webkit-user-select: text;
