@@ -1,52 +1,15 @@
 <template>
   <div class="bom-table-container" ref="tableWrapperRef" @mousedown="onTableMouseDown">
-    <!-- View Filter & Mode Toolbar (PrimeVue Toolbar) -->
-    <Toolbar class="bom-toolbar">
-      <template #start>
-        <div class="toolbar-start">
-          <span class="filter-label">View:</span>
-          <Select
-            v-model="selectedView"
-            :options="VIEW_OPTIONS"
-            option-label="label"
-            option-value="value"
-            placeholder="Select View"
-            size="small"
-            class="view-dropdown"
-            @change="onViewChange"
-          />
-          <div class="search-input-wrapper">
-            <InputText
-              v-model="searchQuery"
-              placeholder="Filter"
-              size="small"
-              class="search-input"
-            />
-            <i
-              v-if="searchQuery"
-              class="pi pi-times clear-btn"
-              title="Clear filter"
-              @click="searchQuery = ''"
-            />
-          </div>
-        </div>
-      </template>
+    <!-- View Filter & Mode Toolbar (獨立頂部工具列元件) -->
+    <BOMToolbar
+      v-model:view="selectedView"
+      v-model:search="searchQuery"
+      v-model:bom-type="selectedBomType"
+      @view-change="onViewChange"
+      @update:bom-type="emit('update:bom-type', $event)"
+    />
 
-      <template #end>
-        <div class="toolbar-end">
-          <SelectButton
-            v-model="selectedBomType"
-            :options="BOM_TYPE_OPTIONS"
-            :allow-empty="false"
-            size="small"
-            class="bom-type-toggle"
-            @change="emit('update:bom-type', selectedBomType)"
-          />
-        </div>
-      </template>
-    </Toolbar>
-
-    <!-- BOM Data Table (Flattened single table with shared columns) -->
+    <!-- BOM Data Table (PrimeVue 虛擬滾動平鋪表格) -->
     <DataTable
       ref="dataTableRef"
       :value="displayRows"
@@ -68,7 +31,7 @@
       v-model:contextMenuSelection="selectedContextRow"
       @row-contextmenu="onRowContextMenu"
     >
-      <!-- Item 欄位 (合併開合符號與 Item 號碼，緊湊間距，點擊符號切換收合，點擊標題依 Item 排序) -->
+      <!-- Item 欄位 (開合按鈕與序號) -->
       <Column field="item" sortable :style="{ width: columnWidths.item + 'px' }" class="item-col" header-class="item-header-col">
         <template #header>
           <div class="item-header-content">
@@ -82,42 +45,22 @@
               :title="isAllCollapsed ? '全部展開替代料 (Expand All)' : '全部收合替代料 (Collapse All)'"
               @click.stop="toggleAllCollapse"
             />
-            <!-- <span class="p-datatable-column-title item-header-label" data-pc-section="columntitle">#</span> -->
           </div>
         </template>
         <template #body="slotProps">
-          <div v-if="!slotProps.data.isSecondSource" class="item-cell-content">
-            <Button
-              v-if="slotProps.data.hasSecondSources"
-              :icon="isCollapsed(slotProps.data.parentKey) ? 'pi pi-chevron-right' : 'pi pi-chevron-down'"
-              text
-              rounded
-              size="small"
-              class="toggle-ss-btn"
-              :title="isCollapsed(slotProps.data.parentKey) ? '展開替代料' : '收合替代料'"
-              @click.stop="toggleCollapse(slotProps.data.parentKey)"
-            />
-            <span v-else class="toggle-placeholder" />
-            <span class="item-number">{{ slotProps.data.item }}</span>
-          </div>
-          <!-- 2nd 替代料該欄位保持空白，留出收合圖標空間對齊 -->
-          <div v-else class="item-cell-content">
-            <span class="toggle-placeholder" />
-          </div>
+          <BOMItemCell
+            :row="slotProps.data"
+            :collapsed="isCollapsed(slotProps.data.parentKey)"
+            @toggle="toggleCollapse"
+          />
         </template>
       </Column>
 
       <!-- HHPN -->
       <Column field="hhpn" header="HHPN" :style="{ width: columnWidths.hhpn + 'px' }" sortable>
         <template #body="slotProps">
-          <div
-            class="cell-text cell-mono"
-            v-tooltip.bottom="slotProps.data.hhpn"
-          >
-            <template v-for="(part, idx) in getHighlightedParts(slotProps.data.hhpn, searchQuery)" :key="idx">
-              <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
-              <span v-else>{{ part.text }}</span>
-            </template>
+          <div class="cell-text cell-mono" v-tooltip.bottom="slotProps.data.hhpn">
+            <BOMHighlightText :text="slotProps.data.hhpn" :query="searchQuery" />
           </div>
         </template>
       </Column>
@@ -130,10 +73,7 @@
             @mouseenter="handleCellMouseEnter($event, 'description', slotProps.data)"
             @mouseleave="handleCellMouseLeave"
           >
-            <template v-for="(part, idx) in getHighlightedParts(slotProps.data.description, searchQuery)" :key="idx">
-              <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
-              <span v-else>{{ part.text }}</span>
-            </template>
+            <BOMHighlightText :text="slotProps.data.description" :query="searchQuery" />
           </div>
         </template>
       </Column>
@@ -142,10 +82,7 @@
       <Column field="supplier" header="Supplier" :style="{ width: columnWidths.supplier + 'px' }" sortable>
         <template #body="slotProps">
           <div class="cell-text" v-tooltip.bottom="slotProps.data.supplier">
-            <template v-for="(part, idx) in getHighlightedParts(slotProps.data.supplier, searchQuery)" :key="idx">
-              <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
-              <span v-else>{{ part.text }}</span>
-            </template>
+            <BOMHighlightText :text="slotProps.data.supplier" :query="searchQuery" />
           </div>
         </template>
       </Column>
@@ -154,15 +91,12 @@
       <Column field="supplier_pn" header="Supplier PN" :style="{ width: columnWidths.supplier_pn + 'px' }" sortable>
         <template #body="slotProps">
           <div class="cell-text cell-mono" v-tooltip.bottom="slotProps.data.supplier_pn">
-            <template v-for="(part, idx) in getHighlightedParts(slotProps.data.supplier_pn, searchQuery)" :key="idx">
-              <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
-              <span v-else>{{ part.text }}</span>
-            </template>
+            <BOMHighlightText :text="slotProps.data.supplier_pn" :query="searchQuery" />
           </div>
         </template>
       </Column>
 
-      <!-- Location (所有 Revision 中使用該主料之 location 聯集) -->
+      <!-- Location -->
       <Column field="locations" header="Location" :style="{ width: columnWidths.locations + 'px', minWidth: '90px', maxWidth: columnWidths.locations + 'px' }">
         <template #body="slotProps">
           <div
@@ -170,15 +104,12 @@
             @mouseenter="handleCellMouseEnter($event, 'locations', slotProps.data)"
             @mouseleave="handleCellMouseLeave"
           >
-            <template v-for="(part, idx) in getHighlightedParts(slotProps.data.locations, searchQuery)" :key="idx">
-              <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
-              <span v-else>{{ part.text }}</span>
-            </template>
+            <BOMHighlightText :text="slotProps.data.locations" :query="searchQuery" />
           </div>
         </template>
       </Column>
 
-      <!-- EBOM 模式欄位：動態 Qty 欄位 (各 Revision 獨立用量，標題兩行：專案名稱 + 版本，non-sortable) + CCL + Remark -->
+      <!-- EBOM 模式欄位：動態 Qty 欄位 + CCL + Remark -->
       <template v-if="selectedBomType === 'EBOM'">
         <Column
           v-for="revCol in revisionColumns"
@@ -212,10 +143,7 @@
         <Column field="remark" header="Remark" :style="{ width: columnWidths.remark + 'px' }">
           <template #body="slotProps">
             <div class="cell-text" v-tooltip.bottom="slotProps.data.remark">
-              <template v-for="(part, idx) in getHighlightedParts(slotProps.data.remark, searchQuery)" :key="idx">
-                <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
-                <span v-else>{{ part.text }}</span>
-              </template>
+              <BOMHighlightText :text="slotProps.data.remark" :query="searchQuery" />
             </div>
           </template>
         </Column>
@@ -232,7 +160,7 @@
           </template>
         </Column>
 
-        <!-- [Matrix Models] 欄位 (標題兩行：依智慧中心演算法定位專案名稱 + 純字母與數量 A(102)，自適應欄寬，專案邊界垂直貫穿實線，內部表頭無虛線) -->
+        <!-- [Matrix Models] 欄位 (自適應欄寬與貫穿分隔線) -->
         <Column
           v-for="(modelCol, colIdx) in matrixModelColumns"
           :key="modelCol.key"
@@ -255,35 +183,14 @@
           ]"
         >
           <template #header>
-            <div class="two-line-header matrix-header-group" :title="modelCol.headerTitle">
-              <!-- 第一行：專案名稱依智慧中心定位演算法顯示於中心 Model 欄位，其餘欄位留白 -->
-              <div class="header-line1 project-code-line">
-                <span
-                  v-if="modelCol.showProjectCode"
-                  class="project-code-label"
-                  :title="modelCol.headerTitle"
-                >
-                  {{ modelCol.projectCode }}
-                </span>
-                <!-- 佔位符確保第二行在各 Model 欄位垂直對齊 -->
-                <span v-else class="project-code-spacer">&nbsp;</span>
-              </div>
-              <!-- 第二行：純字母 (粗體) 與數量，中間以空格分隔，例如 A (102)、B (147) -->
-              <div class="header-line2 model-alias-line">
-                <span class="model-alias-bold">{{ modelCol.modelAlias }}</span>{{ modelCol.qty > 0 ? ` (${modelCol.qty})` : '' }}
-              </div>
-            </div>
+            <BOMMatrixHeader :column="modelCol" />
           </template>
           <template #body="slotProps">
-            <div class="matrix-checkbox-cell">
-              <!-- 若該物料在該 Revision 存在才繪製 Checkbox；若不存在則不繪製 Checkbox -->
-              <Checkbox
-                v-if="isModelAvailableInRevision(slotProps.data, modelCol)"
-                :model-value="isModelSelectedInRevision(slotProps.data, modelCol)"
-                binary
-                @change="onMatrixModelSelectionChange(slotProps.data, modelCol)"
-              />
-            </div>
+            <BOMMatrixCheckboxCell
+              :is-available="isModelAvailableInRevision(slotProps.data, modelCol)"
+              :is-selected="isModelSelectedInRevision(slotProps.data, modelCol)"
+              @change="onMatrixModelSelectionChange(slotProps.data, modelCol)"
+            />
           </template>
         </Column>
 
@@ -301,12 +208,7 @@
               @mouseenter="!isNotesEditorVisible && handleCellMouseEnter($event, 'notes', slotProps.data)"
               @mouseleave="handleCellMouseLeave"
             >
-              <template v-if="slotProps.data.notes">
-                <template v-for="(part, idx) in getHighlightedParts(slotProps.data.notes, searchQuery)" :key="idx">
-                  <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
-                  <span v-else>{{ part.text }}</span>
-                </template>
-              </template>
+              <BOMHighlightText :text="slotProps.data.notes" :query="searchQuery" />
             </div>
           </template>
         </Column>
@@ -344,55 +246,52 @@
       @close="handleNotesEditorCancel"
     />
 
-    <!-- Summary Statistics -->
-    <div class="table-summary">
-      <span>Total Main Parts: {{ aggregatedParts.length }}</span>
-      <span v-if="selectedView === 'smd'">| SMD Parts: {{ smdPartsCount }}</span>
-      <span v-if="selectedView === 'pth'">| PTH Parts: {{ pthPartsCount }}</span>
-    </div>
+    <!-- Summary Statistics 底部統計列 -->
+    <BOMTableSummary
+      :total-main-parts="aggregatedParts.length"
+      :selected-view="selectedView"
+      :smd-parts-count="smdPartsCount"
+      :pth-parts-count="pthPartsCount"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 /**
  * @file BOMTable.vue
- * @description BOM 表格核心組裝視圖元件
+ * @description BOM 表格核心裝配層元件
  * 
- * 本元件為 BOMTable 模組之純粹視圖裝配層，將後端 API 資料流、狀態控制、自適應欄寬計算、
- * 拖曳滾動動畫與右鍵快顯選單等子模組裝配至 PrimeVue DataTable 虛擬滾動表格中。
- * 
- * 模組依賴關係：
- * - ./types: 匯入型別定義
- * - ./utils/textHighlight: 關鍵字比對切割高亮
- * - ./composables/useBOMData: 核心資料流、過濾、排序與平鋪
- * - ./composables/useColumnWidths: 動態欄寬分配與 ResizeObserver
- * - ./composables/useCellAutoScroll: 拖曳文字自動平移滾動動畫
- * - ./composables/useBOMContextMenu: 右鍵選單與 Ctrl+C 快捷鍵
+ * 本元件為 BOMTable 模組的純粹裝配層，將資料流 (useBOMData)、自適應欄寬 (useColumnWidths)、
+ * 儲存格平滑拖曳 (useCellAutoScroll)、快顯選單 (useBOMContextMenu)、懸停卡片 (useCellHoverCard)
+ * 以及 Notes 編輯引擎 (useBOMNotesEditing) 裝配至 PrimeVue DataTable 虛擬滾動容器中。
  */
 
 import { ref, toRef, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import Toolbar from 'primevue/toolbar'
-import SelectButton from 'primevue/selectbutton'
 import ContextMenu from 'primevue/contextmenu'
-import Select from 'primevue/select'
-import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
-import Checkbox from 'primevue/checkbox'
 
 import type { ViewPartGroup } from '../../services/api'
-import { UpdateMaterialNote } from '../../services/api'
-import { useLogStore } from '../../stores'
-import { getHighlightedParts } from './utils/textHighlight'
-import { useBOMData, VIEW_OPTIONS, BOM_TYPE_OPTIONS } from './composables/useBOMData'
+import type { BOMDisplayRow } from './types'
+
+// 子組件
+import BOMToolbar from './components/BOMToolbar.vue'
+import BOMTableSummary from './components/BOMTableSummary.vue'
+import BOMHighlightText from './components/BOMHighlightText.vue'
+import BOMItemCell from './components/BOMItemCell.vue'
+import BOMMatrixHeader from './components/BOMMatrixHeader.vue'
+import BOMMatrixCheckboxCell from './components/BOMMatrixCheckboxCell.vue'
+import BOMCellHoverCard from './components/BOMCellHoverCard.vue'
+import BOMNotesEditor from './components/BOMNotesEditor.vue'
+
+// Composables
+import { useBOMData } from './composables/useBOMData'
 import { useColumnWidths } from './composables/useColumnWidths'
 import { useCellAutoScroll } from './composables/useCellAutoScroll'
 import { useBOMContextMenu } from './composables/useBOMContextMenu'
-import { useCellHoverCard, type CellRect } from './composables/useCellHoverCard'
-import BOMCellHoverCard from './components/BOMCellHoverCard.vue'
-import BOMNotesEditor from './components/BOMNotesEditor.vue'
-import type { BOMDisplayRow } from './types'
+import { useCellHoverCard } from './composables/useCellHoverCard'
+import { useBOMNotesEditing } from './composables/useBOMNotesEditing'
 
 const props = withDefaults(
   defineProps<{
@@ -421,8 +320,6 @@ const {
   sortOrder,
   aggregatedParts,
   displayRows,
-  currentRevisionMetadata,
-  allRevisionMetadata,
   revisionColumns,
   matrixModelColumns,
   currentRevisionModels,
@@ -433,10 +330,6 @@ const {
   onViewChange,
   getModelQty,
   getModelSelectedPN,
-  isModelSelected,
-  isSelectedInRevision,
-  isAvailableInRevision,
-  onMatrixSelectionChange,
   isModelSelectedInRevision,
   isModelAvailableInRevision,
   onMatrixModelSelectionChange,
@@ -455,7 +348,6 @@ const {
 
 /**
  * 取得指定資料列在特定 Revision 的用量顯示
- * 若該物料未出現在該 Revision 中 (例如未包含於 sourceRevisionIds)，則回傳空字串
  * 
  * @param {BOMDisplayRow} row - 資料列
  * @param {number} revisionId - BOM Revision ID
@@ -524,7 +416,7 @@ const {
 /** DataTable 模板引用 */
 const dataTableRef = ref()
 
-// ── 5. 儲存格互動式懸停卡片 (Description / Location / Notes) ────
+// ── 5. 儲存格互動式懸停卡片 ────
 const {
   isCardVisible,
   activeField,
@@ -544,142 +436,22 @@ const {
   onTableScroll,
 } = useCellHoverCard()
 
-const logStore = useLogStore()
-
-// ── 6. Notes 欄位儲存格專用小編輯視窗狀態管理 ────
-const isNotesEditorVisible = ref(false)
-const editingNotesRow = ref<BOMDisplayRow | null>(null)
-const notesEditorTargetRect = ref<CellRect | null>(null)
-const initialNotesValue = ref('')
-
-/**
- * 判斷指定資料列是否正處於 Notes 編輯狀態
- * 
- * @param {BOMDisplayRow} row - 資料列物件
- * @returns {boolean} 是否為當前編輯列
- */
-function isEditingNotesCell(row: BOMDisplayRow): boolean {
-  return isNotesEditorVisible.value && editingNotesRow.value?.rowId === row.rowId
-}
-
-/**
- * 點擊 Notes 儲存格開啟小編輯視窗
- * 
- * @param {MouseEvent} event - 點擊事件物件
- * @param {BOMDisplayRow} row - 當前儲存格所屬列資料
- */
-function handleNotesCellClick(event: MouseEvent, row: BOMDisplayRow): void {
-  // 若已在編輯同一列，不重複處理
-  if (isEditingNotesCell(row)) return
-
-  // 關閉任何可能開啟中的懸停卡片
-  closeCard(true)
-
-  const currentTarget = event.currentTarget as HTMLElement
-  if (!currentTarget) return
-
-  const r = currentTarget.getBoundingClientRect()
-  notesEditorTargetRect.value = {
-    top: r.top,
-    bottom: r.bottom,
-    left: r.left,
-    right: r.right,
-    width: r.width,
-    height: r.height
-  }
-
-  editingNotesRow.value = row
-  initialNotesValue.value = row.notes || ''
-  isNotesEditorVisible.value = true
-}
-
-/**
- * 處理 Notes 小編輯視窗儲存事件
- * 
- * 1. 更新前端當前列之 notes
- * 2. 透過 updateMaterialNotesInCache 即時局部更新前端快取 (確保同一物料在整份 BOM 任何位置皆同步為最新資料)
- * 3. 呼叫後端 API UpdateMaterialNote 將變更持久化寫入資料庫
- * 4. 關閉編輯視窗
- * 
- * @param {string} newNotes - 使用者編輯後之 Notes 內容
- */
-async function handleNotesEditorSave(newNotes: string): Promise<void> {
-  if (!editingNotesRow.value) {
-    isNotesEditorVisible.value = false
-    return
-  }
-
-  const row = editingNotesRow.value
-  const trimmed = newNotes.trim()
-  const oldNotes = (row.notes || '').trim()
-
-  // 立即關閉小編輯視窗
-  isNotesEditorVisible.value = false
-  editingNotesRow.value = null
-  notesEditorTargetRect.value = null
-
-  // 若內容未發生變動，無需執行後續更新
-  if (trimmed === oldNotes) {
-    return
-  }
-
-  // 1. 立即更新當前列
-  row.notes = trimmed
-
-  // 2. 即時局部更新前端快取 (主料與替代料全面同步最新資料)
-  updateMaterialNotesInCache(row.materialId, trimmed, row.supplier, row.supplier_pn)
-
-  // 3. 呼叫後端 API 持久化寫入資料庫
-  if (row.materialId > 0) {
-    try {
-      await UpdateMaterialNote(row.materialId, trimmed)
-      logStore.addLogEntry(
-        'INFO',
-        `[BOMTable] 成功更新物料 (ID=${row.materialId}, ${row.supplier} ${row.supplier_pn}) 的 Notes 註記`
-      )
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error)
-      logStore.addLogEntry('ERROR', `[BOMTable] 更新物料 Notes 至資料庫失敗: ${msg}`)
-    }
-  }
-}
-
-/**
- * 取消 Notes 編輯並關閉視窗
- */
-function handleNotesEditorCancel(): void {
-  isNotesEditorVisible.value = false
-  editingNotesRow.value = null
-  notesEditorTargetRect.value = null
-}
-
-/**
- * 處理 HoverCard 上的 Notes 儲存操作
- * 同樣更新本機模型、快取全域同步並持久化至資料庫
- * 
- * @param {string} _newNotes - 新編輯的 Notes 內容
- */
-function handleSaveNotes(_newNotes: string): void {
-  saveNotes(async (row, notes) => {
-    const trimmed = notes.trim()
-    // 同步前端快取
-    updateMaterialNotesInCache(row.materialId, trimmed, row.supplier, row.supplier_pn)
-
-    // 持久化至資料庫
-    if (row.materialId > 0) {
-      try {
-        await UpdateMaterialNote(row.materialId, trimmed)
-        logStore.addLogEntry(
-          'INFO',
-          `[BOMTable] HoverCard 成功更新物料 (ID=${row.materialId}) 的 Notes`
-        )
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        logStore.addLogEntry('ERROR', `[BOMTable] HoverCard 更新物料 Notes 失敗: ${msg}`)
-      }
-    }
-  })
-}
+// ── 6. Notes 編輯狀態管理與持久化 ────
+const {
+  isNotesEditorVisible,
+  editingNotesRow,
+  notesEditorTargetRect,
+  initialNotesValue,
+  isEditingNotesCell,
+  handleNotesCellClick,
+  handleNotesEditorSave,
+  handleNotesEditorCancel,
+  handleSaveNotes,
+} = useBOMNotesEditing({
+  closeCard,
+  saveNotes,
+  updateMaterialNotesInCache,
+})
 
 /** 虛擬滾動容器元素引用 */
 let scrollerEl: HTMLElement | null = null
@@ -716,568 +488,5 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.bom-table-container {
-  height: 100%;
-  width: 100%;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* PrimeVue Toolbar - VS Code 風格高緊湊工具列 */
-:deep(.bom-toolbar) {
-  padding: 0.25rem 0.5rem;
-  border-radius: 0;
-  border-width: 0 0 1px 0;
-  border-color: var(--surface-border);
-  background: var(--surface-ground);
-  min-height: unset;
-}
-
-.toolbar-start,
-.toolbar-end {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.filter-label {
-  font-weight: 600;
-  font-size: 0.75rem;
-  color: var(--text-color);
-}
-
-.view-dropdown {
-  min-width: 100px;
-  font-size: 0.75rem;
-}
-
-:deep(.view-dropdown .p-select-label) {
-  padding: 0.15rem 0.4rem;
-  font-size: 0.75rem;
-}
-
-.search-input-wrapper {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
-.search-input {
-  width: 180px;
-  padding: 0.15rem 1.6rem 0.15rem 0.4rem !important;
-  font-size: 0.75rem !important;
-  height: 26px !important;
-}
-
-.clear-btn {
-  position: absolute;
-  right: 0.4rem;
-  cursor: pointer;
-  color: var(--text-color-secondary);
-  font-size: 0.75rem;
-  transition: color 0.2s;
-}
-
-.clear-btn:hover {
-  color: var(--text-color);
-}
-
-:deep(.bom-type-toggle .p-togglebutton) {
-  padding: 0.15rem 0.5rem !important;
-  font-size: 0.75rem !important;
-  font-weight: 600;
-  height: 26px !important;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-:deep(.bom-type-toggle .p-togglebutton:not(.p-togglebutton-checked):not([data-p-checked="true"])) {
-  color: var(--text-color-secondary) !important;
-}
-
-/* 切換 EBOM / Matrix 的 SelectButton 選中狀態高亮 */
-:deep(.bom-type-toggle .p-togglebutton.p-togglebutton-checked),
-:deep(.bom-type-toggle .p-togglebutton[data-p-checked="true"]) {
-  color: var(--primary-color) !important;
-  background-color: var(--surface-hover) !important;
-  font-weight: 700 !important;
-}
-
-:deep(.bom-type-toggle .p-togglebutton.p-togglebutton-checked .p-togglebutton-label),
-:deep(.bom-type-toggle .p-togglebutton[data-p-checked="true"] .p-togglebutton-label) {
-  color: var(--primary-color) !important;
-}
-
-:deep(.bom-type-toggle .p-togglebutton:hover) {
-  background-color: var(--surface-hover) !important;
-}
-
-/* Table styling - VS Code 風格高緊湊表格，最大化可視範圍 */
-:deep(.p-datatable) {
-  font-size: 12px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  background-color: var(--bom-row-even-bg) !important;
-}
-
-:deep(.p-datatable-table-container),
-:deep(.p-datatable-wrapper) {
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  min-width: 0;
-  background-color: var(--bom-row-even-bg) !important;
-}
-
-/* 強制表格遵守設定欄寬，徹底防止長文字欄位將單元格無限撐開 */
-:deep(.bom-table table),
-:deep(.bom-table .p-datatable-table) {
-  table-layout: fixed !important;
-  background-color: var(--bom-row-even-bg) !important;
-}
-
-:deep(.p-datatable-header) {
-  background: var(--surface-ground);
-  border-bottom: 1px solid var(--surface-border);
-}
-
-/* 標題列：背景微調為 surface-100，搭配清楚的底線，3px 緊湊水平內距最大化空間 (支援 Dark / Light Theme) */
-:deep(.bom-table .p-datatable-thead > tr > th) {
-  padding: 1px 3px !important;
-  font-size: 12px !important;
-  font-weight: 600 !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  line-height: 1.2 !important;
-  height: 26px !important;
-  background-color: var(--bom-header-bg) !important;
-  border-bottom: 2px solid var(--bom-header-border) !important;
-  border-top: none !important;
-  color: var(--bom-header-text) !important;
-}
-
-/* 標題文字與排序圖示間距緊湊化 */
-:deep(.bom-table .p-datatable-column-header-content) {
-  gap: 2px !important;
-}
-
-/* 標題列排序圖示微調為 10px 高緊湊風格 */
-:deep(.bom-table .p-datatable-sort-icon),
-:deep(.bom-table .p-datatable-sort-icon svg),
-:deep(.bom-table [data-pc-section="sorticon"]) {
-  width: 10px !important;
-  height: 10px !important;
-  min-width: 10px !important;
-  min-height: 10px !important;
-  font-size: 10px !important;
-  margin-left: 1px !important;
-  color: var(--text-color-secondary, #94a3b8);
-  fill: currentColor;
-  transition: color 0.15s ease, fill 0.15s ease;
-}
-
-/* 排序符號生效時高亮顯示 (採用與整體 UI 主題一致之主色綠色) */
-:deep(.bom-table th.p-datatable-column-sorted .p-datatable-sort-icon),
-:deep(.bom-table th[data-p-sorted="true"] .p-datatable-sort-icon),
-:deep(.bom-table th[aria-sort="ascending"] .p-datatable-sort-icon),
-:deep(.bom-table th[aria-sort="descending"] .p-datatable-sort-icon),
-:deep(.bom-table th.p-datatable-column-sorted [data-pc-section="sorticon"]),
-:deep(.bom-table th[data-p-sorted="true"] [data-pc-section="sorticon"]),
-:deep(.bom-table th[aria-sort="ascending"] [data-pc-section="sorticon"]),
-:deep(.bom-table th[aria-sort="descending"] [data-pc-section="sorticon"]),
-:deep(.bom-table th.p-datatable-column-sorted .p-datatable-sort-icon svg),
-:deep(.bom-table th[data-p-sorted="true"] .p-datatable-sort-icon svg),
-:deep(.bom-table th[aria-sort="ascending"] .p-datatable-sort-icon svg),
-:deep(.bom-table th[aria-sort="descending"] .p-datatable-sort-icon svg),
-:deep(.bom-table th.p-datatable-column-sorted .p-datatable-sort-icon path),
-:deep(.bom-table th[data-p-sorted="true"] .p-datatable-sort-icon path),
-:deep(.bom-table th[aria-sort="ascending"] .p-datatable-sort-icon path),
-:deep(.bom-table th[aria-sort="descending"] .p-datatable-sort-icon path) {
-  color: var(--p-primary-color, var(--primary-color, #10b981)) !important;
-  fill: var(--p-primary-color, var(--primary-color, #10b981)) !important;
-}
-
-/* 排序表頭 Hover 時排序圖示預覽微高亮 */
-:deep(.bom-table th[data-p-sortable-column="true"]:hover:not([data-p-sorted="true"]):not([aria-sort="ascending"]):not([aria-sort="descending"]) .p-datatable-sort-icon) {
-  color: var(--p-primary-400, #34d399) !important;
-  fill: var(--p-primary-400, #34d399) !important;
-}
-
-/* 表格單元格緊湊化與文字截斷：3px 緊湊水平內距 */
-:deep(.bom-table .p-datatable-tbody > tr > td) {
-  padding: 1px 3px !important;
-  font-size: 12px !important;
-  line-height: 1.2 !important;
-  height: 26px !important;
-  box-sizing: border-box !important;
-  overflow: hidden !important;
-  white-space: nowrap !important;
-  border-bottom: 1px solid var(--bom-cell-border) !important;
-}
-
-/* 虛擬滾動行高度固定 26px */
-:deep(.bom-table .p-virtualscroller .p-datatable-tbody > tr) {
-  height: 26px !important;
-}
-
-/* 儲存格文字容器：預設溢出顯示省略號，選取時支援平滑滾動 */
-.cell-text {
-  display: block;
-  width: 100%;
-  height: 24px;
-  line-height: 24px;
-  overflow-x: scroll;
-  overflow-y: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: text;
-  user-select: text;
-  -webkit-user-select: text;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.cell-text.is-selecting,
-.cell-text.has-selection {
-  text-overflow: clip !important;
-}
-
-.cell-text::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
-}
-
-/* 合併欄位：Item + 開合按鈕 (極致緊湊 2px 內距) */
-:deep(.item-col),
-:deep(.item-header-col) {
-  padding-left: 2px !important;
-  padding-right: 2px !important;
-}
-
-:deep(.item-header-col .p-datatable-column-header-content) {
-  display: flex !important;
-  align-items: center !important;
-  gap: 2px !important;
-}
-
-.item-header-content {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.item-header-label {
-  cursor: pointer;
-  user-select: none;
-  font-size: 12px !important;
-  font-weight: 600 !important;
-  color: inherit !important;
-  line-height: 1;
-}
-
-.item-cell-content {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  width: 100%;
-}
-
-.toggle-all-btn,
-.toggle-ss-btn {
-  width: 0.85rem !important;
-  height: 1rem !important;
-  min-width: unset !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  flex-shrink: 0;
-}
-
-:deep(.toggle-all-btn .p-button-icon),
-:deep(.toggle-ss-btn .p-button-icon) {
-  font-size: 10px !important;
-}
-
-:deep(.toggle-all-btn),
-:deep(.toggle-all-btn *),
-:deep(.toggle-ss-btn),
-:deep(.toggle-ss-btn *) {
-  -webkit-user-select: none !important;
-  user-select: none !important;
-  cursor: pointer !important;
-}
-
-.toggle-placeholder {
-  display: inline-block;
-  width: 0.85rem;
-  height: 1rem;
-  flex-shrink: 0;
-}
-
-.item-number {
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
-/* ==========================================================================
-   群組斑馬紋底色 (Group Zebra Striping) - 透過 CSS 變數完整支援 Light / Dark 主題
-   依物料群組 (Group) 進行交替著色，同群組主料與展開替代料共享相同底色
-   ========================================================================== */
-
-:deep(.bom-table .p-datatable-tbody > tr.group-even:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected)) {
-  background-color: var(--bom-row-even-bg) !important;
-}
-
-:deep(.bom-table .p-datatable-tbody > tr.group-odd:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected)) {
-  background-color: var(--bom-row-odd-bg) !important;
-}
-
-:deep(.bom-table .p-datatable-tbody > tr.group-even:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected):hover),
-:deep(.bom-table .p-datatable-tbody > tr.group-odd:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected):hover) {
-  background-color: var(--bom-row-hover-bg) !important;
-}
-
-/* ==========================================================================
-   主料與替代料文字顏色階層 (Text Hierarchy) - 透過 CSS 變數完整支援 Light / Dark 主題
-   底色完全由 Group 斑馬紋決定，主料與替代料純粹透過文字顏色區分階層
-   ========================================================================== */
-
-:deep(.main-source-row),
-:deep(.main-source-row .cell-text),
-:deep(.main-source-row .item-number),
-:deep(.main-source-row .qty-cell) {
-  color: var(--bom-text-main) !important;
-}
-
-:deep(.second-source-row),
-:deep(.second-source-row .cell-text),
-:deep(.second-source-row .item-number),
-:deep(.second-source-row .qty-cell) {
-  color: var(--bom-text-second) !important;
-  font-size: 12px !important;
-}
-
-/* 底部統計摘要 */
-.table-summary {
-  display: flex;
-  gap: 0.75rem;
-  padding: 0.2rem 0.75rem;
-  background: var(--surface-ground);
-  border-top: 1px solid var(--surface-border);
-  font-size: 0.7rem;
-  color: var(--text-color-secondary);
-  line-height: 1.2;
-}
-
-.ccl-normal,
-.ccl-critical {
-  color: inherit;
-  font-weight: 500;
-}
-
-.model-selected {
-  font-weight: 600;
-  color: var(--p-primary-color, #3b82f6);
-}
-
-.highlight-text {
-  background-color: #fef08a;
-  color: #854d0e;
-  font-weight: 700;
-  padding: 0 1px;
-  border-radius: 2px;
-}
-
-/* 兩行表頭 (專案名稱 + 版本) */
-:deep(.two-line-header-col) {
-  padding: 1px 2px !important;
-}
-
-:deep(.two-line-header-col .p-datatable-column-header-content) {
-  justify-content: center;
-  text-align: center;
-}
-
-.two-line-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  line-height: 1.15;
-  text-align: center;
-  overflow: hidden;
-}
-
-.header-line1 {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.header-line2 {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-color-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.qty-cell {
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-}
-
-/* VS Code 工模等寬字型：料號、數據、位置、數量、序號 */
-.cell-mono,
-.qty-cell,
-.item-number {
-  font-family: "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", monospace !important;
-  font-size: 11.5px !important;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.25px;
-}
-
-.matrix-checkbox-col {
-  text-align: center;
-}
-
-.matrix-checkbox-cell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-}
-
-:deep(.matrix-checkbox-cell .p-checkbox) {
-  width: 16px;
-  height: 16px;
-}
-
-:deep(.matrix-checkbox-cell .p-checkbox-box) {
-  width: 16px;
-  height: 16px;
-  border-radius: 3px;
-}
-
-/* 專案之間垂直分隔線 (自表頭 th 貫穿至最後一筆資料列 td) */
-:deep(.bom-table th.project-divider-col),
-:deep(.bom-table td.project-divider-col) {
-  border-right: 2px solid #94a3b8 !important;
-}
-
-:deep(.dark .bom-table th.project-divider-col),
-:deep(.dark .bom-table td.project-divider-col),
-.dark :deep(.bom-table th.project-divider-col),
-.dark :deep(.bom-table td.project-divider-col) {
-  border-right: 2px solid #4b5563 !important;
-}
-
-/* 第一個專案左側垂直分隔線 (自表頭 th 貫穿至最後一筆資料列 td，與右側分隔線同款) */
-:deep(.bom-table th.project-start-col),
-:deep(.bom-table td.project-start-col) {
-  border-left: 2px solid #94a3b8 !important;
-}
-
-:deep(.dark .bom-table th.project-start-col),
-:deep(.dark .bom-table td.project-start-col),
-.dark :deep(.bom-table th.project-start-col),
-.dark :deep(.bom-table td.project-start-col) {
-  border-left: 2px solid #4b5563 !important;
-}
-
-/* 專案內部相鄰 Model 欄位之間：表頭不繪製虛線，保持連續整體感；僅資料列保持極細虛線分隔 */
-:deep(.bom-table th.project-inner-col) {
-  border-right: none !important;
-}
-
-:deep(.bom-table td.project-inner-col) {
-  border-right: 1px dashed rgba(148, 163, 184, 0.35) !important;
-}
-
-:deep(.dark .bom-table th.project-inner-col),
-.dark :deep(.bom-table th.project-inner-col) {
-  border-right: none !important;
-}
-
-:deep(.dark .bom-table td.project-inner-col),
-.dark :deep(.bom-table td.project-inner-col) {
-  border-right: 1px dashed rgba(107, 114, 128, 0.4) !important;
-}
-
-/* 最小化 Matrix Model 表頭與儲存格兩側內距，最大化橫向可視空間 */
-:deep(.bom-table th.matrix-model-col),
-:deep(.bom-table td.matrix-model-col) {
-  padding: 1px 2px !important;
-}
-
-/* Matrix 模式表頭兩行排版 (智慧中心定位與緊湊精緻字型) */
-.matrix-header-group {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.project-code-line {
-  min-height: 14px;
-  line-height: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  overflow: hidden;
-}
-
-.project-code-label {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--text-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-  letter-spacing: -0.25px;
-  text-align: center;
-}
-
-.project-code-spacer {
-  display: inline-block;
-  visibility: hidden;
-  height: 14px;
-}
-
-.model-alias-line {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-color-secondary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  line-height: 13px;
-  margin-top: 1px;
-}
-
-.model-alias-bold {
-  font-weight: 700;
-  color: var(--text-color);
-}
+@import './styles/bomTable.css';
 </style>
-

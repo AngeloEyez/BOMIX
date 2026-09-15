@@ -1,0 +1,368 @@
+/**
+ * @file bomTable.css
+ * @description BOM 表格全域與深層樣式表
+ * 
+ * 包含 VS Code 緊湊工模表格核心佈局、表頭高度、排序圖示微調、儲存格文字容器、
+ * 虛擬滾動行高 (26px)、群組斑馬紋底色、主料與替代料文字階層、
+ * 專案邊界貫穿垂直實線 (2px solid) 與專案內部極細虛線 (1px dashed)。
+ */
+
+.bom-table-container {
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Table styling - VS Code 風格高緊湊表格，最大化可視範圍 */
+:deep(.p-datatable) {
+  font-size: 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  background-color: var(--bom-row-even-bg) !important;
+}
+
+:deep(.p-datatable-table-container),
+:deep(.p-datatable-wrapper) {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  min-width: 0;
+  background-color: var(--bom-row-even-bg) !important;
+}
+
+/* 強制表格遵守設定欄寬，徹底防止長文字欄位將單元格無限撐開 */
+:deep(.bom-table table),
+:deep(.bom-table .p-datatable-table) {
+  table-layout: fixed !important;
+  background-color: var(--bom-row-even-bg) !important;
+}
+
+:deep(.p-datatable-header) {
+  background: var(--surface-ground);
+  border-bottom: 1px solid var(--surface-border);
+}
+
+/* 標題列：背景微調為 surface-100，搭配清楚的底線，3px 緊湊水平內距最大化空間 (支援 Dark / Light Theme) */
+:deep(.bom-table .p-datatable-thead > tr > th) {
+  padding: 1px 3px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  line-height: 1.2 !important;
+  height: 26px !important;
+  background-color: var(--bom-header-bg) !important;
+  border-bottom: 2px solid var(--bom-header-border) !important;
+  border-top: none !important;
+  color: var(--bom-header-text) !important;
+}
+
+/* 標題文字與排序圖示間距緊湊化 */
+:deep(.bom-table .p-datatable-column-header-content) {
+  gap: 2px !important;
+}
+
+/* 標題列排序圖示微調為 10px 高緊湊風格 */
+:deep(.bom-table .p-datatable-sort-icon),
+:deep(.bom-table .p-datatable-sort-icon svg),
+:deep(.bom-table [data-pc-section="sorticon"]) {
+  width: 10px !important;
+  height: 10px !important;
+  min-width: 10px !important;
+  min-height: 10px !important;
+  font-size: 10px !important;
+  margin-left: 1px !important;
+  color: var(--text-color-secondary, #94a3b8);
+  fill: currentColor;
+  transition: color 0.15s ease, fill 0.15s ease;
+}
+
+/* 排序符號生效時高亮顯示 (採用與整體 UI 主題一致之主色綠色) */
+:deep(.bom-table th.p-datatable-column-sorted .p-datatable-sort-icon),
+:deep(.bom-table th[data-p-sorted="true"] .p-datatable-sort-icon),
+:deep(.bom-table th[aria-sort="ascending"] .p-datatable-sort-icon),
+:deep(.bom-table th[aria-sort="descending"] .p-datatable-sort-icon),
+:deep(.bom-table th.p-datatable-column-sorted [data-pc-section="sorticon"]),
+:deep(.bom-table th[data-p-sorted="true"] [data-pc-section="sorticon"]),
+:deep(.bom-table th[aria-sort="ascending"] [data-pc-section="sorticon"]),
+:deep(.bom-table th[aria-sort="descending"] [data-pc-section="sorticon"]),
+:deep(.bom-table th.p-datatable-column-sorted .p-datatable-sort-icon svg),
+:deep(.bom-table th[data-p-sorted="true"] .p-datatable-sort-icon svg),
+:deep(.bom-table th[aria-sort="ascending"] .p-datatable-sort-icon svg),
+:deep(.bom-table th[aria-sort="descending"] .p-datatable-sort-icon svg),
+:deep(.bom-table th.p-datatable-column-sorted .p-datatable-sort-icon path),
+:deep(.bom-table th[data-p-sorted="true"] .p-datatable-sort-icon path),
+:deep(.bom-table th[aria-sort="ascending"] .p-datatable-sort-icon path),
+:deep(.bom-table th[aria-sort="descending"] .p-datatable-sort-icon path) {
+  color: var(--p-primary-color, var(--primary-color, #10b981)) !important;
+  fill: var(--p-primary-color, var(--primary-color, #10b981)) !important;
+}
+
+/* 排序表頭 Hover 時排序圖示預覽微高亮 */
+:deep(.bom-table th[data-p-sortable-column="true"]:hover:not([data-p-sorted="true"]):not([aria-sort="ascending"]):not([aria-sort="descending"]) .p-datatable-sort-icon) {
+  color: var(--p-primary-400, #34d399) !important;
+  fill: var(--p-primary-400, #34d399) !important;
+}
+
+/* 表格單元格緊湊化與文字截斷：3px 緊湊水平內距 */
+:deep(.bom-table .p-datatable-tbody > tr > td) {
+  padding: 1px 3px !important;
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+  height: 26px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  border-bottom: 1px solid var(--bom-cell-border) !important;
+}
+
+/* 虛擬滾動行高度固定 26px */
+:deep(.bom-table .p-virtualscroller .p-datatable-tbody > tr) {
+  height: 26px !important;
+}
+
+/* 儲存格文字容器：預設溢出顯示省略號，選取時支援平滑滾動 */
+.cell-text {
+  display: block;
+  width: 100%;
+  height: 24px;
+  line-height: 24px;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.cell-text.is-selecting,
+.cell-text.has-selection {
+  text-overflow: clip !important;
+}
+
+.cell-text::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* 合併欄位：Item + 開合按鈕 (極致緊湊 2px 內距) */
+:deep(.item-col),
+:deep(.item-header-col) {
+  padding-left: 2px !important;
+  padding-right: 2px !important;
+}
+
+:deep(.item-header-col .p-datatable-column-header-content) {
+  display: flex !important;
+  align-items: center !important;
+  gap: 2px !important;
+}
+
+.item-header-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.item-header-label {
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: inherit !important;
+  line-height: 1;
+}
+
+.toggle-all-btn {
+  width: 0.85rem !important;
+  height: 1rem !important;
+  min-width: unset !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  flex-shrink: 0;
+}
+
+:deep(.toggle-all-btn .p-button-icon) {
+  font-size: 10px !important;
+}
+
+:deep(.toggle-all-btn),
+:deep(.toggle-all-btn *) {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  cursor: pointer !important;
+}
+
+/* ==========================================================================
+   群組斑馬紋底色 (Group Zebra Striping) - 透過 CSS 變數完整支援 Light / Dark 主題
+   依物料群組 (Group) 進行交替著色，同群組主料與展開替代料共享相同底色
+   ========================================================================== */
+
+:deep(.bom-table .p-datatable-tbody > tr.group-even:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected)) {
+  background-color: var(--bom-row-even-bg) !important;
+}
+
+:deep(.bom-table .p-datatable-tbody > tr.group-odd:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected)) {
+  background-color: var(--bom-row-odd-bg) !important;
+}
+
+:deep(.bom-table .p-datatable-tbody > tr.group-even:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected):hover),
+:deep(.bom-table .p-datatable-tbody > tr.group-odd:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected):hover) {
+  background-color: var(--bom-row-hover-bg) !important;
+}
+
+/* ==========================================================================
+   主料與替代料文字顏色階層 (Text Hierarchy) - 透過 CSS 變數完整支援 Light / Dark 主題
+   底色完全由 Group 斑馬紋決定，主料與替代料純粹透過文字顏色區分階層
+   ========================================================================== */
+
+:deep(.main-source-row),
+:deep(.main-source-row .cell-text),
+:deep(.main-source-row .item-number),
+:deep(.main-source-row .qty-cell) {
+  color: var(--bom-text-main) !important;
+}
+
+:deep(.second-source-row),
+:deep(.second-source-row .cell-text),
+:deep(.second-source-row .item-number),
+:deep(.second-source-row .qty-cell) {
+  color: var(--bom-text-second) !important;
+  font-size: 12px !important;
+}
+
+.ccl-normal,
+.ccl-critical {
+  color: inherit;
+  font-weight: 500;
+}
+
+.model-selected {
+  font-weight: 600;
+  color: var(--p-primary-color, #3b82f6);
+}
+
+/* 兩行表頭 (專案名稱 + 版本) */
+:deep(.two-line-header-col) {
+  padding: 1px 2px !important;
+}
+
+:deep(.two-line-header-col .p-datatable-column-header-content) {
+  justify-content: center;
+  text-align: center;
+}
+
+.two-line-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  line-height: 1.15;
+  text-align: center;
+  overflow: hidden;
+}
+
+.header-line1 {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.header-line2 {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.qty-cell {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* VS Code 工模等寬字型：料號、數據、位置、數量、序號 */
+.cell-mono,
+.qty-cell,
+.item-number {
+  font-family: "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", monospace !important;
+  font-size: 11.5px !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.25px;
+}
+
+.matrix-checkbox-col {
+  text-align: center;
+}
+
+/* 專案之間垂直分隔線 (自表頭 th 貫穿至最後一筆資料列 td) */
+:deep(.bom-table th.project-divider-col),
+:deep(.bom-table td.project-divider-col) {
+  border-right: 2px solid #94a3b8 !important;
+}
+
+:deep(.dark .bom-table th.project-divider-col),
+:deep(.dark .bom-table td.project-divider-col),
+.dark :deep(.bom-table th.project-divider-col),
+.dark :deep(.bom-table td.project-divider-col) {
+  border-right: 2px solid #4b5563 !important;
+}
+
+/* 第一個專案左側垂直分隔線 (自表頭 th 貫穿至最後一筆資料列 td，與右側分隔線同款) */
+:deep(.bom-table th.project-start-col),
+:deep(.bom-table td.project-start-col) {
+  border-left: 2px solid #94a3b8 !important;
+}
+
+:deep(.dark .bom-table th.project-start-col),
+:deep(.dark .bom-table td.project-start-col),
+.dark :deep(.bom-table th.project-start-col),
+.dark :deep(.bom-table td.project-start-col) {
+  border-left: 2px solid #4b5563 !important;
+}
+
+/* 專案內部相鄰 Model 欄位之間：表頭不繪製虛線，保持連續整體感；僅資料列保持極細虛線分隔 */
+:deep(.bom-table th.project-inner-col) {
+  border-right: none !important;
+}
+
+:deep(.bom-table td.project-inner-col) {
+  border-right: 1px dashed rgba(148, 163, 184, 0.35) !important;
+}
+
+:deep(.dark .bom-table th.project-inner-col),
+.dark :deep(.bom-table th.project-inner-col) {
+  border-right: none !important;
+}
+
+:deep(.dark .bom-table td.project-inner-col),
+.dark :deep(.bom-table td.project-inner-col) {
+  border-right: 1px dashed rgba(107, 114, 128, 0.4) !important;
+}
+
+/* 最小化 Matrix Model 表頭與儲存格兩側內距，最大化橫向可視空間 */
+:deep(.bom-table th.matrix-model-col),
+:deep(.bom-table td.matrix-model-col) {
+  padding: 1px 2px !important;
+}

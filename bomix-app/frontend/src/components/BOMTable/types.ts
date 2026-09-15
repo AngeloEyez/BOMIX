@@ -88,6 +88,9 @@ export interface MatrixModelColumnInfo {
   columnWidth: number
 }
 
+/** MatrixModelColumnInfo 別名 */
+export type MatrixModelColumn = MatrixModelColumnInfo
+
 /**
  * 平鋪後供 DataTable 虛擬滾動 (VirtualScroller) 渲染之單列資料結構
  * 將主料與其所屬之 2nd 替代料皆展平為此物件，2nd 替代料緊隨主料下方。
