@@ -15,6 +15,17 @@
   --text-color-secondary: var(--p-text-muted-color, #64748b);
   --primary-color: var(--p-primary-500, #6366f1);
   --highlight-background: var(--p-highlight-bg, #eff6ff);
+
+  /* BOM 表格專用主題變數 (Light Theme) */
+  --bom-row-even-bg: #ffffff;
+  --bom-row-odd-bg: #f1f5f9;
+  --bom-row-hover-bg: #e2e8f0;
+  --bom-header-bg: #f1f5f9;
+  --bom-header-border: #cbd5e1;
+  --bom-header-text: #1e293b;
+  --bom-text-main: #1e293b;
+  --bom-text-second: #64748b;
+  --bom-cell-border: #e2e8f0;
 }
 
 /* ==========================================================================
@@ -125,6 +136,17 @@ html.app-dark {
     --text-color-secondary: var(--p-color-text-secondary, #969696);
     --primary-color: var(--p-primary-500, #0e639c);
     --highlight-background: var(--p-color-highlight-bg, #094771);
+
+    /* BOM 表格專用主題變數 (Dark Theme) */
+    --bom-row-even-bg: #1e1e1e;
+    --bom-row-odd-bg: #272a2c;
+    --bom-row-hover-bg: #33373a;
+    --bom-header-bg: #252526;
+    --bom-header-border: #3c3c3c;
+    --bom-header-text: #cccccc;
+    --bom-text-main: #e2e8f0;
+    --bom-text-second: #94a3b8;
+    --bom-cell-border: #2d2d2d;
   }
 
 /* ==========================================================================

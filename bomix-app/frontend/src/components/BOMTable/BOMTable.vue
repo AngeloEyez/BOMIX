@@ -549,6 +549,7 @@ onMounted(() => {
   width: 100%;
   min-width: 0;
   overflow: hidden;
+  background-color: var(--bom-row-even-bg) !important;
 }
 
 :deep(.p-datatable-table-container),
@@ -557,12 +558,14 @@ onMounted(() => {
   min-height: 0;
   width: 100%;
   min-width: 0;
+  background-color: var(--bom-row-even-bg) !important;
 }
 
 /* 強制表格遵守設定欄寬，徹底防止長文字欄位將單元格無限撐開 */
 :deep(.bom-table table),
 :deep(.bom-table .p-datatable-table) {
   table-layout: fixed !important;
+  background-color: var(--bom-row-even-bg) !important;
 }
 
 :deep(.p-datatable-header) {
@@ -570,7 +573,7 @@ onMounted(() => {
   border-bottom: 1px solid var(--surface-border);
 }
 
-/* 標題列：背景微調為 surface-100，搭配清楚的底線，3px 緊湊水平內距最大化空間 */
+/* 標題列：背景微調為 surface-100，搭配清楚的底線，3px 緊湊水平內距最大化空間 (支援 Dark / Light Theme) */
 :deep(.bom-table .p-datatable-thead > tr > th) {
   padding: 1px 3px !important;
   font-size: 12px !important;
@@ -580,10 +583,10 @@ onMounted(() => {
   text-overflow: ellipsis !important;
   line-height: 1.2 !important;
   height: 26px !important;
-  background-color: var(--surface-100, #f1f5f9) !important;
-  border-bottom: 2px solid var(--surface-300, #cbd5e1) !important;
+  background-color: var(--bom-header-bg) !important;
+  border-bottom: 2px solid var(--bom-header-border) !important;
   border-top: none !important;
-  color: var(--text-color, #1e293b) !important;
+  color: var(--bom-header-text) !important;
 }
 
 /* 標題文字與排序圖示間距緊湊化 */
@@ -607,7 +610,7 @@ onMounted(() => {
   box-sizing: border-box !important;
   overflow: hidden !important;
   white-space: nowrap !important;
-  border-bottom: 1px solid var(--surface-border, #e2e8f0) !important;
+  border-bottom: 1px solid var(--bom-cell-border) !important;
 }
 
 /* 虛擬滾動行高度固定 26px */
@@ -713,40 +716,41 @@ onMounted(() => {
   line-height: 1;
 }
 
-/* 群組斑馬紋底色：依物料群組 (Group) 進行交替著色，同群組主料與替代料共享相同底色 */
+/* ==========================================================================
+   群組斑馬紋底色 (Group Zebra Striping) - 透過 CSS 變數完整支援 Light / Dark 主題
+   依物料群組 (Group) 進行交替著色，同群組主料與展開替代料共享相同底色
+   ========================================================================== */
+
 :deep(.bom-table .p-datatable-tbody > tr.group-even:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected)) {
-  background-color: var(--surface-card, #ffffff) !important;
+  background-color: var(--bom-row-even-bg) !important;
 }
 
 :deep(.bom-table .p-datatable-tbody > tr.group-odd:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected)) {
-  background-color: var(--surface-100, #f1f5f9) !important;
+  background-color: var(--bom-row-odd-bg) !important;
 }
 
-/* 深色模式群組斑馬紋底色 (清晰度適度加深) */
-html.app-dark :deep(.bom-table .p-datatable-tbody > tr.group-odd:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected)) {
-  background-color: rgba(255, 255, 255, 0.045) !important;
-}
-
-/* 滑鼠懸停高亮 (配合斑馬紋加深，確保懸停反饋清晰) */
 :deep(.bom-table .p-datatable-tbody > tr.group-even:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected):hover),
 :deep(.bom-table .p-datatable-tbody > tr.group-odd:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected):hover) {
-  background-color: var(--surface-200, #e2e8f0) !important;
+  background-color: var(--bom-row-hover-bg) !important;
 }
 
-html.app-dark :deep(.bom-table .p-datatable-tbody > tr.group-even:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected):hover),
-html.app-dark :deep(.bom-table .p-datatable-tbody > tr.group-odd:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected):hover) {
-  background-color: var(--surface-hover, #2a2d2e) !important;
-}
+/* ==========================================================================
+   主料與替代料文字顏色階層 (Text Hierarchy) - 透過 CSS 變數完整支援 Light / Dark 主題
+   底色完全由 Group 斑馬紋決定，主料與替代料純粹透過文字顏色區分階層
+   ========================================================================== */
 
-/* 主料與替代料文字顏色差異 (底色跟隨群組，透過文字色彩區分層級) */
 :deep(.main-source-row),
-:deep(.main-source-row .cell-text) {
-  color: var(--text-color, #1e293b) !important;
+:deep(.main-source-row .cell-text),
+:deep(.main-source-row .item-number),
+:deep(.main-source-row .qty-cell) {
+  color: var(--bom-text-main) !important;
 }
 
 :deep(.second-source-row),
-:deep(.second-source-row .cell-text) {
-  color: var(--text-color-secondary, #64748b) !important;
+:deep(.second-source-row .cell-text),
+:deep(.second-source-row .item-number),
+:deep(.second-source-row .qty-cell) {
+  color: var(--bom-text-second) !important;
   font-size: 12px !important;
 }
 
