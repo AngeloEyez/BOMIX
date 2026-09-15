@@ -159,16 +159,7 @@
         </template>
       </Column>
 
-      <!-- Qty -->
-      <Column field="qty" header="Qty" :style="{ width: columnWidths.qty + 'px' }" sortable>
-        <template #body="slotProps">
-          <div class="cell-text" v-tooltip.bottom="String(slotProps.data.qty ?? '')">
-            {{ slotProps.data.qty }}
-          </div>
-        </template>
-      </Column>
-
-      <!-- Location -->
+      <!-- Location (所有 Revision 中使用該主料之 location 聯集) -->
       <Column field="locations" header="Location" :style="{ width: columnWidths.locations + 'px', minWidth: '150px', maxWidth: columnWidths.locations + 'px' }">
         <template #body="slotProps">
           <div class="cell-text" v-tooltip.bottom="slotProps.data.locations">
@@ -180,44 +171,98 @@
         </template>
       </Column>
 
-      <!-- CCL -->
-      <Column field="ccl" header="CCL" :style="{ width: columnWidths.ccl + 'px' }" sortable>
-        <template #body="slotProps">
-          <span v-if="slotProps.data.ccl" :class="getCCLClass(slotProps.data.ccl)">
-            Y
-          </span>
-        </template>
-      </Column>
+      <!-- EBOM 模式欄位：動態 Qty 欄位 (各 Revision 獨立用量，標題兩行：專案名稱 + 版本，non-sortable) + CCL + Remark -->
+      <template v-if="selectedBomType === 'EBOM'">
+        <Column
+          v-for="revCol in revisionColumns"
+          :key="'ebom-qty-' + revCol.revisionId"
+          :style="{ width: '80px', minWidth: '70px', maxWidth: '100px' }"
+          header-class="two-line-header-col"
+        >
+          <template #header>
+            <div class="two-line-header" :title="`${revCol.projectCode} ${revCol.phase} ${revCol.version}`">
+              <div class="header-line1">{{ revCol.projectCode }}</div>
+              <div class="header-line2">{{ revCol.phase }} {{ revCol.version }}</div>
+            </div>
+          </template>
+          <template #body="slotProps">
+            <div class="cell-text qty-cell">
+              {{ getRevisionQty(slotProps.data, revCol.revisionId) }}
+            </div>
+          </template>
+        </Column>
 
-      <!-- Remark -->
-      <Column field="remark" header="Remark" :style="{ width: columnWidths.remark + 'px' }">
-        <template #body="slotProps">
-          <div class="cell-text" v-tooltip.bottom="slotProps.data.remark">
-            <template v-for="(part, idx) in getHighlightedParts(slotProps.data.remark, searchQuery)" :key="idx">
-              <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
-              <span v-else>{{ part.text }}</span>
-            </template>
-          </div>
-        </template>
-      </Column>
+        <!-- CCL (僅 EBOM 模式顯示) -->
+        <Column field="ccl" header="CCL" :style="{ width: columnWidths.ccl + 'px' }" sortable>
+          <template #body="slotProps">
+            <span v-if="slotProps.data.ccl" :class="getCCLClass(slotProps.data.ccl)">
+              Y
+            </span>
+          </template>
+        </Column>
 
-      <!-- Dynamic Model Columns -->
-      <Column
-        v-for="modelName in currentRevisionModels"
-        :key="modelName"
-        :header="`${modelName} (Qty: ${getModelQty(modelName)})`"
-        :style="{ width: (columnWidths.models[modelName] || 110) + 'px' }"
-      >
-        <template #body="slotProps">
-          <div
-            class="cell-text"
-            :class="{'model-selected': isModelSelected(slotProps.data, modelName)}"
-            v-tooltip.bottom="getModelSelectedPN(slotProps.data, modelName)"
-          >
-            {{ getModelSelectedPN(slotProps.data, modelName) || '-' }}
-          </div>
-        </template>
-      </Column>
+        <!-- Remark (僅 EBOM 模式顯示) -->
+        <Column field="remark" header="Remark" :style="{ width: columnWidths.remark + 'px' }">
+          <template #body="slotProps">
+            <div class="cell-text" v-tooltip.bottom="slotProps.data.remark">
+              <template v-for="(part, idx) in getHighlightedParts(slotProps.data.remark, searchQuery)" :key="idx">
+                <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
+                <span v-else>{{ part.text }}</span>
+              </template>
+            </div>
+          </template>
+        </Column>
+      </template>
+
+      <!-- Matrix 模式欄位：Qty (聚合總用量) + [Revisions] 互斥 Checkbox 欄位 + Notes -->
+      <template v-else-if="selectedBomType === 'Matrix'">
+        <!-- Qty (聚合總用量) -->
+        <Column field="qty" header="Qty" :style="{ width: columnWidths.qty + 'px' }" sortable>
+          <template #body="slotProps">
+            <div class="cell-text" v-tooltip.bottom="String(slotProps.data.qty ?? '')">
+              {{ slotProps.data.qty }}
+            </div>
+          </template>
+        </Column>
+
+        <!-- [Revisions] 欄位 (標題兩行：專案名稱 + 版本，Checkbox 互斥選取) -->
+        <Column
+          v-for="revCol in revisionColumns"
+          :key="'matrix-rev-' + revCol.revisionId"
+          :style="{ width: '80px', minWidth: '70px', maxWidth: '100px' }"
+          header-class="two-line-header-col"
+          class="matrix-checkbox-col"
+        >
+          <template #header>
+            <div class="two-line-header" :title="`${revCol.projectCode} ${revCol.phase} ${revCol.version}`">
+              <div class="header-line1">{{ revCol.projectCode }}</div>
+              <div class="header-line2">{{ revCol.phase }} {{ revCol.version }}</div>
+            </div>
+          </template>
+          <template #body="slotProps">
+            <div class="matrix-checkbox-cell">
+              <Checkbox
+                :model-value="isSelectedInRevision(slotProps.data, revCol)"
+                :disabled="!isAvailableInRevision(slotProps.data, revCol)"
+                binary
+                @change="onMatrixSelectionChange(slotProps.data, revCol)"
+              />
+            </div>
+          </template>
+        </Column>
+
+        <!-- Notes (僅 Matrix 模式顯示) -->
+        <Column field="notes" header="Notes" :style="{ width: columnWidths.notes + 'px', minWidth: '100px' }">
+          <template #body="slotProps">
+            <div class="cell-text" v-tooltip.bottom="slotProps.data.notes">
+              <template v-for="(part, idx) in getHighlightedParts(slotProps.data.notes, searchQuery)" :key="idx">
+                <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
+                <span v-else>{{ part.text }}</span>
+              </template>
+            </div>
+          </template>
+        </Column>
+      </template>
     </DataTable>
 
     <!-- 右鍵選單元件 -->
@@ -258,6 +303,7 @@ import ContextMenu from 'primevue/contextmenu'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
+import Checkbox from 'primevue/checkbox'
 
 import type { ViewPartGroup } from '../../services/api'
 import { getHighlightedParts } from './utils/textHighlight'
@@ -265,6 +311,7 @@ import { useBOMData, VIEW_OPTIONS, BOM_TYPE_OPTIONS } from './composables/useBOM
 import { useColumnWidths } from './composables/useColumnWidths'
 import { useCellAutoScroll } from './composables/useCellAutoScroll'
 import { useBOMContextMenu } from './composables/useBOMContextMenu'
+import type { BOMDisplayRow } from './types'
 
 const props = withDefaults(
   defineProps<{
@@ -293,6 +340,9 @@ const {
   sortOrder,
   aggregatedParts,
   displayRows,
+  currentRevisionMetadata,
+  allRevisionMetadata,
+  revisionColumns,
   currentRevisionModels,
   smdPartsCount,
   pthPartsCount,
@@ -302,6 +352,9 @@ const {
   getModelQty,
   getModelSelectedPN,
   isModelSelected,
+  isSelectedInRevision,
+  isAvailableInRevision,
+  onMatrixSelectionChange,
   getRowClass,
   getCCLClass,
 } = bomData
@@ -313,6 +366,22 @@ const {
   totalExpandableCount,
   toggleAllCollapse,
 } = collapseState
+
+/**
+ * 取得指定資料列在特定 Revision 的用量顯示
+ * 若該物料未出現在該 Revision 中 (例如未包含於 sourceRevisionIds)，則回傳空字串
+ * 
+ * @param {BOMDisplayRow} row - 資料列
+ * @param {number} revisionId - BOM Revision ID
+ * @returns {string | number} 用量數字或空字串
+ */
+function getRevisionQty(row: BOMDisplayRow, revisionId: number): string | number {
+  if (!row.sourceRevisionIds || !row.sourceRevisionIds.includes(revisionId)) {
+    return ''
+  }
+  const q = row.qtyByRevision?.[revisionId]
+  return q !== undefined ? q : ''
+}
 
 // ── 2. 最適欄寬計算與自適應分配 ────
 const {
@@ -328,13 +397,15 @@ function triggerColumnWidthsCompute(): void {
     displayRows.value,
     currentRevisionModels.value,
     getModelQty,
-    getModelSelectedPN
+    getModelSelectedPN,
+    selectedBomType.value,
+    revisionColumns.value.length
   )
 }
 
-// 監聽顯示列資料變化 (篩選、折疊、切換版本)，自動重新精確計算各欄最適欄寬
+// 監聽顯示列資料、模式或版本欄位變化，自動重新精確計算各欄最適欄寬
 watch(
-  () => displayRows.value,
+  [() => displayRows.value, () => selectedBomType.value, () => revisionColumns.value.length],
   () => {
     nextTick(() => {
       requestAnimationFrame(() => {
@@ -678,5 +749,75 @@ onMounted(() => {
   font-weight: 700;
   padding: 0 1px;
   border-radius: 2px;
+}
+
+/* 兩行表頭 (專案名稱 + 版本) */
+:deep(.two-line-header-col) {
+  padding: 0.15rem 0.25rem !important;
+}
+
+:deep(.two-line-header-col .p-datatable-column-header-content) {
+  justify-content: center;
+  text-align: center;
+}
+
+.two-line-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  line-height: 1.15;
+  text-align: center;
+  overflow: hidden;
+}
+
+.header-line1 {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.header-line2 {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text-color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.qty-cell {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.matrix-checkbox-col {
+  text-align: center;
+}
+
+.matrix-checkbox-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+:deep(.matrix-checkbox-cell .p-checkbox) {
+  width: 16px;
+  height: 16px;
+}
+
+:deep(.matrix-checkbox-cell .p-checkbox-box) {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
 }
 </style>

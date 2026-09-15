@@ -24,9 +24,9 @@
 
 import { ref, shallowRef, computed, watch, type Ref } from 'vue'
 import type { DataTableSortEvent } from 'primevue/datatable'
-import { GetBOMView, type ViewPartGroup, type ViewRevision } from '../../../services/api'
-import { useLogStore } from '../../../stores'
-import type { BOMDisplayRow, BOMModeType, ViewDropdownOption } from '../types'
+import { GetBOMView, SetMatrixSelection, type ViewPartGroup, type ViewRevision } from '../../../services/api'
+import { useLogStore, useAppStore } from '../../../stores'
+import type { BOMDisplayRow, BOMModeType, RevisionColumnInfo, ViewDropdownOption } from '../types'
 import { sortBOMPartGroups } from '../utils/sort'
 import { useCollapseState } from './useCollapseState'
 
@@ -58,6 +58,7 @@ interface UseBOMDataOptions {
 export function useBOMData(options: UseBOMDataOptions) {
   const { revisionIds } = options
   const logStore = useLogStore()
+  const appStore = useAppStore()
 
   // ── 視圖狀態 ────
   const selectedBomType = ref<BOMModeType>('EBOM')
@@ -69,6 +70,7 @@ export function useBOMData(options: UseBOMDataOptions) {
   // ── 後端原始資料與中繼資料 ────
   const aggregatedParts = shallowRef<ViewPartGroup[]>([])
   const currentRevisionMetadata = shallowRef<ViewRevision | null>(null)
+  const allRevisionMetadata = shallowRef<ViewRevision[]>([])
 
   // ── 替代料展開/收合狀態管理器 ────
   const collapseState = useCollapseState(aggregatedParts)
@@ -95,6 +97,39 @@ export function useBOMData(options: UseBOMDataOptions) {
   const currentRevisionModels = computed(() => {
     if (!currentRevisionMetadata.value || !currentRevisionMetadata.value.model_names) return []
     return currentRevisionMetadata.value.model_names
+  })
+
+  /**
+   * 參與視圖之 Revision 欄位清單 (依 projectExportOrder 排序)
+   */
+  const revisionColumns = computed<RevisionColumnInfo[]>(() => {
+    if (!allRevisionMetadata.value || allRevisionMetadata.value.length === 0) return []
+
+    const cols: RevisionColumnInfo[] = allRevisionMetadata.value.map(r => ({
+      revisionId: r.id,
+      projectCode: r.project_code || '',
+      phase: r.phase || '',
+      version: r.version || '',
+      modelNames: r.model_names || [],
+      modelQty: (r.model_qty as Record<string, number>) || {},
+      modelQtyByOrder: (r.model_qty_by_order as Record<number, number>) || {},
+    }))
+
+    const order = appStore.seriesInfo?.projectExportOrder || []
+    if (order.length > 0) {
+      cols.sort((a, b) => {
+        const idxA = order.indexOf(a.projectCode)
+        const idxB = order.indexOf(b.projectCode)
+        const rankA = idxA === -1 ? 9999 : idxA
+        const rankB = idxB === -1 ? 9999 : idxB
+        if (rankA !== rankB) {
+          return rankA - rankB
+        }
+        return a.revisionId - b.revisionId
+      })
+    }
+
+    return cols
   })
 
   /**
@@ -159,10 +194,28 @@ export function useBOMData(options: UseBOMDataOptions) {
         })
       }
 
+      // 解析 QtyByRevision
+      const qtyByRev: Record<number, number> = {}
+      if (part.qty_by_revision) {
+        Object.entries(part.qty_by_revision).forEach(([k, v]) => {
+          qtyByRev[Number(k)] = Number(v) || 0
+        })
+      }
+
+      // 建立 Model SortOrder 勾選映射
+      const mainSelectionsByOrder: Record<number, boolean> = {}
+      if (part.main_selections_by_order) {
+        Object.entries(part.main_selections_by_order).forEach(([k, v]) => {
+          mainSelectionsByOrder[Number(k)] = Boolean(v)
+        })
+      }
+
       // 1. 加入主料列 (Main Source Row)
       rows.push({
         rowId: `${parentKey}-main`,
         parentKey: parentKey,
+        mainMaterialId: part.material_id || 0,
+        materialId: part.material_id || 0,
         isSecondSource: false,
         hasSecondSources: hasSS,
         secondSourcesCount: ssCount,
@@ -172,18 +225,38 @@ export function useBOMData(options: UseBOMDataOptions) {
         supplier: part.main_supplier || '',
         supplier_pn: part.main_supplier_pn || '',
         qty: part.qty ?? '',
+        qtyByRevision: qtyByRev,
         locations: part.locations || '',
         ccl: Boolean(part.ccl),
         remark: part.remark || '',
+        notes: part.notes || '',
+        sourceRevisionIds: part.source_revision_ids || [],
+        selectionsByOrder: {},
+        mainSelectionsByOrder: mainSelectionsByOrder,
         selections: selectionsMap,
       })
 
       // 2. 加入 2nd 替代料列 (若未被收合，緊排於主料正下方)
       if (hasSS && part.second_sources && !collapseState.isCollapsed(parentKey)) {
         part.second_sources.forEach((ss, idx) => {
+          const ssQtyByRev: Record<number, number> = {}
+          if (ss.qty_by_revision) {
+            Object.entries(ss.qty_by_revision).forEach(([k, v]) => {
+              ssQtyByRev[Number(k)] = Number(v) || 0
+            })
+          }
+          const ssSelectionsByOrder: Record<number, boolean> = {}
+          if (ss.selections_by_order) {
+            Object.entries(ss.selections_by_order).forEach(([k, v]) => {
+              ssSelectionsByOrder[Number(k)] = Boolean(v)
+            })
+          }
+
           rows.push({
             rowId: `${parentKey}-ss-${idx}-${ss.supplier_pn || idx}`,
             parentKey: parentKey,
+            mainMaterialId: part.material_id || 0,
+            materialId: ss.material_id || 0,
             isSecondSource: true,
             hasSecondSources: false,
             secondSourcesCount: 0,
@@ -192,10 +265,15 @@ export function useBOMData(options: UseBOMDataOptions) {
             description: ss.description || '',
             supplier: ss.supplier || '',
             supplier_pn: ss.supplier_pn || '',
-            qty: '',
+            qty: '', // 在 EBOM 模式下，動態 Qty 欄位取用 qtyByRevision[revId]
+            qtyByRevision: ssQtyByRev,
             locations: '',
             ccl: false,
             remark: ss.remark || '',
+            notes: ss.notes || '',
+            sourceRevisionIds: ss.source_revision_ids || [],
+            selectionsByOrder: ssSelectionsByOrder,
+            mainSelectionsByOrder: {},
             selections: selectionsMap,
           })
         })
@@ -225,14 +303,14 @@ export function useBOMData(options: UseBOMDataOptions) {
       aggregatedParts.value = []
       collapseState.resetCollapse()
       currentRevisionMetadata.value = null
+      allRevisionMetadata.value = []
       return
     }
 
     try {
-      const primaryId = revIds[0]
       const viewType = selectedView.value === 'all' ? '' : selectedView.value.toUpperCase()
-      logStore.addLogEntry('DEBUG', `[View System] 準備建立 View: RevisionIDs=[${revIds.join(', ')}] (Primary ID: ${primaryId}), ViewType="${viewType || 'ALL'}"`)
-      const result = await GetBOMView([primaryId], viewType)
+      logStore.addLogEntry('DEBUG', `[View System] 準備建立 View: RevisionIDs=[${revIds.join(', ')}], ViewType="${viewType || 'ALL'}"`)
+      const result = await GetBOMView(revIds, viewType)
       
       if (result && result.part_groups) {
         aggregatedParts.value = result.part_groups
@@ -244,8 +322,10 @@ export function useBOMData(options: UseBOMDataOptions) {
       }
 
       if (result && result.revisions && result.revisions.length > 0) {
+        allRevisionMetadata.value = result.revisions
         currentRevisionMetadata.value = result.revisions[0]
       } else {
+        allRevisionMetadata.value = []
         currentRevisionMetadata.value = null
       }
     } catch (error) {
@@ -291,6 +371,72 @@ export function useBOMData(options: UseBOMDataOptions) {
   }
 
   /**
+   * 判斷指定列在該 Revision 中是否被選中 (for Matrix 模式)
+   * @param {BOMDisplayRow} row - 資料列
+   * @param {RevisionColumnInfo} revCol - Revision 欄位資訊
+   */
+  function isSelectedInRevision(row: BOMDisplayRow, revCol: RevisionColumnInfo): boolean {
+    const part = aggregatedParts.value.find(p => p.material_id === row.mainMaterialId || (p.main_supplier === row.supplier && p.main_supplier_pn === row.supplier_pn))
+    if (!part || !part.selections) return false
+    
+    const revSel = part.selections.find(s => s.revision_id === revCol.revisionId)
+    if (!revSel) return false
+    
+    if (revSel.selected_material_id && row.materialId) {
+      return revSel.selected_material_id === row.materialId
+    }
+    if (revSel.selected_pn) {
+      return revSel.selected_pn === row.supplier_pn
+    }
+    return false
+  }
+
+  /**
+   * 判斷指定列在該 Revision 中是否存在 (若不存在則 disabled)
+   * @param {BOMDisplayRow} row - 資料列
+   * @param {RevisionColumnInfo} revCol - Revision 欄位資訊
+   */
+  function isAvailableInRevision(row: BOMDisplayRow, revCol: RevisionColumnInfo): boolean {
+    if (!row.sourceRevisionIds || row.sourceRevisionIds.length === 0) {
+      return false
+    }
+    return row.sourceRevisionIds.includes(revCol.revisionId)
+  }
+
+  /**
+   * 處理 Matrix 模式 Checkbox 勾選變更
+   * 互斥勾選：若目前已勾選則取消勾選；若未勾選則勾選此物料（後端自動覆蓋同組舊有勾選）
+   * @param {BOMDisplayRow} row - 資料列
+   * @param {RevisionColumnInfo} revCol - Revision 欄位資訊
+   */
+  async function onMatrixSelectionChange(row: BOMDisplayRow, revCol: RevisionColumnInfo): Promise<void> {
+    try {
+      const isCurrentlySelected = isSelectedInRevision(row, revCol)
+      const targetSelectedMaterialId = isCurrentlySelected ? 0 : row.materialId
+
+      // 取得 modelID (若無則傳 0 由後端自動配對或建立)
+      const part = aggregatedParts.value.find(p => p.material_id === row.mainMaterialId || (p.main_supplier === row.supplier && p.main_supplier_pn === row.supplier_pn))
+      const revSel = part?.selections?.find(s => s.revision_id === revCol.revisionId)
+      const modelId = revSel?.model_id || 0
+
+      logStore.addLogEntry(
+        'DEBUG',
+        `[Matrix Selection] 變更選取: revisionID=${revCol.revisionId}, modelID=${modelId}, mainMatID=${row.mainMaterialId}, selectedMatID=${targetSelectedMaterialId}`
+      )
+
+      await SetMatrixSelection(revCol.revisionId, modelId, row.mainMaterialId, targetSelectedMaterialId)
+
+      // 立即重新載入資料以反映最新的勾選狀態
+      if (revisionIds.value && revisionIds.value.length > 0) {
+        await loadBOMData(revisionIds.value)
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      logStore.addLogEntry('ERROR', `更新 Matrix 勾選狀態失敗: ${msg}`)
+    }
+  }
+
+  /**
    * 取得資料列 CSS Class (主料或替代料)
    */
   function getRowClass(data: BOMDisplayRow): string {
@@ -314,6 +460,7 @@ export function useBOMData(options: UseBOMDataOptions) {
         aggregatedParts.value = []
         collapseState.resetCollapse()
         currentRevisionMetadata.value = null
+        allRevisionMetadata.value = []
       }
     },
     { deep: true, immediate: true }
@@ -331,6 +478,8 @@ export function useBOMData(options: UseBOMDataOptions) {
     sortedAggregatedParts,
     displayRows,
     currentRevisionMetadata,
+    allRevisionMetadata,
+    revisionColumns,
     currentRevisionModels,
     currentRevisionId,
     smdPartsCount,
@@ -344,6 +493,9 @@ export function useBOMData(options: UseBOMDataOptions) {
     getModelQty,
     getModelSelectedPN,
     isModelSelected,
+    isSelectedInRevision,
+    isAvailableInRevision,
+    onMatrixSelectionChange,
     getRowClass,
     getCCLClass,
   }

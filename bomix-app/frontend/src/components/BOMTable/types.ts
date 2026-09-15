@@ -30,8 +30,23 @@ export interface ColumnWidthConfig {
   ccl: number
   /** 備註 Remark 欄位寬度 */
   remark: number
+  /** 註記 Notes 欄位寬度 */
+  notes: number
   /** 各動態 Model 欄位之寬度映射表 (key: model_name, value: 像素寬度) */
   models: Record<string, number>
+}
+
+/**
+ * 每個 Revision 的標題與機種資訊 (用於動態 EBOM Qty 標頭與 Matrix Revision 標頭)
+ */
+export interface RevisionColumnInfo {
+  revisionId: number
+  projectCode: string
+  phase: string
+  version: string
+  modelNames: string[]
+  modelQty: Record<string, number>
+  modelQtyByOrder: Record<number, number>
 }
 
 /**
@@ -43,6 +58,10 @@ export interface BOMDisplayRow {
   rowId: string
   /** 所屬主料群組唯一識別鍵 (用於關聯主料與替代料群組) */
   parentKey: string
+  /** 所屬主料 MaterialID (用於 Matrix selection API) */
+  mainMaterialId: number
+  /** 當前列物料 MaterialID (主料或替代料的 material_id) */
+  materialId: number
   /** 是否為 2nd 替代料列 (true: 替代料，false: 主料) */
   isSecondSource: boolean
   /** 是否擁有 2nd 替代料 (僅主料可能為 true) */
@@ -59,14 +78,24 @@ export interface BOMDisplayRow {
   supplier: string
   /** 供應商料號 */
   supplier_pn: string
-  /** 用量 (替代料此欄位為空字串) */
+  /** 用量 (聚合 location 數量；替代料此欄位為空字串) */
   qty: string | number
+  /** 每個 Revision 各自的 Qty 映射 (key: revisionId, value: qty) */
+  qtyByRevision: Record<number, number>
   /** 位置標號 (替代料此欄位為空字串) */
   locations: string
   /** CCL 關鍵物料旗標 */
   ccl: boolean
   /** 備註說明 */
   remark: string
+  /** 註記 Notes (Matrix 模式使用) */
+  notes: string
+  /** 此物料所屬來源 Revision ID 列表 (包含此物料的 revisionIds) */
+  sourceRevisionIds: number[]
+  /** 替代料在各 Model SortOrder 的勾選狀態 (for 2nd source) */
+  selectionsByOrder: Record<number, boolean>
+  /** 主料在各 Model SortOrder 中的勾選狀態 (for main material) */
+  mainSelectionsByOrder: Record<number, boolean>
   /** 各機種料號選定對應表 (key: model_name, value: selected_pn) */
   selections: Record<string, string>
 }

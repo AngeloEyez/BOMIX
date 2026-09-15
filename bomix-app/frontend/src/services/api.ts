@@ -324,6 +324,26 @@ export async function GetBOMView(revisionIDs: number[], viewType: string): Promi
   }
 }
 
+/**
+ * 更新單一物料群組在指定 Revision 與 Model 的勾選狀態
+ * @param {number} revisionID - BOM Revision ID
+ * @param {number} modelID - Matrix Model ID (0 表示預設 Model)
+ * @param {number} mainMaterialID - 主料 Material ID
+ * @param {number} selectedMaterialID - 被選中物料 Material ID (0 表示取消勾選)
+ */
+export async function SetMatrixSelection(
+  revisionID: number,
+  modelID: number,
+  mainMaterialID: number,
+  selectedMaterialID: number
+): Promise<void> {
+  try {
+    await (App as any).SetMatrixSelection(revisionID, modelID, mainMaterialID, selectedMaterialID)
+  } catch (error) {
+    handleApiError(error, 'SetMatrixSelection')
+  }
+}
+
 // ==================== Import/Export ====================
 
 export async function ImportExcel(filePaths: string[], confirmOverwrite: boolean = true): Promise<ImportResult[]> {

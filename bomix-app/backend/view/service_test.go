@@ -508,14 +508,28 @@ func TestMergeRevisions_MultipleRevisionsAnd2ndSources(t *testing.T) {
 	if yageoSS == nil || len(yageoSS.SourceRevisionIDs) != 2 {
 		t.Errorf("Yageo 2nd Source 的 SourceRevisionIDs 應為 [1, 2]")
 	}
+	if yageoSS != nil && (yageoSS.QtyByRevision[1] != 1 || yageoSS.QtyByRevision[2] != 1) {
+		t.Errorf("Yageo 2nd Source QtyByRevision 期望 [1:1, 2:1]，實際得到 %v", yageoSS.QtyByRevision)
+	}
 	if walsinSS == nil || len(walsinSS.SourceRevisionIDs) != 1 || walsinSS.SourceRevisionIDs[0] != 2 {
 		t.Errorf("Walsin 2nd Source 的 SourceRevisionIDs 應僅包含 Rev 2 ([2])")
+	}
+	if walsinSS != nil && walsinSS.QtyByRevision[2] != 1 {
+		t.Errorf("Walsin 2nd Source QtyByRevision 期望 [2:1]，實際得到 %v", walsinSS.QtyByRevision)
+	}
+
+	// 驗證 Part A QtyByRevision
+	if partA.QtyByRevision[1] != 1 || partA.QtyByRevision[2] != 1 {
+		t.Errorf("Part A QtyByRevision 期望 [1:1, 2:1]，實際得到 %v", partA.QtyByRevision)
 	}
 
 	// Part B 驗證
 	partB := groups[1]
 	if len(partB.SourceRevisionIDs) != 1 || partB.SourceRevisionIDs[0] != 2 {
 		t.Errorf("Part B 的 SourceRevisionIDs 應僅包含 Rev 2 ([2])")
+	}
+	if partB.QtyByRevision[2] != 1 {
+		t.Errorf("Part B QtyByRevision 期望 [2:1]，實際得到 %v", partB.QtyByRevision)
 	}
 }
 

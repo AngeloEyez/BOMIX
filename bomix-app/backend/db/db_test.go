@@ -370,3 +370,65 @@ func TestMatrixModelAndSelectionOperations(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, afterDel, 0)
 }
+
+// TestUpsertMatrixSelection 測試 Matrix Selection 的單筆覆蓋更新、互斥與取消選取
+func TestUpsertMatrixSelection(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := CreateSeries(database, "Test Series", "Test Description")
+	assert.NoError(t, err)
+	project, err := GetOrCreateProject(database, 1, "PROJ001", "Test Project")
+	assert.NoError(t, err)
+	revision, err := CreateRevision(database, project.ID, "DB", "0.1", "Initial")
+	assert.NoError(t, err)
+
+	// 建立物料：主料 m1 與替代料 m2
+	mats := []Material{
+		{Supplier: "Samsung", SupplierPN: "CL05B104KO5NNNC"},
+		{Supplier: "Murata", SupplierPN: "GRM155R71C104KA88D"},
+	}
+	_, _, err = UpsertMaterials(database, mats, nil)
+	assert.NoError(t, err)
+	m1, _ := GetMaterialBySupplierPN(database, "Samsung", "CL05B104KO5NNNC")
+	m2, _ := GetMaterialBySupplierPN(database, "Murata", "GRM155R71C104KA88D")
+
+	compM := RevisionComponent{
+		RevisionID: revision.ID,
+		MaterialID: m1.ID,
+		Role:       "M",
+	}
+	err = CreateComponentsInBatch(database, []RevisionComponent{compM})
+	assert.NoError(t, err)
+
+	// 1. 測試自動建立預設 Model 並選取主料 (modelID = 0)
+	err = UpsertMatrixSelection(database, revision.ID, 0, m1.ID, m1.ID)
+	assert.NoError(t, err)
+
+	models, err := GetMatrixModels(database, revision.ID)
+	assert.NoError(t, err)
+	assert.Len(t, models, 1)
+	defaultModelID := models[0].ID
+
+	sels, err := GetMatrixSelections(database, revision.ID, defaultModelID)
+	assert.NoError(t, err)
+	assert.Len(t, sels, 1)
+	assert.Equal(t, m1.ID, sels[0].SelectedMaterialID)
+
+	// 2. 測試改選為替代料 m2 (互斥覆蓋)
+	err = UpsertMatrixSelection(database, revision.ID, defaultModelID, m1.ID, m2.ID)
+	assert.NoError(t, err)
+
+	sels2, err := GetMatrixSelections(database, revision.ID, defaultModelID)
+	assert.NoError(t, err)
+	assert.Len(t, sels2, 1)
+	assert.Equal(t, m2.ID, sels2[0].SelectedMaterialID)
+
+	// 3. 測試取消選取 (selectedMaterialID = 0)
+	err = UpsertMatrixSelection(database, revision.ID, defaultModelID, m1.ID, 0)
+	assert.NoError(t, err)
+
+	sels3, err := GetMatrixSelections(database, revision.ID, defaultModelID)
+	assert.NoError(t, err)
+	assert.Len(t, sels3, 0)
+}
+

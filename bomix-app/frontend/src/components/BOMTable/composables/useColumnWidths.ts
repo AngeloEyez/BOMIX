@@ -33,6 +33,7 @@ export const defaultColumnWidths: ColumnWidthConfig = {
   locations: 220,
   ccl: 50,
   remark: 130,
+  notes: 120,
   models: {}
 }
 
@@ -80,15 +81,19 @@ export function useColumnWidths() {
    * 計算各欄位最適欄寬
    * 
    * @param {BOMDisplayRow[]} rows - 當前顯示之平鋪列資料清單
-   * @param {string[]} models - 當前版本的機種名稱清單
-   * @param {(modelName: string) => number} getModelQty - 取得指定機種總用量之回呼函式
-   * @param {(row: BOMDisplayRow, modelName: string) => string} getModelSelectedPN - 取得指定列之選定料號之回呼函式
+   * @param {string[]} [models] - 當前版本的機種名稱清單
+   * @param {(modelName: string) => number} [getModelQty] - 取得指定機種總用量之回呼函式
+   * @param {(row: BOMDisplayRow, modelName: string) => string} [getModelSelectedPN] - 取得指定列之選定料號之回呼函式
+   * @param {string} [bomType='EBOM'] - 視圖模式 (EBOM 或 Matrix)
+   * @param {number} [revisionCount=0] - 參與顯示的 Revision 數量
    */
   function computeColumnWidths(
     rows: BOMDisplayRow[],
-    models: string[],
-    getModelQty: (modelName: string) => number,
-    getModelSelectedPN: (row: BOMDisplayRow, modelName: string) => string
+    models: string[] = [],
+    getModelQty?: (modelName: string) => number,
+    getModelSelectedPN?: (row: BOMDisplayRow, modelName: string) => string,
+    bomType: string = 'EBOM',
+    revisionCount: number = 0
   ): void {
     const MIN_DESC_WIDTH = 250
     const MIN_LOC_WIDTH = 150
@@ -102,13 +107,16 @@ export function useColumnWidths() {
     let maxSupplierPn = measureTextWidth('Supplier PN', true) + 20
     let maxQty = measureTextWidth('Qty', true) + 20
     let maxRemark = measureTextWidth('Remark', true) + 14
+    let maxNotes = measureTextWidth('Notes', true) + 14
     let maxDesc = measureTextWidth('Description', true) + 20
 
     // 動態 Model 欄位標題寬度
     const modelMaxMap: Record<string, number> = {}
-    for (const m of models) {
-      const headerTitle = `${m} (Qty: ${getModelQty(m)})`
-      modelMaxMap[m] = measureTextWidth(headerTitle, true) + 20
+    if (models && getModelQty) {
+      for (const m of models) {
+        const headerTitle = `${m} (Qty: ${getModelQty(m)})`
+        modelMaxMap[m] = measureTextWidth(headerTitle, true) + 20
+      }
     }
 
     // 遍歷當前所有顯示列以測量實際內容寬度
@@ -134,15 +142,21 @@ export function useColumnWidths() {
         const w = measureTextWidth(row.remark) + 12
         if (w > maxRemark) maxRemark = w
       }
+      if (row.notes) {
+        const w = measureTextWidth(row.notes) + 12
+        if (w > maxNotes) maxNotes = w
+      }
       if (row.description) {
         const w = measureTextWidth(row.description) + 12
         if (w > maxDesc) maxDesc = w
       }
-      for (const m of models) {
-        const pn = getModelSelectedPN(row, m)
-        if (pn) {
-          const w = measureTextWidth(pn) + 12
-          if (w > (modelMaxMap[m] || 0)) modelMaxMap[m] = w
+      if (models && getModelSelectedPN) {
+        for (const m of models) {
+          const pn = getModelSelectedPN(row, m)
+          if (pn) {
+            const w = measureTextWidth(pn) + 12
+            if (w > (modelMaxMap[m] || 0)) modelMaxMap[m] = w
+          }
         }
       }
     }
@@ -154,17 +168,30 @@ export function useColumnWidths() {
     const qtyColWidth = Math.ceil(Math.min(60, Math.max(40, maxQty)))
     const cclColWidth = 38
     const remarkColWidth = Math.ceil(Math.min(140, Math.max(55, maxRemark)))
+    const notesColWidth = Math.ceil(Math.min(160, Math.max(80, maxNotes)))
 
     const finalModelWidths: Record<string, number> = {}
     let totalModelsWidth = 0
-    for (const m of models) {
-      const w = Math.ceil(Math.min(130, Math.max(85, modelMaxMap[m] || 85)))
-      finalModelWidths[m] = w
-      totalModelsWidth += w
+    if (models) {
+      for (const m of models) {
+        const w = Math.ceil(Math.min(130, Math.max(85, modelMaxMap[m] || 85)))
+        finalModelWidths[m] = w
+        totalModelsWidth += w
+      }
     }
 
-    // 固定欄位最小寬度總和
-    const fixedTotal = itemWidth + hhpnColWidth + supplierColWidth + supplierPnColWidth + qtyColWidth + cclColWidth + remarkColWidth + totalModelsWidth
+    // 根據 EBOM / Matrix 模式決定固定欄位寬度總和
+    let fixedTotal = itemWidth + hhpnColWidth + supplierColWidth + supplierPnColWidth
+    const revColWidth = 80
+
+    if (bomType === 'EBOM') {
+      const totalQtyWidth = Math.max(revisionCount, 1) * revColWidth
+      fixedTotal += totalQtyWidth + cclColWidth + remarkColWidth
+    } else {
+      const totalRevWidth = Math.max(revisionCount, 1) * revColWidth
+      fixedTotal += qtyColWidth + totalRevWidth + notesColWidth
+    }
+
     const totalRequiredMinWidth = fixedTotal + MIN_LOC_WIDTH + MIN_DESC_WIDTH
 
     // 2. 取得可用可視寬度
@@ -216,6 +243,7 @@ export function useColumnWidths() {
       locations: finalLocWidth,
       ccl: cclColWidth,
       remark: remarkColWidth,
+      notes: notesColWidth,
       models: finalModelWidths
     }
   }

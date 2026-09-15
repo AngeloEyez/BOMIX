@@ -319,8 +319,10 @@ func isEffectiveBOMStatus(bomStatus string) bool {
 // 完全基於 MaterialID 進行記憶體分組與數值運算，不涉及 Material 表查詢。
 func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQuery) []ViewPartGroup {
 	type partGroupBuilder struct {
-		group     ViewPartGroup
-		ssBuilder map[int64]*ViewSecondSource // 以 ss.MaterialID 為鍵
+		group       ViewPartGroup
+		locSet      map[string]bool           // 跨 revision 的 location 聯集
+		locSetByRev map[int64]map[string]bool // 各 revision 獨立的 location set
+		ssBuilder   map[int64]*ViewSecondSource // 以 ss.MaterialID 為鍵
 	}
 
 	builders := make(map[string]*partGroupBuilder) // 主料 matGroupKey → builder
@@ -491,7 +493,6 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 		for key, repComp := range representativeComps {
 			b, exists := builders[key]
 			if !exists {
-				locs := sortedLocations(locationsByGroup[key])
 				bomStat := statusByGroup[key]
 				if bomStat == "" {
 					bomStat = "I"
@@ -504,12 +505,13 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 						Type:                  partType,
 						BOMStatus:             bomStat,
 						CCL:                   cclByGroup[key],
-						Qty:                   len(locationsByGroup[key]),
-						Locations:             locs,
 						SourceRevisionIDs:     []int64{revID},
+						QtyByRevision:         make(map[int64]int),
 						MainSelectionsByOrder: make(map[int]bool),
 					},
-					ssBuilder: make(map[int64]*ViewSecondSource),
+					locSet:      make(map[string]bool),
+					locSetByRev: make(map[int64]map[string]bool),
+					ssBuilder:   make(map[int64]*ViewSecondSource),
 				}
 				builders[key] = b
 				keyOrder = append(keyOrder, key)
@@ -524,10 +526,23 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				if b.group.MainSelectionsByOrder == nil {
 					b.group.MainSelectionsByOrder = make(map[int]bool)
 				}
+				if b.group.QtyByRevision == nil {
+					b.group.QtyByRevision = make(map[int64]int)
+				}
 				if b.group.BOMStatus != statusByGroup[key] {
 					b.group.BOMStatus = "I"
 				}
 			}
+
+			// 合併 locations 與更新各 revision 的用量
+			if b.locSetByRev[revID] == nil {
+				b.locSetByRev[revID] = make(map[string]bool)
+			}
+			for loc := range locationsByGroup[key] {
+				b.locSet[loc] = true
+				b.locSetByRev[revID][loc] = true
+			}
+			b.group.QtyByRevision[revID] = len(b.locSetByRev[revID])
 
 			// 更新主料 Selection 狀態
 			if selOrderMap := selMatByMainMatByOrder[repComp.MaterialID]; selOrderMap != nil {
@@ -545,15 +560,21 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 					existing = &ViewSecondSource{
 						MaterialID:        ss.MaterialID,
 						SourceRevisionIDs: []int64{revID},
+						QtyByRevision:     make(map[int64]int),
 						SelectionsByOrder: make(map[int]bool),
 					}
 					b.ssBuilder[ss.MaterialID] = existing
 				} else {
 					existing.SourceRevisionIDs = appendUnique(existing.SourceRevisionIDs, revID)
+					if existing.QtyByRevision == nil {
+						existing.QtyByRevision = make(map[int64]int)
+					}
 					if existing.SelectionsByOrder == nil {
 						existing.SelectionsByOrder = make(map[int]bool)
 					}
 				}
+				// 替代料在該 revision 的用量等於主料在該 revision 的 location 數量
+				existing.QtyByRevision[revID] = b.group.QtyByRevision[revID]
 
 				if selOrderMap := selMatByMainMatByOrder[repComp.MaterialID]; selOrderMap != nil {
 					for sortOrder, selectedMatID := range selOrderMap {
@@ -581,6 +602,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 
 				b.group.Selections = append(b.group.Selections, ViewModelSelection{
 					RevisionID:         revID,
+					ModelID:            mData.ID,
 					SortOrder:          sortOrder,
 					ModelName:          mData.ModelName,
 					ModelQty:           mData.Qty,
@@ -594,6 +616,9 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 	result := make([]ViewPartGroup, 0, len(builders))
 	for _, key := range keyOrder {
 		b := builders[key]
+
+		b.group.Locations = sortedLocations(b.locSet)
+		b.group.Qty = len(b.locSet)
 
 		ssList := make([]ViewSecondSource, 0, len(b.ssBuilder))
 		for _, ss := range b.ssBuilder {
@@ -860,6 +885,11 @@ func MergePartGroupsByMaterial(groups []ViewPartGroup) []ViewPartGroup {
 			isP := (statusUpper == "P")
 			isM := (statusUpper == "M")
 
+			qtyByRev := make(map[int64]int, len(g.QtyByRevision))
+			for k, v := range g.QtyByRevision {
+				qtyByRev[k] = v
+			}
+
 			b = &materialGroupBuilder{
 				group: ViewPartGroup{
 					MaterialID:            g.MaterialID,
@@ -874,6 +904,7 @@ func MergePartGroupsByMaterial(groups []ViewPartGroup) []ViewPartGroup {
 					Remark:                g.Remark,
 					Notes:                 g.Notes,
 					SourceRevisionIDs:     append([]int64(nil), g.SourceRevisionIDs...),
+					QtyByRevision:         qtyByRev,
 					MainSelectionsByOrder: mainSelMap,
 				},
 				locSet:        locSet,
@@ -909,6 +940,14 @@ func MergePartGroupsByMaterial(groups []ViewPartGroup) []ViewPartGroup {
 			// Locations 聯集
 			for _, loc := range atomizeLocations(g.Locations) {
 				b.locSet[loc] = true
+			}
+
+			// QtyByRevision 合併
+			if b.group.QtyByRevision == nil {
+				b.group.QtyByRevision = make(map[int64]int)
+			}
+			for rID, qty := range g.QtyByRevision {
+				b.group.QtyByRevision[rID] += qty
 			}
 
 			// CCL 聯集
@@ -949,6 +988,10 @@ func MergePartGroupsByMaterial(groups []ViewPartGroup) []ViewPartGroup {
 				if !ok {
 					ssCopy := ss
 					ssCopy.SourceRevisionIDs = append([]int64(nil), ss.SourceRevisionIDs...)
+					ssCopy.QtyByRevision = make(map[int64]int, len(ss.QtyByRevision))
+					for k, v := range ss.QtyByRevision {
+						ssCopy.QtyByRevision[k] = v
+					}
 					ssCopy.SelectionsByOrder = make(map[int]bool, len(ss.SelectionsByOrder))
 					for k, v := range ss.SelectionsByOrder {
 						ssCopy.SelectionsByOrder[k] = v
@@ -957,6 +1000,12 @@ func MergePartGroupsByMaterial(groups []ViewPartGroup) []ViewPartGroup {
 				} else {
 					for _, rID := range ss.SourceRevisionIDs {
 						existingSS.SourceRevisionIDs = appendUnique(existingSS.SourceRevisionIDs, rID)
+					}
+					if existingSS.QtyByRevision == nil {
+						existingSS.QtyByRevision = make(map[int64]int)
+					}
+					for k, v := range ss.QtyByRevision {
+						existingSS.QtyByRevision[k] += v
 					}
 					if existingSS.Notes == "" && ss.Notes != "" {
 						existingSS.Notes = ss.Notes
@@ -998,6 +1047,12 @@ func MergePartGroupsByMaterial(groups []ViewPartGroup) []ViewPartGroup {
 
 		ssList := make([]ViewSecondSource, 0, len(b.ssBuilder))
 		for _, ss := range b.ssBuilder {
+			for _, rID := range ss.SourceRevisionIDs {
+				if ss.QtyByRevision == nil {
+					ss.QtyByRevision = make(map[int64]int)
+				}
+				ss.QtyByRevision[rID] = b.group.QtyByRevision[rID]
+			}
 			ssList = append(ssList, *ss)
 		}
 		sort.Slice(ssList, func(i, j int) bool {

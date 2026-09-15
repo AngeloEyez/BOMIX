@@ -11,6 +11,11 @@ export interface ViewModelSelection {
     "revision_id": number;
 
     /**
+     * MatrixModel.ID
+     */
+    "model_id"?: number;
+
+    /**
      * 0-based 排序索引
      */
     "sort_order": number;
@@ -85,9 +90,14 @@ export interface ViewPartGroup {
     "notes": string;
 
     /**
-     * 聚合結果（取自第一份有此物料的 revision）
+     * 聚合結果（取自所有選取 revision 的 locations 聯集與各 revision 獨立用量）
      */
     "qty": number;
+
+    /**
+     * 各 Revision 的用量 (Location 數量)
+     */
+    "qty_by_revision": { [_ in `${number}`]?: number } | null;
 
     /**
      * 逗號分隔的位置編號
@@ -209,6 +219,11 @@ export interface ViewSecondSource {
      * 包含此替代料的 Revision ID 列表
      */
     "source_revision_ids": number[] | null;
+
+    /**
+     * 各 Revision 的用量 (Location 數量)
+     */
+    "qty_by_revision": { [_ in `${number}`]?: number } | null;
 
     /**
      * Model SortOrder -> 該 2nd Source 是否被勾選

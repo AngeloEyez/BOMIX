@@ -100,6 +100,81 @@ func DeleteInvalidSelections(db *gorm.DB, revisionID int64, removedMainMaterialI
 	return query.Delete(&MatrixSelection{}).Error
 }
 
+// UpsertMatrixSelection 更新或刪除指定 Revision 與 Model 下主料群組的 MatrixSelection。
+//
+// 行為：
+//   - 若 selectedMaterialID == 0，表示取消勾選，刪除該 (revisionID, modelID, mainMaterialID) 的現有 selection。
+//   - 若 selectedMaterialID > 0，先刪除該 (revisionID, modelID, mainMaterialID) 的現有 selection，
+//     再新增一筆選中紀錄（確保同物料群組在同 Model 下僅單選互斥）。
+//   - 若 modelID == 0，將自動搜尋該 Revision 第一個有效的 MatrixModel；若不存在則自動建立預設 Model。
+//   - 所有寫入操作均包裹於 GORM Transaction 中以維護資料一致性。
+//
+// 參數：
+//   - db: GORM 資料庫實例
+//   - revisionID: BOM Revision ID
+//   - modelID: Matrix Model ID（若為 0 則自動查找或建立預設 Model）
+//   - mainMaterialID: 主料 Material ID
+//   - selectedMaterialID: 被選中的物料 Material ID（0 表示取消勾選）
+//
+// 回傳：
+//   - error: 若資料庫操作失敗則回傳錯誤
+func UpsertMatrixSelection(db *gorm.DB, revisionID, modelID, mainMaterialID, selectedMaterialID int64) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		// 若 modelID == 0，尋找或建立預設 MatrixModel
+		if modelID == 0 {
+			var m MatrixModel
+			if err := tx.Where("revision_id = ?", revisionID).Order("sort_order ASC").First(&m).Error; err == nil {
+				modelID = m.ID
+			} else {
+				m = MatrixModel{
+					RevisionID: revisionID,
+					SortOrder:  0,
+					ModelName:  "Default",
+					Qty:        1,
+				}
+				if err := tx.Create(&m).Error; err != nil {
+					return fmt.Errorf("建立預設 MatrixModel 失敗: %w", err)
+				}
+				modelID = m.ID
+			}
+		}
+
+		// 1. 刪除該 (revisionID, modelID, mainMaterialID) 的舊 selection，實現互斥
+		if err := tx.Where("revision_id = ? AND model_id = ? AND main_material_id = ?", revisionID, modelID, mainMaterialID).
+			Delete(&MatrixSelection{}).Error; err != nil {
+			return fmt.Errorf("清除舊 MatrixSelection 失敗: %w", err)
+		}
+
+		// 2. 若 selectedMaterialID == 0，表示取消選取，完成刪除即可結束
+		if selectedMaterialID == 0 {
+			return nil
+		}
+
+		// 3. 查詢主料對應的 RevisionComponent ID
+		var comp RevisionComponent
+		if err := tx.Where("revision_id = ? AND material_id = ? AND role = ?", revisionID, mainMaterialID, "M").First(&comp).Error; err != nil {
+			if errFallback := tx.Where("revision_id = ? AND material_id = ?", revisionID, mainMaterialID).First(&comp).Error; errFallback != nil {
+				return fmt.Errorf("找不到主料 RevisionComponent (revisionID=%d, materialID=%d): %w", revisionID, mainMaterialID, errFallback)
+			}
+		}
+
+		// 4. 新增選取紀錄
+		newSel := MatrixSelection{
+			RevisionID:         revisionID,
+			ModelID:            modelID,
+			ComponentID:        comp.ID,
+			MainMaterialID:     mainMaterialID,
+			SelectedMaterialID: selectedMaterialID,
+			IsAutoSelected:     false,
+		}
+		if err := tx.Create(&newSel).Error; err != nil {
+			return fmt.Errorf("建立 MatrixSelection 失敗: %w", err)
+		}
+
+		return nil
+	})
+}
+
 // MatrixLogger 為 ImportMatrixSelections 提供 log 輸出的介面。
 // 定義為本地介面以避免 db 套件直接依賴 logger 套件造成循環引用風險。
 type MatrixLogger interface {

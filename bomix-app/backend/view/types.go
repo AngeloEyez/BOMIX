@@ -42,6 +42,7 @@ type ViewSecondSource struct {
 	Remark            string          `json:"remark"`
 	Notes             string          `json:"notes"`
 	SourceRevisionIDs []int64         `json:"source_revision_ids"` // 包含此替代料的 Revision ID 列表
+	QtyByRevision     map[int64]int   `json:"qty_by_revision"`     // 各 Revision 的用量 (Location 數量)
 	SelectionsByOrder map[int]bool    `json:"selections_by_order"` // Model SortOrder -> 該 2nd Source 是否被勾選
 }
 
@@ -51,6 +52,7 @@ type ViewSecondSource struct {
 // 某個 Model 中，此物料群組被選中的是哪顆料（主料或替代料）。
 type ViewModelSelection struct {
 	RevisionID         int64  `json:"revision_id"`
+	ModelID            int64  `json:"model_id,omitempty"` // MatrixModel.ID
 	SortOrder          int    `json:"sort_order"`        // 0-based 排序索引
 	ModelName          string `json:"model_name"`
 	ModelQty           int    `json:"model_qty"`
@@ -89,9 +91,10 @@ type ViewPartGroup struct {
 	Remark      string `json:"remark"`
 	Notes       string `json:"notes"`
 
-	// 聚合結果（取自第一份有此物料的 revision）
-	Qty       int    `json:"qty"`
-	Locations string `json:"locations"` // 逗號分隔的位置編號
+	// 聚合結果（取自所有選取 revision 的 locations 聯集與各 revision 獨立用量）
+	Qty           int           `json:"qty"`
+	QtyByRevision map[int64]int `json:"qty_by_revision"` // 各 Revision 的用量 (Location 數量)
+	Locations     string        `json:"locations"`        // 逗號分隔的位置編號
 
 	// 來源歸屬：此物料群組出現在哪些 BOM Revision 中
 	// 這是 View 系統的核心輸出，下游消費者依此判斷物料存在性

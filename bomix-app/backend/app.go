@@ -527,6 +527,35 @@ func (a *App) GetBOMView(revisionIDs []int64, viewType string) (*view.ViewResult
 	return result, nil
 }
 
+// SetMatrixSelection 更新單一物料群組在指定 Revision 與 Model 的勾選狀態。
+//
+// 參數：
+//   - revisionID: BOM Revision ID
+//   - modelID: Matrix Model ID（若為 0 則自動查找或建立預設 Model）
+//   - mainMaterialID: 主料 Material ID
+//   - selectedMaterialID: 被選中的物料 Material ID（傳入 0 表示取消勾選）
+//
+// 回傳：
+//   - error: 若資料庫未開啟或更新失敗則回傳錯誤
+func (a *App) SetMatrixSelection(revisionID, modelID, mainMaterialID, selectedMaterialID int64) error {
+	a.mu.RLock()
+	dbConn := a.db
+	a.mu.RUnlock()
+
+	if dbConn == nil {
+		return fmt.Errorf("no series is currently open")
+	}
+
+	if err := db.UpsertMatrixSelection(dbConn, revisionID, modelID, mainMaterialID, selectedMaterialID); err != nil {
+		a.logger.Error(fmt.Sprintf("[SetMatrixSelection] 更新失敗: %v", err))
+		return fmt.Errorf("failed to set matrix selection: %w", err)
+	}
+
+	a.logger.Debug(fmt.Sprintf("[SetMatrixSelection] 更新成功: revID=%d, modelID=%d, mainMatID=%d, selectedMatID=%d",
+		revisionID, modelID, mainMaterialID, selectedMaterialID))
+	return nil
+}
+
 // ==================== Import/Export ====================
 
 // isMatrixFile 判斷給定的檔案路徑之檔案名稱是否包含 "matrix"（不區分大小寫）

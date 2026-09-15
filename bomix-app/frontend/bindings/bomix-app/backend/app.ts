@@ -254,6 +254,22 @@ export function SaveProjectExportOrder(settings: $models.ProjectExportSetting[] 
 }
 
 /**
+ * SetMatrixSelection 更新單一物料群組在指定 Revision 與 Model 的勾選狀態。
+ * 
+ * 參數：
+ *   - revisionID: BOM Revision ID
+ *   - modelID: Matrix Model ID（若為 0 則自動查找或建立預設 Model）
+ *   - mainMaterialID: 主料 Material ID
+ *   - selectedMaterialID: 被選中的物料 Material ID（傳入 0 表示取消勾選）
+ * 
+ * 回傳：
+ *   - error: 若資料庫未開啟或更新失敗則回傳錯誤
+ */
+export function SetMatrixSelection(revisionID: number, modelID: number, mainMaterialID: number, selectedMaterialID: number): $CancellablePromise<void> {
+    return $Call.ByID(2396468907, revisionID, modelID, mainMaterialID, selectedMaterialID);
+}
+
+/**
  * UpdateSettings updates the settings
  */
 export function UpdateSettings(settings: $models.Settings | null): $CancellablePromise<void> {
