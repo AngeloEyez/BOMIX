@@ -265,12 +265,25 @@ func createViewRevisionFromRaw(id int64, data *rawRevisionData) ViewRevision {
 	modelNames := make([]string, 0, len(data.models))
 	modelQty := make(map[string]int, len(data.models))
 	modelQtyByOrder := make(map[int]int, len(data.models))
+	modelItems := make([]ViewModelItem, 0, len(data.models))
+
 	for _, m := range data.models {
 		modelNames = append(modelNames, m.ModelName)
 		modelQty[m.ModelName] = m.Qty
 		modelQtyByOrder[m.SortOrder] = m.Qty
+		modelItems = append(modelItems, ViewModelItem{
+			ID:        m.ID,
+			SortOrder: m.SortOrder,
+			ModelName: m.ModelName,
+			Qty:       m.Qty,
+		})
 	}
 	sort.Strings(modelNames)
+
+	// 依 SortOrder 由小至大穩定排序
+	sort.Slice(modelItems, func(i, j int) bool {
+		return modelItems[i].SortOrder < modelItems[j].SortOrder
+	})
 
 	return ViewRevision{
 		ID:               id,
@@ -286,6 +299,7 @@ func createViewRevisionFromRaw(id int64, data *rawRevisionData) ViewRevision {
 		ModelNames:       modelNames,
 		ModelQty:         modelQty,
 		ModelQtyByOrder:  modelQtyByOrder,
+		Models:           modelItems,
 	}
 }
 

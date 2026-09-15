@@ -82,7 +82,7 @@
               :title="isAllCollapsed ? '全部展開替代料 (Expand All)' : '全部收合替代料 (Collapse All)'"
               @click.stop="toggleAllCollapse"
             />
-            <span class="p-datatable-column-title item-header-label" data-pc-section="columntitle">#</span>
+            <!-- <span class="p-datatable-column-title item-header-label" data-pc-section="columntitle">#</span> -->
           </div>
         </template>
         <template #body="slotProps">
@@ -232,27 +232,56 @@
           </template>
         </Column>
 
-        <!-- [Revisions] 欄位 (標題兩行：專案名稱 + 版本，Checkbox 互斥選取) -->
+        <!-- [Matrix Models] 欄位 (標題兩行：依智慧中心演算法定位專案名稱 + 純字母與數量 A(102)，自適應欄寬，專案邊界垂直貫穿實線，內部表頭無虛線) -->
         <Column
-          v-for="revCol in revisionColumns"
-          :key="'matrix-rev-' + revCol.revisionId"
-          :style="{ width: '70px', minWidth: '60px', maxWidth: '90px' }"
-          header-class="two-line-header-col"
-          class="matrix-checkbox-col"
+          v-for="(modelCol, colIdx) in matrixModelColumns"
+          :key="modelCol.key"
+          :style="{
+            width: modelCol.columnWidth + 'px',
+            minWidth: modelCol.columnWidth + 'px',
+            maxWidth: (modelCol.columnWidth + 10) + 'px'
+          }"
+          :header-class="[
+            'two-line-header-col',
+            'matrix-model-col',
+            modelCol.isLastInRevision ? 'project-divider-col' : 'project-inner-col',
+            colIdx === 0 ? 'project-start-col' : ''
+          ]"
+          :class="[
+            'matrix-checkbox-col',
+            'matrix-model-col',
+            modelCol.isLastInRevision ? 'project-divider-col' : 'project-inner-col',
+            colIdx === 0 ? 'project-start-col' : ''
+          ]"
         >
           <template #header>
-            <div class="two-line-header" :title="`${revCol.projectCode} ${revCol.phase} ${revCol.version}`">
-              <div class="header-line1">{{ revCol.projectCode }}</div>
-              <div class="header-line2">{{ revCol.phase }} {{ revCol.version }}</div>
+            <div class="two-line-header matrix-header-group" :title="modelCol.headerTitle">
+              <!-- 第一行：專案名稱依智慧中心定位演算法顯示於中心 Model 欄位，其餘欄位留白 -->
+              <div class="header-line1 project-code-line">
+                <span
+                  v-if="modelCol.showProjectCode"
+                  class="project-code-label"
+                  :title="modelCol.projectCode"
+                >
+                  {{ modelCol.projectCode }}
+                </span>
+                <!-- 佔位符確保第二行在各 Model 欄位垂直對齊 -->
+                <span v-else class="project-code-spacer">&nbsp;</span>
+              </div>
+              <!-- 第二行：純字母與數量，例如 A(102)、B(147) -->
+              <div class="header-line2 model-alias-line">
+                {{ modelCol.modelAlias }}{{ modelCol.qty > 0 ? `(${modelCol.qty})` : '' }}
+              </div>
             </div>
           </template>
           <template #body="slotProps">
             <div class="matrix-checkbox-cell">
+              <!-- 若該物料在該 Revision 存在才繪製 Checkbox；若不存在則不繪製 Checkbox -->
               <Checkbox
-                :model-value="isSelectedInRevision(slotProps.data, revCol)"
-                :disabled="!isAvailableInRevision(slotProps.data, revCol)"
+                v-if="isModelAvailableInRevision(slotProps.data, modelCol)"
+                :model-value="isModelSelectedInRevision(slotProps.data, modelCol)"
                 binary
-                @change="onMatrixSelectionChange(slotProps.data, revCol)"
+                @change="onMatrixModelSelectionChange(slotProps.data, modelCol)"
               />
             </div>
           </template>
@@ -395,6 +424,7 @@ const {
   currentRevisionMetadata,
   allRevisionMetadata,
   revisionColumns,
+  matrixModelColumns,
   currentRevisionModels,
   smdPartsCount,
   pthPartsCount,
@@ -407,6 +437,9 @@ const {
   isSelectedInRevision,
   isAvailableInRevision,
   onMatrixSelectionChange,
+  isModelSelectedInRevision,
+  isModelAvailableInRevision,
+  onMatrixModelSelectionChange,
   getRowClass,
   getCCLClass,
   updateMaterialNotesInCache,
@@ -446,19 +479,22 @@ const {
 
 /** 執行欄寬重算 */
 function triggerColumnWidthsCompute(): void {
+  const totalMatrixModelWidth = matrixModelColumns.value.reduce((sum, c) => sum + (c.columnWidth || 72), 0)
   computeColumnWidths(
     displayRows.value,
     currentRevisionModels.value,
     getModelQty,
     getModelSelectedPN,
     selectedBomType.value,
-    revisionColumns.value.length
+    revisionColumns.value.length,
+    matrixModelColumns.value.length,
+    totalMatrixModelWidth
   )
 }
 
-// 監聽顯示列資料、模式或版本欄位變化，自動重新精確計算各欄最適欄寬
+// 監聽顯示列資料、模式、版本欄位或 Model 欄位變化，自動重新精確計算各欄最適欄寬
 watch(
-  [() => displayRows.value, () => selectedBomType.value, () => revisionColumns.value.length],
+  [() => displayRows.value, () => selectedBomType.value, () => revisionColumns.value.length, () => matrixModelColumns.value.length],
   () => {
     nextTick(() => {
       requestAnimationFrame(() => {
@@ -1107,4 +1143,104 @@ onUnmounted(() => {
   height: 16px;
   border-radius: 3px;
 }
+
+/* 專案之間垂直分隔線 (自表頭 th 貫穿至最後一筆資料列 td) */
+:deep(.bom-table th.project-divider-col),
+:deep(.bom-table td.project-divider-col) {
+  border-right: 2px solid #94a3b8 !important;
+}
+
+:deep(.dark .bom-table th.project-divider-col),
+:deep(.dark .bom-table td.project-divider-col),
+.dark :deep(.bom-table th.project-divider-col),
+.dark :deep(.bom-table td.project-divider-col) {
+  border-right: 2px solid #4b5563 !important;
+}
+
+/* 第一個專案左側垂直分隔線 (自表頭 th 貫穿至最後一筆資料列 td，與右側分隔線同款) */
+:deep(.bom-table th.project-start-col),
+:deep(.bom-table td.project-start-col) {
+  border-left: 2px solid #94a3b8 !important;
+}
+
+:deep(.dark .bom-table th.project-start-col),
+:deep(.dark .bom-table td.project-start-col),
+.dark :deep(.bom-table th.project-start-col),
+.dark :deep(.bom-table td.project-start-col) {
+  border-left: 2px solid #4b5563 !important;
+}
+
+/* 專案內部相鄰 Model 欄位之間：表頭不繪製虛線，保持連續整體感；僅資料列保持極細虛線分隔 */
+:deep(.bom-table th.project-inner-col) {
+  border-right: none !important;
+}
+
+:deep(.bom-table td.project-inner-col) {
+  border-right: 1px dashed rgba(148, 163, 184, 0.35) !important;
+}
+
+:deep(.dark .bom-table th.project-inner-col),
+.dark :deep(.bom-table th.project-inner-col) {
+  border-right: none !important;
+}
+
+:deep(.dark .bom-table td.project-inner-col),
+.dark :deep(.bom-table td.project-inner-col) {
+  border-right: 1px dashed rgba(107, 114, 128, 0.4) !important;
+}
+
+/* 最小化 Matrix Model 表頭與儲存格兩側內距，最大化橫向可視空間 */
+:deep(.bom-table th.matrix-model-col),
+:deep(.bom-table td.matrix-model-col) {
+  padding: 1px 2px !important;
+}
+
+/* Matrix 模式表頭兩行排版 (智慧中心定位與緊湊精緻字型) */
+.matrix-header-group {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.project-code-line {
+  min-height: 14px;
+  line-height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  overflow: hidden;
+}
+
+.project-code-label {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  letter-spacing: -0.25px;
+  text-align: center;
+}
+
+.project-code-spacer {
+  display: inline-block;
+  visibility: hidden;
+  height: 14px;
+}
+
+.model-alias-line {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-color-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  line-height: 13px;
+  margin-top: 1px;
+}
 </style>
+

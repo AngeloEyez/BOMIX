@@ -7,9 +7,9 @@
 
 import { Dialogs, Events } from '@wailsio/runtime'
 import { App } from '../../bindings/bomix-app/backend/index.js'
-import type { ViewResult, ViewPartGroup, ViewRevision, ViewSecondSource, ViewModelSelection } from '../../bindings/bomix-app/backend/view/models.js'
+import type { ViewResult, ViewPartGroup, ViewRevision, ViewSecondSource, ViewModelSelection, ViewModelItem } from '../../bindings/bomix-app/backend/view/models.js'
 
-export type { ViewResult, ViewPartGroup, ViewRevision, ViewSecondSource, ViewModelSelection }
+export type { ViewResult, ViewPartGroup, ViewRevision, ViewSecondSource, ViewModelSelection, ViewModelItem }
 
 // Type definitions matching backend models
 export interface ProjectExportSetting {
@@ -341,6 +341,33 @@ export async function SetMatrixSelection(
     await (App as any).SetMatrixSelection(revisionID, modelID, mainMaterialID, selectedMaterialID)
   } catch (error) {
     handleApiError(error, 'SetMatrixSelection')
+  }
+}
+
+/**
+ * 更新單一物料群組在指定 Revision 與 Model 排序索引 (SortOrder) 的勾選狀態
+ * 
+ * @param {number} revisionID - BOM Revision ID
+ * @param {number} sortOrder - 0-based Model 排序索引 (0, 1, 2...)
+ * @param {number} mainMaterialID - 主料 Material ID
+ * @param {number} selectedMaterialID - 被選中物料 Material ID (0 表示取消勾選)
+ * @returns {Promise<void>}
+ */
+export async function SetMatrixModelSelection(
+  revisionID: number,
+  sortOrder: number,
+  mainMaterialID: number,
+  selectedMaterialID: number
+): Promise<void> {
+  try {
+    if (typeof (App as any).SetMatrixModelSelection === 'function') {
+      await (App as any).SetMatrixModelSelection(revisionID, sortOrder, mainMaterialID, selectedMaterialID)
+    } else {
+      const { Call } = await import('@wailsio/runtime')
+      await Call.ByName('backend.App.SetMatrixModelSelection', revisionID, sortOrder, mainMaterialID, selectedMaterialID)
+    }
+  } catch (error) {
+    handleApiError(error, 'SetMatrixModelSelection')
   }
 }
 

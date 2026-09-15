@@ -49,3 +49,30 @@ export function measureTextWidth(text: string, isHeader = false, isMono = false)
 
   return ctx.measureText(text).width
 }
+
+/**
+ * 精準量測專案代碼在 10px 粗體下的實際像素寬度
+ * 
+ * @param {string} text - 待測量的專案代碼字串
+ * @returns {number} 文字精準寬度 (px)
+ */
+export function measureProjectCodeWidth(text: string): number {
+  if (!text) return 0
+
+  if (!measureCanvas && typeof document !== 'undefined') {
+    measureCanvas = document.createElement('canvas')
+  }
+
+  if (!measureCanvas) {
+    return text.length * 6.2
+  }
+
+  const ctx = measureCanvas.getContext('2d')
+  if (!ctx) {
+    return text.length * 6.2
+  }
+
+  ctx.font = '700 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  return ctx.measureText(text).width
+}
+

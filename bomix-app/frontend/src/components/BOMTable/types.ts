@@ -47,6 +47,45 @@ export interface RevisionColumnInfo {
   modelNames: string[]
   modelQty: Record<string, number>
   modelQtyByOrder: Record<number, number>
+  models?: Array<{ id: number; sort_order: number; model_name: string; qty: number }>
+}
+
+/**
+ * Matrix 視圖下單一 Model 欄位之資訊 (依據 BigMatrix 匯出原則展開)
+ */
+export interface MatrixModelColumnInfo {
+  /** 唯一識別鍵 (例如：`matrix-rev-1-model-0`) */
+  key: string
+  /** 所屬 Revision ID */
+  revisionId: number
+  /** 專案代碼 (例如：`DEMO`) */
+  projectCode: string
+  /** 階段 (例如：`EVT`) */
+  phase: string
+  /** 版本 (例如：`1.0`) */
+  version: string
+  /** 0-based Model 排序索引 (0, 1, 2...) */
+  sortOrder: number
+  /** 資料庫 MatrixModel.ID (若尚無記錄則為 0) */
+  modelId: number
+  /** Model 簡化純字母代號 (A, B, C...) */
+  modelAlias: string
+  /** Model 名稱 (例如：Model A) */
+  modelName: string
+  /** Model 打件數量 (若無則為 0) */
+  qty: number
+  /** 表頭懸停完整提示文字 */
+  headerTitle: string
+  /** 是否為該 Revision 中的第一個 Model 欄位 */
+  isFirstInRevision: boolean
+  /** 是否為該 Revision 中的最後一個 Model 欄位 (用於繪製專案邊界分隔線) */
+  isLastInRevision: boolean
+  /** 該 Revision 實際包含之 Model 總數 */
+  revisionModelCount: number
+  /** 是否在此 Model 欄位之表頭第一行呈現專案代碼 (智慧中心定位演算法) */
+  showProjectCode: boolean
+  /** 此 Model 欄位之建議計算寬度 (像素，單 Model 狀態會自適應加寬) */
+  columnWidth: number
 }
 
 /**

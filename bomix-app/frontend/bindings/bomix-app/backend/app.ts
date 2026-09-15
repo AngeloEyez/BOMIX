@@ -270,6 +270,22 @@ export function SetMatrixSelection(revisionID: number, modelID: number, mainMate
 }
 
 /**
+ * SetMatrixModelSelection 更新單一物料群組在指定 Revision 與 Model 排序索引 (SortOrder) 的勾選狀態。
+ * 
+ * 參數：
+ *   - revisionID: BOM Revision ID
+ *   - sortOrder: 0-based Model 排序索引 (0, 1, 2...)
+ *   - mainMaterialID: 主料 Material ID
+ *   - selectedMaterialID: 被選中的物料 Material ID（傳入 0 表示取消勾選）
+ * 
+ * 回傳：
+ *   - error: 若資料庫未開啟或更新失敗則回傳錯誤
+ */
+export function SetMatrixModelSelection(revisionID: number, sortOrder: number, mainMaterialID: number, selectedMaterialID: number): $CancellablePromise<void> {
+    return $Call.ByName("backend.App.SetMatrixModelSelection", revisionID, sortOrder, mainMaterialID, selectedMaterialID);
+}
+
+/**
  * UpdateMaterialNote 更新指定物料的 Notes 欄位內容，並持久化至資料庫。
  * 
  * 參數：

@@ -85,7 +85,9 @@ export function useColumnWidths() {
    * @param {(modelName: string) => number} [getModelQty] - 取得指定機種總用量之回呼函式
    * @param {(row: BOMDisplayRow, modelName: string) => string} [getModelSelectedPN] - 取得指定列之選定料號之回呼函式
    * @param {string} [bomType='EBOM'] - 視圖模式 (EBOM 或 Matrix)
-   * @param {number} [revisionCount=0] - 參與顯示的 Revision 數量
+   * @param {number} [revisionCount=0] - 參與顯示的 Revision 數量 (EBOM 模式使用)
+   * @param {number} [matrixModelColumnCount=0] - 參與顯示的 Model 總欄位數 (Matrix 模式使用)
+   * @param {number} [totalMatrixModelWidth=0] - 參與顯示的 Model 欄位總像素寬度 (Matrix 模式精確使用)
    */
   function computeColumnWidths(
     rows: BOMDisplayRow[],
@@ -93,7 +95,9 @@ export function useColumnWidths() {
     getModelQty?: (modelName: string) => number,
     getModelSelectedPN?: (row: BOMDisplayRow, modelName: string) => string,
     bomType: string = 'EBOM',
-    revisionCount: number = 0
+    revisionCount: number = 0,
+    matrixModelColumnCount: number = 0,
+    totalMatrixModelWidth: number = 0
   ): void {
     const MIN_DESC_WIDTH = 220
     const MIN_LOC_WIDTH = 90
@@ -188,7 +192,13 @@ export function useColumnWidths() {
       const totalQtyWidth = Math.max(revisionCount, 1) * revColWidth
       fixedTotal += totalQtyWidth + cclColWidth + remarkColWidth
     } else {
-      const totalRevWidth = Math.max(revisionCount, 1) * revColWidth
+      let totalRevWidth = 0
+      if (totalMatrixModelWidth > 0) {
+        totalRevWidth = totalMatrixModelWidth
+      } else {
+        const modelCount = matrixModelColumnCount > 0 ? matrixModelColumnCount : Math.max(revisionCount, 1)
+        totalRevWidth = modelCount * 72
+      }
       fixedTotal += qtyColWidth + totalRevWidth + notesColWidth
     }
 
