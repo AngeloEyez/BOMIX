@@ -58,6 +58,8 @@ export interface BOMDisplayRow {
   rowId: string
   /** 所屬主料群組唯一識別鍵 (用於關聯主料與替代料群組) */
   parentKey: string
+  /** 所屬物料群組索引 (用於以群組為單位交替渲染斑馬紋底色) */
+  groupIndex: number
   /** 所屬主料 MaterialID (用於 Matrix selection API) */
   mainMaterialId: number
   /** 當前列物料 MaterialID (主料或替代料的 material_id) */

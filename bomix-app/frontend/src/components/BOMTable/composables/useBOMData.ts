@@ -179,7 +179,7 @@ export function useBOMData(options: UseBOMDataOptions) {
   const displayRows = computed<BOMDisplayRow[]>(() => {
     const rows: BOMDisplayRow[] = []
 
-    sortedAggregatedParts.value.forEach((part) => {
+    sortedAggregatedParts.value.forEach((part, groupIndex) => {
       const parentKey = collapseState.getPartKey(part)
       const hasSS = Boolean(part.second_sources && part.second_sources.length > 0)
       const ssCount = part.second_sources ? part.second_sources.length : 0
@@ -214,6 +214,7 @@ export function useBOMData(options: UseBOMDataOptions) {
       rows.push({
         rowId: `${parentKey}-main`,
         parentKey: parentKey,
+        groupIndex: groupIndex,
         mainMaterialId: part.material_id || 0,
         materialId: part.material_id || 0,
         isSecondSource: false,
@@ -255,6 +256,7 @@ export function useBOMData(options: UseBOMDataOptions) {
           rows.push({
             rowId: `${parentKey}-ss-${idx}-${ss.supplier_pn || idx}`,
             parentKey: parentKey,
+            groupIndex: groupIndex,
             mainMaterialId: part.material_id || 0,
             materialId: ss.material_id || 0,
             isSecondSource: true,
@@ -437,10 +439,15 @@ export function useBOMData(options: UseBOMDataOptions) {
   }
 
   /**
-   * 取得資料列 CSS Class (主料或替代料)
+   * 取得資料列 CSS Class (群組斑馬紋底色類別與主/替代料類型)
+   * 群組之間以底色交替區分 (group-even / group-odd)，主料與替代料以文字色彩區分
+   * @param {BOMDisplayRow} data - 單列 BOM 資料
+   * @returns {string} 組合後的 CSS Class 名稱
    */
   function getRowClass(data: BOMDisplayRow): string {
-    return data.isSecondSource ? 'second-source-row' : 'main-source-row'
+    const zebraClass = data.groupIndex % 2 === 0 ? 'group-even' : 'group-odd'
+    const sourceClass = data.isSecondSource ? 'second-source-row' : 'main-source-row'
+    return `${zebraClass} ${sourceClass}`
   }
 
   /**

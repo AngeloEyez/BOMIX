@@ -58,7 +58,6 @@
       :total-records="displayRows.length"
       :row-hover="true"
       :row-class="getRowClass"
-      striped-rows
       table-class="bom-table"
       :lazy="true"
       :sort-field="sortField"
@@ -714,15 +713,41 @@ onMounted(() => {
   line-height: 1;
 }
 
-/* 2nd 替代料資料列 */
-:deep(.second-source-row) {
-  background-color: var(--surface-50, #f8fafc) !important;
-  color: var(--text-color-secondary, #475569);
-  font-size: 12px !important;
+/* 群組斑馬紋底色：依物料群組 (Group) 進行交替著色，同群組主料與替代料共享相同底色 */
+:deep(.bom-table .p-datatable-tbody > tr.group-even:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected)) {
+  background-color: var(--surface-card, #ffffff) !important;
 }
 
-:deep(.second-source-row:hover) {
+:deep(.bom-table .p-datatable-tbody > tr.group-odd:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected)) {
   background-color: var(--surface-100, #f1f5f9) !important;
+}
+
+/* 深色模式群組斑馬紋底色 (清晰度適度加深) */
+html.app-dark :deep(.bom-table .p-datatable-tbody > tr.group-odd:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected)) {
+  background-color: rgba(255, 255, 255, 0.045) !important;
+}
+
+/* 滑鼠懸停高亮 (配合斑馬紋加深，確保懸停反饋清晰) */
+:deep(.bom-table .p-datatable-tbody > tr.group-even:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected):hover),
+:deep(.bom-table .p-datatable-tbody > tr.group-odd:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected):hover) {
+  background-color: var(--surface-200, #e2e8f0) !important;
+}
+
+html.app-dark :deep(.bom-table .p-datatable-tbody > tr.group-even:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected):hover),
+html.app-dark :deep(.bom-table .p-datatable-tbody > tr.group-odd:not(.p-datatable-row-selected):not(.p-datatable-contextmenu-row-selected):hover) {
+  background-color: var(--surface-hover, #2a2d2e) !important;
+}
+
+/* 主料與替代料文字顏色差異 (底色跟隨群組，透過文字色彩區分層級) */
+:deep(.main-source-row),
+:deep(.main-source-row .cell-text) {
+  color: var(--text-color, #1e293b) !important;
+}
+
+:deep(.second-source-row),
+:deep(.second-source-row .cell-text) {
+  color: var(--text-color-secondary, #64748b) !important;
+  font-size: 12px !important;
 }
 
 /* 底部統計摘要 */
