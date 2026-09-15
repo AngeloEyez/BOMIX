@@ -556,6 +556,36 @@ func (a *App) SetMatrixSelection(revisionID, modelID, mainMaterialID, selectedMa
 	return nil
 }
 
+// UpdateMaterialNote 更新指定物料的 Notes 欄位內容，並持久化至資料庫。
+//
+// 參數：
+//   - materialID: 物料 ID (Material.ID)
+//   - notes: 新的 Notes 內容
+//
+// 回傳：
+//   - error: 若資料庫未開啟或更新失敗則回傳錯誤
+func (a *App) UpdateMaterialNote(materialID int64, notes string) error {
+	a.mu.RLock()
+	dbConn := a.db
+	a.mu.RUnlock()
+
+	if dbConn == nil {
+		return fmt.Errorf("no series is currently open")
+	}
+
+	if materialID <= 0 {
+		return fmt.Errorf("invalid material ID: %d", materialID)
+	}
+
+	if err := db.UpdateMaterialNote(dbConn, materialID, notes); err != nil {
+		a.logger.Error(fmt.Sprintf("[UpdateMaterialNote] 更新物料 ID=%d 的 Notes 失敗: %v", materialID, err))
+		return fmt.Errorf("update material note failed: %w", err)
+	}
+
+	a.logger.Info(fmt.Sprintf("[UpdateMaterialNote] 成功更新物料 ID=%d 的 Notes: %q", materialID, notes))
+	return nil
+}
+
 // ==================== Import/Export ====================
 
 // isMatrixFile 判斷給定的檔案路徑之檔案名稱是否包含 "matrix"（不區分大小寫）

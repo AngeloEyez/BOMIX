@@ -344,6 +344,29 @@ export async function SetMatrixSelection(
   }
 }
 
+/**
+ * 更新單一物料的 Notes 註記欄位內容，並即時持久化至資料庫
+ * 
+ * @param {number} materialID - 全域物料 ID (Material.ID)
+ * @param {string} notes - 新的 Notes 內容
+ * @returns {Promise<void>}
+ */
+export async function UpdateMaterialNote(
+  materialID: number,
+  notes: string
+): Promise<void> {
+  try {
+    if (typeof (App as any).UpdateMaterialNote === 'function') {
+      await (App as any).UpdateMaterialNote(materialID, notes)
+    } else {
+      const { Call } = await import('@wailsio/runtime')
+      await Call.ByName('backend.App.UpdateMaterialNote', materialID, notes)
+    }
+  } catch (error) {
+    handleApiError(error, 'UpdateMaterialNote')
+  }
+}
+
 // ==================== Import/Export ====================
 
 export async function ImportExcel(filePaths: string[], confirmOverwrite: boolean = true): Promise<ImportResult[]> {

@@ -270,6 +270,20 @@ export function SetMatrixSelection(revisionID: number, modelID: number, mainMate
 }
 
 /**
+ * UpdateMaterialNote 更新指定物料的 Notes 欄位內容，並持久化至資料庫。
+ * 
+ * 參數：
+ *   - materialID: 物料 ID (Material.ID)
+ *   - notes: 新的 Notes 內容
+ * 
+ * 回傳：
+ *   - error: 若資料庫未開啟或更新失敗則回傳錯誤
+ */
+export function UpdateMaterialNote(materialID: number, notes: string): $CancellablePromise<void> {
+    return $Call.ByID(1908766894, materialID, notes);
+}
+
+/**
  * UpdateSettings updates the settings
  */
 export function UpdateSettings(settings: $models.Settings | null): $CancellablePromise<void> {

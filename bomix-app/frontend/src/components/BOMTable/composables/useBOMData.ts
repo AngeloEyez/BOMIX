@@ -457,6 +457,72 @@ export function useBOMData(options: UseBOMDataOptions) {
     return ccl ? 'ccl-critical' : 'ccl-normal'
   }
 
+  /**
+   * 更新特定物料在前端快取中的 Notes 註記內容
+   * 
+   * 同步更新 aggregatedParts 中所有符合該 materialId（或 supplier+supplier_pn）
+   * 的主料與替代料的 notes 欄位，並重新賦值觸發 displayRows 計算屬性響應更新，
+   * 確保同一個物料在整份 BOM 所有出現的位置皆為最新內容。
+   * 
+   * @param {number} materialId - 全域物料 ID
+   * @param {string} notes - 新的 Notes 內容
+   * @param {string} [supplier] - 物料供應商名稱 (選填，輔助精確比對)
+   * @param {string} [supplierPn] - 供應商料號 (選填，輔助精確比對)
+   */
+  function updateMaterialNotesInCache(
+    materialId: number,
+    notes: string,
+    supplier?: string,
+    supplierPn?: string
+  ): void {
+    if (!aggregatedParts.value || aggregatedParts.value.length === 0) return
+
+    let hasChange = false
+    const updatedParts = aggregatedParts.value.map(part => {
+      let partModified = false
+      let newPart = part
+
+      // 檢查主料是否匹配
+      const isMainMatch = (materialId > 0 && part.material_id === materialId) ||
+        Boolean(supplier && supplierPn && part.main_supplier === supplier && part.main_supplier_pn === supplierPn)
+
+      if (isMainMatch && part.notes !== notes) {
+        newPart = { ...newPart, notes }
+        partModified = true
+      }
+
+      // 檢查替代料清單是否匹配
+      if (newPart.second_sources && newPart.second_sources.length > 0) {
+        let ssModified = false
+        const updatedSS = newPart.second_sources.map(ss => {
+          const isSSMatch = (materialId > 0 && ss.material_id === materialId) ||
+            Boolean(supplier && supplierPn && ss.supplier === supplier && ss.supplier_pn === supplierPn)
+
+          if (isSSMatch && ss.notes !== notes) {
+            ssModified = true
+            return { ...ss, notes }
+          }
+          return ss
+        })
+
+        if (ssModified) {
+          newPart = { ...newPart, second_sources: updatedSS }
+          partModified = true
+        }
+      }
+
+      if (partModified) {
+        hasChange = true
+        return newPart
+      }
+      return part
+    })
+
+    if (hasChange) {
+      aggregatedParts.value = updatedParts
+    }
+  }
+
   // 監聽外部 revisionIds 變化
   watch(
     () => revisionIds.value,
@@ -505,5 +571,6 @@ export function useBOMData(options: UseBOMDataOptions) {
     onMatrixSelectionChange,
     getRowClass,
     getCCLClass,
+    updateMaterialNotesInCache,
   }
 }

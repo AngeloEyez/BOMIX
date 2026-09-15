@@ -368,3 +368,42 @@ func UpdateMaterialNotes(db *gorm.DB, notesMap map[string]string, lg MatrixLogge
 	return updated, nil
 }
 
+// UpdateMaterialNote 根據 MaterialID 更新單一 Material 的 Notes 欄位。
+//
+// 行為：
+//   - 僅更新指定 ID 的 Material 物料紀錄之 notes 與 updated_at 欄位。
+//   - 支援更新為多行文字或清空為空字串。
+//   - 不變更 supplier, supplier_pn, hhpn, description, remark 等其餘屬性。
+//
+// 參數：
+//   - db: GORM 資料庫連線實例
+//   - materialID: 全域物料 ID (Material.ID)
+//   - notes: 新的筆記註記內容
+//
+// 回傳：
+//   - error: 若參數無效或資料庫更新失敗則回傳錯誤
+func UpdateMaterialNote(db *gorm.DB, materialID int64, notes string) error {
+	if db == nil {
+		return fmt.Errorf("資料庫連線尚未建立")
+	}
+	if materialID <= 0 {
+		return fmt.Errorf("無效的 Material ID: %d", materialID)
+	}
+
+	now := time.Now()
+	updates := map[string]any{
+		"notes":      notes,
+		"updated_at": now,
+	}
+
+	result := db.Model(&Material{}).Where("id = ?", materialID).Updates(updates)
+	if result.Error != nil {
+		return fmt.Errorf("更新 Material (ID=%d) 的 Notes 失敗: %w", materialID, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("找不到 ID 為 %d 的 Material 紀錄", materialID)
+	}
+
+	return nil
+}
+

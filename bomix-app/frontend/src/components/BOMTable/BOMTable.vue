@@ -262,13 +262,21 @@
         <Column field="notes" header="Notes" :style="{ width: columnWidths.notes + 'px', minWidth: '100px' }">
           <template #body="slotProps">
             <div
-              class="cell-text"
-              @mouseenter="handleCellMouseEnter($event, 'notes', slotProps.data)"
+              class="bom-notes-cell cell-text cursor-pointer transition-colors rounded px-1 -mx-1 w-full min-h-[20px]"
+              :class="[
+                isEditingNotesCell(slotProps.data)
+                  ? 'ring-1 ring-primary ring-inset bg-primary/10'
+                  : 'hover:bg-slate-100 dark:hover:bg-[#2d2d2d]'
+              ]"
+              @click="handleNotesCellClick($event, slotProps.data)"
+              @mouseenter="!isNotesEditorVisible && handleCellMouseEnter($event, 'notes', slotProps.data)"
               @mouseleave="handleCellMouseLeave"
             >
-              <template v-for="(part, idx) in getHighlightedParts(slotProps.data.notes, searchQuery)" :key="idx">
-                <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
-                <span v-else>{{ part.text }}</span>
+              <template v-if="slotProps.data.notes">
+                <template v-for="(part, idx) in getHighlightedParts(slotProps.data.notes, searchQuery)" :key="idx">
+                  <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
+                  <span v-else>{{ part.text }}</span>
+                </template>
               </template>
             </div>
           </template>
@@ -281,7 +289,7 @@
 
     <!-- 儲存格互動式懸停卡片 (支援文字選取、複製與 Notes 多行編輯) -->
     <BOMCellHoverCard
-      :visible="isCardVisible"
+      :visible="isCardVisible && !isNotesEditorVisible"
       :field="activeField"
       :row="activeRow"
       :content="activeContent"
@@ -294,6 +302,17 @@
       @start-editing="startEditing"
       @cancel-editing="cancelEditing"
       @save-notes="handleSaveNotes"
+    />
+
+    <!-- Notes 欄位專用小編輯視窗 (支援多行 Shift+Enter 換行，Enter 或點擊外部即時儲存) -->
+    <BOMNotesEditor
+      :visible="isNotesEditorVisible"
+      :row="editingNotesRow"
+      :target-rect="notesEditorTargetRect"
+      :initial-notes="initialNotesValue"
+      @save="handleNotesEditorSave"
+      @cancel="handleNotesEditorCancel"
+      @close="handleNotesEditorCancel"
     />
 
     <!-- Summary Statistics -->
@@ -334,13 +353,16 @@ import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 
 import type { ViewPartGroup } from '../../services/api'
+import { UpdateMaterialNote } from '../../services/api'
+import { useLogStore } from '../../stores'
 import { getHighlightedParts } from './utils/textHighlight'
 import { useBOMData, VIEW_OPTIONS, BOM_TYPE_OPTIONS } from './composables/useBOMData'
 import { useColumnWidths } from './composables/useColumnWidths'
 import { useCellAutoScroll } from './composables/useCellAutoScroll'
 import { useBOMContextMenu } from './composables/useBOMContextMenu'
-import { useCellHoverCard } from './composables/useCellHoverCard'
+import { useCellHoverCard, type CellRect } from './composables/useCellHoverCard'
 import BOMCellHoverCard from './components/BOMCellHoverCard.vue'
+import BOMNotesEditor from './components/BOMNotesEditor.vue'
 import type { BOMDisplayRow } from './types'
 
 const props = withDefaults(
@@ -387,6 +409,7 @@ const {
   onMatrixSelectionChange,
   getRowClass,
   getCCLClass,
+  updateMaterialNotesInCache,
 } = bomData
 
 const {
@@ -485,21 +508,154 @@ const {
   onTableScroll,
 } = useCellHoverCard()
 
+const logStore = useLogStore()
+
+// ── 6. Notes 欄位儲存格專用小編輯視窗狀態管理 ────
+const isNotesEditorVisible = ref(false)
+const editingNotesRow = ref<BOMDisplayRow | null>(null)
+const notesEditorTargetRect = ref<CellRect | null>(null)
+const initialNotesValue = ref('')
+
 /**
- * 處理 Notes 儲存操作
- * 先更新前端資料模型，並預留後續串接後端儲存 API 之介面
+ * 判斷指定資料列是否正處於 Notes 編輯狀態
+ * 
+ * @param {BOMDisplayRow} row - 資料列物件
+ * @returns {boolean} 是否為當前編輯列
+ */
+function isEditingNotesCell(row: BOMDisplayRow): boolean {
+  return isNotesEditorVisible.value && editingNotesRow.value?.rowId === row.rowId
+}
+
+/**
+ * 點擊 Notes 儲存格開啟小編輯視窗
+ * 
+ * @param {MouseEvent} event - 點擊事件物件
+ * @param {BOMDisplayRow} row - 當前儲存格所屬列資料
+ */
+function handleNotesCellClick(event: MouseEvent, row: BOMDisplayRow): void {
+  // 若已在編輯同一列，不重複處理
+  if (isEditingNotesCell(row)) return
+
+  // 關閉任何可能開啟中的懸停卡片
+  closeCard(true)
+
+  const currentTarget = event.currentTarget as HTMLElement
+  if (!currentTarget) return
+
+  const r = currentTarget.getBoundingClientRect()
+  notesEditorTargetRect.value = {
+    top: r.top,
+    bottom: r.bottom,
+    left: r.left,
+    right: r.right,
+    width: r.width,
+    height: r.height
+  }
+
+  editingNotesRow.value = row
+  initialNotesValue.value = row.notes || ''
+  isNotesEditorVisible.value = true
+}
+
+/**
+ * 處理 Notes 小編輯視窗儲存事件
+ * 
+ * 1. 更新前端當前列之 notes
+ * 2. 透過 updateMaterialNotesInCache 即時局部更新前端快取 (確保同一物料在整份 BOM 任何位置皆同步為最新資料)
+ * 3. 呼叫後端 API UpdateMaterialNote 將變更持久化寫入資料庫
+ * 4. 關閉編輯視窗
+ * 
+ * @param {string} newNotes - 使用者編輯後之 Notes 內容
+ */
+async function handleNotesEditorSave(newNotes: string): Promise<void> {
+  if (!editingNotesRow.value) {
+    isNotesEditorVisible.value = false
+    return
+  }
+
+  const row = editingNotesRow.value
+  const trimmed = newNotes.trim()
+  const oldNotes = (row.notes || '').trim()
+
+  // 立即關閉小編輯視窗
+  isNotesEditorVisible.value = false
+  editingNotesRow.value = null
+  notesEditorTargetRect.value = null
+
+  // 若內容未發生變動，無需執行後續更新
+  if (trimmed === oldNotes) {
+    return
+  }
+
+  // 1. 立即更新當前列
+  row.notes = trimmed
+
+  // 2. 即時局部更新前端快取 (主料與替代料全面同步最新資料)
+  updateMaterialNotesInCache(row.materialId, trimmed, row.supplier, row.supplier_pn)
+
+  // 3. 呼叫後端 API 持久化寫入資料庫
+  if (row.materialId > 0) {
+    try {
+      await UpdateMaterialNote(row.materialId, trimmed)
+      logStore.addLogEntry(
+        'INFO',
+        `[BOMTable] 成功更新物料 (ID=${row.materialId}, ${row.supplier} ${row.supplier_pn}) 的 Notes 註記`
+      )
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      logStore.addLogEntry('ERROR', `[BOMTable] 更新物料 Notes 至資料庫失敗: ${msg}`)
+    }
+  }
+}
+
+/**
+ * 取消 Notes 編輯並關閉視窗
+ */
+function handleNotesEditorCancel(): void {
+  isNotesEditorVisible.value = false
+  editingNotesRow.value = null
+  notesEditorTargetRect.value = null
+}
+
+/**
+ * 處理 HoverCard 上的 Notes 儲存操作
+ * 同樣更新本機模型、快取全域同步並持久化至資料庫
  * 
  * @param {string} _newNotes - 新編輯的 Notes 內容
  */
 function handleSaveNotes(_newNotes: string): void {
-  saveNotes((row, notes) => {
-    // 預留後續寫入資料庫之 hook，目前已即時同步更新至 row.notes
-    console.log(`[BOMTable] Notes updated for row ${row.rowId}:`, notes)
+  saveNotes(async (row, notes) => {
+    const trimmed = notes.trim()
+    // 同步前端快取
+    updateMaterialNotesInCache(row.materialId, trimmed, row.supplier, row.supplier_pn)
+
+    // 持久化至資料庫
+    if (row.materialId > 0) {
+      try {
+        await UpdateMaterialNote(row.materialId, trimmed)
+        logStore.addLogEntry(
+          'INFO',
+          `[BOMTable] HoverCard 成功更新物料 (ID=${row.materialId}) 的 Notes`
+        )
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        logStore.addLogEntry('ERROR', `[BOMTable] HoverCard 更新物料 Notes 失敗: ${msg}`)
+      }
+    }
   })
 }
 
 /** 虛擬滾動容器元素引用 */
 let scrollerEl: HTMLElement | null = null
+
+/** 表格滾動處理監聽函式 */
+function handleTableScrollerScroll(e: Event): void {
+  onTableScroll(e)
+  // 若滾動發生且編輯視窗開啟中，自動取消並關閉避免視窗飄移
+  if (isNotesEditorVisible.value) {
+    handleNotesEditorCancel()
+  }
+}
 
 onMounted(() => {
   setupResizeListener(() => {
@@ -510,14 +666,14 @@ onMounted(() => {
   if (tableWrapperRef.value) {
     scrollerEl = tableWrapperRef.value.querySelector('.p-datatable-table-container, [data-pc-name="virtualscroller"]')
     if (scrollerEl) {
-      scrollerEl.addEventListener('scroll', (e) => onTableScroll(e), { passive: true })
+      scrollerEl.addEventListener('scroll', handleTableScrollerScroll, { passive: true })
     }
   }
 })
 
 onUnmounted(() => {
   if (scrollerEl) {
-    scrollerEl.removeEventListener('scroll', onTableScroll)
+    scrollerEl.removeEventListener('scroll', handleTableScrollerScroll)
     scrollerEl = null
   }
 })

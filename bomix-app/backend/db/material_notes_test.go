@@ -118,3 +118,75 @@ func TestUpdateMaterialNotes(t *testing.T) {
 		t.Errorf("無內容變更時預期更新 0 筆，實際更新 %d 筆", updated2)
 	}
 }
+
+// TestUpdateMaterialNote_Single 驗證 UpdateMaterialNote 依 MaterialID 單獨更新 Notes 的行為：
+// 1. 成功更新單筆物料的 notes（支援多行文字，含 \n）
+// 2. 成功將 notes 清空為空字串
+// 3. 其餘欄位 (HHPN, Description 等) 保持不變
+// 4. 當傳入無效 ID 或不存在的 ID 時，正確回傳錯誤
+func TestUpdateMaterialNote_Single(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test_single_note.db")
+
+	database, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("開啟資料庫失敗: %v", err)
+	}
+	defer Close(database)
+
+	if err := AutoMigrate(database); err != nil {
+		t.Fatalf("AutoMigrate 失敗: %v", err)
+	}
+
+	// 1. 建立測試物料
+	m := Material{
+		Supplier:    "TDK",
+		SupplierPN:  "C1005X7R1H104K",
+		HHPN:        "HH-TDK-01",
+		Description: "TDK Cap 0.1uF",
+		Remark:      "Initial Remark",
+		Notes:       "Initial Note",
+	}
+	if err := database.Create(&m).Error; err != nil {
+		t.Fatalf("建立測試物料失敗: %v", err)
+	}
+
+	// 2. 測試更新為多行文字 (包含 Shift-Enter 產生的換行符號)
+	multiLineNote := "Line 1: Special notice\nLine 2: Shift-Enter new line\nLine 3: Finished"
+	if err := UpdateMaterialNote(database, m.ID, multiLineNote); err != nil {
+		t.Fatalf("UpdateMaterialNote (多行) 失敗: %v", err)
+	}
+
+	var checked Material
+	if err := database.First(&checked, m.ID).Error; err != nil {
+		t.Fatalf("讀取更新後的 Material 失敗: %v", err)
+	}
+	if checked.Notes != multiLineNote {
+		t.Errorf("Notes 更新不符，預期:\n%s\n實際:\n%s", multiLineNote, checked.Notes)
+	}
+	if checked.HHPN != "HH-TDK-01" || checked.Description != "TDK Cap 0.1uF" || checked.Remark != "Initial Remark" {
+		t.Errorf("其他屬性遭意外修改: %+v", checked)
+	}
+
+	// 3. 測試清空 Notes
+	if err := UpdateMaterialNote(database, m.ID, ""); err != nil {
+		t.Fatalf("UpdateMaterialNote (清空) 失敗: %v", err)
+	}
+	if err := database.First(&checked, m.ID).Error; err != nil {
+		t.Fatalf("讀取清空後的 Material 失敗: %v", err)
+	}
+	if checked.Notes != "" {
+		t.Errorf("Notes 預期為空字串，實際為 '%s'", checked.Notes)
+	}
+
+	// 4. 測試無效 ID 與不存在的 ID
+	if err := UpdateMaterialNote(database, 0, "fail"); err == nil {
+		t.Errorf("傳入 ID=0 預期回傳錯誤，實際無錯誤")
+	}
+	if err := UpdateMaterialNote(database, -1, "fail"); err == nil {
+		t.Errorf("傳入 ID=-1 預期回傳錯誤，實際無錯誤")
+	}
+	if err := UpdateMaterialNote(database, 999999, "fail"); err == nil {
+		t.Errorf("傳入不存在的 ID 預期回傳錯誤，實際無錯誤")
+	}
+}
