@@ -22,18 +22,18 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import type { ColumnWidthConfig, BOMDisplayRow } from '../types'
 import { measureTextWidth } from '../utils/textMeasure'
 
-/** 預設欄寬基礎配置 (像素) */
+/** 預設欄寬基礎配置 (像素，高緊湊優化) */
 export const defaultColumnWidths: ColumnWidthConfig = {
-  item: 54,
-  hhpn: 140,
-  description: 240,
-  supplier: 120,
-  supplier_pn: 150,
-  qty: 55,
-  locations: 220,
-  ccl: 50,
-  remark: 130,
-  notes: 120,
+  item: 46,
+  hhpn: 130,
+  description: 220,
+  supplier: 110,
+  supplier_pn: 140,
+  qty: 45,
+  locations: 180,
+  ccl: 34,
+  remark: 120,
+  notes: 110,
   models: {}
 }
 
@@ -95,66 +95,66 @@ export function useColumnWidths() {
     bomType: string = 'EBOM',
     revisionCount: number = 0
   ): void {
-    const MIN_DESC_WIDTH = 250
-    const MIN_LOC_WIDTH = 150
+    const MIN_DESC_WIDTH = 220
+    const MIN_LOC_WIDTH = 130
 
-    // 1. 固定欄位最小寬度計算
-    const itemWidth = 46
+    // 1. 固定欄位最小寬度計算 (序號欄)
+    const itemWidth = 44
 
-    // 表頭文字寬度量測
-    let maxHhpn = measureTextWidth('HHPN', true) + 20
-    let maxSupplier = measureTextWidth('Supplier', true) + 20
-    let maxSupplierPn = measureTextWidth('Supplier PN', true) + 20
-    let maxQty = measureTextWidth('Qty', true) + 20
-    let maxRemark = measureTextWidth('Remark', true) + 14
-    let maxNotes = measureTextWidth('Notes', true) + 14
-    let maxDesc = measureTextWidth('Description', true) + 20
+    // 表頭文字寬度量測 (極緊湊間距：標題文字 + 排序箭頭 + 邊距)
+    let maxHhpn = measureTextWidth('HHPN', true) + 14
+    let maxSupplier = measureTextWidth('Supplier', true) + 14
+    let maxSupplierPn = measureTextWidth('Supplier PN', true) + 14
+    let maxQty = measureTextWidth('Qty', true) + 14
+    let maxRemark = measureTextWidth('Remark', true) + 10
+    let maxNotes = measureTextWidth('Notes', true) + 10
+    let maxDesc = measureTextWidth('Description', true) + 14
 
     // 動態 Model 欄位標題寬度
     const modelMaxMap: Record<string, number> = {}
     if (models && getModelQty) {
       for (const m of models) {
         const headerTitle = `${m} (Qty: ${getModelQty(m)})`
-        modelMaxMap[m] = measureTextWidth(headerTitle, true) + 20
+        modelMaxMap[m] = measureTextWidth(headerTitle, true) + 14
       }
     }
 
-    // 遍歷當前所有顯示列以測量實際內容寬度
+    // 遍歷當前所有顯示列以測量實際內容寬度 (料號數據使用 Cascadia Mono 等寬量測，左右內距各 3px)
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
       if (row.hhpn) {
-        const w = measureTextWidth(row.hhpn) + 12
+        const w = measureTextWidth(row.hhpn, false, true) + 8
         if (w > maxHhpn) maxHhpn = w
       }
       if (row.supplier) {
-        const w = measureTextWidth(row.supplier) + 12
+        const w = measureTextWidth(row.supplier) + 8
         if (w > maxSupplier) maxSupplier = w
       }
       if (row.supplier_pn) {
-        const w = measureTextWidth(row.supplier_pn) + 12
+        const w = measureTextWidth(row.supplier_pn, false, true) + 8
         if (w > maxSupplierPn) maxSupplierPn = w
       }
       if (row.qty !== '' && row.qty !== undefined && row.qty !== null) {
-        const w = measureTextWidth(String(row.qty)) + 12
+        const w = measureTextWidth(String(row.qty), false, true) + 8
         if (w > maxQty) maxQty = w
       }
       if (row.remark) {
-        const w = measureTextWidth(row.remark) + 12
+        const w = measureTextWidth(row.remark) + 8
         if (w > maxRemark) maxRemark = w
       }
       if (row.notes) {
-        const w = measureTextWidth(row.notes) + 12
+        const w = measureTextWidth(row.notes) + 8
         if (w > maxNotes) maxNotes = w
       }
       if (row.description) {
-        const w = measureTextWidth(row.description) + 12
+        const w = measureTextWidth(row.description) + 8
         if (w > maxDesc) maxDesc = w
       }
       if (models && getModelSelectedPN) {
         for (const m of models) {
           const pn = getModelSelectedPN(row, m)
           if (pn) {
-            const w = measureTextWidth(pn) + 12
+            const w = measureTextWidth(pn, false, true) + 8
             if (w > (modelMaxMap[m] || 0)) modelMaxMap[m] = w
           }
         }
@@ -162,19 +162,19 @@ export function useColumnWidths() {
     }
 
     // 限制各固定欄位之緊湊安全寬度
-    const hhpnColWidth = Math.ceil(Math.min(150, Math.max(80, maxHhpn)))
-    const supplierColWidth = Math.ceil(Math.min(140, Math.max(65, maxSupplier)))
-    const supplierPnColWidth = Math.ceil(Math.min(160, Math.max(85, maxSupplierPn)))
-    const qtyColWidth = Math.ceil(Math.min(60, Math.max(40, maxQty)))
-    const cclColWidth = 38
-    const remarkColWidth = Math.ceil(Math.min(140, Math.max(55, maxRemark)))
-    const notesColWidth = Math.ceil(Math.min(160, Math.max(80, maxNotes)))
+    const hhpnColWidth = Math.ceil(Math.min(140, Math.max(75, maxHhpn)))
+    const supplierColWidth = Math.ceil(Math.min(130, Math.max(60, maxSupplier)))
+    const supplierPnColWidth = Math.ceil(Math.min(150, Math.max(80, maxSupplierPn)))
+    const qtyColWidth = Math.ceil(Math.min(55, Math.max(36, maxQty)))
+    const cclColWidth = 34
+    const remarkColWidth = Math.ceil(Math.min(130, Math.max(50, maxRemark)))
+    const notesColWidth = Math.ceil(Math.min(150, Math.max(70, maxNotes)))
 
     const finalModelWidths: Record<string, number> = {}
     let totalModelsWidth = 0
     if (models) {
       for (const m of models) {
-        const w = Math.ceil(Math.min(130, Math.max(85, modelMaxMap[m] || 85)))
+        const w = Math.ceil(Math.min(130, Math.max(80, modelMaxMap[m] || 80)))
         finalModelWidths[m] = w
         totalModelsWidth += w
       }
@@ -182,7 +182,7 @@ export function useColumnWidths() {
 
     // 根據 EBOM / Matrix 模式決定固定欄位寬度總和
     let fixedTotal = itemWidth + hhpnColWidth + supplierColWidth + supplierPnColWidth
-    const revColWidth = 80
+    const revColWidth = 70
 
     if (bomType === 'EBOM') {
       const totalQtyWidth = Math.max(revisionCount, 1) * revColWidth

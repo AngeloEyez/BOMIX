@@ -609,7 +609,7 @@ function getTableRowClass(data: FlatRevisionRow): string {
   border-radius: 2px !important;
   gap: 1px !important; /* 縮小左側箭頭與檔案夾圖標之間的間距 */
   transition: background-color 0.1s ease;
-  min-height: 20px !important;
+  min-height: 22px !important;
   width: 100% !important;
   min-width: 0 !important;
   max-width: 100% !important;
@@ -668,8 +668,8 @@ function getTableRowClass(data: FlatRevisionRow): string {
 }
 
 .node-icon {
-  font-size: 10px;
-  width: 11px;
+  font-size: 11px;
+  width: 12px;
   text-align: center;
   flex-shrink: 0;
 }
@@ -682,11 +682,11 @@ function getTableRowClass(data: FlatRevisionRow): string {
   color: var(--primary-color);
 }
 
-/* 樹狀標籤：顯示字體設定為 10px，單行文字截斷 (Ellipsis，絕不折行) */
+/* 樹狀標籤：顯示字體設定為 12px，單行文字截斷 (Ellipsis，絕不折行) */
 .node-label {
   flex: 1;
   min-width: 0;
-  font-size: 10px !important;
+  font-size: 12px !important;
   line-height: 1.2;
   white-space: nowrap !important;
   overflow: hidden !important;
@@ -700,7 +700,7 @@ function getTableRowClass(data: FlatRevisionRow): string {
 }
 
 :deep(.compact-tree .p-tree-node-label) {
-  font-size: 10px !important;
+  font-size: 12px !important;
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;

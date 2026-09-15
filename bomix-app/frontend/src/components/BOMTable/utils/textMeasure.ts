@@ -19,9 +19,10 @@ let measureCanvas: HTMLCanvasElement | null = null
  * 
  * @param {string} text - 待測量的文字字串
  * @param {boolean} [isHeader=false] - 是否為表頭 (表頭使用加粗 600 字重，一般文字使用 400 字重)
+ * @param {boolean} [isMono=false] - 是否為等寬字型 (料號、數據等採用 Cascadia Mono 11.5px)
  * @returns {number} 文字像素寬度 (px)，若無輸入字串則回傳 0
  */
-export function measureTextWidth(text: string, isHeader = false): number {
+export function measureTextWidth(text: string, isHeader = false, isMono = false): number {
   if (!text) return 0
 
   if (!measureCanvas && typeof document !== 'undefined') {
@@ -30,17 +31,21 @@ export function measureTextWidth(text: string, isHeader = false): number {
 
   if (!measureCanvas) {
     // 伺服器端渲染 (SSR) 或無 DOM 環境下的字元粗估備援
-    return text.length * 7.5
+    return text.length * (isMono ? 7.2 : 7)
   }
 
   const ctx = measureCanvas.getContext('2d')
   if (!ctx) {
-    return text.length * 7.5
+    return text.length * (isMono ? 7.2 : 7)
   }
 
-  ctx.font = isHeader
-    ? '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-    : '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  if (isMono) {
+    ctx.font = '11.5px "Cascadia Mono", "Cascadia Code", Consolas, monospace'
+  } else {
+    ctx.font = isHeader
+      ? '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      : '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  }
 
   return ctx.measureText(text).width
 }

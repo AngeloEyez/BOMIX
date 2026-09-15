@@ -112,7 +112,7 @@
       <Column field="hhpn" header="HHPN" :style="{ width: columnWidths.hhpn + 'px' }" sortable>
         <template #body="slotProps">
           <div
-            class="cell-text"
+            class="cell-text cell-mono"
             v-tooltip.bottom="slotProps.data.hhpn"
           >
             <template v-for="(part, idx) in getHighlightedParts(slotProps.data.hhpn, searchQuery)" :key="idx">
@@ -124,7 +124,7 @@
       </Column>
 
       <!-- Description -->
-      <Column field="description" header="Description" :style="{ width: columnWidths.description + 'px', minWidth: '250px', maxWidth: columnWidths.description + 'px' }" sortable>
+      <Column field="description" header="Description" :style="{ width: columnWidths.description + 'px', minWidth: '220px', maxWidth: columnWidths.description + 'px' }" sortable>
         <template #body="slotProps">
           <div class="cell-text" v-tooltip.bottom="slotProps.data.description">
             <template v-for="(part, idx) in getHighlightedParts(slotProps.data.description, searchQuery)" :key="idx">
@@ -150,7 +150,7 @@
       <!-- Supplier PN -->
       <Column field="supplier_pn" header="Supplier PN" :style="{ width: columnWidths.supplier_pn + 'px' }" sortable>
         <template #body="slotProps">
-          <div class="cell-text" v-tooltip.bottom="slotProps.data.supplier_pn">
+          <div class="cell-text cell-mono" v-tooltip.bottom="slotProps.data.supplier_pn">
             <template v-for="(part, idx) in getHighlightedParts(slotProps.data.supplier_pn, searchQuery)" :key="idx">
               <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
               <span v-else>{{ part.text }}</span>
@@ -160,9 +160,9 @@
       </Column>
 
       <!-- Location (所有 Revision 中使用該主料之 location 聯集) -->
-      <Column field="locations" header="Location" :style="{ width: columnWidths.locations + 'px', minWidth: '150px', maxWidth: columnWidths.locations + 'px' }">
+      <Column field="locations" header="Location" :style="{ width: columnWidths.locations + 'px', minWidth: '130px', maxWidth: columnWidths.locations + 'px' }">
         <template #body="slotProps">
-          <div class="cell-text" v-tooltip.bottom="slotProps.data.locations">
+          <div class="cell-text cell-mono" v-tooltip.bottom="slotProps.data.locations">
             <template v-for="(part, idx) in getHighlightedParts(slotProps.data.locations, searchQuery)" :key="idx">
               <mark v-if="part.isMatch" class="highlight-text">{{ part.text }}</mark>
               <span v-else>{{ part.text }}</span>
@@ -176,7 +176,7 @@
         <Column
           v-for="revCol in revisionColumns"
           :key="'ebom-qty-' + revCol.revisionId"
-          :style="{ width: '80px', minWidth: '70px', maxWidth: '100px' }"
+          :style="{ width: '70px', minWidth: '60px', maxWidth: '90px' }"
           header-class="two-line-header-col"
         >
           <template #header>
@@ -219,7 +219,7 @@
         <!-- Qty (聚合總用量) -->
         <Column field="qty" header="Qty" :style="{ width: columnWidths.qty + 'px' }" sortable>
           <template #body="slotProps">
-            <div class="cell-text" v-tooltip.bottom="String(slotProps.data.qty ?? '')">
+            <div class="cell-text qty-cell" v-tooltip.bottom="String(slotProps.data.qty ?? '')">
               {{ slotProps.data.qty }}
             </div>
           </template>
@@ -229,7 +229,7 @@
         <Column
           v-for="revCol in revisionColumns"
           :key="'matrix-rev-' + revCol.revisionId"
-          :style="{ width: '80px', minWidth: '70px', maxWidth: '100px' }"
+          :style="{ width: '70px', minWidth: '60px', maxWidth: '90px' }"
           header-class="two-line-header-col"
           class="matrix-checkbox-col"
         >
@@ -542,7 +542,7 @@ onMounted(() => {
 
 /* Table styling - VS Code 風格高緊湊表格，最大化可視範圍 */
 :deep(.p-datatable) {
-  font-size: 0.75rem;
+  font-size: 12px;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -571,10 +571,10 @@ onMounted(() => {
   border-bottom: 1px solid var(--surface-border);
 }
 
-/* 標題列：背景微調為 surface-100，搭配清楚的底線 */
+/* 標題列：背景微調為 surface-100，搭配清楚的底線，3px 緊湊水平內距最大化空間 */
 :deep(.bom-table .p-datatable-thead > tr > th) {
-  padding: 0.12rem 0.25rem !important;
-  font-size: 0.75rem !important;
+  padding: 1px 3px !important;
+  font-size: 12px !important;
   font-weight: 600 !important;
   white-space: nowrap !important;
   overflow: hidden !important;
@@ -587,10 +587,22 @@ onMounted(() => {
   color: var(--text-color, #1e293b) !important;
 }
 
-/* 表格單元格緊湊化與文字截斷 */
+/* 標題文字與排序圖示間距緊湊化 */
+:deep(.bom-table .p-datatable-column-header-content) {
+  gap: 2px !important;
+}
+
+:deep(.bom-table .p-datatable-sort-icon) {
+  font-size: 10px !important;
+  width: 10px !important;
+  height: 10px !important;
+  margin-left: 1px !important;
+}
+
+/* 表格單元格緊湊化與文字截斷：3px 緊湊水平內距 */
 :deep(.bom-table .p-datatable-tbody > tr > td) {
-  padding: 0.12rem 0.25rem !important;
-  font-size: 0.75rem !important;
+  padding: 1px 3px !important;
+  font-size: 12px !important;
   line-height: 1.2 !important;
   height: 26px !important;
   box-sizing: border-box !important;
@@ -630,33 +642,29 @@ onMounted(() => {
   height: 0 !important;
 }
 
-/* 合併欄位：Item + 開合按鈕 */
-:deep(.item-col) {
-  padding-left: 0.15rem !important;
-  padding-right: 0.15rem !important;
-}
-
+/* 合併欄位：Item + 開合按鈕 (極致緊湊 2px 內距) */
+:deep(.item-col),
 :deep(.item-header-col) {
-  padding-left: 0.15rem !important;
-  padding-right: 0.15rem !important;
+  padding-left: 2px !important;
+  padding-right: 2px !important;
 }
 
 :deep(.item-header-col .p-datatable-column-header-content) {
   display: flex !important;
   align-items: center !important;
-  gap: 0.25rem !important;
+  gap: 2px !important;
 }
 
 .item-header-content {
   display: inline-flex;
   align-items: center;
-  gap: 0.15rem;
+  gap: 2px;
 }
 
 .item-header-label {
   cursor: pointer;
   user-select: none;
-  font-size: 0.75rem !important;
+  font-size: 12px !important;
   font-weight: 600 !important;
   color: inherit !important;
   line-height: 1;
@@ -665,7 +673,7 @@ onMounted(() => {
 .item-cell-content {
   display: flex;
   align-items: center;
-  gap: 0.15rem;
+  gap: 2px;
   width: 100%;
 }
 
@@ -681,7 +689,7 @@ onMounted(() => {
 
 :deep(.toggle-all-btn .p-button-icon),
 :deep(.toggle-ss-btn .p-button-icon) {
-  font-size: 0.65rem !important;
+  font-size: 10px !important;
 }
 
 :deep(.toggle-all-btn),
@@ -701,7 +709,7 @@ onMounted(() => {
 }
 
 .item-number {
-  font-size: 0.75rem;
+  font-size: 11.5px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -710,7 +718,7 @@ onMounted(() => {
 :deep(.second-source-row) {
   background-color: var(--surface-50, #f8fafc) !important;
   color: var(--text-color-secondary, #475569);
-  font-size: 0.75rem !important;
+  font-size: 12px !important;
 }
 
 :deep(.second-source-row:hover) {
@@ -753,7 +761,7 @@ onMounted(() => {
 
 /* 兩行表頭 (專案名稱 + 版本) */
 :deep(.two-line-header-col) {
-  padding: 0.15rem 0.25rem !important;
+  padding: 1px 2px !important;
 }
 
 :deep(.two-line-header-col .p-datatable-column-header-content) {
@@ -773,7 +781,7 @@ onMounted(() => {
 }
 
 .header-line1 {
-  font-size: 0.72rem;
+  font-size: 11px;
   font-weight: 700;
   color: var(--text-color);
   white-space: nowrap;
@@ -783,7 +791,7 @@ onMounted(() => {
 }
 
 .header-line2 {
-  font-size: 0.65rem;
+  font-size: 10px;
   font-weight: 500;
   color: var(--text-color-secondary);
   white-space: nowrap;
@@ -796,6 +804,16 @@ onMounted(() => {
   text-align: center;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
+}
+
+/* VS Code 工模等寬字型：料號、數據、位置、數量、序號 */
+.cell-mono,
+.qty-cell,
+.item-number {
+  font-family: "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", monospace !important;
+  font-size: 11.5px !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.25px;
 }
 
 .matrix-checkbox-col {
