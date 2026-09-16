@@ -67,6 +67,7 @@ export function useBOMData(options: UseBOMDataOptions) {
   const selectedBomType = ref<BOMModeType>(bomTableStore.bomType)
   const selectedView = ref(bomTableStore.view)
   const searchQuery = ref(bomTableStore.searchQuery)
+  // CCL Only 狀態 (自 Pinia 快取還原，切換頁面時可保持之前狀態)
   const cclOnly = ref<boolean>(bomTableStore.cclOnly)
   const sortField = ref(bomTableStore.sortField)
   const sortOrder = ref(bomTableStore.sortOrder)
@@ -944,10 +945,12 @@ export function useBOMData(options: UseBOMDataOptions) {
       if (newIds && newIds.length > 0) {
         const revKey = [...newIds].sort((a, b) => a - b).join(',')
         const isDifferentRevision = Boolean(bomTableStore.revisionKey && bomTableStore.revisionKey !== revKey)
-        // 若使用者在專案樹切換了不同的 BOM 版本，清除舊資料快取並將卷軸位置歸零避免越界
+        // 若使用者在專案樹切換了不同的 BOM 版本，清除舊資料快取、重置卷軸位置並重置 CCL Only 為預設不選中
         if (isDifferentRevision) {
           bomTableStore.clearDataCache()
           bomTableStore.resetScroll()
+          cclOnly.value = false
+          bomTableStore.setCclOnly(false)
         }
         bomTableStore.setRevisionKey(revKey)
         // 切換不同版本時強制向後端查詢；若為同版本 (例如頁面切換往返) 則允許使用快取
@@ -958,6 +961,9 @@ export function useBOMData(options: UseBOMDataOptions) {
         currentRevisionMetadata.value = null
         allRevisionMetadata.value = []
         bomTableStore.clearDataCache()
+        cclOnly.value = false
+        bomTableStore.setCclOnly(false)
+        bomTableStore.setRevisionKey('')
       }
     },
     { deep: true, immediate: true }
