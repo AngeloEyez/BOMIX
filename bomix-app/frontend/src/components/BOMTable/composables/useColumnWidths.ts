@@ -81,23 +81,19 @@ export function useColumnWidths() {
    * 計算各欄位最適欄寬
    * 
    * @param {BOMDisplayRow[]} rows - 當前顯示之平鋪列資料清單
-   * @param {string[]} [models] - 當前版本的機種名稱清單
-   * @param {(modelName: string) => number} [getModelQty] - 取得指定機種總用量之回呼函式
-   * @param {(row: BOMDisplayRow, modelName: string) => string} [getModelSelectedPN] - 取得指定列之選定料號之回呼函式
    * @param {string} [bomType='EBOM'] - 視圖模式 (EBOM 或 Matrix)
    * @param {number} [revisionCount=0] - 參與顯示的 Revision 數量 (EBOM 模式使用)
    * @param {number} [matrixModelColumnCount=0] - 參與顯示的 Model 總欄位數 (Matrix 模式使用)
    * @param {number} [totalMatrixModelWidth=0] - 參與顯示的 Model 欄位總像素寬度 (Matrix 模式精確使用)
+   * @param {number} [totalEBOMRevisionWidth=0] - 參與顯示的 Revision 欄位總像素寬度 (EBOM 模式精確使用)
    */
   function computeColumnWidths(
     rows: BOMDisplayRow[],
-    models: string[] = [],
-    getModelQty?: (modelName: string) => number,
-    getModelSelectedPN?: (row: BOMDisplayRow, modelName: string) => string,
     bomType: string = 'EBOM',
     revisionCount: number = 0,
     matrixModelColumnCount: number = 0,
-    totalMatrixModelWidth: number = 0
+    totalMatrixModelWidth: number = 0,
+    totalEBOMRevisionWidth: number = 0
   ): void {
     const MIN_DESC_WIDTH = 220
     const MIN_LOC_WIDTH = 90
@@ -113,15 +109,6 @@ export function useColumnWidths() {
     let maxRemark = measureTextWidth('Remark', true) + 10
     let maxNotes = measureTextWidth('Notes', true) + 10
     let maxDesc = measureTextWidth('Description', true) + 14
-
-    // 動態 Model 欄位標題寬度
-    const modelMaxMap: Record<string, number> = {}
-    if (models && getModelQty) {
-      for (const m of models) {
-        const headerTitle = `${m} (Qty: ${getModelQty(m)})`
-        modelMaxMap[m] = measureTextWidth(headerTitle, true) + 14
-      }
-    }
 
     // 遍歷當前所有顯示列以測量實際內容寬度 (料號數據使用 Cascadia Mono 等寬量測，左右內距各 3px)
     for (let i = 0; i < rows.length; i++) {
@@ -154,15 +141,6 @@ export function useColumnWidths() {
         const w = measureTextWidth(row.description) + 8
         if (w > maxDesc) maxDesc = w
       }
-      if (models && getModelSelectedPN) {
-        for (const m of models) {
-          const pn = getModelSelectedPN(row, m)
-          if (pn) {
-            const w = measureTextWidth(pn, false, true) + 8
-            if (w > (modelMaxMap[m] || 0)) modelMaxMap[m] = w
-          }
-        }
-      }
     }
 
     // 限制各固定欄位之緊湊安全寬度
@@ -172,24 +150,15 @@ export function useColumnWidths() {
     const qtyColWidth = Math.ceil(Math.min(55, Math.max(36, maxQty)))
     const cclColWidth = 34
     const remarkColWidth = Math.ceil(Math.min(130, Math.max(50, maxRemark)))
-    const notesColWidth = Math.ceil(Math.min(150, Math.max(70, maxNotes)))
-
-    const finalModelWidths: Record<string, number> = {}
-    let totalModelsWidth = 0
-    if (models) {
-      for (const m of models) {
-        const w = Math.ceil(Math.min(130, Math.max(80, modelMaxMap[m] || 80)))
-        finalModelWidths[m] = w
-        totalModelsWidth += w
-      }
-    }
+    const notesColWidth = Math.ceil(Math.min(150, Math.max(100, maxNotes)))
 
     // 根據 EBOM / Matrix 模式決定固定欄位寬度總和
     let fixedTotal = itemWidth + hhpnColWidth + supplierColWidth + supplierPnColWidth
-    const revColWidth = 70
 
     if (bomType === 'EBOM') {
-      const totalQtyWidth = Math.max(revisionCount, 1) * revColWidth
+      const totalQtyWidth = totalEBOMRevisionWidth > 0
+        ? totalEBOMRevisionWidth
+        : Math.max(revisionCount, 1) * 54
       fixedTotal += totalQtyWidth + cclColWidth + remarkColWidth
     } else {
       let totalRevWidth = 0
@@ -219,8 +188,8 @@ export function useColumnWidths() {
       const safeTotal = Math.floor(visibleWidth) - 1
       const rem = safeTotal - fixedTotal // 供 Description 與 Location 瓜分之空間
 
-      // Location 初始目標寬度 (容納 20 個字元，約 140px，不低於 90px)
-      const twentyCharsWidth = measureTextWidth('0'.repeat(20))
+      // Location 初始目標寬度 (容納 20 個等寬字元，約 144px，不低於 90px)
+      const twentyCharsWidth = measureTextWidth('0'.repeat(20), false, true)
       const locInit = Math.max(MIN_LOC_WIDTH, Math.ceil(twentyCharsWidth + 12))
 
       if (rem - locInit >= MIN_DESC_WIDTH) {
@@ -254,7 +223,7 @@ export function useColumnWidths() {
       ccl: cclColWidth,
       remark: remarkColWidth,
       notes: notesColWidth,
-      models: finalModelWidths
+      models: {}
     }
   }
 

@@ -158,6 +158,13 @@
   height: 0 !important;
 }
 
+/* Notes 儲存格：超過欄寬自動截斷顯示省略號 (ellipsis) */
+.bom-notes-cell {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
 /* 合併欄位：Item + 開合按鈕 (極致緊湊 2px 內距) */
 :deep(.item-col),
 :deep(.item-header-col) {
@@ -277,13 +284,14 @@
 }
 
 .header-line1 {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: var(--text-color);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
+  letter-spacing: -0.25px;
 }
 
 .header-line2 {

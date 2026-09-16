@@ -114,7 +114,11 @@
         <Column
           v-for="revCol in revisionColumns"
           :key="'ebom-qty-' + revCol.revisionId"
-          :style="{ width: '70px', minWidth: '60px', maxWidth: '90px' }"
+          :style="{
+            width: (revCol.columnWidth || 54) + 'px',
+            minWidth: (revCol.columnWidth || 54) + 'px',
+            maxWidth: ((revCol.columnWidth || 54) + 8) + 'px'
+          }"
           header-class="two-line-header-col"
         >
           <template #header>
@@ -130,8 +134,8 @@
           </template>
         </Column>
 
-        <!-- CCL (僅 EBOM 模式顯示) -->
-        <Column field="ccl" header="CCL" :style="{ width: columnWidths.ccl + 'px' }" sortable>
+        <!-- CCL (僅 EBOM 模式顯示，已移除排序功能以確保緊湊寬度正確顯示) -->
+        <Column field="ccl" header="CCL" :style="{ width: columnWidths.ccl + 'px' }">
           <template #body="slotProps">
             <span v-if="slotProps.data.ccl" :class="getCCLClass(slotProps.data.ccl)">
               Y
@@ -194,8 +198,8 @@
           </template>
         </Column>
 
-        <!-- Notes (僅 Matrix 模式顯示) -->
-        <Column field="notes" header="Notes" :style="{ width: columnWidths.notes + 'px', minWidth: '100px' }">
+        <!-- Notes (僅 Matrix 模式顯示，下限 100px 且超過部分截斷顯示) -->
+        <Column field="notes" header="Notes" :style="{ width: columnWidths.notes + 'px', minWidth: '100px', maxWidth: columnWidths.notes + 'px' }">
           <template #body="slotProps">
             <div
               class="bom-notes-cell cell-text cursor-pointer transition-colors rounded px-1 -mx-1 w-full min-h-[20px]"
@@ -334,15 +338,12 @@ const {
   displayRows,
   revisionColumns,
   matrixModelColumns,
-  currentRevisionModels,
   smdPartsCount,
   pthPartsCount,
   collapseState,
   onSort,
   loadBOMData,
   onViewChange,
-  getModelQty,
-  getModelSelectedPN,
   isModelSelectedInRevision,
   isModelAvailableInRevision,
   onMatrixModelSelectionChange,
@@ -385,15 +386,14 @@ const {
 /** 執行欄寬重算 */
 function triggerColumnWidthsCompute(): void {
   const totalMatrixModelWidth = matrixModelColumns.value.reduce((sum, c) => sum + (c.columnWidth || 72), 0)
+  const totalEBOMRevisionWidth = revisionColumns.value.reduce((sum, c) => sum + (c.columnWidth || 54), 0)
   computeColumnWidths(
     displayRows.value,
-    currentRevisionModels.value,
-    getModelQty,
-    getModelSelectedPN,
     selectedBomType.value,
     revisionColumns.value.length,
     matrixModelColumns.value.length,
-    totalMatrixModelWidth
+    totalMatrixModelWidth,
+    totalEBOMRevisionWidth
   )
 }
 

@@ -29,7 +29,7 @@ import { useLogStore, useAppStore } from '../../../stores'
 import type { BOMDisplayRow, BOMModeType, RevisionColumnInfo, MatrixModelColumnInfo, ViewDropdownOption } from '../types'
 import { sortBOMPartGroups } from '../utils/sort'
 import { useCollapseState } from './useCollapseState'
-import { measureProjectCodeWidth } from '../utils/textMeasure'
+import { measureTextWidth, measureProjectCodeWidth } from '../utils/textMeasure'
 
 /** 視圖下拉選單選項規格常數 */
 export const VIEW_OPTIONS: ViewDropdownOption[] = [
@@ -106,16 +106,25 @@ export function useBOMData(options: UseBOMDataOptions) {
   const revisionColumns = computed<RevisionColumnInfo[]>(() => {
     if (!allRevisionMetadata.value || allRevisionMetadata.value.length === 0) return []
 
-    const cols: RevisionColumnInfo[] = allRevisionMetadata.value.map(r => ({
-      revisionId: r.id,
-      projectCode: r.project_code || '',
-      phase: r.phase || '',
-      version: r.version || '',
-      modelNames: r.model_names || [],
-      modelQty: (r.model_qty as Record<string, number>) || {},
-      modelQtyByOrder: (r.model_qty_by_order as Record<number, number>) || {},
-      models: (r.models as any) || [],
-    }))
+    const cols: RevisionColumnInfo[] = allRevisionMetadata.value.map(r => {
+      const pCodeWidth = measureProjectCodeWidth(r.project_code || '')
+      const phaseVersionText = [r.phase, r.version].filter(Boolean).join(' ')
+      const pPhaseWidth = measureTextWidth(phaseVersionText)
+      // 依據專案代號與階段版號最大寬度 + 8px (左右 padding 4px + 4px 安全呼吸邊距)，保底 54px
+      const colWidth = Math.max(54, Math.ceil(Math.max(pCodeWidth, pPhaseWidth) + 8))
+
+      return {
+        revisionId: r.id,
+        projectCode: r.project_code || '',
+        phase: r.phase || '',
+        version: r.version || '',
+        modelNames: r.model_names || [],
+        modelQty: (r.model_qty as Record<string, number>) || {},
+        modelQtyByOrder: (r.model_qty_by_order as Record<number, number>) || {},
+        models: (r.models as any) || [],
+        columnWidth: colWidth,
+      }
+    })
 
     const order = appStore.seriesInfo?.projectExportOrder || []
     if (order.length > 0) {

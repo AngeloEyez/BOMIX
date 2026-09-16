@@ -48,6 +48,7 @@ export interface RevisionColumnInfo {
   modelQty: Record<string, number>
   modelQtyByOrder: Record<number, number>
   models?: Array<{ id: number; sort_order: number; model_name: string; qty: number }>
+  columnWidth?: number
 }
 
 /**
