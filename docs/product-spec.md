@@ -794,18 +794,22 @@ BOM 資料的聚合、過濾與多 BOM Revision 整合均由 **View 系統（`ba
 
 #### 6.4.2 視圖過濾類別
 
-View 系統支援以下視圖種類的動態過濾（過濾規則由 View 系統的 `Filter` 模組執行）：
+View 系統支援以下視圖種類的動態過濾（過濾規則由 View 系統的 `Filter` 模組執行，並在 BOMTable 選定視圖與後端查詢時透過 DEBUG 日誌完整輸出）：
 
-| 視圖 | 過濾條件 |
-|------|----------|
-| **ALL** | 排除 `bom_status = X` 的所有零件（即包含 `I`, `P`, `M` 上件狀態） |
-| **SMD** | `type = SMD` 且 `bom_status != X` |
-| **PTH** | `type = PTH` 且 `bom_status != X` |
-| **BOTTOM** | `type = BOTTOM` 且 `bom_status != X` |
-| **NI** | `bom_status = X` (Not Install) |
-| **PROTO** | `bom_status = P` |
-| **MP** | `bom_status = M` |
-| **CCL** | `ccl = Y` |
+| 視圖選項 | 視圖代碼 (Key) | ViewType 常數 | 中文說明 | 過濾條件定義 (Filter Condition) | 系統 Debug Log 輸出格式 |
+|:---|:---|:---|:---|:---|:---|
+| **All** | `all` | `ALL` | 全部有效上件物料 | 包含有效上件狀態物料，排除不上件物料：<br>• 通用：`bom_status in ('I', 'P', 'M')` 且 `bom_status != 'X'`<br>• NPI 模式：`bom_status in ('I', 'P')` (排除 'X' 不上件與 'M' 量產)<br>• MP 模式：`bom_status in ('I', 'M')` (排除 'X' 不上件與 'P' 試產) | `bom_status in ('I', 'P', 'M') (排除 bom_status = 'X')`<br>*(模式細化: `bom_status in ('I', 'P')` 或 `bom_status in ('I', 'M')`)* |
+| **SMD** | `smd` | `SMD` | 表面黏著零件 (Surface Mount) | `type = 'SMD' AND bom_status != 'X'` | `type = 'SMD' AND bom_status != 'X'` |
+| **PTH** | `pth` | `PTH` | 通孔插裝零件 (Pin-Through-Hole) | `type = 'PTH' AND bom_status != 'X'` | `type = 'PTH' AND bom_status != 'X'` |
+| **Bottom** | `bottom` | `BOTTOM` | 背面零件 (Bottom Side) | `type = 'BOTTOM' AND bom_status != 'X'` | `type = 'BOTTOM' AND bom_status != 'X'` |
+| **NI** | `ni` | `NI` | 不上件物料 (Not Install) | 僅包含標記為不上件之物料：`bom_status = 'X'` | `bom_status = 'X'` |
+| **PROTO** | `proto` | `PROTO` | 試產專用物料 (Proto Phase) | 僅包含試產階段物料：`bom_status = 'P'` | `bom_status = 'P'` |
+| **MP** | `mp` | `MP` | 量產專用物料 (Mass Production) | 僅包含量產階段物料：`bom_status = 'M'` | `bom_status = 'M'` |
+| **CCL** | `ccl` | `CCL` | 關鍵零件清單 (Critical Component List) | 關鍵零件且為有效上件物料：`ccl = true AND bom_status != 'X'`<br>• NPI 模式：`ccl = true AND bom_status in ('I', 'P')`<br>• MP 模式：`ccl = true AND bom_status in ('I', 'M')` | `ccl = true AND bom_status != 'X'`<br>*(模式細化: `ccl = true AND bom_status in ('I', 'P')` 或 `('I', 'M')`)* |
+
+> **日誌輸出規範**：
+> 1. **前端**：使用者在 BOMTable 工具列下拉選單選定或切換任何 View 設定時，觸發 `onViewChange`，立即透過 `logStore.addLogEntry('DEBUG', ...)` 與 `console.debug` 輸出該 View 的中文說明與過濾條件（格式範例：`[BOMTable View] 選定視圖: ALL (全部有效上件物料) | 過濾條件: bom_status in ('I', 'P') (排除 'X' 不上件與 'M' 量產)`）。
+> 2. **後端**：後端 `view.Service.Query` 在執行 `Filter.Apply` 前，透過 Logger 記錄 `[View Filter] 套用視圖過濾: ViewType=... (Mode: ...) | 條件: ...`，查詢完成後亦在 `GetBOMView` 記錄查詢結果筆數與條件摘要，確保全系統前後端視圖行為與過濾追蹤完全一致。
 
 ### 6.5 Excel 匯出
 

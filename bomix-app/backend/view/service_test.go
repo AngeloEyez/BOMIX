@@ -1,6 +1,7 @@
 package view
 
 import (
+	"strings"
 	"testing"
 
 	"bomix-app/backend/db"
@@ -753,6 +754,100 @@ func TestMergeRevisions_NIViewSupport(t *testing.T) {
 	}
 	if allResult[0].MainSupplierPN != "101068500" || allResult[0].BOMStatus != "I" {
 		t.Errorf("ViewAll 結果不符預期: %+v", allResult[0])
+	}
+}
+
+// TestDescribeCondition 測試各視圖類型與 BOM 模式之條件描述文字產生
+func TestDescribeCondition(t *testing.T) {
+	tests := []struct {
+		name     string
+		viewType string
+		mode     string
+		contains []string
+	}{
+		{
+			name:     "ALL 視圖 (NPI 模式)",
+			viewType: "ALL",
+			mode:     "NPI",
+			contains: []string{"bom_status in ('I', 'P')", "排除 'X' 不上件與 'M' 量產"},
+		},
+		{
+			name:     "ALL 視圖 (MP 模式)",
+			viewType: "ALL",
+			mode:     "MP",
+			contains: []string{"bom_status in ('I', 'M')", "排除 'X' 不上件與 'P' 試產"},
+		},
+		{
+			name:     "ALL 視圖 (空字串預設為 ALL)",
+			viewType: "",
+			mode:     "NPI",
+			contains: []string{"bom_status in ('I', 'P')"},
+		},
+		{
+			name:     "SMD 視圖",
+			viewType: "SMD",
+			mode:     "NPI",
+			contains: []string{"type = 'SMD'", "bom_status != 'X'"},
+		},
+		{
+			name:     "PTH 視圖",
+			viewType: "PTH",
+			mode:     "NPI",
+			contains: []string{"type = 'PTH'", "bom_status != 'X'"},
+		},
+		{
+			name:     "BOTTOM 視圖",
+			viewType: "BOTTOM",
+			mode:     "NPI",
+			contains: []string{"type = 'BOTTOM'", "bom_status != 'X'"},
+		},
+		{
+			name:     "NI 視圖",
+			viewType: "NI",
+			mode:     "NPI",
+			contains: []string{"bom_status = 'X'", "不上件"},
+		},
+		{
+			name:     "PROTO 視圖",
+			viewType: "PROTO",
+			mode:     "NPI",
+			contains: []string{"bom_status = 'P'", "試產"},
+		},
+		{
+			name:     "MP 視圖",
+			viewType: "MP",
+			mode:     "NPI",
+			contains: []string{"bom_status = 'M'", "量產"},
+		},
+		{
+			name:     "CCL 視圖 (NPI 模式)",
+			viewType: "CCL",
+			mode:     "NPI",
+			contains: []string{"ccl = true", "bom_status in ('I', 'P')"},
+		},
+		{
+			name:     "CCL 視圖 (MP 模式)",
+			viewType: "CCL",
+			mode:     "MP",
+			contains: []string{"ccl = true", "bom_status in ('I', 'M')"},
+		},
+		{
+			name:     "未知視圖",
+			viewType: "UNKNOWN",
+			mode:     "NPI",
+			contains: []string{"不過濾"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			desc := DescribeCondition(tt.viewType, tt.mode)
+			for _, substr := range tt.contains {
+				if !strings.Contains(desc, substr) {
+					t.Errorf("DescribeCondition(%q, %q) = %q, 預期包含 %q", tt.viewType, tt.mode, desc, substr)
+				}
+			}
+		})
 	}
 }
 

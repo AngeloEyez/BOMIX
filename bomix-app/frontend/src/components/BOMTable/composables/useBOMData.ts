@@ -30,6 +30,7 @@ import type { BOMDisplayRow, BOMModeType, RevisionColumnInfo, MatrixModelColumnI
 import { sortBOMPartGroups } from '../utils/sort'
 import { useCollapseState } from './useCollapseState'
 import { measureTextWidth, measureProjectCodeWidth } from '../utils/textMeasure'
+import { getViewFilterInfo, formatViewFilterLog } from '../utils/viewConditions'
 
 /** 視圖下拉選單選項規格常數 */
 export const VIEW_OPTIONS: ViewDropdownOption[] = [
@@ -518,8 +519,10 @@ export function useBOMData(options: UseBOMDataOptions) {
     }
 
     try {
-      const viewType = selectedView.value === 'all' ? '' : selectedView.value.toUpperCase()
-      logStore.addLogEntry('DEBUG', `[View System] 準備建立 View: RevisionIDs=[${revIds.join(', ')}], ViewType="${viewType || 'ALL'}"`)
+      const currentMode = currentRevisionMetadata.value?.phase?.toUpperCase().includes('MP') ? 'MP' : 'NPI'
+      const filterInfo = getViewFilterInfo(selectedView.value, currentMode)
+      const viewType = (selectedView.value || 'all').toUpperCase()
+      logStore.addLogEntry('DEBUG', `[View System] 準備建立 View: RevisionIDs=[${revIds.join(', ')}], ViewType="${viewType}" | 過濾條件: ${filterInfo.summary}`)
       const result = await GetBOMView(revIds, viewType)
       
       if (result && result.part_groups) {
@@ -546,8 +549,14 @@ export function useBOMData(options: UseBOMDataOptions) {
 
   /**
    * 視圖類別 (All, SMD, PTH...) 變更處理
+   * 當使用者選定一個 View 設定時，輸出該 View 的過濾條件 Debug Log
    */
   function onViewChange(): void {
+    const currentMode = currentRevisionMetadata.value?.phase?.toUpperCase().includes('MP') ? 'MP' : 'NPI'
+    const logMsg = formatViewFilterLog(selectedView.value, currentMode)
+    logStore.addLogEntry('DEBUG', logMsg)
+    console.debug(logMsg)
+
     collapseState.resetCollapse()
     if (revisionIds.value && revisionIds.value.length > 0) {
       loadBOMData(revisionIds.value)
@@ -871,5 +880,8 @@ export function useBOMData(options: UseBOMDataOptions) {
     getRowClass,
     getCCLClass,
     updateMaterialNotesInCache,
+    // 視圖條件定義與日誌工具
+    getViewFilterInfo,
+    formatViewFilterLog,
   }
 }

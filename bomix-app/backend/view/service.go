@@ -71,9 +71,15 @@ type rawRevisionData struct {
 //   - *ViewResult：查詢結果，包含聚合物料群組與 revision 元資料
 //   - error：若資料庫查詢失敗則回傳錯誤
 func (s *Service) Query(query ViewQuery) (*ViewResult, error) {
+	viewType := strings.ToUpper(strings.TrimSpace(query.ViewType))
+	if viewType == "" {
+		viewType = ViewAll
+	}
+	query.ViewType = viewType
+
 	if s.logger != nil {
 		s.logger.Debug(fmt.Sprintf("[ViewService.Query] 執行 View 查詢: RevisionIDs=%v, ViewType=%s",
-			query.RevisionIDs, query.ViewType))
+			query.RevisionIDs, viewType))
 	}
 
 	if len(query.RevisionIDs) == 0 {
@@ -108,6 +114,10 @@ func (s *Service) Query(query ViewQuery) (*ViewResult, error) {
 
 	// 5. 套用視圖過濾
 	filter := NewFilter()
+	if s.logger != nil {
+		s.logger.Debug(fmt.Sprintf("[View Filter] 套用視圖過濾: ViewType=%s (Mode: %s) | 條件: %s",
+			query.ViewType, mode, DescribeCondition(query.ViewType, mode)))
+	}
 	partGroups = filter.Apply(partGroups, query, mode)
 
 	// 6. 最後一步：批次回填物料字串資料（Late-Binding）

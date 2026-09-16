@@ -185,3 +185,51 @@ func (f *Filter) filterCCL(parts []ViewPartGroup, mode string) []ViewPartGroup {
 	}
 	return result
 }
+
+// DescribeCondition 回傳指定視圖類型與 BOM 模式的過濾條件人類易讀說明。
+//
+// 此函式用於日誌記錄、除錯輸出與 UI 提示，條件規則依據 product-spec 6.4.2。
+//
+// 參數：
+//   - viewType：視圖類型（ALL, SMD, PTH, BOTTOM, NI, PROTO, MP, CCL）
+//   - mode：可選的 BOM 模式（NPI 或 MP）
+//
+// 回傳：
+//   - string：過濾條件文字描述
+func DescribeCondition(viewType string, mode string) string {
+	vType := strings.ToUpper(strings.TrimSpace(viewType))
+	if vType == "" {
+		vType = ViewAll
+	}
+	m := "NPI"
+	if strings.ToUpper(strings.TrimSpace(mode)) == "MP" {
+		m = "MP"
+	}
+
+	switch vType {
+	case ViewAll:
+		if m == "MP" {
+			return "bom_status in ('I', 'M') (排除 'X' 不上件與 'P' 試產)"
+		}
+		return "bom_status in ('I', 'P') (排除 'X' 不上件與 'M' 量產)"
+	case ViewSMD:
+		return "type = 'SMD' AND bom_status != 'X'"
+	case ViewPTH:
+		return "type = 'PTH' AND bom_status != 'X'"
+	case ViewBottom:
+		return "type = 'BOTTOM' AND bom_status != 'X'"
+	case ViewNI:
+		return "bom_status = 'X' (不上件)"
+	case ViewProto:
+		return "bom_status = 'P' (試產專用)"
+	case ViewMP:
+		return "bom_status = 'M' (量產專用)"
+	case ViewCCL:
+		if m == "MP" {
+			return "ccl = true AND bom_status in ('I', 'M')"
+		}
+		return "ccl = true AND bom_status in ('I', 'P')"
+	default:
+		return "不過濾 (全部顯示)"
+	}
+}
