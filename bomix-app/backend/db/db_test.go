@@ -432,3 +432,97 @@ func TestUpsertMatrixSelection(t *testing.T) {
 	assert.Len(t, sels3, 0)
 }
 
+// TestSaveRevisionMatrixModels 測試批次更新 Revision MatrixModels (包含更新 Qty、新增 Model 與縮減刪除 Model)
+func TestSaveRevisionMatrixModels(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := CreateSeries(database, "Test Series", "Test Description")
+	assert.NoError(t, err)
+	project, err := GetOrCreateProject(database, 1, "PROJ001", "Test Project")
+	assert.NoError(t, err)
+	revision, err := CreateRevision(database, project.ID, "DB", "0.1", "Initial")
+	assert.NoError(t, err)
+
+	// 1. 建立初始物料與 Component
+	mats := []Material{
+		{Supplier: "Samsung", SupplierPN: "CL05B104KO5NNNC"},
+	}
+	_, _, err = UpsertMaterials(database, mats, nil)
+	assert.NoError(t, err)
+	m1, _ := GetMaterialBySupplierPN(database, "Samsung", "CL05B104KO5NNNC")
+
+	comp := RevisionComponent{
+		RevisionID: revision.ID,
+		MaterialID: m1.ID,
+		Role:       "M",
+	}
+	err = CreateComponentsInBatch(database, []RevisionComponent{comp})
+	assert.NoError(t, err)
+
+	// 2. 初始批次建立 2 個 Model: A(Qty=5), B(Qty=10)
+	initialInputs := []MatrixModelInput{
+		{SortOrder: 0, ModelName: "Model A", Qty: 5},
+		{SortOrder: 1, ModelName: "Model B", Qty: 10},
+	}
+	err = SaveRevisionMatrixModels(database, revision.ID, initialInputs)
+	assert.NoError(t, err)
+
+	models, err := GetMatrixModels(database, revision.ID)
+	assert.NoError(t, err)
+	assert.Len(t, models, 2)
+	assert.Equal(t, "Model A", models[0].ModelName)
+	assert.Equal(t, 5, models[0].Qty)
+	assert.Equal(t, "Model B", models[1].ModelName)
+	assert.Equal(t, 10, models[1].Qty)
+	origModelAID := models[0].ID
+	origModelBID := models[1].ID
+
+	// 為 Model A 和 Model B 建立勾選記錄
+	err = UpsertMatrixSelection(database, revision.ID, origModelAID, m1.ID, m1.ID)
+	assert.NoError(t, err)
+	err = UpsertMatrixSelection(database, revision.ID, origModelBID, m1.ID, m1.ID)
+	assert.NoError(t, err)
+
+	selA, _ := GetMatrixSelections(database, revision.ID, origModelAID)
+	assert.Len(t, selA, 1)
+	selB, _ := GetMatrixSelections(database, revision.ID, origModelBID)
+	assert.Len(t, selB, 1)
+
+	// 3. 修改 Model A Qty=25，並新增 Model C (SortOrder=2, Qty=30)
+	updateInputs := []MatrixModelInput{
+		{SortOrder: 0, ModelName: "Model A", Qty: 25},
+		{SortOrder: 1, ModelName: "Model B", Qty: 10},
+		{SortOrder: 2, ModelName: "Model C", Qty: 30},
+	}
+	err = SaveRevisionMatrixModels(database, revision.ID, updateInputs)
+	assert.NoError(t, err)
+
+	models2, err := GetMatrixModels(database, revision.ID)
+	assert.NoError(t, err)
+	assert.Len(t, models2, 3)
+	assert.Equal(t, origModelAID, models2[0].ID, "Model A 的 ID 應保持不變以維持勾選關聯")
+	assert.Equal(t, 25, models2[0].Qty, "Model A 的 Qty 應更新為 25")
+	assert.Equal(t, "Model C", models2[2].ModelName)
+	assert.Equal(t, 30, models2[2].Qty)
+
+	// 驗證 Model A 的 Selection 依舊完好
+	selA2, _ := GetMatrixSelections(database, revision.ID, origModelAID)
+	assert.Len(t, selA2, 1, "Model A 的勾選紀錄不應丟失")
+
+	// 4. 縮減 Model：刪減為只剩 1 個 Model (Model A)
+	reduceInputs := []MatrixModelInput{
+		{SortOrder: 0, ModelName: "Model A", Qty: 25},
+	}
+	err = SaveRevisionMatrixModels(database, revision.ID, reduceInputs)
+	assert.NoError(t, err)
+
+	models3, err := GetMatrixModels(database, revision.ID)
+	assert.NoError(t, err)
+	assert.Len(t, models3, 1, "縮減後應僅剩 1 個 Model")
+	assert.Equal(t, origModelAID, models3[0].ID)
+
+	// 驗證被刪除的 Model B 其 Selection 已被同步清除
+	selBDeleted, _ := GetMatrixSelections(database, revision.ID, origModelBID)
+	assert.Len(t, selBDeleted, 0, "被刪減的 Model B 其勾選紀錄應被同步清除")
+}
+

@@ -3,6 +3,7 @@ package db
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 )
@@ -405,4 +406,108 @@ func ImportMatrixSelections(db *gorm.DB, sourceRevisionID, targetRevisionID int6
 	stats.CopiedSelectionsCount = len(selectionsToCreate)
 
 	return stats, nil
+}
+
+// MatrixModelInput 定義更新 Revision Models 時的單一 Model 輸入資料
+type MatrixModelInput struct {
+	ID        int64  `json:"id"`
+	SortOrder int    `json:"sort_order"`
+	ModelName string `json:"model_name"`
+	Qty       int    `json:"qty"`
+}
+
+// SaveRevisionMatrixModels 批次更新指定 Revision 的 MatrixModel 列表（支援新增、修改、刪除多餘 Model）。
+//
+// 行為：
+//  1. 查詢該 Revision 當前所有 MatrixModel。
+//  2. 根據傳入的 models 清單（按 SortOrder）：
+//     - 若 DB 已存在相同 SortOrder 的 Model：更新 ModelName 與 Qty（保留原有 ID 與其關聯之 Selections）。
+//     - 若 DB 不存在該 SortOrder：建立新的 MatrixModel（初始無 Selections）。
+//  3. 若 DB 中存在 SortOrder 超過傳入清單的 Model（即使用者減少了 Model 數量）：
+//     - 刪除這些多餘的 MatrixModel，其關聯之 MatrixSelection 會一併由外鍵級聯刪除或明確刪除。
+//  4. 所有操作於 GORM Transaction 內執行以維護資料一致性。
+//
+// 參數：
+//   - db: GORM 資料庫實例
+//   - revisionID: BOM Revision ID
+//   - models: 欲設定的 Model 清單
+//
+// 回傳：
+//   - error: 失敗時回傳錯誤
+func SaveRevisionMatrixModels(db *gorm.DB, revisionID int64, models []MatrixModelInput) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		// 1. 查詢既有 models
+		var existing []MatrixModel
+		if err := tx.Where("revision_id = ?", revisionID).Find(&existing).Error; err != nil {
+			return fmt.Errorf("查詢既有 MatrixModel 失敗 (revisionID=%d): %w", revisionID, err)
+		}
+
+		existingByOrder := make(map[int]MatrixModel, len(existing))
+		for _, m := range existing {
+			existingByOrder[m.SortOrder] = m
+		}
+
+		keptOrders := make(map[int]bool, len(models))
+
+		// 2. 處理傳入的 models (更新或新增)
+		for idx, input := range models {
+			sortOrder := input.SortOrder
+			if sortOrder < 0 {
+				sortOrder = idx
+			}
+			keptOrders[sortOrder] = true
+
+			modelName := strings.TrimSpace(input.ModelName)
+			if modelName == "" {
+				alias := getModelOrderAlias(sortOrder)
+				modelName = fmt.Sprintf("Model %s", alias)
+			}
+			qty := input.Qty
+			if qty < 0 {
+				qty = 0
+			}
+
+			if existM, ok := existingByOrder[sortOrder]; ok {
+				// 更新現有 model (保留既有 ID 與 Selections)
+				if err := tx.Model(&MatrixModel{}).Where("id = ?", existM.ID).Updates(map[string]any{
+					"model_name": modelName,
+					"qty":        qty,
+				}).Error; err != nil {
+					return fmt.Errorf("更新 MatrixModel ID=%d 失敗: %w", existM.ID, err)
+				}
+			} else {
+				// 新增 model
+				newM := MatrixModel{
+					RevisionID: revisionID,
+					SortOrder:  sortOrder,
+					ModelName:  modelName,
+					Qty:        qty,
+				}
+				if err := tx.Create(&newM).Error; err != nil {
+					return fmt.Errorf("建立 MatrixModel (SortOrder=%d) 失敗: %w", sortOrder, err)
+				}
+			}
+		}
+
+		// 3. 刪除未保留的多餘 models (減少 model 數量時觸發)
+		var toDeleteIDs []int64
+		for _, m := range existing {
+			if !keptOrders[m.SortOrder] {
+				toDeleteIDs = append(toDeleteIDs, m.ID)
+			}
+		}
+
+		if len(toDeleteIDs) > 0 {
+			// 先刪除關聯的 MatrixSelection (清空該 model 下的勾選狀態)
+			if err := tx.Where("model_id IN ?", toDeleteIDs).Delete(&MatrixSelection{}).Error; err != nil {
+				return fmt.Errorf("刪除過期 MatrixSelection 失敗: %w", err)
+			}
+			// 再刪除 MatrixModel
+			if err := tx.Where("id IN ?", toDeleteIDs).Delete(&MatrixModel{}).Error; err != nil {
+				return fmt.Errorf("刪除過期 MatrixModel 失敗: %w", err)
+			}
+		}
+
+		return nil
+	})
 }

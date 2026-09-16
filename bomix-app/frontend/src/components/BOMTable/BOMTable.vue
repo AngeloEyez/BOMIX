@@ -183,7 +183,7 @@
           ]"
         >
           <template #header>
-            <BOMMatrixHeader :column="modelCol" />
+            <BOMMatrixHeader :column="modelCol" @click="handleModelHeaderClick(modelCol)" />
           </template>
           <template #body="slotProps">
             <BOMMatrixCheckboxCell
@@ -253,6 +253,17 @@
       :smd-parts-count="smdPartsCount"
       :pth-parts-count="pthPartsCount"
     />
+
+    <!-- Matrix Mode 機種設定編輯視窗 (Model 數量與 Model Qty 卡片式編輯) -->
+    <MatrixModelEditDialog
+      v-model:visible="isModelEditDialogVisible"
+      :revision-id="modelEditRevisionId"
+      :project-code="modelEditProjectCode"
+      :phase="modelEditPhase"
+      :version="modelEditVersion"
+      :initial-models="modelEditInitialModels"
+      @saved="handleModelEditSaved"
+    />
   </div>
 </template>
 
@@ -273,7 +284,7 @@ import ContextMenu from 'primevue/contextmenu'
 import Button from 'primevue/button'
 
 import type { ViewPartGroup } from '../../services/api'
-import type { BOMDisplayRow } from './types'
+import type { BOMDisplayRow, MatrixModelColumnInfo } from './types'
 
 // 子組件
 import BOMToolbar from './components/BOMToolbar.vue'
@@ -284,6 +295,7 @@ import BOMMatrixHeader from './components/BOMMatrixHeader.vue'
 import BOMMatrixCheckboxCell from './components/BOMMatrixCheckboxCell.vue'
 import BOMCellHoverCard from './components/BOMCellHoverCard.vue'
 import BOMNotesEditor from './components/BOMNotesEditor.vue'
+import MatrixModelEditDialog from './components/MatrixModelEditDialog.vue'
 
 // Composables
 import { useBOMData } from './composables/useBOMData'
@@ -327,6 +339,7 @@ const {
   pthPartsCount,
   collapseState,
   onSort,
+  loadBOMData,
   onViewChange,
   getModelQty,
   getModelSelectedPN,
@@ -462,6 +475,40 @@ function handleTableScrollerScroll(e: Event): void {
   // 若滾動發生且編輯視窗開啟中，自動取消並關閉避免視窗飄移
   if (isNotesEditorVisible.value) {
     handleNotesEditorCancel()
+  }
+}
+
+// ── 7. Matrix Model 機種設定對話框 (點擊表頭彈出) ────
+const isModelEditDialogVisible = ref(false)
+const modelEditRevisionId = ref(0)
+const modelEditProjectCode = ref('')
+const modelEditPhase = ref('')
+const modelEditVersion = ref('')
+const modelEditInitialModels = ref<MatrixModelColumnInfo[]>([])
+
+/**
+ * 點擊 Matrix Mode 表頭之 Model 雙行區域時開啟機種設定編輯對話框
+ * @param {MatrixModelColumnInfo} col - 點擊之 Model 欄位資訊
+ */
+function handleModelHeaderClick(col: MatrixModelColumnInfo): void {
+  modelEditRevisionId.value = col.revisionId
+  modelEditProjectCode.value = col.projectCode
+  modelEditPhase.value = col.phase
+  modelEditVersion.value = col.version
+
+  // 篩選屬於同一個 Revision 的所有 Model 欄位
+  modelEditInitialModels.value = matrixModelColumns.value.filter(
+    (c) => c.revisionId === col.revisionId
+  )
+  isModelEditDialogVisible.value = true
+}
+
+/**
+ * 機種設定儲存完成後，即時刷新 BOM 資料以更新表頭與欄位
+ */
+async function handleModelEditSaved(): Promise<void> {
+  if (props.revisionIds && props.revisionIds.length > 0) {
+    await loadBOMData(props.revisionIds)
   }
 }
 

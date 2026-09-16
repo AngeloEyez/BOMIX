@@ -12,6 +12,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as db$0 from "./db/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as view$0 from "./view/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -254,6 +257,22 @@ export function SaveProjectExportOrder(settings: $models.ProjectExportSetting[] 
 }
 
 /**
+ * SetMatrixModelSelection 更新單一物料群組在指定 Revision 與 Model 排序索引 (SortOrder) 的勾選狀態。
+ * 
+ * 參數：
+ *   - revisionID: BOM Revision ID
+ *   - sortOrder: 0-based Model 排序索引 (0, 1, 2...)
+ *   - mainMaterialID: 主料 Material ID
+ *   - selectedMaterialID: 被選中的物料 Material ID（傳入 0 表示取消勾選）
+ * 
+ * 回傳：
+ *   - error: 若資料庫未開啟或更新失敗則回傳錯誤
+ */
+export function SetMatrixModelSelection(revisionID: number, sortOrder: number, mainMaterialID: number, selectedMaterialID: number): $CancellablePromise<void> {
+    return $Call.ByID(963482066, revisionID, sortOrder, mainMaterialID, selectedMaterialID);
+}
+
+/**
  * SetMatrixSelection 更新單一物料群組在指定 Revision 與 Model 的勾選狀態。
  * 
  * 參數：
@@ -270,22 +289,6 @@ export function SetMatrixSelection(revisionID: number, modelID: number, mainMate
 }
 
 /**
- * SetMatrixModelSelection 更新單一物料群組在指定 Revision 與 Model 排序索引 (SortOrder) 的勾選狀態。
- * 
- * 參數：
- *   - revisionID: BOM Revision ID
- *   - sortOrder: 0-based Model 排序索引 (0, 1, 2...)
- *   - mainMaterialID: 主料 Material ID
- *   - selectedMaterialID: 被選中的物料 Material ID（傳入 0 表示取消勾選）
- * 
- * 回傳：
- *   - error: 若資料庫未開啟或更新失敗則回傳錯誤
- */
-export function SetMatrixModelSelection(revisionID: number, sortOrder: number, mainMaterialID: number, selectedMaterialID: number): $CancellablePromise<void> {
-    return $Call.ByName("backend.App.SetMatrixModelSelection", revisionID, sortOrder, mainMaterialID, selectedMaterialID);
-}
-
-/**
  * UpdateMaterialNote 更新指定物料的 Notes 欄位內容，並持久化至資料庫。
  * 
  * 參數：
@@ -297,6 +300,20 @@ export function SetMatrixModelSelection(revisionID: number, sortOrder: number, m
  */
 export function UpdateMaterialNote(materialID: number, notes: string): $CancellablePromise<void> {
     return $Call.ByID(1908766894, materialID, notes);
+}
+
+/**
+ * UpdateRevisionMatrixModels 批次更新指定 Revision 的所有 MatrixModel (包含 Model 數量與 Model Qty)。
+ * 
+ * 參數：
+ *   - revisionID: BOM Revision ID
+ *   - models: 欲更新的 Model 列表 (含 SortOrder, ModelName, Qty)
+ * 
+ * 回傳：
+ *   - error: 若資料庫未開啟或更新失敗則回傳錯誤
+ */
+export function UpdateRevisionMatrixModels(revisionID: number, models: db$0.MatrixModelInput[] | null): $CancellablePromise<void> {
+    return $Call.ByID(2449103669, revisionID, models);
 }
 
 /**

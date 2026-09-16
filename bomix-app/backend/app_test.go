@@ -260,6 +260,60 @@ func TestSaveProjectExportOrder(t *testing.T) {
 	}
 }
 
+// TestUpdateRevisionMatrixModels 驗證透過 App.UpdateRevisionMatrixModels 進行 Revision Models 的批次更新與資料庫同步
+func TestUpdateRevisionMatrixModels(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_app_matrix_models.bomx")
+
+	testDB, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("無法建立測試資料庫: %v", err)
+	}
+	defer db.Close(testDB)
+
+	if err := db.AutoMigrate(testDB); err != nil {
+		t.Fatalf("無法初始化資料庫結構: %v", err)
+	}
+	if _, err := db.CreateSeries(testDB, "Test Series", "Desc"); err != nil {
+		t.Fatalf("無法建立 Series: %v", err)
+	}
+	project, err := db.GetOrCreateProject(testDB, 1, "PROJ001", "Test Project")
+	if err != nil {
+		t.Fatalf("無法建立 Project: %v", err)
+	}
+	rev, err := db.CreateRevision(testDB, project.ID, "EVT", "1.0", "Initial")
+	if err != nil {
+		t.Fatalf("無法建立 Revision: %v", err)
+	}
+
+	app := &App{
+		db:     testDB,
+		logger: logger.NewLogger(100),
+		cfg:    &config.Config{},
+	}
+
+	// 1. 建立 2 個 Model
+	inputs := []db.MatrixModelInput{
+		{SortOrder: 0, ModelName: "Model A", Qty: 8},
+		{SortOrder: 1, ModelName: "Model B", Qty: 12},
+	}
+	if err := app.UpdateRevisionMatrixModels(rev.ID, inputs); err != nil {
+		t.Fatalf("UpdateRevisionMatrixModels 失敗: %v", err)
+	}
+
+	// 2. 驗證寫入成功
+	models, err := db.GetMatrixModels(testDB, rev.ID)
+	if err != nil {
+		t.Fatalf("GetMatrixModels 失敗: %v", err)
+	}
+	if len(models) != 2 {
+		t.Fatalf("期望 models 數量為 2，實際 got %d", len(models))
+	}
+	if models[0].Qty != 8 || models[1].Qty != 12 {
+		t.Errorf("Qty 不相符: got (%d, %d), want (8, 12)", models[0].Qty, models[1].Qty)
+	}
+}
+
 // TestIsMatrixFile 測試檔案名稱之 Matrix 判定邏輯（不區分大小寫，且僅以檔名為主）
 func TestIsMatrixFile(t *testing.T) {
 	tests := []struct {

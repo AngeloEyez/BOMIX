@@ -585,6 +585,36 @@ func (a *App) SetMatrixModelSelection(revisionID int64, sortOrder int, mainMater
 	return nil
 }
 
+// UpdateRevisionMatrixModels 批次更新指定 Revision 的所有 MatrixModel (包含 Model 數量與 Model Qty)。
+//
+// 參數：
+//   - revisionID: BOM Revision ID
+//   - models: 欲更新的 Model 列表 (含 SortOrder, ModelName, Qty)
+//
+// 回傳：
+//   - error: 若資料庫未開啟或更新失敗則回傳錯誤
+func (a *App) UpdateRevisionMatrixModels(revisionID int64, models []db.MatrixModelInput) error {
+	a.mu.RLock()
+	dbConn := a.db
+	a.mu.RUnlock()
+
+	if dbConn == nil {
+		return fmt.Errorf("no series is currently open")
+	}
+
+	if revisionID <= 0 {
+		return fmt.Errorf("invalid revision ID: %d", revisionID)
+	}
+
+	if err := db.SaveRevisionMatrixModels(dbConn, revisionID, models); err != nil {
+		a.logger.Error(fmt.Sprintf("[UpdateRevisionMatrixModels] 更新失敗 (revisionID=%d): %v", revisionID, err))
+		return fmt.Errorf("failed to update revision matrix models: %w", err)
+	}
+
+	a.logger.Info(fmt.Sprintf("[UpdateRevisionMatrixModels] 成功更新 revision ID=%d 的 models 共 %d 個", revisionID, len(models)))
+	return nil
+}
+
 // UpdateMaterialNote 更新指定物料的 Notes 欄位內容，並持久化至資料庫。
 //
 // 參數：

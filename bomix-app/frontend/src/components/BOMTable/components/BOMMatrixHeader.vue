@@ -1,5 +1,9 @@
 <template>
-  <div class="two-line-header matrix-header-group" :title="column.headerTitle">
+  <div
+    class="two-line-header matrix-header-group cursor-pointer select-none rounded hover:bg-slate-200/60 dark:hover:bg-slate-700/50 transition-colors"
+    :title="`${column.headerTitle} (點擊編輯機種設定)`"
+    @click="$emit('click', column)"
+  >
     <!-- 第一行：專案名稱依智慧中心定位演算法顯示於中心 Model 欄位，其餘欄位留白 -->
     <div class="header-line1 project-code-line">
       <span
@@ -25,7 +29,8 @@
  * @description Matrix 模式動態 Model 欄位雙行表頭元件
  * 
  * 第一行：依據專案 Model 數量智慧置中顯示專案代碼 (Project Code)；
- * 第二行：顯示 Model 別名字母 (粗體) 與關聯用量括號標記。
+ * 第二行：顯示 Model 別名字母 (粗體) 與關聯用量括號標記；
+ * 支援點擊表頭以觸發機種設定 (MatrixModelEditDialog) 編輯視窗。
  */
 
 import type { MatrixModelColumnInfo } from '../types'
@@ -35,7 +40,12 @@ interface Props {
   column: MatrixModelColumnInfo
 }
 
+interface Emits {
+  (e: 'click', col: MatrixModelColumnInfo): void
+}
+
 defineProps<Props>()
+defineEmits<Emits>()
 </script>
 
 <style scoped>

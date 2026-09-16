@@ -394,6 +394,43 @@ export async function UpdateMaterialNote(
   }
 }
 
+/**
+ * MatrixModelInput 代表更新 Revision Models 時的單一 Model 設定項目
+ */
+export interface MatrixModelInput {
+  /** 資料庫記錄 ID（若為新建立可為 0 或 undefined） */
+  id?: number
+  /** 0-based 排序索引 (0, 1, 2...) */
+  sort_order: number
+  /** Model 顯示名稱（例如 Model A 或自訂名稱） */
+  model_name: string
+  /** Model 打件數量 */
+  qty: number
+}
+
+/**
+ * 批次更新指定 Revision 的 Matrix Model 設定 (數量與用量 Qty)
+ * 
+ * @param {number} revisionID - BOM Revision ID
+ * @param {MatrixModelInput[]} models - Model 設定列表
+ * @returns {Promise<void>}
+ */
+export async function UpdateRevisionMatrixModels(
+  revisionID: number,
+  models: MatrixModelInput[]
+): Promise<void> {
+  try {
+    if (typeof (App as any).UpdateRevisionMatrixModels === 'function') {
+      await (App as any).UpdateRevisionMatrixModels(revisionID, models)
+    } else {
+      const { Call } = await import('@wailsio/runtime')
+      await Call.ByName('backend.App.UpdateRevisionMatrixModels', revisionID, models)
+    }
+  } catch (error) {
+    handleApiError(error, 'UpdateRevisionMatrixModels')
+  }
+}
+
 // ==================== Import/Export ====================
 
 export async function ImportExcel(filePaths: string[], confirmOverwrite: boolean = true): Promise<ImportResult[]> {
