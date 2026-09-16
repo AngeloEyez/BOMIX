@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { GetSeriesInfo, CloseSeries, OpenSeries, CreateSeries } from '../services/api'
 import { useLogStore } from './log'
+import { useBOMTableStore } from './bomTable'
 
 export interface SeriesInfo {
   id: number
@@ -106,6 +107,7 @@ export const useAppStore = defineStore('app', () => {
       isOpen.value = false
       seriesInfo.value = null
       workspaceView.value = 'table'
+      useBOMTableStore().resetState()
     }
   }
 

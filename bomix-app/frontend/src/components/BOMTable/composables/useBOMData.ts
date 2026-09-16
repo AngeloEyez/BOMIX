@@ -25,7 +25,7 @@
 import { ref, shallowRef, computed, watch, type Ref } from 'vue'
 import type { DataTableSortEvent } from 'primevue/datatable'
 import { GetBOMView, SetMatrixSelection, SetMatrixModelSelection, type ViewPartGroup, type ViewRevision } from '../../../services/api'
-import { useLogStore, useAppStore } from '../../../stores'
+import { useLogStore, useAppStore, useBOMTableStore } from '../../../stores'
 import type { BOMDisplayRow, BOMModeType, RevisionColumnInfo, MatrixModelColumnInfo, ViewDropdownOption } from '../types'
 import { sortBOMPartGroups } from '../utils/sort'
 import { useCollapseState } from './useCollapseState'
@@ -61,13 +61,25 @@ export function useBOMData(options: UseBOMDataOptions) {
   const { revisionIds } = options
   const logStore = useLogStore()
   const appStore = useAppStore()
+  const bomTableStore = useBOMTableStore()
 
-  // ── 視圖狀態 ────
-  const selectedBomType = ref<BOMModeType>('EBOM')
-  const selectedView = ref('all')
-  const searchQuery = ref('')
-  const sortField = ref('')
-  const sortOrder = ref(1)
+  // ── 視圖狀態 (優先自 Pinia 記憶體快取載入，避免切換分頁後遺失使用者設定) ────
+  const selectedBomType = ref<BOMModeType>(bomTableStore.bomType)
+  const selectedView = ref(bomTableStore.view)
+  const searchQuery = ref(bomTableStore.searchQuery)
+  const sortField = ref(bomTableStore.sortField)
+  const sortOrder = ref(bomTableStore.sortOrder)
+
+  // 監聽模式、視圖與搜尋關鍵字變更，即時同步寫入快取
+  watch(selectedBomType, (newType) => {
+    bomTableStore.setBomType(newType)
+  })
+  watch(selectedView, (newView) => {
+    bomTableStore.setView(newView)
+  })
+  watch(searchQuery, (newQuery) => {
+    bomTableStore.setSearchQuery(newQuery)
+  })
 
   // ── 後端原始資料與中繼資料 ────
   const aggregatedParts = shallowRef<ViewPartGroup[]>([])
@@ -509,27 +521,45 @@ export function useBOMData(options: UseBOMDataOptions) {
     if (typeof event.sortField === 'string') {
       sortField.value = event.sortField
       sortOrder.value = event.sortOrder ?? 1
+      bomTableStore.setSort(sortField.value, sortOrder.value)
     }
   }
 
   /**
    * 載入指定 BOM Revision 清單的物料群組視圖資料
    * @param {number[]} revIds - BOM Revision ID 陣列
+   * @param {boolean} [force=false] - 是否強制重新自資料庫查詢 (預設 false，若條件未變則直接沿用記憶體快取)
    */
-  async function loadBOMData(revIds: number[]): Promise<void> {
+  async function loadBOMData(revIds: number[], force: boolean = false): Promise<void> {
     if (!revIds || revIds.length === 0) {
       aggregatedParts.value = []
       collapseState.resetCollapse()
       currentRevisionMetadata.value = null
       allRevisionMetadata.value = []
+      bomTableStore.clearDataCache()
       return
     }
 
+    const revKey = [...revIds].sort((a, b) => a - b).join(',')
+    const viewType = (selectedView.value || 'all').toUpperCase()
+
+    // 1. 若非強制重查，且記憶體快取中已有相同查詢條件 (revisions, view) 的資料，直接同步還原快取 (0ms 延遲、無資料庫負擔)
+    if (!force && bomTableStore.hasDataCache(revKey, viewType)) {
+      logStore.addLogEntry('DEBUG', `[BOM Cache Hit] 查詢條件未變動，直接沿用記憶體快取資料: RevisionKey="${revKey}", ViewType="${viewType}"`)
+      // 採用新陣列賦值以確保觸發 Vue shallowRef 響應式依賴更新
+      aggregatedParts.value = [...bomTableStore.cachedPartGroups]
+      allRevisionMetadata.value = [...bomTableStore.cachedRevisions]
+      currentRevisionMetadata.value = bomTableStore.cachedRevisions[0] || null
+      // 確保替代料展開狀態正確初始化
+      collapseState.expandAll()
+      return
+    }
+
+    // 2. 快取未命中或指定強制重查時，向後端資料庫發送 GetBOMView 查詢
     try {
       const currentMode = currentRevisionMetadata.value?.phase?.toUpperCase().includes('MP') ? 'MP' : 'NPI'
       const filterInfo = getViewFilterInfo(selectedView.value, currentMode)
-      const viewType = (selectedView.value || 'all').toUpperCase()
-      logStore.addLogEntry('DEBUG', `[View System] 準備建立 View: RevisionIDs=[${revIds.join(', ')}], ViewType="${viewType}" | 過濾條件: ${filterInfo.summary}`)
+      logStore.addLogEntry('DEBUG', `[View System] 自資料庫查詢 View: RevisionIDs=[${revIds.join(', ')}], ViewType="${viewType}" | 過濾條件: ${filterInfo.summary}`)
       const result = await GetBOMView(revIds, viewType)
       
       if (result && result.part_groups) {
@@ -548,6 +578,14 @@ export function useBOMData(options: UseBOMDataOptions) {
         allRevisionMetadata.value = []
         currentRevisionMetadata.value = null
       }
+
+      // 成功查詢後寫入快取 (僅在有資料或正常查詢完成時寫入)
+      bomTableStore.setDataCache(
+        revKey,
+        viewType,
+        aggregatedParts.value,
+        allRevisionMetadata.value
+      )
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       logStore.addLogEntry('ERROR', `載入 BOM 資料失敗: ${msg}`)
@@ -556,7 +594,7 @@ export function useBOMData(options: UseBOMDataOptions) {
 
   /**
    * 視圖類別 (All, SMD, PTH...) 變更處理
-   * 當使用者選定一個 View 設定時，輸出該 View 的過濾條件 Debug Log
+   * 當使用者選定一個 View 設定時，輸出該 View 的過濾條件 Debug Log 並強制自後端查詢
    */
   function onViewChange(): void {
     const currentMode = currentRevisionMetadata.value?.phase?.toUpperCase().includes('MP') ? 'MP' : 'NPI'
@@ -565,8 +603,10 @@ export function useBOMData(options: UseBOMDataOptions) {
     console.debug(logMsg)
 
     collapseState.resetCollapse()
+    bomTableStore.resetScroll()
     if (revisionIds.value && revisionIds.value.length > 0) {
-      loadBOMData(revisionIds.value)
+      // 使用者手動切換 View 屬於明確查詢操作，強制重新向資料庫獲取資料
+      loadBOMData(revisionIds.value, true)
     }
   }
 
@@ -739,9 +779,9 @@ export function useBOMData(options: UseBOMDataOptions) {
         targetSelectedMaterialId
       )
 
-      // 立即重新載入資料以反映最新的勾選狀態
+      // 強制自後端重新載入資料以反映最新的勾選狀態與持久化結果
       if (revisionIds.value && revisionIds.value.length > 0) {
-        await loadBOMData(revisionIds.value)
+        await loadBOMData(revisionIds.value, true)
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
@@ -832,6 +872,8 @@ export function useBOMData(options: UseBOMDataOptions) {
 
     if (hasChange) {
       aggregatedParts.value = updatedParts
+      // 同步更新記憶體快取中的物料清單，避免切換頁面後丟失剛修改之 Notes
+      bomTableStore.updateCachedParts(updatedParts)
     }
   }
 
@@ -840,12 +882,22 @@ export function useBOMData(options: UseBOMDataOptions) {
     () => revisionIds.value,
     (newIds) => {
       if (newIds && newIds.length > 0) {
-        loadBOMData(newIds)
+        const revKey = [...newIds].sort((a, b) => a - b).join(',')
+        const isDifferentRevision = Boolean(bomTableStore.revisionKey && bomTableStore.revisionKey !== revKey)
+        // 若使用者在專案樹切換了不同的 BOM 版本，清除舊資料快取並將卷軸位置歸零避免越界
+        if (isDifferentRevision) {
+          bomTableStore.clearDataCache()
+          bomTableStore.resetScroll()
+        }
+        bomTableStore.setRevisionKey(revKey)
+        // 切換不同版本時強制向後端查詢；若為同版本 (例如頁面切換往返) 則允許使用快取
+        loadBOMData(newIds, isDifferentRevision)
       } else {
         aggregatedParts.value = []
         collapseState.resetCollapse()
         currentRevisionMetadata.value = null
         allRevisionMetadata.value = []
+        bomTableStore.clearDataCache()
       }
     },
     { deep: true, immediate: true }
@@ -858,6 +910,8 @@ export function useBOMData(options: UseBOMDataOptions) {
     searchQuery,
     sortField,
     sortOrder,
+    // 快取 Store
+    bomTableStore,
     // 資料
     aggregatedParts,
     sortedAggregatedParts,

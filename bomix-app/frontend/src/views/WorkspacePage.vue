@@ -71,7 +71,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import Button from 'primevue/button'
-import { useAppStore, useProjectStore, useLogStore, useTaskStore } from '../stores'
+import { useAppStore, useProjectStore, useLogStore, useTaskStore, useBOMTableStore } from '../stores'
 import BOMTable from '../components/BOMTable'
 import ImportDialog from '../components/workspace/ImportDialog.vue'
 import ImportResultsDialog from '../components/workspace/ImportResultsDialog.vue'
@@ -84,6 +84,7 @@ const appStore = useAppStore()
 const projectStore = useProjectStore()
 const logStore = useLogStore()
 const taskStore = useTaskStore()
+const bomTableStore = useBOMTableStore()
 
 const importResultDialogVisible = ref(false)
 
@@ -223,6 +224,7 @@ function getImportDate(project: Project): string {
 function onImportSuccess(results: BackendImportResult[]): void {
   importResults.value = results
   importResultDialogVisible.value = true
+  bomTableStore.clearDataCache()
 }
 
 /**

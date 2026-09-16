@@ -282,7 +282,7 @@
  * 以及 Notes 編輯引擎 (useBOMNotesEditing) 裝配至 PrimeVue DataTable 虛擬滾動容器中。
  */
 
-import { ref, toRef, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, toRef, watch, nextTick, onMounted, onBeforeUnmount, onUnmounted } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import ContextMenu from 'primevue/contextmenu'
@@ -309,6 +309,7 @@ import { useCellAutoScroll } from './composables/useCellAutoScroll'
 import { useBOMContextMenu } from './composables/useBOMContextMenu'
 import { useCellHoverCard } from './composables/useCellHoverCard'
 import { useBOMNotesEditing } from './composables/useBOMNotesEditing'
+import { useBOMTableStore } from '../../stores'
 
 const props = withDefaults(
   defineProps<{
@@ -328,6 +329,8 @@ const emit = defineEmits<{
 const bomData = useBOMData({
   revisionIds: toRef(props, 'revisionIds')
 })
+
+const bomTableStore = useBOMTableStore()
 
 const {
   selectedBomType,
@@ -470,6 +473,88 @@ const {
 /** 虛擬滾動容器元素引用 */
 let scrollerEl: HTMLElement | null = null
 
+/** 標記是否正處於恢復滾動位置階段，避免在還原期間被原生 scroll 事件覆寫快取 */
+let isRestoringScroll = false
+
+/** 標記本次掛載是否已完成初次卷軸還原 */
+let hasRestoredScroll = false
+
+/**
+ * 取得 DataTable 內部實際負責滾動的 DOM 容器元素
+ * 優先選取 PrimeVue VirtualScroller 滾動層，若無則降級為 tableContainer
+ * @returns {HTMLElement | null} 滾動容器元素
+ */
+function getScrollerElement(): HTMLElement | null {
+  if (!tableWrapperRef.value) return null
+  return (
+    tableWrapperRef.value.querySelector('[data-pc-name="virtualscroller"], .p-virtualscroller') ||
+    tableWrapperRef.value.querySelector('.p-datatable-table-container')
+  )
+}
+
+/**
+ * 嘗試還原快取中的垂直與水平滾動位置
+ * 嚴格實施安全 Clamp 邊界檢查，防止 VirtualScroller 索引計算越界導致空白無資料
+ */
+function restoreScrollPosition(): void {
+  const targetTop = bomTableStore.scrollTop
+  const targetLeft = bomTableStore.scrollLeft
+
+  // 若目標滾動位置為 (0, 0)，確保 DOM 容器與 VirtualScroller 同步歸零並防範事件反向污染
+  if (targetTop <= 0 && targetLeft <= 0) {
+    hasRestoredScroll = true
+    const el = getScrollerElement()
+    if (el && (el.scrollTop !== 0 || el.scrollLeft !== 0)) {
+      isRestoringScroll = true
+      el.scrollTop = 0
+      el.scrollLeft = 0
+      const vsRef = dataTableRef.value?.getVirtualScrollerRef?.()
+      if (vsRef && typeof vsRef.scrollTo === 'function') {
+        vsRef.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior })
+      }
+      requestAnimationFrame(() => {
+        isRestoringScroll = false
+      })
+    }
+    return
+  }
+
+  hasRestoredScroll = true
+  isRestoringScroll = true
+
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      const el = getScrollerElement()
+      if (el) {
+        // 安全範圍 Clamp：絕不允許 scrollTop 超過當前容器實際最大可滾動高度 (scrollHeight - clientHeight)
+        const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight)
+        const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth)
+        const safeTop = Math.min(targetTop, maxScrollTop)
+        const safeLeft = Math.min(targetLeft, maxScrollLeft)
+
+        if (safeTop > 0) el.scrollTop = safeTop
+        if (safeLeft > 0) el.scrollLeft = safeLeft
+
+        // 若原 targetTop 超出當前資料最大滾動範圍，校正快取狀態維持一致
+        if (targetTop !== safeTop || targetLeft !== safeLeft) {
+          bomTableStore.setScrollPosition(safeTop, safeLeft)
+        }
+
+        // 同步呼叫 VirtualScroller 實例之 scrollTo 方法，傳入安全夾取座標
+        const vsRef = dataTableRef.value?.getVirtualScrollerRef?.()
+        if (vsRef && typeof vsRef.scrollTo === 'function') {
+          vsRef.scrollTo({ top: safeTop, left: safeLeft, behavior: 'instant' as ScrollBehavior })
+        }
+      }
+
+      // 延後一幀解除 isRestoringScroll 旗標，確保所有滾動重繪已完成
+      requestAnimationFrame(() => {
+        isRestoringScroll = false
+      })
+    })
+  })
+}
+
 /** 表格滾動處理監聽函式 */
 function handleTableScrollerScroll(e: Event): void {
   onTableScroll(e)
@@ -477,7 +562,40 @@ function handleTableScrollerScroll(e: Event): void {
   if (isNotesEditorVisible.value) {
     handleNotesEditorCancel()
   }
+
+  // 若非還原期間，即時記錄使用者當前的滾動偏移量 (垂直與水平)
+  if (!isRestoringScroll) {
+    const target = e.target as HTMLElement
+    if (target) {
+      if (typeof target.scrollTop === 'number') {
+        bomTableStore.setScrollTop(target.scrollTop)
+      }
+      if (typeof target.scrollLeft === 'number') {
+        bomTableStore.setScrollLeft(target.scrollLeft)
+      }
+    }
+  }
 }
+
+// 監聽顯示列資料：當資料載入完成且有列資料時，執行安全卷軸還原
+watch(
+  () => displayRows.value,
+  (rows) => {
+    if (rows && rows.length > 0 && !hasRestoredScroll) {
+      restoreScrollPosition()
+    }
+  },
+  { immediate: true }
+)
+
+// 監聽外部傳入之 revisionIds 變更：重置還原標記
+watch(
+  () => props.revisionIds,
+  () => {
+    hasRestoredScroll = false
+  },
+  { deep: true }
+)
 
 // ── 7. Matrix Model 機種設定對話框 (點擊表頭彈出) ────
 const isModelEditDialogVisible = ref(false)
@@ -509,7 +627,7 @@ function handleModelHeaderClick(col: MatrixModelColumnInfo): void {
  */
 async function handleModelEditSaved(): Promise<void> {
   if (props.revisionIds && props.revisionIds.length > 0) {
-    await loadBOMData(props.revisionIds)
+    await loadBOMData(props.revisionIds, true)
   }
 }
 
@@ -518,12 +636,17 @@ onMounted(() => {
     triggerColumnWidthsCompute()
   })
 
-  // 監聽 DataTable 內部虛擬滾動容器之 scroll 事件，滾動時自動關閉懸停卡片避免漂移
-  if (tableWrapperRef.value) {
-    scrollerEl = tableWrapperRef.value.querySelector('.p-datatable-table-container, [data-pc-name="virtualscroller"]')
-    if (scrollerEl) {
-      scrollerEl.addEventListener('scroll', handleTableScrollerScroll, { passive: true })
-    }
+  // 監聽 DataTable 內部虛擬滾動容器之 scroll 事件，滾動時自動記錄位置與關閉懸停卡片避免漂移
+  scrollerEl = getScrollerElement()
+  if (scrollerEl) {
+    scrollerEl.addEventListener('scroll', handleTableScrollerScroll, { passive: true })
+  }
+})
+
+onBeforeUnmount(() => {
+  const el = getScrollerElement()
+  if (el && !isRestoringScroll) {
+    bomTableStore.setScrollPosition(el.scrollTop, el.scrollLeft)
   }
 })
 
