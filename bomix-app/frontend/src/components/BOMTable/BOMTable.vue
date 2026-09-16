@@ -21,6 +21,7 @@
       :total-records="displayRows.length"
       :row-hover="true"
       :row-class="getRowClass"
+      class="bom-table"
       table-class="bom-table"
       :lazy="true"
       :sort-field="sortField"
