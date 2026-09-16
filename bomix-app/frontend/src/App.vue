@@ -691,12 +691,30 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-radius: 3px !important;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.title-bar-btn.title-bar-btn-active {
-  color: var(--primary-color) !important;
+/* 未選中時 hover：淺灰底色 */
+.title-bar-btn:not(.title-bar-btn-active):hover {
   background-color: var(--surface-hover) !important;
+  color: var(--text-color) !important;
+}
+
+/* 選中狀態：綠底白字 */
+.title-bar-btn.title-bar-btn-active {
+  color: #ffffff !important;
+  background-color: var(--primary-color) !important;
+}
+
+.title-bar-btn.title-bar-btn-active .p-button-icon {
+  color: #ffffff !important;
+}
+
+/* 選中時 hover：接近 primary color 的微調綠色 */
+.title-bar-btn.title-bar-btn-active:hover {
+  background-color: color-mix(in srgb, var(--primary-color) 85%, black) !important;
+  color: #ffffff !important;
 }
 
 /* SplitButton in Title Bar */
@@ -706,6 +724,7 @@ body {
   display: inline-flex;
   align-items: center;
   vertical-align: middle;
+  border-radius: 3px !important;
 }
 
 :deep(.title-bar-splitbtn .p-splitbutton-button) {
@@ -716,6 +735,8 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-top-left-radius: 3px !important;
+  border-bottom-left-radius: 3px !important;
   border-top-right-radius: 0 !important;
   border-bottom-right-radius: 0 !important;
   border-right: none !important;
@@ -737,6 +758,8 @@ body {
   justify-content: center !important;
   border-top-left-radius: 0 !important;
   border-bottom-left-radius: 0 !important;
+  border-top-right-radius: 3px !important;
+  border-bottom-right-radius: 3px !important;
   border-left: 1px solid var(--surface-border) !important;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
@@ -768,15 +791,36 @@ body {
   text-align: center !important;
 }
 
-:deep(.title-bar-splitbtn-active .p-splitbutton-button),
-:deep(.title-bar-splitbtn-active .p-splitbutton-dropdown) {
-  color: var(--primary-color) !important;
+/* 未選中時 hover：淺灰底色 */
+:deep(.title-bar-splitbtn:not(.title-bar-splitbtn-active) .p-splitbutton-button:hover),
+:deep(.title-bar-splitbtn:not(.title-bar-splitbtn-active) .p-splitbutton-dropdown:hover) {
   background-color: var(--surface-hover) !important;
+  color: var(--text-color) !important;
 }
 
-:deep(.title-bar-splitbtn .p-splitbutton-button:hover),
-:deep(.title-bar-splitbtn .p-splitbutton-dropdown:hover) {
-  background-color: var(--surface-hover) !important;
+/* 選中狀態：綠底白字 */
+:deep(.title-bar-splitbtn-active .p-splitbutton-button),
+:deep(.title-bar-splitbtn-active .p-splitbutton-dropdown) {
+  color: #ffffff !important;
+  background-color: var(--primary-color) !important;
+}
+
+:deep(.title-bar-splitbtn-active .p-splitbutton-button .p-button-icon),
+:deep(.title-bar-splitbtn-active .p-splitbutton-dropdown .p-button-icon),
+:deep(.title-bar-splitbtn-active .p-splitbutton-dropdown svg) {
+  color: #ffffff !important;
+  fill: #ffffff !important;
+}
+
+:deep(.title-bar-splitbtn-active .p-splitbutton-dropdown) {
+  border-left: 1px solid rgba(255, 255, 255, 0.25) !important;
+}
+
+/* 選中時 hover：接近 primary color 的微調綠色 */
+:deep(.title-bar-splitbtn-active .p-splitbutton-button:hover),
+:deep(.title-bar-splitbtn-active .p-splitbutton-dropdown:hover) {
+  background-color: color-mix(in srgb, var(--primary-color) 85%, black) !important;
+  color: #ffffff !important;
 }
 
 /* 側邊欄容器：固定像素寬度，不參與 flex 伸縮 */

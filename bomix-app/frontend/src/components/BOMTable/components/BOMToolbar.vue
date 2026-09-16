@@ -33,14 +33,16 @@
 
     <template #end>
       <div class="toolbar-end">
-        <ToggleButton
-          :model-value="cclOnly"
-          on-label="CCL Only"
-          off-label="CCL Only"
-          size="small"
-          class="ccl-only-toggle"
-          @update:model-value="onCclOnlyChange"
-        />
+        <div class="ccl-toggle-wrapper">
+          <ToggleButton
+            :model-value="cclOnly"
+            on-label="CCL Only"
+            off-label="CCL Only"
+            size="small"
+            class="ccl-only-toggle"
+            @update:model-value="onCclOnlyChange"
+          />
+        </div>
         <SelectButton
           :model-value="bomType"
           :options="BOM_TYPE_OPTIONS"
@@ -207,66 +209,133 @@ function onBomTypeChange(value: 'EBOM' | 'Matrix'): void {
   color: var(--text-color);
 }
 
-/* CCL Only 切換按鈕樣式 (VS Code 風格緊湊 Toggle Button) */
-:deep(.ccl-only-toggle) {
-  padding: 0.15rem 0.5rem !important;
-  font-size: 0.75rem !important;
-  font-weight: 600;
-  height: 26px !important;
+/* 移除 PrimeVue 4 ToggleButton 內層 .p-togglebutton-content 預設的白底與陰影滑塊 */
+:deep(.ccl-only-toggle .p-togglebutton-content),
+:deep(.ccl-only-toggle.p-togglebutton-checked .p-togglebutton-content),
+:deep(.ccl-only-toggle[data-p-checked="true"] .p-togglebutton-content),
+:deep(.bom-type-toggle .p-togglebutton-content),
+:deep(.bom-type-toggle .p-togglebutton.p-togglebutton-checked .p-togglebutton-content),
+:deep(.bom-type-toggle .p-togglebutton[data-p-checked="true"] .p-togglebutton-content) {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* CCL Only 外層容器樣式：與 EBOM/Matrix 相同的淡淡灰色外框與內縮 */
+.ccl-toggle-wrapper {
+  background: transparent;
+  border: 1px solid var(--surface-border);
+  box-shadow: none;
   border-radius: 4px;
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  padding: 1.5px;
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  box-sizing: border-box;
 }
 
-:deep(.ccl-only-toggle:not(.p-togglebutton-checked):not([data-p-checked="true"])) {
-  color: var(--text-color-secondary) !important;
+:deep(.ccl-only-toggle) {
+  padding: 0 0.45rem !important;
+  font-size: 0.72rem !important;
+  font-weight: 600;
+  height: 21px !important;
+  border-radius: 2.5px !important;
+  border: none !important;
   background-color: transparent !important;
-  border: 1px solid var(--surface-border) !important;
+  color: var(--text-color-secondary) !important;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
+/* CCL Only 未選中時 hover：淺灰底色 */
 :deep(.ccl-only-toggle:not(.p-togglebutton-checked):not([data-p-checked="true"]):hover) {
-  color: var(--text-color) !important;
   background-color: var(--surface-hover) !important;
+  color: var(--text-color) !important;
 }
 
+/* CCL Only 選中狀態：綠底白字 */
 :deep(.ccl-only-toggle.p-togglebutton-checked),
 :deep(.ccl-only-toggle[data-p-checked="true"]) {
-  color: var(--primary-color) !important;
-  background-color: var(--surface-hover) !important;
-  border: 1px solid var(--primary-color) !important;
-  font-weight: 700 !important;
+  color: #ffffff !important;
+  background-color: var(--primary-color) !important;
+  font-weight: 600 !important;
+}
+
+/* CCL Only 選中時 hover：接近 primary color 的微調綠色 */
+:deep(.ccl-only-toggle.p-togglebutton-checked:hover),
+:deep(.ccl-only-toggle[data-p-checked="true"]:hover) {
+  background-color: color-mix(in srgb, var(--primary-color) 85%, black) !important;
+  color: #ffffff !important;
+}
+
+:deep(.ccl-only-toggle .p-togglebutton-label) {
+  color: inherit !important;
 }
 
 :deep(.ccl-only-toggle.p-togglebutton-checked .p-togglebutton-label),
 :deep(.ccl-only-toggle[data-p-checked="true"] .p-togglebutton-label) {
-  color: var(--primary-color) !important;
+  color: #ffffff !important;
+}
+
+/* EBOM / Matrix 切換按鈕群組容器樣式：淡淡的灰色外框，表示是一組 */
+:deep(.bom-type-toggle.p-selectbutton),
+:deep(.bom-type-toggle) {
+  background: transparent !important;
+  border: 1px solid var(--surface-border) !important;
+  box-shadow: none !important;
+  border-radius: 4px !important;
+  padding: 1.5px !important; /* 內縮 1.5px，使按鈕底色與外框拉開距離、互有區別 */
+  gap: 2px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 26px !important;
+  box-sizing: border-box !important;
 }
 
 :deep(.bom-type-toggle .p-togglebutton) {
-  padding: 0.15rem 0.5rem !important;
-  font-size: 0.75rem !important;
+  padding: 0 0.45rem !important;
+  font-size: 0.72rem !important;
   font-weight: 600;
-  height: 26px !important;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-:deep(.bom-type-toggle .p-togglebutton:not(.p-togglebutton-checked):not([data-p-checked="true"])) {
+  height: 21px !important; /* 稍微縮小按鈕底色高度 */
+  border-radius: 2.5px !important;
+  border: none !important;
+  background-color: transparent !important;
   color: var(--text-color-secondary) !important;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
-/* 切換 EBOM / Matrix 的 SelectButton 選中狀態高亮 */
+/* EBOM / Matrix 未選中時 hover：淺灰底色 */
+:deep(.bom-type-toggle .p-togglebutton:not(.p-togglebutton-checked):not([data-p-checked="true"]):hover) {
+  background-color: var(--surface-hover) !important;
+  color: var(--text-color) !important;
+}
+
+/* 切換 EBOM / Matrix 的 SelectButton 選中狀態：綠底白字 */
 :deep(.bom-type-toggle .p-togglebutton.p-togglebutton-checked),
 :deep(.bom-type-toggle .p-togglebutton[data-p-checked="true"]) {
-  color: var(--primary-color) !important;
-  background-color: var(--surface-hover) !important;
-  font-weight: 700 !important;
+  color: #ffffff !important;
+  background-color: var(--primary-color) !important;
+  font-weight: 600 !important;
+}
+
+/* EBOM / Matrix 選中時 hover：接近 primary color 的微調綠色 */
+:deep(.bom-type-toggle .p-togglebutton.p-togglebutton-checked:hover),
+:deep(.bom-type-toggle .p-togglebutton[data-p-checked="true"]:hover) {
+  background-color: color-mix(in srgb, var(--primary-color) 85%, black) !important;
+  color: #ffffff !important;
+}
+
+:deep(.bom-type-toggle .p-togglebutton .p-togglebutton-label) {
+  color: inherit !important;
 }
 
 :deep(.bom-type-toggle .p-togglebutton.p-togglebutton-checked .p-togglebutton-label),
 :deep(.bom-type-toggle .p-togglebutton[data-p-checked="true"] .p-togglebutton-label) {
-  color: var(--primary-color) !important;
-}
-
-:deep(.bom-type-toggle .p-togglebutton:hover) {
-  background-color: var(--surface-hover) !important;
+  color: #ffffff !important;
 }
 </style>
