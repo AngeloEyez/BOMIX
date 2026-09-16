@@ -143,6 +143,10 @@ export interface BOMDisplayRow {
   mainSelectionsByOrder: Record<number, boolean>
   /** 各機種料號選定對應表 (key: model_name, value: selected_pn) */
   selections: Record<string, string>
+  /** BOM 狀態碼 (I, X, P, M) */
+  bomStatus?: string
+  /** 是否為 PROTO 物料 (當一個群組中的 location 在每個 revision 中 bom_status 都為 P) */
+  isProto?: boolean
 }
 
 /**

@@ -851,5 +851,101 @@ func TestDescribeCondition(t *testing.T) {
 	}
 }
 
+// TestMergeRevisions_AllProtoAcrossRevisions 測試跨 Revision 聚合時 PROTO 狀態之判定規則：
+// 當一個群組中的 location 在每個 revision 中 bom_status 都為 P，則聚合後 BOMStatus 為 "P"；
+// 若有任何 revision 或 location 狀態不為 P，則判定為非 PROTO（"I"）。
+func TestMergeRevisions_AllProtoAcrossRevisions(t *testing.T) {
+	svc := &Service{}
+
+	t.Run("跨多個 Revision 均為 P 則聚合後為 P", func(t *testing.T) {
+		rawData := map[int64]*rawRevisionData{
+			1: {
+				components: []db.RevisionComponent{
+					{ID: 101, RevisionID: 1, MaterialID: 1, Role: "M", Item: "1"},
+				},
+				partLocations: []db.PartLocation{
+					{ID: 1001, ComponentID: 101, Location: "R1", Type: "SMD", BomStatus: "P"},
+					{ID: 1002, ComponentID: 101, Location: "R2", Type: "SMD", BomStatus: "P"},
+				},
+			},
+			2: {
+				components: []db.RevisionComponent{
+					{ID: 201, RevisionID: 2, MaterialID: 1, Role: "M", Item: "1"},
+				},
+				partLocations: []db.PartLocation{
+					{ID: 2001, ComponentID: 201, Location: "R1", Type: "SMD", BomStatus: "P"},
+					{ID: 2002, ComponentID: 201, Location: "R2", Type: "SMD", BomStatus: "P"},
+				},
+			},
+		}
+
+		groups := svc.mergeRevisions(rawData, ViewQuery{RevisionIDs: []int64{1, 2}, ViewType: ViewAll})
+		if len(groups) != 1 {
+			t.Fatalf("期望 1 個物料群組，實際得到 %d 個", len(groups))
+		}
+		if groups[0].BOMStatus != "P" {
+			t.Errorf("所有 Revision 的 location 均為 P，期望 BOMStatus=P，實際得到 %s", groups[0].BOMStatus)
+		}
+	})
+
+	t.Run("若其中一個 Revision 的狀態為 I 則聚合後為 I", func(t *testing.T) {
+		rawData := map[int64]*rawRevisionData{
+			1: {
+				components: []db.RevisionComponent{
+					{ID: 101, RevisionID: 1, MaterialID: 1, Role: "M", Item: "1"},
+				},
+				partLocations: []db.PartLocation{
+					{ID: 1001, ComponentID: 101, Location: "R1", Type: "SMD", BomStatus: "P"},
+				},
+			},
+			2: {
+				components: []db.RevisionComponent{
+					{ID: 201, RevisionID: 2, MaterialID: 1, Role: "M", Item: "1"},
+				},
+				partLocations: []db.PartLocation{
+					{ID: 2001, ComponentID: 201, Location: "R1", Type: "SMD", BomStatus: "I"},
+				},
+			},
+		}
+
+		groups := svc.mergeRevisions(rawData, ViewQuery{RevisionIDs: []int64{1, 2}, ViewType: ViewAll})
+		if len(groups) != 1 {
+			t.Fatalf("期望 1 個物料群組，實際得到 %d 個", len(groups))
+		}
+		if groups[0].BOMStatus != "I" {
+			t.Errorf("混合狀態期望 BOMStatus=I，實際得到 %s", groups[0].BOMStatus)
+		}
+	})
+
+	t.Run("跨製程合併 (MergePartGroupsByMaterial) 均為 P 則最終為 P", func(t *testing.T) {
+		input := []ViewPartGroup{
+			{
+				MaterialID:   10,
+				MainSupplier: "Foxconn",
+				MainSupplierPN: "101-0001",
+				Type:         "SMD",
+				BOMStatus:    "P",
+				Locations:    "R1,R2",
+			},
+			{
+				MaterialID:   10,
+				MainSupplier: "Foxconn",
+				MainSupplierPN: "101-0001",
+				Type:         "BOTTOM",
+				BOMStatus:    "P",
+				Locations:    "R3",
+			},
+		}
+		merged := MergePartGroupsByMaterial(input)
+		if len(merged) != 1 {
+			t.Fatalf("期望合併為 1 個物料群組，實際得到 %d 個", len(merged))
+		}
+		if merged[0].BOMStatus != "P" {
+			t.Errorf("兩製程均為 P，期望最終 BOMStatus=P，實際得到 %s", merged[0].BOMStatus)
+		}
+	})
+}
+
+
 
 

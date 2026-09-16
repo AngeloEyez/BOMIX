@@ -247,6 +247,14 @@
   color: var(--bom-text-main) !important;
 }
 
+/* PROTO 物料專用文字色彩：當該 group 的 location 在每個 revision 均為 P 時，主料列文字設為 #8080C0 */
+:deep(.main-source-row.proto-row),
+:deep(.main-source-row.proto-row .cell-text),
+:deep(.main-source-row.proto-row .item-number),
+:deep(.main-source-row.proto-row .qty-cell) {
+  color: #8080C0 !important;
+}
+
 :deep(.second-source-row),
 :deep(.second-source-row .cell-text),
 :deep(.second-source-row .item-number),

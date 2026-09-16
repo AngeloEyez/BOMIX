@@ -419,6 +419,9 @@ export function useBOMData(options: UseBOMDataOptions) {
         })
       }
 
+      // 當群組中的 location 在每個 revision 中 bom_status 都為 P 時，part.bom_status 為 'P'
+      const isProto = (part.bom_status || '').toUpperCase() === 'P'
+
       // 1. 加入主料列 (Main Source Row)
       rows.push({
         rowId: `${parentKey}-main`,
@@ -444,6 +447,8 @@ export function useBOMData(options: UseBOMDataOptions) {
         selectionsByOrder: {},
         mainSelectionsByOrder: mainSelectionsByOrder,
         selections: selectionsMap,
+        bomStatus: part.bom_status || 'I',
+        isProto: isProto,
       })
 
       // 2. 加入 2nd 替代料列 (若未被收合，緊排於主料正下方)
@@ -486,6 +491,8 @@ export function useBOMData(options: UseBOMDataOptions) {
             selectionsByOrder: ssSelectionsByOrder,
             mainSelectionsByOrder: {},
             selections: selectionsMap,
+            bomStatus: part.bom_status || 'I',
+            isProto: false,
           })
         })
       }
@@ -751,7 +758,8 @@ export function useBOMData(options: UseBOMDataOptions) {
   function getRowClass(data: BOMDisplayRow): string {
     const zebraClass = data.groupIndex % 2 === 0 ? 'group-even' : 'group-odd'
     const sourceClass = data.isSecondSource ? 'second-source-row' : 'main-source-row'
-    return `${zebraClass} ${sourceClass}`
+    const protoClass = (!data.isSecondSource && data.isProto) ? 'proto-row' : ''
+    return [zebraClass, sourceClass, protoClass].filter(Boolean).join(' ')
   }
 
   /**
