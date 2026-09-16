@@ -67,10 +67,11 @@ export function useBOMData(options: UseBOMDataOptions) {
   const selectedBomType = ref<BOMModeType>(bomTableStore.bomType)
   const selectedView = ref(bomTableStore.view)
   const searchQuery = ref(bomTableStore.searchQuery)
+  const cclOnly = ref<boolean>(bomTableStore.cclOnly)
   const sortField = ref(bomTableStore.sortField)
   const sortOrder = ref(bomTableStore.sortOrder)
 
-  // 監聽模式、視圖與搜尋關鍵字變更，即時同步寫入快取
+  // 監聽模式、視圖、搜尋關鍵字與 CCL Only 變更，即時同步寫入快取
   watch(selectedBomType, (newType) => {
     bomTableStore.setBomType(newType)
   })
@@ -79,6 +80,9 @@ export function useBOMData(options: UseBOMDataOptions) {
   })
   watch(searchQuery, (newQuery) => {
     bomTableStore.setSearchQuery(newQuery)
+  })
+  watch(cclOnly, (newVal) => {
+    bomTableStore.setCclOnly(newVal)
   })
 
   // ── 後端原始資料與中繼資料 ────
@@ -354,7 +358,48 @@ export function useBOMData(options: UseBOMDataOptions) {
   })
 
   /**
-   * 依據搜尋關鍵字過濾並進行自然數字排序後之物料群組
+   * 檢查物料群組在任何 Revision 的任何 Model 中是否具有選中記錄 (Matrix Selection)
+   * 
+   * 判定範圍包含：
+   * 1. part.selections 陣列中存在 selected_material_id > 0 或 selected_pn / selected_material
+   * 2. part.main_selections_by_order 中存在 true
+   * 3. part.second_sources[].selections_by_order 中存在 true
+   * 
+   * @param {ViewPartGroup} part - 物料群組物件
+   * @returns {boolean} 是否包含任何勾選選中項目
+   */
+  function hasAnyMatrixSelection(part: ViewPartGroup): boolean {
+    // 1. 檢查 part.selections 陣列 (跨 revision x model 的選中紀錄)
+    if (part.selections && part.selections.length > 0) {
+      const hasSel = part.selections.some(s => 
+        (s.selected_material_id !== undefined && s.selected_material_id > 0) || 
+        Boolean(s.selected_pn) || 
+        Boolean(s.selected_material)
+      )
+      if (hasSel) return true
+    }
+
+    // 2. 檢查 main_selections_by_order (主料在各 Model 的勾選狀態)
+    if (part.main_selections_by_order) {
+      const hasMainSel = Object.values(part.main_selections_by_order).some(Boolean)
+      if (hasMainSel) return true
+    }
+
+    // 3. 檢查 second_sources 中是否有替代料被勾選
+    if (part.second_sources && part.second_sources.length > 0) {
+      for (const ss of part.second_sources) {
+        if (ss.selections_by_order) {
+          const hasSSSel = Object.values(ss.selections_by_order).some(Boolean)
+          if (hasSSSel) return true
+        }
+      }
+    }
+
+    return false
+  }
+
+  /**
+   * 依據搜尋關鍵字與 CCL Only 過濾並進行自然數字排序後之物料群組
    */
   const sortedAggregatedParts = computed<ViewPartGroup[]>(() => {
     if (!aggregatedParts.value || aggregatedParts.value.length === 0) return []
@@ -390,9 +435,24 @@ export function useBOMData(options: UseBOMDataOptions) {
       })
     }
 
+    // CCL Only 按鈕過濾 (以物料群組 Group 為單位進行過濾)
+    if (cclOnly.value) {
+      list = list.filter((part: ViewPartGroup) => {
+        // 規則 2: 在 Matrix 模式下，只要該 group 有任何 revision 有任何 selection，就忽略 CCL only 按鈕，一律顯示
+        if (selectedBomType.value === 'Matrix' && hasAnyMatrixSelection(part)) {
+          return true
+        }
+        // 規則 1: 僅保留 CCL 為 true 的物料群組
+        return Boolean(part.ccl)
+      })
+    }
+
     // 執行群組層級之自然數字排序
     return sortBOMPartGroups(list, sortField.value, sortOrder.value)
   })
+
+  /** 過濾後之主要物料群組總筆數 */
+  const filteredPartsCount = computed(() => sortedAggregatedParts.value.length)
 
   /**
    * 平鋪展平後之單列資料清單 (供 DataTable 虛擬滾動使用)
@@ -908,6 +968,7 @@ export function useBOMData(options: UseBOMDataOptions) {
     selectedBomType,
     selectedView,
     searchQuery,
+    cclOnly,
     sortField,
     sortOrder,
     // 快取 Store
@@ -915,6 +976,7 @@ export function useBOMData(options: UseBOMDataOptions) {
     // 資料
     aggregatedParts,
     sortedAggregatedParts,
+    filteredPartsCount,
     displayRows,
     currentRevisionMetadata,
     allRevisionMetadata,

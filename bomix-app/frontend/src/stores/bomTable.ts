@@ -29,6 +29,8 @@ export interface BOMTableState {
   view: string
   /** 關鍵字過濾搜尋字串 */
   searchQuery: string
+  /** 是否僅顯示 CCL 關鍵零件群組 */
+  cclOnly: boolean
   /** 垂直滾動卷軸位置 (像素) */
   scrollTop: number
   /** 水平滾動卷軸位置 (像素) */
@@ -48,6 +50,7 @@ export const useBOMTableStore = defineStore('bomTable', () => {
   const bomType = ref<BOMModeType>('EBOM')
   const view = ref<string>('all')
   const searchQuery = ref<string>('')
+  const cclOnly = ref<boolean>(false)
   const scrollTop = ref<number>(0)
   const scrollLeft = ref<number>(0)
   const sortField = ref<string>('')
@@ -61,6 +64,15 @@ export const useBOMTableStore = defineStore('bomTable', () => {
   const cachedQueryKey = ref<string>('')
 
   // ── 狀態變更方法 (Actions) ────
+
+  /**
+   * 設定是否僅顯示 CCL 關鍵零件群組
+   * 
+   * @param {boolean} only - 是否僅顯示 CCL
+   */
+  function setCclOnly(only: boolean): void {
+    cclOnly.value = only
+  }
 
   /**
    * 設定 BOM 視圖模式 ('EBOM' | 'Matrix')
@@ -236,6 +248,7 @@ export const useBOMTableStore = defineStore('bomTable', () => {
     if (partial.bomType !== undefined) bomType.value = partial.bomType
     if (partial.view !== undefined) view.value = partial.view
     if (partial.searchQuery !== undefined) searchQuery.value = partial.searchQuery
+    if (partial.cclOnly !== undefined) cclOnly.value = partial.cclOnly
     if (partial.scrollTop !== undefined) scrollTop.value = Math.max(0, partial.scrollTop)
     if (partial.scrollLeft !== undefined) scrollLeft.value = Math.max(0, partial.scrollLeft)
     if (partial.sortField !== undefined) sortField.value = partial.sortField
@@ -253,6 +266,7 @@ export const useBOMTableStore = defineStore('bomTable', () => {
     bomType.value = 'EBOM'
     view.value = 'all'
     searchQuery.value = ''
+    cclOnly.value = false
     scrollTop.value = 0
     scrollLeft.value = 0
     sortField.value = ''
@@ -267,6 +281,7 @@ export const useBOMTableStore = defineStore('bomTable', () => {
     bomType,
     view,
     searchQuery,
+    cclOnly,
     scrollTop,
     scrollLeft,
     sortField,
@@ -280,6 +295,7 @@ export const useBOMTableStore = defineStore('bomTable', () => {
     setBomType,
     setView,
     setSearchQuery,
+    setCclOnly,
     setScrollTop,
     setScrollLeft,
     setScrollPosition,

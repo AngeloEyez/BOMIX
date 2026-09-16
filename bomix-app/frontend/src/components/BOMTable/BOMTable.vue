@@ -4,6 +4,7 @@
     <BOMToolbar
       v-model:view="selectedView"
       v-model:search="searchQuery"
+      v-model:ccl-only="cclOnly"
       v-model:bom-type="selectedBomType"
       @view-change="onViewChange"
       @update:bom-type="emit('update:bom-type', $event)"
@@ -253,7 +254,7 @@
 
     <!-- Summary Statistics 底部統計列 -->
     <BOMTableSummary
-      :total-main-parts="aggregatedParts.length"
+      :total-main-parts="filteredPartsCount"
       :selected-view="selectedView"
       :smd-parts-count="smdPartsCount"
       :pth-parts-count="pthPartsCount"
@@ -336,9 +337,12 @@ const {
   selectedBomType,
   selectedView,
   searchQuery,
+  cclOnly,
   sortField,
   sortOrder,
   aggregatedParts,
+  sortedAggregatedParts,
+  filteredPartsCount,
   displayRows,
   revisionColumns,
   matrixModelColumns,
