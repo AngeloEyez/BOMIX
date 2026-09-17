@@ -236,7 +236,11 @@ export function useBOMData(options: UseBOMDataOptions) {
 
     const cols: MatrixModelColumnInfo[] = []
 
-    for (const rev of revisionColumns.value) {
+    for (let revIdx = 0; revIdx < revisionColumns.value.length; revIdx++) {
+      const rev = revisionColumns.value[revIdx]
+      // 判斷是否為整個 Matrix 表格的第一個 Revision
+      const isFirstRevision = revIdx === 0
+
       // 1. 計算該 Revision 實際存在的 Model 數量
       let count = 0
 
@@ -303,12 +307,16 @@ export function useBOMData(options: UseBOMDataOptions) {
       // 通用公式：Math.floor((count - 1) / 2)
       const centerTargetIndex = Math.floor((count - 1) / 2)
 
+      // 首欄特殊補償：僅整個 Matrix 表格第 0 欄擁有 project-start-col (2px 粗左框線)，額外補償 +2px 精確抵銷，其餘欄位維持極限最小寬度
+      const startBorderCompensation = isFirstRevision ? 2 : 0
+
       // 欄寬自適應計算 (極致緊湊：最小化兩側間距，最大化橫向可視空間)：
       let colWidth = 54
       if (count === 1) {
         // 單 Model 狀態：依專案代碼精準像素寬度 + 左右各 3px 最小視覺舒適間距 (合計 +6px)
+        // 若為首欄，補償 project-start-col 之 2px 左邊框 (保底 56px，計算 +8px)
         const textWidth = measureProjectCodeWidth(rev.projectCode || '')
-        colWidth = Math.max(54, Math.ceil(textWidth + 6))
+        colWidth = Math.max(54 + startBorderCompensation, Math.ceil(textWidth + 6 + startBorderCompensation))
       } else {
         // 多 Model 狀態：統一緊湊 54px，點擊區域與字母用量標籤比例極佳
         colWidth = 54
@@ -334,6 +342,9 @@ export function useBOMData(options: UseBOMDataOptions) {
         const qtyStr = qty > 0 ? `(${qty})` : ''
         const headerTitle = [rev.projectCode, rev.phase, rev.version].filter(Boolean).join(' ')
 
+        // 若為多 Model 狀態，且為整個表格之第 0 欄 (帶有 2px 左邊框)，亦補償 2px 保持內容區域對齊
+        const actualColWidth = (count > 1 && isFirstRevision && i === 0) ? (colWidth + startBorderCompensation) : colWidth
+
         cols.push({
           key: `matrix-rev-${rev.revisionId}-model-${i}`,
           revisionId: rev.revisionId,
@@ -350,7 +361,7 @@ export function useBOMData(options: UseBOMDataOptions) {
           isLastInRevision: i === count - 1,
           revisionModelCount: count,
           showProjectCode: i === centerTargetIndex,
-          columnWidth: colWidth,
+          columnWidth: actualColWidth,
         })
       }
     }
