@@ -6,7 +6,7 @@
       v-model:search="searchQuery"
       v-model:ccl-only="cclOnly"
       v-model:bom-type="selectedBomType"
-      @view-change="onViewChange"
+      @view-change="handleViewChange"
       @update:bom-type="emit('update:bom-type', $event)"
     />
 
@@ -388,8 +388,18 @@ const {
   columnWidths,
   tableWrapperRef,
   computeColumnWidths,
+  invalidateBaseWidthsCache,
   setupResizeListener,
 } = useColumnWidths()
+
+/**
+ * 處理視圖分類變更
+ * 清空基礎固定欄寬快取並重新自後端獲取視圖資料
+ */
+function handleViewChange(): void {
+  invalidateBaseWidthsCache()
+  onViewChange()
+}
 
 /** 執行欄寬重算 */
 function triggerColumnWidthsCompute(): void {
@@ -406,14 +416,11 @@ function triggerColumnWidthsCompute(): void {
 }
 
 // 監聽顯示列資料、模式、版本欄位或 Model 欄位變化，自動重新精確計算各欄最適欄寬
+// 基礎固定欄寬已快取，計算為 O(1) 極速純數學運算，直接同步執行可使 Vue 合併於同次 DOM 更新中完成，徹底杜絕畫面抖動與延遲
 watch(
   [() => displayRows.value, () => selectedBomType.value, () => revisionColumns.value.length, () => matrixModelColumns.value.length],
   () => {
-    nextTick(() => {
-      requestAnimationFrame(() => {
-        triggerColumnWidthsCompute()
-      })
-    })
+    triggerColumnWidthsCompute()
   },
   { deep: false }
 )
@@ -592,11 +599,12 @@ watch(
   { immediate: true }
 )
 
-// 監聽外部傳入之 revisionIds 變更：重置還原標記
+// 監聽外部傳入之 revisionIds 變更：重置還原標記與基礎固定欄寬快取
 watch(
   () => props.revisionIds,
   () => {
     hasRestoredScroll = false
+    invalidateBaseWidthsCache()
   },
   { deep: true }
 )
@@ -636,6 +644,9 @@ async function handleModelEditSaved(): Promise<void> {
 }
 
 onMounted(() => {
+  // 初次掛載立即計算欄寬
+  triggerColumnWidthsCompute()
+
   setupResizeListener(() => {
     triggerColumnWidthsCompute()
   })

@@ -14,7 +14,7 @@ export * from './types'
 
 // Composables
 export { useBOMData } from './composables/useBOMData'
-export { useColumnWidths } from './composables/useColumnWidths'
+export { useColumnWidths, type BaseColumnWidths } from './composables/useColumnWidths'
 export { useCollapseState } from './composables/useCollapseState'
 export { useBOMContextMenu } from './composables/useBOMContextMenu'
 export { useCellAutoScroll } from './composables/useCellAutoScroll'

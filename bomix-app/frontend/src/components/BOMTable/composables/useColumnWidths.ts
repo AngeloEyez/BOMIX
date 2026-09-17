@@ -38,6 +38,21 @@ export const defaultColumnWidths: ColumnWidthConfig = {
 }
 
 /**
+ * 基礎固定欄寬量測結果快取介面
+ */
+export interface BaseColumnWidths {
+  item: number
+  hhpn: number
+  supplier: number
+  supplier_pn: number
+  qty: number
+  ccl: number
+  remark: number
+  notes: number
+  maxDesc: number
+}
+
+/**
  * 建立最適欄寬計算器與響應式監聽
  */
 export function useColumnWidths() {
@@ -47,8 +62,21 @@ export function useColumnWidths() {
   /** 表格容器 template ref，用於精準讀取父層分配之可用寬度 */
   const tableWrapperRef = ref<HTMLElement | null>(null)
 
+  /** 快取的基礎固定欄位寬度量測結果 (資料未變動前完全複用，切換模式或 CCL 篩選時 0ms 完成) */
+  let cachedBaseWidths: BaseColumnWidths | null = null
+
   /** ResizeObserver 實例 */
   let resizeObserver: ResizeObserver | null = null
+
+  /**
+   * 清除基礎欄寬快取
+   * 
+   * 當切換 BOM Revision 版本組合或強制重新向後端查詢資料時呼叫，
+   * 確保下次載入新資料時重新測量最適固定欄寬。
+   */
+  function invalidateBaseWidthsCache(): void {
+    cachedBaseWidths = null
+  }
 
   /**
    * 取得 DataTable 實際可用欄寬總量
@@ -78,7 +106,132 @@ export function useColumnWidths() {
   }
 
   /**
+   * 測量所有固定欄位之基礎最大內容寬度
+   * 
+   * 採用上限提早截斷 (Early Exit) 策略：
+   * 各固定欄位均有設計上限 (如 HHPN 140px, Supplier 130px, Supplier PN 150px, Qty 55px, Remark 130px, Notes 150px)。
+   * 當某一欄位在掃描過程中已達到上限，後續列即跳過該欄位之測量，大幅減少遍歷耗時。
+   * 
+   * @param {BOMDisplayRow[]} rows - 平鋪列資料清單
+   * @returns {BaseColumnWidths} 各欄位計算後之基礎寬度
+   */
+  function measureBaseColumnWidths(rows: BOMDisplayRow[]): BaseColumnWidths {
+    const itemWidth = 44
+    const cclColWidth = 34
+
+    // 預設表頭文字寬度量測 (極緊湊間距：標題文字 + 排序箭頭 + 邊距)
+    let maxHhpn = measureTextWidth('HHPN', true) + 14
+    let maxSupplier = measureTextWidth('Supplier', true) + 14
+    let maxSupplierPn = measureTextWidth('Supplier PN', true) + 14
+    let maxQty = measureTextWidth('Qty', true) + 14
+    let maxRemark = measureTextWidth('Remark', true) + 10
+    let maxNotes = measureTextWidth('Notes', true) + 10
+    let maxDesc = measureTextWidth('Description', true) + 14
+
+    // 各欄位寬度上限門檻 (達到後即可提早結束該欄位的量測)
+    const MAX_HHPN_THRESHOLD = 140
+    const MAX_SUPPLIER_THRESHOLD = 130
+    const MAX_SUPPLIER_PN_THRESHOLD = 150
+    const MAX_QTY_THRESHOLD = 55
+    const MAX_REMARK_THRESHOLD = 130
+    const MAX_NOTES_THRESHOLD = 150
+
+    let needHhpn = true
+    let needSupplier = true
+    let needSupplierPn = true
+    let needQty = true
+    let needRemark = true
+    let needNotes = true
+
+    const len = rows.length
+    for (let i = 0; i < len; i++) {
+      const row = rows[i]
+
+      if (needHhpn && row.hhpn) {
+        const w = measureTextWidth(row.hhpn, false, true) + 8
+        if (w > maxHhpn) {
+          maxHhpn = w
+          if (maxHhpn >= MAX_HHPN_THRESHOLD) needHhpn = false
+        }
+      }
+
+      if (needSupplier && row.supplier) {
+        const w = measureTextWidth(row.supplier) + 8
+        if (w > maxSupplier) {
+          maxSupplier = w
+          if (maxSupplier >= MAX_SUPPLIER_THRESHOLD) needSupplier = false
+        }
+      }
+
+      if (needSupplierPn && row.supplier_pn) {
+        const w = measureTextWidth(row.supplier_pn, false, true) + 8
+        if (w > maxSupplierPn) {
+          maxSupplierPn = w
+          if (maxSupplierPn >= MAX_SUPPLIER_PN_THRESHOLD) needSupplierPn = false
+        }
+      }
+
+      if (needQty && row.qty !== '' && row.qty !== undefined && row.qty !== null) {
+        const w = measureTextWidth(String(row.qty), false, true) + 8
+        if (w > maxQty) {
+          maxQty = w
+          if (maxQty >= MAX_QTY_THRESHOLD) needQty = false
+        }
+      }
+
+      if (needRemark && row.remark) {
+        const w = measureTextWidth(row.remark) + 8
+        if (w > maxRemark) {
+          maxRemark = w
+          if (maxRemark >= MAX_REMARK_THRESHOLD) needRemark = false
+        }
+      }
+
+      if (needNotes && row.notes) {
+        const w = measureTextWidth(row.notes) + 8
+        if (w > maxNotes) {
+          maxNotes = w
+          if (maxNotes >= MAX_NOTES_THRESHOLD) needNotes = false
+        }
+      }
+
+      if (row.description) {
+        const w = measureTextWidth(row.description) + 8
+        if (w > maxDesc) maxDesc = w
+      }
+
+      // 若所有固定欄位皆已達上限，僅需快速檢查剩餘列的 description
+      if (!needHhpn && !needSupplier && !needSupplierPn && !needQty && !needRemark && !needNotes) {
+        for (let j = i + 1; j < len; j++) {
+          const d = rows[j].description
+          if (d) {
+            const w = measureTextWidth(d) + 8
+            if (w > maxDesc) maxDesc = w
+          }
+        }
+        break
+      }
+    }
+
+    return {
+      item: itemWidth,
+      hhpn: Math.ceil(Math.min(140, Math.max(75, maxHhpn))),
+      supplier: Math.ceil(Math.min(130, Math.max(60, maxSupplier))),
+      supplier_pn: Math.ceil(Math.min(150, Math.max(80, maxSupplierPn))),
+      qty: Math.ceil(Math.min(55, Math.max(36, maxQty))),
+      ccl: cclColWidth,
+      remark: Math.ceil(Math.min(130, Math.max(50, maxRemark))),
+      notes: Math.ceil(Math.min(150, Math.max(100, maxNotes))),
+      maxDesc: maxDesc,
+    }
+  }
+
+  /**
    * 計算各欄位最適欄寬
+   * 
+   * 固定欄寬優先讀取快取；若為首次載入則計算一次並寫入快取。
+   * 後續不論模式切換 (EBOM/Matrix)、CCL 篩選、折疊展開或視窗縮放，
+   * 均以 O(1) 常數時間瓜分可視寬度，杜絕卡頓與延遲。
    * 
    * @param {BOMDisplayRow[]} rows - 當前顯示之平鋪列資料清單
    * @param {string} [bomType='EBOM'] - 視圖模式 (EBOM 或 Matrix)
@@ -98,68 +251,32 @@ export function useColumnWidths() {
     const MIN_DESC_WIDTH = 220
     const MIN_LOC_WIDTH = 90
 
-    // 1. 固定欄位最小寬度計算 (序號欄)
-    const itemWidth = 44
-
-    // 表頭文字寬度量測 (極緊湊間距：標題文字 + 排序箭頭 + 邊距)
-    let maxHhpn = measureTextWidth('HHPN', true) + 14
-    let maxSupplier = measureTextWidth('Supplier', true) + 14
-    let maxSupplierPn = measureTextWidth('Supplier PN', true) + 14
-    let maxQty = measureTextWidth('Qty', true) + 14
-    let maxRemark = measureTextWidth('Remark', true) + 10
-    let maxNotes = measureTextWidth('Notes', true) + 10
-    let maxDesc = measureTextWidth('Description', true) + 14
-
-    // 遍歷當前所有顯示列以測量實際內容寬度 (料號數據使用 Cascadia Mono 等寬量測，左右內距各 3px)
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i]
-      if (row.hhpn) {
-        const w = measureTextWidth(row.hhpn, false, true) + 8
-        if (w > maxHhpn) maxHhpn = w
-      }
-      if (row.supplier) {
-        const w = measureTextWidth(row.supplier) + 8
-        if (w > maxSupplier) maxSupplier = w
-      }
-      if (row.supplier_pn) {
-        const w = measureTextWidth(row.supplier_pn, false, true) + 8
-        if (w > maxSupplierPn) maxSupplierPn = w
-      }
-      if (row.qty !== '' && row.qty !== undefined && row.qty !== null) {
-        const w = measureTextWidth(String(row.qty), false, true) + 8
-        if (w > maxQty) maxQty = w
-      }
-      if (row.remark) {
-        const w = measureTextWidth(row.remark) + 8
-        if (w > maxRemark) maxRemark = w
-      }
-      if (row.notes) {
-        const w = measureTextWidth(row.notes) + 8
-        if (w > maxNotes) maxNotes = w
-      }
-      if (row.description) {
-        const w = measureTextWidth(row.description) + 8
-        if (w > maxDesc) maxDesc = w
-      }
+    // 1. 若尚未快取基礎欄寬且存在資料列，執行初次測量並寫入快取
+    if (!cachedBaseWidths && rows && rows.length > 0) {
+      cachedBaseWidths = measureBaseColumnWidths(rows)
     }
 
-    // 限制各固定欄位之緊湊安全寬度
-    const hhpnColWidth = Math.ceil(Math.min(140, Math.max(75, maxHhpn)))
-    const supplierColWidth = Math.ceil(Math.min(130, Math.max(60, maxSupplier)))
-    const supplierPnColWidth = Math.ceil(Math.min(150, Math.max(80, maxSupplierPn)))
-    const qtyColWidth = Math.ceil(Math.min(55, Math.max(36, maxQty)))
-    const cclColWidth = 34
-    const remarkColWidth = Math.ceil(Math.min(130, Math.max(50, maxRemark)))
-    const notesColWidth = Math.ceil(Math.min(150, Math.max(100, maxNotes)))
+    // 取得基礎欄寬 (若無資料列則使用預設配置備援)
+    const base = cachedBaseWidths || {
+      item: defaultColumnWidths.item,
+      hhpn: defaultColumnWidths.hhpn,
+      supplier: defaultColumnWidths.supplier,
+      supplier_pn: defaultColumnWidths.supplier_pn,
+      qty: defaultColumnWidths.qty,
+      ccl: defaultColumnWidths.ccl,
+      remark: defaultColumnWidths.remark,
+      notes: defaultColumnWidths.notes,
+      maxDesc: defaultColumnWidths.description,
+    }
 
-    // 根據 EBOM / Matrix 模式決定固定欄位寬度總和
-    let fixedTotal = itemWidth + hhpnColWidth + supplierColWidth + supplierPnColWidth
+    // 2. 根據 EBOM / Matrix 模式決定固定欄位寬度總和
+    let fixedTotal = base.item + base.hhpn + base.supplier + base.supplier_pn
 
     if (bomType === 'EBOM') {
       const totalQtyWidth = totalEBOMRevisionWidth > 0
         ? totalEBOMRevisionWidth
         : Math.max(revisionCount, 1) * 54
-      fixedTotal += totalQtyWidth + cclColWidth + remarkColWidth
+      fixedTotal += totalQtyWidth + base.ccl + base.remark
     } else {
       let totalRevWidth = 0
       if (totalMatrixModelWidth > 0) {
@@ -168,12 +285,12 @@ export function useColumnWidths() {
         const modelCount = matrixModelColumnCount > 0 ? matrixModelColumnCount : Math.max(revisionCount, 1)
         totalRevWidth = modelCount * 72
       }
-      fixedTotal += qtyColWidth + totalRevWidth + notesColWidth
+      fixedTotal += base.qty + totalRevWidth + base.notes
     }
 
     const totalRequiredMinWidth = fixedTotal + MIN_LOC_WIDTH + MIN_DESC_WIDTH
 
-    // 2. 取得可用可視寬度
+    // 3. 取得可用可視寬度
     const visibleWidth = getWorkspaceVisibleWidth()
 
     let finalDescWidth = MIN_DESC_WIDTH
@@ -197,7 +314,7 @@ export function useColumnWidths() {
         let locW = locInit
 
         // 檢查 Description 是否已足夠完整顯示其所有資料
-        const descNeeded = Math.max(MIN_DESC_WIDTH, Math.ceil(maxDesc + 14))
+        const descNeeded = Math.max(MIN_DESC_WIDTH, Math.ceil(base.maxDesc + 14))
         if (descW > descNeeded) {
           const surplus = descW - descNeeded
           descW = descNeeded
@@ -213,16 +330,16 @@ export function useColumnWidths() {
     }
 
     columnWidths.value = {
-      item: itemWidth,
-      hhpn: hhpnColWidth,
+      item: base.item,
+      hhpn: base.hhpn,
       description: finalDescWidth,
-      supplier: supplierColWidth,
-      supplier_pn: supplierPnColWidth,
-      qty: qtyColWidth,
+      supplier: base.supplier,
+      supplier_pn: base.supplier_pn,
+      qty: base.qty,
       locations: finalLocWidth,
-      ccl: cclColWidth,
-      remark: remarkColWidth,
-      notes: notesColWidth,
+      ccl: base.ccl,
+      remark: base.remark,
+      notes: base.notes,
       models: {}
     }
   }
@@ -272,6 +389,8 @@ export function useColumnWidths() {
     columnWidths,
     tableWrapperRef,
     computeColumnWidths,
+    invalidateBaseWidthsCache,
     setupResizeListener,
   }
 }
+

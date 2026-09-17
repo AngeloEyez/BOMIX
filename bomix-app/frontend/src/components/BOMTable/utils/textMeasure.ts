@@ -14,6 +14,20 @@
 /** 離屏 Canvas 單例快取，避免重複建立 Canvas 元素 */
 let measureCanvas: HTMLCanvasElement | null = null
 
+/** 文字長度量測記憶體快取 (Key: `${isHeader}:${isMono}:${text}`, Value: width) */
+const measureCache = new Map<string, number>()
+
+/** 專案代碼文字量測記憶體快取 (Key: text, Value: width) */
+const projectCodeCache = new Map<string, number>()
+
+/**
+ * 清空文字量測記憶體快取
+ */
+export function clearMeasureCache(): void {
+  measureCache.clear()
+  projectCodeCache.clear()
+}
+
 /**
  * 測量文字在指定字體下的像素寬度
  * 
@@ -25,18 +39,28 @@ let measureCanvas: HTMLCanvasElement | null = null
 export function measureTextWidth(text: string, isHeader = false, isMono = false): number {
   if (!text) return 0
 
+  const cacheKey = `${isHeader ? 1 : 0}:${isMono ? 1 : 0}:${text}`
+  const cached = measureCache.get(cacheKey)
+  if (cached !== undefined) {
+    return cached
+  }
+
   if (!measureCanvas && typeof document !== 'undefined') {
     measureCanvas = document.createElement('canvas')
   }
 
   if (!measureCanvas) {
     // 伺服器端渲染 (SSR) 或無 DOM 環境下的字元粗估備援
-    return text.length * (isMono ? 7.2 : 7)
+    const width = text.length * (isMono ? 7.2 : 7)
+    measureCache.set(cacheKey, width)
+    return width
   }
 
   const ctx = measureCanvas.getContext('2d')
   if (!ctx) {
-    return text.length * (isMono ? 7.2 : 7)
+    const width = text.length * (isMono ? 7.2 : 7)
+    measureCache.set(cacheKey, width)
+    return width
   }
 
   if (isMono) {
@@ -47,7 +71,9 @@ export function measureTextWidth(text: string, isHeader = false, isMono = false)
       : '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
   }
 
-  return ctx.measureText(text).width
+  const width = ctx.measureText(text).width
+  measureCache.set(cacheKey, width)
+  return width
 }
 
 /**
@@ -59,20 +85,31 @@ export function measureTextWidth(text: string, isHeader = false, isMono = false)
 export function measureProjectCodeWidth(text: string): number {
   if (!text) return 0
 
+  const cached = projectCodeCache.get(text)
+  if (cached !== undefined) {
+    return cached
+  }
+
   if (!measureCanvas && typeof document !== 'undefined') {
     measureCanvas = document.createElement('canvas')
   }
 
   if (!measureCanvas) {
-    return text.length * 6.2
+    const width = text.length * 6.2
+    projectCodeCache.set(text, width)
+    return width
   }
 
   const ctx = measureCanvas.getContext('2d')
   if (!ctx) {
-    return text.length * 6.2
+    const width = text.length * 6.2
+    projectCodeCache.set(text, width)
+    return width
   }
 
   ctx.font = '700 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  return ctx.measureText(text).width
+  const width = ctx.measureText(text).width
+  projectCodeCache.set(text, width)
+  return width
 }
 
