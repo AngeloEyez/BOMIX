@@ -72,7 +72,19 @@
           title="Export BOM"
         />
 
-        <!-- 3. Settings -->
+        <!-- 3. AI (僅在系列開啟時顯示/可用，與 BOM/Export 同級) -->
+        <Button
+          v-if="appStore.isOpen"
+          icon="pi pi-sparkles"
+          label="AI"
+          text
+          :severity="isAIChatActive ? 'primary' : 'secondary'"
+          :class="['title-bar-btn', { 'title-bar-btn-active': isAIChatActive }]"
+          @click="handleAIChatClick"
+          title="AI Assistant"
+        />
+
+        <!-- 4. Settings -->
         <Button
           icon="pi pi-cog"
           text
@@ -173,7 +185,7 @@ function handleTitleBarDblClick(event: MouseEvent): void {
  * 判斷 Main View (BOM) 按鈕之 Active 高亮狀態
  */
 const isMainViewActive = computed(() => {
-  if (route.path === '/settings') return false
+  if (route.path === '/settings' || route.path === '/ai-chat') return false
   if (route.path === '/workspace') {
     return appStore.workspaceView === 'table'
   }
@@ -185,6 +197,13 @@ const isMainViewActive = computed(() => {
  */
 const isExportActive = computed(() => {
   return route.path === '/workspace' && appStore.workspaceView === 'export'
+})
+
+/**
+ * 判斷 AI 對話按鈕之 Active 高亮狀態
+ */
+const isAIChatActive = computed(() => {
+  return route.path === '/ai-chat'
 })
 
 /**
@@ -270,6 +289,16 @@ function handleExportClick(): void {
   appStore.setWorkspaceView('export')
   if (route.path !== '/workspace') {
     router.push('/workspace')
+  }
+}
+
+/**
+ * 處理 AI Assistant 按鈕點擊事件
+ */
+function handleAIChatClick(): void {
+  if (!appStore.isOpen) return
+  if (route.path !== '/ai-chat') {
+    router.push('/ai-chat')
   }
 }
 

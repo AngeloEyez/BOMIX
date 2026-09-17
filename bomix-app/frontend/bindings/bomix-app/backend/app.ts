@@ -12,6 +12,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as ai$0 from "./ai/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as db$0 from "./db/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -23,6 +26,34 @@ import * as context$0 from "../../context/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
+
+/**
+ * AIChatSend 接收前端對話歷史，非同步啟動 AI Agentic Loop 進行推論與查詢
+ * 
+ * 流程：
+ * 1. 檢查 AI 設定（URL 與 Key）
+ * 2. 檢查目前是否已開啟系列資料庫
+ * 3. 中斷任何先前正在執行的對話任務
+ * 4. 建立 Agent 實例，在背景 goroutine 中調用 agent.Run
+ * 5. 立即回傳 nil，結果即時透過 ai:chunk / ai:tool_call / ai:tool_result / ai:done / ai:error 等 Wails 事件推送
+ */
+export function AIChatSend(messages: ai$0.ChatMessage[] | null): $CancellablePromise<void> {
+    return $Call.ByID(3543463388, messages);
+}
+
+/**
+ * AIChatStop 中斷當前正在執行的 AI 生成或工具調用
+ */
+export function AIChatStop(): $CancellablePromise<void> {
+    return $Call.ByID(216978574);
+}
+
+/**
+ * AIChatTestConnection 測試 AI 端點與 API Key 是否有效
+ */
+export function AIChatTestConnection(): $CancellablePromise<void> {
+    return $Call.ByID(2724738698);
+}
 
 /**
  * CancelTask cancels a task

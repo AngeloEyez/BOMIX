@@ -24,6 +24,12 @@ const routes = [
     component: () => import('../views/SettingsPage.vue'),
     meta: { title: 'Settings' },
   },
+  {
+    path: '/ai-chat',
+    name: 'ai-chat',
+    component: () => import('../views/AIChatPage.vue'),
+    meta: { title: 'AI Assistant' },
+  },
 ]
 
 const router = createRouter({

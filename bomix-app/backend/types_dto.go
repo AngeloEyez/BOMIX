@@ -165,6 +165,19 @@ type Settings struct {
 	AutoOpenLastFile        bool               `json:"autoOpenLastFile"`
 	LastOpenedFile          string             `json:"lastOpenedFile"`
 	AutoImportPreviousMatrix bool              `json:"autoImportPreviousMatrix"`
+	AI                       *AISettings        `json:"ai,omitempty"`
+}
+
+// AISettings represents AI assistant settings for the frontend
+type AISettings struct {
+	Enabled     bool    `json:"enabled"`
+	BaseURL     string  `json:"baseUrl"`
+	APIKey      string  `json:"apiKey"`
+	Model       string  `json:"model"`
+	Temperature float64 `json:"temperature"`
+	MaxTokens   int     `json:"maxTokens"`
+	Timeout     int     `json:"timeout"`
+	Language    string  `json:"language"`
 }
 
 // ImportSettings represents import settings for the frontend
@@ -184,3 +197,4 @@ type RecentFilesSettings struct {
 	MaxRecentFiles int      `json:"maxRecentFiles"`
 	RecentFiles    []string `json:"recentFiles"`
 }
+

@@ -137,6 +137,133 @@
           />
         </div>
       </div>
+
+      <!-- 6. AI Assistant Settings -->
+      <div class="settings-card col-span-full">
+        <div class="card-header">
+          <i class="pi pi-sparkles card-icon text-primary-500"></i>
+          <span class="card-title">AI Assistant (智慧助手)</span>
+        </div>
+
+        <!-- 啟用開關 -->
+        <div class="checkbox-row" @click="settings.ai.enabled = !settings.ai.enabled">
+          <Checkbox
+            id="ai-enabled"
+            v-model="settings.ai.enabled"
+            :binary="true"
+            @click.stop
+          />
+          <label for="ai-enabled" class="checkbox-label" @click.stop="settings.ai.enabled = !settings.ai.enabled">
+            啟用 AI 對話助手 (Enable AI Assistant)
+          </label>
+        </div>
+
+        <!-- 回應語言偏好 -->
+        <div class="setting-row">
+          <label for="ai-language" class="setting-label">回應語言 (Response Language)</label>
+          <Select
+            id="ai-language"
+            v-model="settings.ai.language"
+            :options="aiLanguageOptions"
+            option-label="label"
+            option-value="value"
+            size="small"
+            class="compact-select-wide"
+          />
+        </div>
+
+        <!-- API Base URL -->
+        <div class="setting-row">
+          <label for="ai-base-url" class="setting-label">API Base URL</label>
+          <InputText
+            id="ai-base-url"
+            v-model="settings.ai.baseUrl"
+            placeholder="https://api.openai.com/v1"
+            size="small"
+            class="compact-input-text"
+          />
+        </div>
+
+        <!-- API Key -->
+        <div class="setting-row">
+          <label for="ai-api-key" class="setting-label">API Key</label>
+          <Password
+            id="ai-api-key"
+            v-model="settings.ai.apiKey"
+            placeholder="sk-..."
+            :feedback="false"
+            toggle-mask
+            size="small"
+            class="compact-password"
+            input-class="compact-password-input"
+          />
+        </div>
+
+        <!-- Model -->
+        <div class="setting-row">
+          <label for="ai-model" class="setting-label">Model</label>
+          <InputText
+            id="ai-model"
+            v-model="settings.ai.model"
+            placeholder="gpt-4o-mini"
+            size="small"
+            class="compact-input-text"
+          />
+        </div>
+
+        <!-- Timeout (秒) -->
+        <div class="setting-row">
+          <label for="ai-timeout" class="setting-label">Timeout (秒 / Seconds)</label>
+          <InputNumber
+            id="ai-timeout"
+            v-model="settings.ai.timeout"
+            :showButtons="true"
+            :min="5"
+            :max="300"
+            :step="5"
+            size="small"
+            class="compact-input-number"
+          />
+        </div>
+
+        <!-- Temperature -->
+        <div class="setting-row">
+          <label for="ai-temperature" class="setting-label">Temperature (0.0 - 2.0)</label>
+          <InputNumber
+            id="ai-temperature"
+            v-model="settings.ai.temperature"
+            :showButtons="true"
+            :min="0"
+            :max="2"
+            :step="0.1"
+            :maxFractionDigits="2"
+            size="small"
+            class="compact-input-number"
+          />
+        </div>
+
+        <!-- 連線測試按鈕與狀態反饋 -->
+        <div class="setting-row test-connection-row">
+          <div class="test-status-text">
+            <span v-if="testAIResult?.success" class="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium text-xs">
+              <i class="pi pi-check-circle"></i>
+              {{ testAIResult.message }}
+            </span>
+            <span v-else-if="testAIResult && !testAIResult.success" class="text-rose-500 dark:text-rose-400 flex items-center gap-1 font-medium text-xs">
+              <i class="pi pi-exclamation-circle"></i>
+              {{ testAIResult.message }}
+            </span>
+          </div>
+          <Button
+            label="測試連線"
+            icon="pi pi-check-circle"
+            size="small"
+            outlined
+            :loading="isTestingAI"
+            @click="testConnection"
+          />
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -147,15 +274,23 @@ import Select from 'primevue/select'
 import SelectButton from 'primevue/selectbutton'
 import Checkbox from 'primevue/checkbox'
 import InputNumber from 'primevue/inputnumber'
-import { GetSettings, UpdateSettings, type Settings } from '../services/api'
+import InputText from 'primevue/inputtext'
+import Password from 'primevue/password'
+import Button from 'primevue/button'
+import { GetSettings, UpdateSettings, AIChatTestConnection, type Settings, type AISettings } from '../services/api'
 import { useAppStore } from '../stores/app'
 import { useLogStore } from '../stores/log'
 
 const appStore = useAppStore()
 const logStore = useLogStore()
 
+// 內部表單設定介面，確保 AI 欄位完整存在
+interface SettingsForm extends Settings {
+  ai: AISettings
+}
+
 // Settings state
-const settings = ref<Settings>({
+const settings = ref<SettingsForm>({
   theme: 'light',
   import: {
     confirmOverwrite: true,
@@ -172,6 +307,16 @@ const settings = ref<Settings>({
   autoOpenLastFile: false,
   lastOpenedFile: '',
   autoImportPreviousMatrix: false,
+  ai: {
+    enabled: false,
+    baseUrl: 'https://api.openai.com/v1',
+    apiKey: '',
+    model: 'gpt-4o-mini',
+    temperature: 0.1,
+    maxTokens: 4096,
+    timeout: 60,
+    language: 'zh-TW',
+  },
 })
 
 // Theme options
@@ -188,6 +333,31 @@ const logLevelOptions = [
   { label: 'Warning', value: 'warn' },
   { label: 'Error', value: 'error' },
 ]
+
+// AI 回應語言選項
+const aiLanguageOptions = [
+  { label: '繁體中文 (Traditional Chinese)', value: 'zh-TW' },
+  { label: '簡體中文 (Simplified Chinese)', value: 'zh-CN' },
+  { label: 'English', value: 'en' },
+]
+
+const isTestingAI = ref(false)
+const testAIResult = ref<{ success: boolean; message: string } | null>(null)
+
+async function testConnection(): Promise<void> {
+  isTestingAI.value = true
+  testAIResult.value = null
+  try {
+    // 先儲存目前填入的設定，確保後端拿到最新資料
+    await UpdateSettings(settings.value)
+    await AIChatTestConnection()
+    testAIResult.value = { success: true, message: '連線成功！API 端點與金鑰有效。' }
+  } catch (err: any) {
+    testAIResult.value = { success: false, message: err?.message || '連線測試失敗' }
+  } finally {
+    isTestingAI.value = false
+  }
+}
 
 async function loadSettings(): Promise<boolean> {
   try {
@@ -207,6 +377,16 @@ async function loadSettings(): Promise<boolean> {
       recentFiles: {
         maxRecentFiles: data.recentFiles?.maxRecentFiles ?? 10,
         recentFiles: data.recentFiles?.recentFiles ?? [],
+      },
+      ai: {
+        enabled: data.ai?.enabled ?? false,
+        baseUrl: data.ai?.baseUrl || 'https://api.openai.com/v1',
+        apiKey: data.ai?.apiKey || '',
+        model: data.ai?.model || 'gpt-4o-mini',
+        temperature: data.ai?.temperature ?? 0.1,
+        maxTokens: data.ai?.maxTokens ?? 4096,
+        timeout: data.ai?.timeout ?? 60,
+        language: data.ai?.language || 'zh-TW',
       },
     }
     
@@ -476,6 +656,46 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.compact-select-wide {
+  width: 220px !important;
+  min-width: 220px !important;
+  height: 26px !important;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+:deep(.compact-select-wide .p-select-label) {
+  padding: 0.15rem 0.45rem !important;
+  font-size: 0.8rem !important;
+}
+
+.compact-input-text {
+  width: 220px !important;
+  max-width: 220px !important;
+  height: 26px !important;
+  padding: 0.1rem 0.45rem !important;
+  font-size: 0.78rem !important;
+}
+
+.compact-password {
+  width: 220px !important;
+  max-width: 220px !important;
+  height: 26px !important;
+}
+
+:deep(.compact-password .p-password-input) {
+  width: 100% !important;
+  height: 26px !important;
+  padding: 0.1rem 1.8rem 0.1rem 0.45rem !important;
+  font-size: 0.78rem !important;
+}
+
+.test-connection-row {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--surface-border, rgba(125, 125, 125, 0.15));
 }
 </style>
 

@@ -132,6 +132,32 @@ func mergeWithDefaults(cfg *Config, md toml.MetaData) {
 	if !md.IsDefined("auto_import_previous_matrix") {
 		cfg.AutoImportPreviousMatrix = DefaultConfig.AutoImportPreviousMatrix
 	}
+
+	// AI settings
+	if !md.IsDefined("ai", "enabled") {
+		cfg.AI.Enabled = DefaultConfig.AI.Enabled
+	}
+	if !md.IsDefined("ai", "base_url") {
+		cfg.AI.BaseURL = DefaultConfig.AI.BaseURL
+	}
+	if !md.IsDefined("ai", "api_key") {
+		cfg.AI.APIKey = DefaultConfig.AI.APIKey
+	}
+	if !md.IsDefined("ai", "model") {
+		cfg.AI.Model = DefaultConfig.AI.Model
+	}
+	if !md.IsDefined("ai", "temperature") {
+		cfg.AI.Temperature = DefaultConfig.AI.Temperature
+	}
+	if !md.IsDefined("ai", "max_tokens") {
+		cfg.AI.MaxTokens = DefaultConfig.AI.MaxTokens
+	}
+	if !md.IsDefined("ai", "timeout") {
+		cfg.AI.Timeout = DefaultConfig.AI.Timeout
+	}
+	if !md.IsDefined("ai", "language") {
+		cfg.AI.Language = DefaultConfig.AI.Language
+	}
 }
 
 // createDeltaMap creates a map with only non-default values for TOML encoding
@@ -197,6 +223,45 @@ func createDeltaMap(cfg *Config) map[string]interface{} {
 	}
 	if cfg.AutoImportPreviousMatrix != DefaultConfig.AutoImportPreviousMatrix {
 		delta["auto_import_previous_matrix"] = cfg.AutoImportPreviousMatrix
+	}
+
+	// AI settings
+	aiChanged := false
+	aiMap := make(map[string]interface{})
+	if cfg.AI.Enabled != DefaultConfig.AI.Enabled {
+		aiMap["enabled"] = cfg.AI.Enabled
+		aiChanged = true
+	}
+	if cfg.AI.BaseURL != DefaultConfig.AI.BaseURL {
+		aiMap["base_url"] = cfg.AI.BaseURL
+		aiChanged = true
+	}
+	if cfg.AI.APIKey != DefaultConfig.AI.APIKey {
+		aiMap["api_key"] = cfg.AI.APIKey
+		aiChanged = true
+	}
+	if cfg.AI.Model != DefaultConfig.AI.Model {
+		aiMap["model"] = cfg.AI.Model
+		aiChanged = true
+	}
+	if cfg.AI.Temperature != DefaultConfig.AI.Temperature {
+		aiMap["temperature"] = cfg.AI.Temperature
+		aiChanged = true
+	}
+	if cfg.AI.MaxTokens != DefaultConfig.AI.MaxTokens {
+		aiMap["max_tokens"] = cfg.AI.MaxTokens
+		aiChanged = true
+	}
+	if cfg.AI.Timeout != DefaultConfig.AI.Timeout {
+		aiMap["timeout"] = cfg.AI.Timeout
+		aiChanged = true
+	}
+	if cfg.AI.Language != DefaultConfig.AI.Language {
+		aiMap["language"] = cfg.AI.Language
+		aiChanged = true
+	}
+	if aiChanged {
+		delta["ai"] = aiMap
 	}
 
 	return delta

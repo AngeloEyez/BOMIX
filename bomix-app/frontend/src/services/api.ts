@@ -159,6 +159,26 @@ export interface Settings {
   autoOpenLastFile: boolean
   lastOpenedFile: string
   autoImportPreviousMatrix: boolean
+  ai?: AISettings
+}
+
+export interface AISettings {
+  enabled: boolean
+  baseUrl: string
+  apiKey: string
+  model: string
+  temperature: number
+  maxTokens: number
+  timeout: number
+  language: string
+}
+
+export interface AIChatMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool'
+  content: string
+  tool_calls?: any[]
+  tool_call_id?: string
+  name?: string
 }
 
 export interface ImportSettings {
@@ -696,3 +716,40 @@ export function GetVersion(): string {
     return 'unknown'
   }
 }
+
+// ==================== AI Assistant ====================
+
+/**
+ * 發送對話訊息歷史至後端 AI 引擎
+ * @param messages 包含 system/user/assistant/tool 的完整歷史
+ */
+export async function AIChatSend(messages: AIChatMessage[]): Promise<void> {
+  try {
+    await (App as any).AIChatSend(messages)
+  } catch (error) {
+    handleApiError(error, 'AIChatSend')
+  }
+}
+
+/**
+ * 中斷當前正在執行的 AI 生成或工具調用
+ */
+export async function AIChatStop(): Promise<void> {
+  try {
+    await (App as any).AIChatStop()
+  } catch (error) {
+    handleApiError(error, 'AIChatStop')
+  }
+}
+
+/**
+ * 測試 AI API 端點與金鑰連線
+ */
+export async function AIChatTestConnection(): Promise<void> {
+  try {
+    await (App as any).AIChatTestConnection()
+  } catch (error) {
+    handleApiError(error, 'AIChatTestConnection')
+  }
+}
+

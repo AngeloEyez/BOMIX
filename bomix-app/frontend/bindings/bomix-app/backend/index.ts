@@ -7,6 +7,7 @@ export {
 };
 
 export type {
+    AISettings,
     BomRevision,
     ExportOptions,
     ImportResult,

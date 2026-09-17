@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"bomix-app/backend/ai"
 	"bomix-app/backend/config"
 	"bomix-app/backend/db"
 	"bomix-app/backend/excel"
@@ -35,6 +36,8 @@ type App struct {
 	mu           sync.RWMutex
 	confirmChans map[string]chan bool
 	confirmMu    sync.Mutex
+	aiCancelFunc context.CancelFunc
+	aiMu         sync.Mutex
 }
 
 // NewApp creates a new App instance
@@ -1435,6 +1438,16 @@ func (a *App) GetSettings() (*Settings, error) {
 			MaxRecentFiles: a.cfg.RecentFiles.MaxRecentFiles,
 			RecentFiles:    a.cfg.RecentFiles.RecentFiles,
 		},
+		AI: &AISettings{
+			Enabled:     a.cfg.AI.Enabled,
+			BaseURL:     a.cfg.AI.BaseURL,
+			APIKey:      maskAPIKey(a.cfg.AI.APIKey),
+			Model:       a.cfg.AI.Model,
+			Temperature: a.cfg.AI.Temperature,
+			MaxTokens:   a.cfg.AI.MaxTokens,
+			Timeout:     a.cfg.AI.Timeout,
+			Language:    a.cfg.AI.Language,
+		},
 	}, nil
 }
 
@@ -1476,6 +1489,30 @@ func (a *App) UpdateSettings(settings *Settings) error {
 			a.cfg.RecentFiles.RecentFiles = settings.RecentFiles.RecentFiles
 		}
 	}
+	if settings.AI != nil {
+		a.cfg.AI.Enabled = settings.AI.Enabled
+		if settings.AI.BaseURL != "" {
+			a.cfg.AI.BaseURL = settings.AI.BaseURL
+		}
+		if settings.AI.APIKey != "" && !strings.HasPrefix(settings.AI.APIKey, "****") {
+			a.cfg.AI.APIKey = settings.AI.APIKey
+		}
+		if settings.AI.Model != "" {
+			a.cfg.AI.Model = settings.AI.Model
+		}
+		if settings.AI.Temperature >= 0 {
+			a.cfg.AI.Temperature = settings.AI.Temperature
+		}
+		if settings.AI.MaxTokens > 0 {
+			a.cfg.AI.MaxTokens = settings.AI.MaxTokens
+		}
+		if settings.AI.Timeout > 0 {
+			a.cfg.AI.Timeout = settings.AI.Timeout
+		}
+		if settings.AI.Language != "" {
+			a.cfg.AI.Language = settings.AI.Language
+		}
+	}
 	a.cfg.AutoOpenLastFile = settings.AutoOpenLastFile
 	a.cfg.LastOpenedFile = settings.LastOpenedFile
 	a.cfg.AutoImportPreviousMatrix = settings.AutoImportPreviousMatrix
@@ -1490,6 +1527,17 @@ func (a *App) UpdateSettings(settings *Settings) error {
 }
 
 // ==================== Helpers ====================
+
+// maskAPIKey 遮罩 API 金鑰以保護隱私，只顯示末 4 碼
+func maskAPIKey(key string) string {
+	if key == "" {
+		return ""
+	}
+	if len(key) <= 4 {
+		return "****"
+	}
+	return "****" + key[len(key)-4:]
+}
 
 // addToRecentFiles adds a file to the recent files list
 func (a *App) addToRecentFiles(path string) {
@@ -1541,3 +1589,96 @@ func (a *App) getSeriesInfoFromPath(path string) (*SeriesInfoWithTime, error) {
 		LastOpened: info.ModTime().Format(time.RFC3339),
 	}, nil
 }
+
+// ==================== AI Assistant ====================
+
+// AIChatSend 接收前端對話歷史，非同步啟動 AI Agentic Loop 進行推論與查詢
+//
+// 流程：
+// 1. 檢查 AI 設定（URL 與 Key）
+// 2. 檢查目前是否已開啟系列資料庫
+// 3. 中斷任何先前正在執行的對話任務
+// 4. 建立 Agent 實例，在背景 goroutine 中調用 agent.Run
+// 5. 立即回傳 nil，結果即時透過 ai:chunk / ai:tool_call / ai:tool_result / ai:done / ai:error 等 Wails 事件推送
+func (a *App) AIChatSend(messages []ai.ChatMessage) error {
+	a.mu.RLock()
+	database := a.db
+	a.mu.RUnlock()
+
+	if database == nil {
+		return errors.New("請先開啟系列資料庫，AI 才能讀取物料與專案數據")
+	}
+
+	if a.cfg.AI.BaseURL == "" {
+		return errors.New("未設定 AI API Base URL，請至設定頁面設定")
+	}
+
+	// 確保先前任務已中斷
+	a.aiMu.Lock()
+	if a.aiCancelFunc != nil {
+		a.aiCancelFunc()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	a.aiCancelFunc = cancel
+	a.aiMu.Unlock()
+
+	client := ai.NewClient(a.cfg.AI.BaseURL, a.cfg.AI.APIKey, a.cfg.AI.Model, a.cfg.AI.Timeout)
+	executor := ai.NewToolExecutor(database, a.logger)
+	systemPrompt := ai.GetSystemPrompt(a.cfg.AI.Language)
+	agent := ai.NewAgent(client, executor, systemPrompt, 8, a.cfg.AI.Temperature, a.cfg.AI.MaxTokens)
+
+	go func() {
+		defer func() {
+			a.aiMu.Lock()
+			a.aiCancelFunc = nil
+			a.aiMu.Unlock()
+		}()
+
+		if err := agent.Run(ctx, messages, a); err != nil {
+			a.logger.Error("AI Agent 執行錯誤", "error", err)
+		}
+	}()
+
+	return nil
+}
+
+// AIChatStop 中斷當前正在執行的 AI 生成或工具調用
+func (a *App) AIChatStop() error {
+	a.aiMu.Lock()
+	defer a.aiMu.Unlock()
+
+	if a.aiCancelFunc != nil {
+		a.aiCancelFunc()
+		a.aiCancelFunc = nil
+	}
+	return nil
+}
+
+// AIChatTestConnection 測試 AI 端點與 API Key 是否有效
+func (a *App) AIChatTestConnection() error {
+	if a.cfg.AI.BaseURL == "" {
+		return errors.New("API Base URL 不能為空")
+	}
+
+	timeoutSec := a.cfg.AI.Timeout
+	if timeoutSec <= 0 {
+		timeoutSec = 15
+	}
+	client := ai.NewClient(a.cfg.AI.BaseURL, a.cfg.AI.APIKey, a.cfg.AI.Model, timeoutSec)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
+	defer cancel()
+
+	_, err := client.SendChat(ctx, ai.ChatCompletionRequest{
+		Messages: []ai.ChatMessage{
+			{Role: "user", Content: "Hi, this is a connection test. Reply with 'OK'."},
+		},
+		MaxTokens: 10,
+	})
+	if err != nil {
+		return fmt.Errorf("連線測試失敗: %w", err)
+	}
+
+	return nil
+}
+
