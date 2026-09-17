@@ -19,10 +19,10 @@
     </div>
 
     <!-- Header / Title Bar -->
-    <header class="header">
+    <header class="header" @dblclick="handleTitleBarDblClick">
       <div class="header-left">
         <div class="logo">
-          <i class="pi pi-box"></i>
+          <img src="/app-logo.png" alt="BOMIX" class="app-header-logo" />
           <span v-if="appStore.seriesInfo?.name" class="logo-text">
             {{ appStore.seriesInfo.name }}
           </span>
@@ -81,6 +81,9 @@
           @click="handleSettingsClick"
           title="Settings"
         />
+
+        <!-- 4. Windows 11 原生風格視窗控制三鍵 (最小化、最大化/還原、關閉) -->
+        <WindowControls />
       </div>
     </header>
 
@@ -123,6 +126,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Window } from '@wailsio/runtime'
 
 import SplitButton from 'primevue/splitbutton'
 import Button from 'primevue/button'
@@ -130,6 +134,7 @@ import type { MenuItem } from 'primevue/menuitem'
 import { useAppStore, useProjectStore, useLogStore, useTaskStore } from './stores'
 import LogPanel from './components/LogPanel.vue'
 import SidebarPanel from './components/SidebarPanel.vue'
+import WindowControls from './components/WindowControls.vue'
 import { GetSettings, ListenToEvents } from './services/api'
 
 const route = useRoute()
@@ -145,6 +150,23 @@ const taskStore = useTaskStore()
  */
 function handleGlobalContextMenu(event: MouseEvent): void {
   event.preventDefault()
+}
+
+/**
+ * 雙擊自訂標題列空白處切換視窗最大化與向下還原
+ */
+function handleTitleBarDblClick(event: MouseEvent): void {
+  const target = event.target as HTMLElement
+  // 若點擊目標位於按鈕、下拉選單或視窗控制項內部，則不觸發視窗縮放
+  if (
+    target.closest('button') ||
+    target.closest('.p-button') ||
+    target.closest('.p-splitbutton') ||
+    target.closest('.window-controls')
+  ) {
+    return
+  }
+  Window.ToggleMaximise()
 }
 
 /**
@@ -630,33 +652,46 @@ body {
   background: var(--surface-ground);
 }
 
-/* Header */
+/* Header / Custom Titlebar */
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   height: 36px;
-  padding: 0 0.5rem;
+  padding-left: 0.6rem;
+  padding-right: 0; /* 右側貼齊視窗邊界，符合 Windows 原生視窗按鈕貼邊規範 */
   background: var(--surface-card);
   border-bottom: 1px solid var(--surface-border);
   flex-shrink: 0;
+  user-select: none;
+  -webkit-app-region: drag;
+  --wails-draggable: drag;
 }
 
 .header-left {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  -webkit-app-region: no-drag;
+  --wails-draggable: none;
 }
 
 .logo {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  -webkit-app-region: no-drag;
+  --wails-draggable: none;
 }
 
-.logo i {
-  font-size: 1.5rem;
-  color: var(--primary-color);
+.app-header-logo {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  border-radius: 4px;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
 }
 
 .logo-text {
@@ -664,12 +699,16 @@ body {
   font-weight: 700;
   color: var(--text-color);
   letter-spacing: 0.05em;
+  -webkit-app-region: no-drag;
+  --wails-draggable: none;
 }
 
 .close-series-btn {
   margin-left: 0.25rem;
   opacity: 0.85;
   transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  -webkit-app-region: no-drag;
+  --wails-draggable: none;
 }
 
 .close-series-btn:hover {
@@ -681,6 +720,9 @@ body {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  height: 100%;
+  -webkit-app-region: no-drag;
+  --wails-draggable: none;
 }
 
 .title-bar-btn {
@@ -693,6 +735,8 @@ body {
   justify-content: center;
   border-radius: 3px !important;
   transition: background-color 0.15s ease, color 0.15s ease;
+  -webkit-app-region: no-drag;
+  --wails-draggable: none;
 }
 
 /* 未選中時 hover：淺灰底色 */
@@ -725,6 +769,8 @@ body {
   align-items: center;
   vertical-align: middle;
   border-radius: 3px !important;
+  -webkit-app-region: no-drag;
+  --wails-draggable: none;
 }
 
 :deep(.title-bar-splitbtn .p-splitbutton-button) {

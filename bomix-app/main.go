@@ -71,6 +71,12 @@ func main() {
 		Width:          1000,
 		Height:         618,
 		EnableFileDrop: true,
+		Frameless:      true,
+		Windows: application.WindowsWindow{
+			DisableFramelessWindowDecorations: false,
+			NonClientRegionSupport:            true,
+			WebView2CompositionHosting:        true,
+		},
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,
