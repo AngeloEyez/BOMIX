@@ -4,20 +4,12 @@
     :title="`${column.headerTitle} (點擊編輯機種設定)`"
     @click="$emit('click', column)"
   >
-    <!-- 第一行：專案名稱依智慧中心定位演算法顯示於中心 Model 欄位，其餘欄位留白 -->
-    <div class="header-line1 project-code-line">
-      <span
-        v-if="column.showProjectCode"
-        class="project-code-label"
-        :title="column.headerTitle"
-      >
-        {{ column.projectCode }}
-      </span>
-      <!-- 佔位符確保第二行在各 Model 欄位垂直對齊 -->
-      <span v-else class="project-code-spacer">&nbsp;</span>
+    <!-- 第一行：專案代碼 (比照 EBOM 採用純文字節點，精準 12px 鎖定，絕不撐開表頭) -->
+    <div class="header-line1" :title="column.headerTitle">
+      {{ column.showProjectCode ? column.projectCode : '' }}
     </div>
-    <!-- 第二行：純字母 (粗體) 與數量，中間以空格分隔，例如 A (102)、B (147) -->
-    <div class="header-line2 model-alias-line">
+    <!-- 第二行：純字母 (粗體) 與數量 (精準 12px 鎖定) -->
+    <div class="header-line2">
       <span class="model-alias-bold">{{ column.modelAlias }}</span>{{ column.qty > 0 ? ` (${column.qty})` : '' }}
     </div>
   </div>
@@ -31,6 +23,7 @@
  * 第一行：依據專案 Model 數量智慧置中顯示專案代碼 (Project Code)；
  * 第二行：顯示 Model 別名字母 (粗體) 與關聯用量括號標記；
  * 支援點擊表頭以觸發機種設定 (MatrixModelEditDialog) 編輯視窗。
+ * 採用與 EBOM 完全一致的 12px/24px 高度鎖定規範，確保模式切換時 0px 高度跳動。
  */
 
 import type { MatrixModelColumnInfo } from '../types'
@@ -55,13 +48,18 @@ defineEmits<Emits>()
   align-items: center;
   justify-content: center;
   width: 100%;
-  line-height: 1.15;
+  height: 24px !important;
+  max-height: 24px !important;
+  line-height: 12px !important;
   text-align: center;
   overflow: hidden;
+  box-sizing: border-box !important;
 }
 
 .matrix-header-group {
   width: 100%;
+  height: 24px !important;
+  max-height: 24px !important;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -69,27 +67,6 @@ defineEmits<Emits>()
 }
 
 .header-line1 {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.project-code-line {
-  min-height: 14px;
-  line-height: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  overflow: hidden;
-}
-
-.project-code-label {
-  display: inline-block;
   font-size: 10px;
   font-weight: 700;
   color: var(--text-color);
@@ -98,37 +75,30 @@ defineEmits<Emits>()
   text-overflow: ellipsis;
   max-width: 100%;
   letter-spacing: -0.25px;
-  text-align: center;
-}
-
-.project-code-spacer {
-  display: inline-block;
-  visibility: hidden;
-  height: 14px;
+  height: 12px !important;
+  line-height: 12px !important;
+  max-height: 12px !important;
+  display: block;
 }
 
 .header-line2 {
   font-size: 10px;
   font-weight: 500;
   color: var(--text-color-secondary);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
-}
-
-.model-alias-line {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-color-secondary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  line-height: 13px;
-  margin-top: 1px;
+  height: 12px !important;
+  line-height: 12px !important;
+  max-height: 12px !important;
+  display: block;
 }
 
 .model-alias-bold {
   font-weight: 700;
   color: var(--text-color);
+  line-height: inherit;
 }
 </style>
