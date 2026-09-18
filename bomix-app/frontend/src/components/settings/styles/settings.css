@@ -1,0 +1,169 @@
+/**
+ * @file settings.css
+ * @description 前端設定頁面與子元件共用樣式表
+ * 
+ * 定義大分類區塊、標題欄位、VSCode 風格設定項目條目排版，
+ * 以及緊湊型輸入元件（Select、InputNumber 等）的通用尺寸與外觀規格。
+ */
+
+/* 大分類區塊 */
+.category-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+  scroll-margin-top: 1rem;
+}
+
+.category-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  border-bottom: 1px solid var(--surface-border);
+  padding-bottom: 0.6rem;
+}
+
+.category-title {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.category-title h2 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-color);
+  margin: 0;
+  line-height: 1.25;
+}
+
+.category-icon {
+  font-size: 1.15rem;
+  color: var(--primary-color);
+}
+
+.category-desc {
+  font-size: 0.82rem;
+  color: var(--text-color-secondary);
+  margin: 0;
+}
+
+/* ==================== VSCode 設定項目條目格式 ==================== */
+.vscode-setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.setting-title-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.setting-name {
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.setting-desc {
+  font-size: 0.78rem;
+  color: var(--text-color-secondary);
+  line-height: 1.45;
+  margin: 0;
+  max-width: 720px;
+}
+
+.setting-desc code {
+  background: var(--surface-hover);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+}
+
+.setting-control {
+  margin-top: 0.2rem;
+}
+
+/* ToggleSwitch 形式設定排版 (放置於標題左側) */
+.switch-title-line {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.switch-title-line :deep(.p-toggleswitch),
+.switch-title-line .p-toggleswitch {
+  flex-shrink: 0;
+}
+
+.switch-label {
+  cursor: pointer;
+  user-select: none;
+}
+
+/* 通用緊湊控制元件尺寸規格 */
+.compact-select {
+  width: 160px !important;
+  height: 28px !important;
+  font-size: 0.8rem;
+}
+
+:deep(.compact-select .p-select-label),
+.compact-select :deep(.p-select-label) {
+  padding: 0.2rem 0.55rem !important;
+  font-size: 0.8rem !important;
+}
+
+.compact-input-number {
+  width: 140px !important;
+  height: 28px !important;
+}
+
+:deep(.compact-input-number.p-inputnumber),
+.compact-input-number:deep(.p-inputnumber) {
+  position: relative !important;
+  display: inline-flex !important;
+  width: 140px !important;
+  height: 28px !important;
+  box-sizing: border-box !important;
+}
+
+:deep(.compact-input-number .p-inputnumber-input),
+.compact-input-number :deep(.p-inputnumber-input) {
+  width: 100% !important;
+  height: 28px !important;
+  padding: 0.15rem 1.6rem 0.15rem 0.55rem !important;
+  font-size: 0.8rem !important;
+  box-sizing: border-box !important;
+}
+
+:deep(.compact-input-number .p-inputnumber-button-group),
+.compact-input-number :deep(.p-inputnumber-button-group) {
+  position: absolute !important;
+  top: 1px !important;
+  right: 1px !important;
+  bottom: 1px !important;
+  width: 18px !important;
+  height: calc(100% - 2px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  z-index: 2 !important;
+}
+
+:deep(.compact-input-number .p-inputnumber-button),
+.compact-input-number :deep(.p-inputnumber-button) {
+  width: 100% !important;
+  height: 50% !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+:deep(.compact-input-number .p-inputnumber-button .p-icon),
+.compact-input-number :deep(.p-inputnumber-button .p-icon) {
+  font-size: 0.55rem !important;
+  width: 0.55rem !important;
+  height: 0.55rem !important;
+}
