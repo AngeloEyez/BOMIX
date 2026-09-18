@@ -171,3 +171,11 @@ BOMIX/                         # Root workspace (Open Claude Code here)
   cd bomix-app
   wails3 build GOOS=windows GOARCH=amd6
   ```
+
+## 13. Configuration System (Single Source of Truth, SSOT)
+
+* **Backend is Truth:** All configuration default values MUST be defined solely in `backend/config/defaults.go` within `DefaultConfig`. Never hardcode fallback business defaults (e.g., `?? true`, `?? false`) in Vue components or Pinia stores.
+* **Centralized Settings Store:** Frontend MUST interact with settings exclusively via `useSettingsStore` (`frontend/src/stores/settings.ts`), which dynamically fetches defaults from backend `GetDefaultSettings()` API.
+* **Loading & Auto-save Guard:** Auto-save watchers MUST NOT fire before `settingsStore.isLoaded` is confirmed true, preventing uninitialized frontend states from reverse-polluting user configuration files.
+* **Full Specification:** Detailed design and step-by-step SOP are documented in `docs/config-ssot-architecture.md`.
+

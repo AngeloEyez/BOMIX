@@ -486,16 +486,18 @@ import Password from 'primevue/password'
 import Button from 'primevue/button'
 import Badge from 'primevue/badge'
 import Divider from 'primevue/divider'
-import { GetSettings, UpdateSettings, AIChatTestConnection, type Settings, type AISettings } from '../services/api'
+import { GetDefaultSettings, UpdateSettings, AIChatTestConnection, type Settings, type AISettings } from '../services/api'
 import { useAppStore } from '../stores/app'
 import { useLogStore } from '../stores/log'
 import { useAIChatStore } from '../stores/aiChat'
+import { useSettingsStore } from '../stores/settings'
 
 const router = useRouter()
 const route = useRoute()
 const appStore = useAppStore()
 const logStore = useLogStore()
 const aiChatStore = useAIChatStore()
+const settingsStore = useSettingsStore()
 
 /**
  * 內部表單設定介面，確保 AI 欄位完整存在
@@ -610,35 +612,35 @@ function handleRightScroll(): void {
   }
 }
 
-// Settings state
-const settings = ref<SettingsForm>({
-  theme: 'light',
-  import: {
-    confirmOverwrite: true,
+// 建立表單初始結構 (優先自 settingsStore 複製，杜絕寫死業務預設值)
+function getInitialFormData(): SettingsForm {
+  const s = settingsStore.currentSettings || settingsStore.defaults
+  if (s) {
+    return JSON.parse(JSON.stringify(s)) as SettingsForm
+  }
+  return {
+    theme: 'light',
+    import: { confirmOverwrite: true, autoImportPreviousMatrix: true },
+    logger: { level: 'info', maxEntries: 500 },
+    recentFiles: { maxRecentFiles: 10, recentFiles: [] },
+    autoOpenLastFile: false,
+    lastOpenedFile: '',
     autoImportPreviousMatrix: true,
-  },
-  logger: {
-    level: 'info',
-    maxEntries: 500,
-  },
-  recentFiles: {
-    maxRecentFiles: 10,
-    recentFiles: [],
-  },
-  autoOpenLastFile: false,
-  lastOpenedFile: '',
-  autoImportPreviousMatrix: true,
-  ai: {
-    enabled: false,
-    baseUrl: 'https://api.openai.com/v1',
-    apiKey: '',
-    model: '',
-    temperature: 0.1,
-    maxTokens: 4096,
-    timeout: 60,
-    language: 'zh-TW',
-  },
-})
+    ai: {
+      enabled: false,
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: '',
+      model: '',
+      temperature: 0.1,
+      maxTokens: 4096,
+      timeout: 60,
+      language: 'zh-TW',
+    },
+  }
+}
+
+// Settings state
+const settings = ref<SettingsForm>(getInitialFormData())
 
 // 可用模型選項 (與 aiChatStore.availableModels 雙向同步)
 const modelOptions = computed(() => {
@@ -728,54 +730,20 @@ async function testConnection(): Promise<void> {
 }
 
 /**
- * 從後端載入使用者設定
+ * 從後端載入使用者設定 (SSOT 單一真實來源)
  */
 async function loadSettings(): Promise<boolean> {
   try {
-    const data = await GetSettings()
+    const data = await settingsStore.initSettings()
     if (!data) return false
 
-    settings.value = {
-      ...data,
-      autoImportPreviousMatrix: data.import?.autoImportPreviousMatrix ?? data.autoImportPreviousMatrix ?? true,
-      import: {
-        confirmOverwrite: data.import?.confirmOverwrite ?? true,
-        autoImportPreviousMatrix: data.import?.autoImportPreviousMatrix ?? data.autoImportPreviousMatrix ?? true,
-      },
-      logger: {
-        level: data.logger?.level ?? 'info',
-        maxEntries: data.logger?.maxEntries ?? 500,
-      },
-      recentFiles: {
-        maxRecentFiles: data.recentFiles?.maxRecentFiles ?? 10,
-        recentFiles: data.recentFiles?.recentFiles ?? [],
-      },
-      ai: {
-        enabled: data.ai?.enabled ?? false,
-        baseUrl: data.ai?.baseUrl || 'https://api.openai.com/v1',
-        apiKey: data.ai?.apiKey || '',
-        model: data.ai?.model || '',
-        temperature: typeof data.ai?.temperature === 'number' && data.ai.temperature >= 0 && data.ai.temperature <= 2.0 ? data.ai.temperature : 0.1,
-        maxTokens: typeof data.ai?.maxTokens === 'number' && data.ai.maxTokens > 0 ? data.ai.maxTokens : 4096,
-        timeout: typeof data.ai?.timeout === 'number' && data.ai.timeout > 0 ? data.ai.timeout : 60,
-        language: data.ai?.language || 'zh-TW',
-      },
-    }
+    settings.value = JSON.parse(JSON.stringify(data)) as SettingsForm
 
-    logStore.globalLogLevel = settings.value.logger.level
-    appStore.confirmOverwrite = settings.value.import.confirmOverwrite
-    aiChatStore.isEnabled = settings.value.ai.enabled
     if (settings.value.ai.model) {
       aiChatStore.currentModel = settings.value.ai.model
     }
     if (aiChatStore.availableModels.length === 0 && settings.value.ai.baseUrl) {
       aiChatStore.fetchAvailableModels(settings.value.ai.baseUrl, settings.value.ai.apiKey)
-    }
-
-    if (!data.ai?.timeout || data.ai.timeout <= 0 || !data.ai?.maxTokens || data.ai.maxTokens <= 0) {
-      UpdateSettings(settings.value).catch(err => {
-        console.warn('自動校正異常 AI 設定失敗:', err)
-      })
     }
 
     return true
@@ -790,22 +758,18 @@ let saveTimeout: any
 let isLoaded = false
 
 watch(settings, (newVal) => {
-  if (!isLoaded) return
+  if (!isLoaded || !settingsStore.isLoaded) return
 
   if (!newVal.theme || !newVal.logger?.level || !newVal.logger?.maxEntries) {
     console.warn('Ignore auto-save: invalid or incomplete settings payload', newVal)
     return
   }
 
-  appStore.applyTheme(newVal.theme)
-  logStore.globalLogLevel = newVal.logger.level
   if (newVal.import) {
-    appStore.confirmOverwrite = newVal.import.confirmOverwrite ?? true
-    newVal.autoImportPreviousMatrix = newVal.import.autoImportPreviousMatrix ?? true
+    newVal.autoImportPreviousMatrix = newVal.import.autoImportPreviousMatrix
   }
 
   if (newVal.ai) {
-    aiChatStore.isEnabled = newVal.ai.enabled
     if (!newVal.ai.enabled && route.path === '/ai-chat') {
       router.push('/workspace')
     }
@@ -814,7 +778,7 @@ watch(settings, (newVal) => {
   if (saveTimeout) clearTimeout(saveTimeout)
   saveTimeout = setTimeout(async () => {
     try {
-      await UpdateSettings(newVal)
+      await settingsStore.saveSettings(newVal)
     } catch (error) {
       console.error('Failed to auto-save settings:', error)
     }

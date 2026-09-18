@@ -143,11 +143,11 @@ import { Window } from '@wailsio/runtime'
 import SplitButton from 'primevue/splitbutton'
 import Button from 'primevue/button'
 import type { MenuItem } from 'primevue/menuitem'
-import { useAppStore, useProjectStore, useLogStore, useTaskStore, useAIChatStore } from './stores'
+import { useAppStore, useProjectStore, useLogStore, useTaskStore, useAIChatStore, useSettingsStore } from './stores'
 import LogPanel from './components/LogPanel.vue'
 import SidebarPanel from './components/SidebarPanel.vue'
 import WindowControls from './components/WindowControls.vue'
-import { GetSettings, ListenToEvents } from './services/api'
+import { ListenToEvents } from './services/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -156,6 +156,7 @@ const projectStore = useProjectStore()
 const logStore = useLogStore()
 const taskStore = useTaskStore()
 const aiChatStore = useAIChatStore()
+const settingsStore = useSettingsStore()
 
 /**
  * 全域攔截右鍵選單，防止 WebView2 彈出瀏覽器預設網頁選單 (Reload, Back, Inspect 等)
@@ -490,17 +491,9 @@ onMounted(async () => {
   logStore.startListening()
   taskStore.startListening()
 
-  // Load initial settings for theme and log level
+  // Load initial settings via settingsStore (SSOT)
   try {
-    const s = await GetSettings()
-    appStore.applyTheme(s.theme)
-    useLogStore().globalLogLevel = s.logger?.level || 'info'
-    if (s.import) {
-      appStore.confirmOverwrite = s.import.confirmOverwrite ?? true
-    }
-    if (s.ai) {
-      aiChatStore.isEnabled = s.ai.enabled ?? false
-    }
+    await settingsStore.initSettings()
   } catch (e) {
     appStore.applyTheme('system')
   }
@@ -548,6 +541,7 @@ watch(() => appStore.isOpen, (isOpen) => {
     router.push('/workspace')
   } else {
     projectStore.clearProjects()
+    aiChatStore.clearMessages()
     router.push('/')
   }
 })
@@ -635,9 +629,15 @@ function resetBottomHeight(): void {
   bottomPanelHeight.value = window.innerHeight * 0.1
 }
 
+/**
+ * 處理使用者點擊標題列關閉系列按鈕
+ * 關閉系列連線、重置專案快取並清空 AI 對話紀錄
+ * @returns {Promise<void>}
+ */
 async function handleCloseSeries(): Promise<void> {
   await appStore.closeSeries()
   projectStore.clearProjects()
+  aiChatStore.clearMessages()
 }
 
 async function checkAutoOpen(): Promise<void> {

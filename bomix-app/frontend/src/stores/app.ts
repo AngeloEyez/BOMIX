@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { GetSeriesInfo, CloseSeries, OpenSeries, CreateSeries } from '../services/api'
 import { useLogStore } from './log'
 import { useBOMTableStore } from './bomTable'
+import { useAIChatStore } from './aiChat'
 
 export interface SeriesInfo {
   id: number
@@ -48,6 +49,7 @@ export const useAppStore = defineStore('app', () => {
         projectModelCounts: info.projectModelCounts || {},
       }
       isOpen.value = true
+      useAIChatStore().clearMessages()
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : '開啟系列失敗'
       error.value = errMsg
@@ -75,6 +77,7 @@ export const useAppStore = defineStore('app', () => {
         projectModelCounts: info?.projectModelCounts || {},
       }
       isOpen.value = true
+      useAIChatStore().clearMessages()
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : '建立系列失敗'
       error.value = errMsg
@@ -96,6 +99,10 @@ export const useAppStore = defineStore('app', () => {
     workspaceView.value = view
   }
 
+  /**
+   * 關閉當前開啟的系列資料庫，並重置主畫面與 AI 對話狀態
+   * @returns {Promise<void>}
+   */
   async function closeSeries(): Promise<void> {
     try {
       await CloseSeries()
@@ -108,6 +115,7 @@ export const useAppStore = defineStore('app', () => {
       seriesInfo.value = null
       workspaceView.value = 'table'
       useBOMTableStore().resetState()
+      useAIChatStore().clearMessages()
     }
   }
 
@@ -160,9 +168,13 @@ export const useAppStore = defineStore('app', () => {
    */
   async function initSettings(): Promise<void> {
     try {
-      const settings = await (await import('../services/api')).GetSettings()
-      if (settings?.import) {
-        confirmOverwrite.value = settings.import.confirmOverwrite ?? true
+      const { useSettingsStore } = await import('./settings')
+      const settingsStore = useSettingsStore()
+      if (!settingsStore.isLoaded) {
+        await settingsStore.initSettings()
+      }
+      if (settingsStore.currentSettings?.import) {
+        confirmOverwrite.value = settingsStore.currentSettings.import.confirmOverwrite
       }
     } catch (_) {}
   }
@@ -174,16 +186,9 @@ export const useAppStore = defineStore('app', () => {
   async function setConfirmOverwrite(val: boolean): Promise<void> {
     confirmOverwrite.value = val
     try {
-      const { GetSettings, UpdateSettings } = await import('../services/api')
-      const s = await GetSettings()
-      if (s) {
-        if (!s.import) {
-          s.import = { confirmOverwrite: val, autoImportPreviousMatrix: true }
-        } else {
-          s.import.confirmOverwrite = val
-        }
-        await UpdateSettings(s)
-      }
+      const { useSettingsStore } = await import('./settings')
+      const settingsStore = useSettingsStore()
+      await settingsStore.updateImportSettings({ confirmOverwrite: val })
     } catch (err) {
       console.error('Failed to persist confirmOverwrite setting:', err)
     }

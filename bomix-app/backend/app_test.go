@@ -786,3 +786,58 @@ func TestAIChatSend_Disabled(t *testing.T) {
 		t.Errorf("錯誤訊息應包含「請先開啟系列資料庫」，實際為: %v", err)
 	}
 }
+
+// TestGetDefaultSettings 測試 GetDefaultSettings API 是否如期回傳 defaults.go 定義的預設值
+func TestGetDefaultSettings(t *testing.T) {
+	app := &App{}
+	defaults, err := app.GetDefaultSettings()
+	if err != nil {
+		t.Fatalf("GetDefaultSettings 執行失敗: %v", err)
+	}
+	if defaults == nil {
+		t.Fatal("GetDefaultSettings 回傳 nil")
+	}
+
+	if defaults.Theme != config.DefaultConfig.Theme {
+		t.Errorf("Theme = %q, want %q", defaults.Theme, config.DefaultConfig.Theme)
+	}
+	if defaults.Import.ConfirmOverwrite != config.DefaultConfig.Import.ConfirmOverwrite {
+		t.Errorf("Import.ConfirmOverwrite = %v, want %v", defaults.Import.ConfirmOverwrite, config.DefaultConfig.Import.ConfirmOverwrite)
+	}
+	if defaults.Import.AutoImportPreviousMatrix != config.DefaultConfig.Import.AutoImportPreviousMatrix {
+		t.Errorf("Import.AutoImportPreviousMatrix = %v, want %v", defaults.Import.AutoImportPreviousMatrix, config.DefaultConfig.Import.AutoImportPreviousMatrix)
+	}
+	if defaults.AI.Enabled != config.DefaultConfig.AI.Enabled {
+		t.Errorf("AI.Enabled = %v, want %v", defaults.AI.Enabled, config.DefaultConfig.AI.Enabled)
+	}
+	if defaults.AI.BaseURL != config.DefaultConfig.AI.BaseURL {
+		t.Errorf("AI.BaseURL = %q, want %q", defaults.AI.BaseURL, config.DefaultConfig.AI.BaseURL)
+	}
+}
+
+// TestCloseSeries_StopsAIChat 測試當關閉系列時，若有進行中的 AI 生成任務會被及時中斷
+func TestCloseSeries_StopsAIChat(t *testing.T) {
+	log := logger.NewLogger(100)
+	app := &App{
+		logger: log,
+	}
+
+	wasCancelled := false
+	app.aiCancelFunc = func() {
+		wasCancelled = true
+	}
+
+	err := app.CloseSeries()
+	if err != nil {
+		t.Fatalf("CloseSeries 回傳錯誤: %v", err)
+	}
+
+	if !wasCancelled {
+		t.Error("預期 CloseSeries 會呼叫 aiCancelFunc 中斷任務，但未被呼叫")
+	}
+
+	if app.aiCancelFunc != nil {
+		t.Error("預期 CloseSeries 之後 aiCancelFunc 會被重置為 nil")
+	}
+}
+

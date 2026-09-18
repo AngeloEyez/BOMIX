@@ -5,4 +5,6 @@ export { useLogStore, type LogEntry } from './log'
 export { useProjectStore } from './project'
 export { useBOMTableStore, type BOMTableState } from './bomTable'
 export { useAIChatStore } from './aiChat'
+export { useSettingsStore } from './settings'
+
 

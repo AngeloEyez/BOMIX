@@ -254,24 +254,9 @@ export const useAIChatStore = defineStore('aiChat', () => {
     if (!trimmed) return
     currentModel.value = trimmed
     try {
-      const s = await GetSettings()
-      if (s) {
-        if (!s.ai) {
-          s.ai = {
-            enabled: false,
-            baseUrl: '',
-            apiKey: '',
-            model: trimmed,
-            temperature: 0.1,
-            maxTokens: 4096,
-            timeout: 60,
-            language: 'zh-TW',
-          }
-        } else {
-          s.ai.model = trimmed
-        }
-        await UpdateSettings(s)
-      }
+      const { useSettingsStore } = await import('./settings')
+      const settingsStore = useSettingsStore()
+      await settingsStore.updateAISettings({ model: trimmed })
     } catch (err) {
       console.error('儲存切換模型失敗:', err)
     }
@@ -342,9 +327,13 @@ export const useAIChatStore = defineStore('aiChat', () => {
   }
 
   /**
-   * 清空所有對話紀錄
+   * 清空所有對話紀錄與重置相關狀態
+   * 若目前正在生成中，會自動中斷後端生成流程以避免殘餘訊息寫入
    */
   function clearMessages(): void {
+    if (isGenerating.value) {
+      stopGeneration()
+    }
     messages.value = []
     activeToolCalls.value = []
     isGenerating.value = false

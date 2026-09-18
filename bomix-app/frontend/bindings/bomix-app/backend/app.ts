@@ -168,6 +168,13 @@ export function GetContext(): $CancellablePromise<context$0.Context> {
 }
 
 /**
+ * GetDefaultSettings returns the application default configuration as Settings DTO (Single Source of Truth)
+ */
+export function GetDefaultSettings(): $CancellablePromise<$models.Settings | null> {
+    return $Call.ByID(3349389726);
+}
+
+/**
  * GetLogs returns log entries
  */
 export function GetLogs(level: string, limit: number): $CancellablePromise<($models.LogEntry | null)[] | null> {

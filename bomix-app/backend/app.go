@@ -203,6 +203,9 @@ func (a *App) OpenSeries(path string) error {
 func (a *App) CloseSeries() error {
 	a.logger.Debug("正在關閉系列")
 
+	// 若有進行中的 AI 生成與工具調用，一併中斷以防止資料庫關閉時併發存取報錯
+	_ = a.AIChatStop()
+
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -1419,53 +1422,69 @@ func (a *App) ClearLogs() error {
 
 // ==================== Settings ====================
 
-// GetSettings returns the current settings
-func (a *App) GetSettings() (*Settings, error) {
+// configToSettings 將後端 Config 結構映射轉換為前端 Settings DTO
+func configToSettings(cfg *config.Config, maskKey bool) *Settings {
+	if cfg == nil {
+		cfg = config.DefaultConfig
+	}
+	apiKey := cfg.AI.APIKey
+	if maskKey && apiKey != "" {
+		apiKey = maskAPIKey(apiKey)
+	}
+
+	timeout := cfg.AI.Timeout
+	if timeout <= 0 {
+		timeout = config.DefaultConfig.AI.Timeout
+	}
+	maxTokens := cfg.AI.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = config.DefaultConfig.AI.MaxTokens
+	}
+	temperature := cfg.AI.Temperature
+	if temperature < 0 || temperature > 2.0 {
+		temperature = config.DefaultConfig.AI.Temperature
+	}
+
 	return &Settings{
-		Theme:                    a.cfg.Theme,
-		AutoOpenLastFile:         a.cfg.AutoOpenLastFile,
-		LastOpenedFile:           a.cfg.LastOpenedFile,
-		AutoImportPreviousMatrix: a.cfg.AutoImportPreviousMatrix,
+		Theme:                    cfg.Theme,
+		AutoOpenLastFile:         cfg.AutoOpenLastFile,
+		LastOpenedFile:           cfg.LastOpenedFile,
+		AutoImportPreviousMatrix: cfg.AutoImportPreviousMatrix,
 		Import: &ImportSettings{
-			ConfirmOverwrite:         a.cfg.Import.ConfirmOverwrite,
-			AutoImportPreviousMatrix: a.cfg.Import.AutoImportPreviousMatrix,
+			ConfirmOverwrite:         cfg.Import.ConfirmOverwrite,
+			AutoImportPreviousMatrix: cfg.Import.AutoImportPreviousMatrix,
 		},
 		Logger: &LoggerSettings{
-			Level:      a.cfg.Logger.Level,
-			MaxEntries: a.cfg.Logger.MaxEntries,
+			Level:      cfg.Logger.Level,
+			MaxEntries: cfg.Logger.MaxEntries,
 		},
 		RecentFiles: &RecentFilesSettings{
-			MaxRecentFiles: a.cfg.RecentFiles.MaxRecentFiles,
-			RecentFiles:    a.cfg.RecentFiles.RecentFiles,
+			MaxRecentFiles: cfg.RecentFiles.MaxRecentFiles,
+			RecentFiles:    cfg.RecentFiles.RecentFiles,
 		},
-		AI: func() *AISettings {
-			timeout := a.cfg.AI.Timeout
-			if timeout <= 0 {
-				timeout = config.DefaultConfig.AI.Timeout
-				a.cfg.AI.Timeout = timeout
-			}
-			maxTokens := a.cfg.AI.MaxTokens
-			if maxTokens <= 0 {
-				maxTokens = config.DefaultConfig.AI.MaxTokens
-				a.cfg.AI.MaxTokens = maxTokens
-			}
-			temperature := a.cfg.AI.Temperature
-			if temperature < 0 || temperature > 2.0 {
-				temperature = config.DefaultConfig.AI.Temperature
-				a.cfg.AI.Temperature = temperature
-			}
-			return &AISettings{
-				Enabled:     a.cfg.AI.Enabled,
-				BaseURL:     a.cfg.AI.BaseURL,
-				APIKey:      maskAPIKey(a.cfg.AI.APIKey),
-				Model:       a.cfg.AI.Model,
-				Temperature: temperature,
-				MaxTokens:   maxTokens,
-				Timeout:     timeout,
-				Language:    a.cfg.AI.Language,
-			}
-		}(),
-	}, nil
+		AI: &AISettings{
+			Enabled:     cfg.AI.Enabled,
+			BaseURL:     cfg.AI.BaseURL,
+			APIKey:      apiKey,
+			Model:       cfg.AI.Model,
+			Temperature: temperature,
+			MaxTokens:   maxTokens,
+			Timeout:     timeout,
+			Language:    cfg.AI.Language,
+		},
+	}
+}
+
+// GetSettings returns the current settings
+func (a *App) GetSettings() (*Settings, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return configToSettings(a.cfg, true), nil
+}
+
+// GetDefaultSettings returns the application default configuration as Settings DTO (Single Source of Truth)
+func (a *App) GetDefaultSettings() (*Settings, error) {
+	return configToSettings(config.DefaultConfig, false), nil
 }
 
 // UpdateSettings updates the settings

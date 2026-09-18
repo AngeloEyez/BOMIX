@@ -570,6 +570,18 @@ export async function GetSettings(): Promise<Settings> {
   }
 }
 
+/**
+ * 取得系統預設設定 (SSOT 單一真實來源，來自後端 defaults.go)
+ */
+export async function GetDefaultSettings(): Promise<Settings> {
+  try {
+    const res = await (App as any).GetDefaultSettings()
+    return res as unknown as Settings
+  } catch (error) {
+    handleApiError(error, 'GetDefaultSettings')
+  }
+}
+
 export async function UpdateSettings(settings: Settings): Promise<void> {
   try {
     await App.UpdateSettings(settings as any)
