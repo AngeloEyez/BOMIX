@@ -56,6 +56,15 @@ func Save(path string, cfg *Config) error {
 	if cfg.RecentFiles.MaxRecentFiles <= 0 {
 		cfg.RecentFiles.MaxRecentFiles = DefaultConfig.RecentFiles.MaxRecentFiles
 	}
+	if cfg.AI.Timeout <= 0 {
+		cfg.AI.Timeout = DefaultConfig.AI.Timeout
+	}
+	if cfg.AI.MaxTokens <= 0 {
+		cfg.AI.MaxTokens = DefaultConfig.AI.MaxTokens
+	}
+	if cfg.AI.Temperature < 0 || cfg.AI.Temperature > 2.0 {
+		cfg.AI.Temperature = DefaultConfig.AI.Temperature
+	}
 
 	// Ensure directory exists
 	dir := filepath.Dir(path)
@@ -146,13 +155,13 @@ func mergeWithDefaults(cfg *Config, md toml.MetaData) {
 	if !md.IsDefined("ai", "model") {
 		cfg.AI.Model = DefaultConfig.AI.Model
 	}
-	if !md.IsDefined("ai", "temperature") {
+	if !md.IsDefined("ai", "temperature") || cfg.AI.Temperature < 0 || cfg.AI.Temperature > 2.0 {
 		cfg.AI.Temperature = DefaultConfig.AI.Temperature
 	}
-	if !md.IsDefined("ai", "max_tokens") {
+	if !md.IsDefined("ai", "max_tokens") || cfg.AI.MaxTokens <= 0 {
 		cfg.AI.MaxTokens = DefaultConfig.AI.MaxTokens
 	}
-	if !md.IsDefined("ai", "timeout") {
+	if !md.IsDefined("ai", "timeout") || cfg.AI.Timeout <= 0 {
 		cfg.AI.Timeout = DefaultConfig.AI.Timeout
 	}
 	if !md.IsDefined("ai", "language") {
@@ -170,17 +179,15 @@ func createDeltaMap(cfg *Config) map[string]interface{} {
 	}
 
 	// Import settings - only add if there are non-default values
-	importChanged := false
-	importMap := make(map[string]interface{})
-	if cfg.Import.ConfirmOverwrite != DefaultConfig.Import.ConfirmOverwrite {
-		importMap["confirm_overwrite"] = cfg.Import.ConfirmOverwrite
-		importChanged = true
-	}
-	if cfg.Import.AutoImportPreviousMatrix != DefaultConfig.Import.AutoImportPreviousMatrix {
-		importMap["auto_import_previous_matrix"] = cfg.Import.AutoImportPreviousMatrix
-		importChanged = true
-	}
-	if importChanged {
+	if cfg.Import.ConfirmOverwrite != DefaultConfig.Import.ConfirmOverwrite ||
+		cfg.Import.AutoImportPreviousMatrix != DefaultConfig.Import.AutoImportPreviousMatrix {
+		importMap := make(map[string]interface{})
+		if cfg.Import.ConfirmOverwrite != DefaultConfig.Import.ConfirmOverwrite {
+			importMap["confirm_overwrite"] = cfg.Import.ConfirmOverwrite
+		}
+		if cfg.Import.AutoImportPreviousMatrix != DefaultConfig.Import.AutoImportPreviousMatrix {
+			importMap["auto_import_previous_matrix"] = cfg.Import.AutoImportPreviousMatrix
+		}
 		delta["import"] = importMap
 	}
 
@@ -244,15 +251,15 @@ func createDeltaMap(cfg *Config) map[string]interface{} {
 		aiMap["model"] = cfg.AI.Model
 		aiChanged = true
 	}
-	if cfg.AI.Temperature != DefaultConfig.AI.Temperature {
+	if cfg.AI.Temperature >= 0 && cfg.AI.Temperature <= 2.0 && cfg.AI.Temperature != DefaultConfig.AI.Temperature {
 		aiMap["temperature"] = cfg.AI.Temperature
 		aiChanged = true
 	}
-	if cfg.AI.MaxTokens != DefaultConfig.AI.MaxTokens {
+	if cfg.AI.MaxTokens > 0 && cfg.AI.MaxTokens != DefaultConfig.AI.MaxTokens {
 		aiMap["max_tokens"] = cfg.AI.MaxTokens
 		aiChanged = true
 	}
-	if cfg.AI.Timeout != DefaultConfig.AI.Timeout {
+	if cfg.AI.Timeout > 0 && cfg.AI.Timeout != DefaultConfig.AI.Timeout {
 		aiMap["timeout"] = cfg.AI.Timeout
 		aiChanged = true
 	}

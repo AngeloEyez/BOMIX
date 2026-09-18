@@ -285,6 +285,21 @@
           />
         </div>
 
+        <!-- Max Tokens (單次生成最大 Token 數限制) -->
+        <div class="setting-row">
+          <label for="ai-max-tokens" class="setting-label">Max Tokens (單次最大輸出長度)</label>
+          <InputNumber
+            id="ai-max-tokens"
+            v-model="settings.ai.maxTokens"
+            :showButtons="true"
+            :min="256"
+            :max="32768"
+            :step="512"
+            size="small"
+            class="compact-input-number"
+          />
+        </div>
+
         <!-- 連線測試按鈕與狀態反饋 -->
         <div class="setting-row test-connection-row">
           <div class="test-status-text">
@@ -481,9 +496,9 @@ async function loadSettings(): Promise<boolean> {
         baseUrl: data.ai?.baseUrl || 'https://api.openai.com/v1',
         apiKey: data.ai?.apiKey || '',
         model: data.ai?.model || '',
-        temperature: data.ai?.temperature ?? 0.1,
-        maxTokens: data.ai?.maxTokens ?? 4096,
-        timeout: data.ai?.timeout ?? 60,
+        temperature: typeof data.ai?.temperature === 'number' && data.ai.temperature >= 0 && data.ai.temperature <= 2.0 ? data.ai.temperature : 0.1,
+        maxTokens: typeof data.ai?.maxTokens === 'number' && data.ai.maxTokens > 0 ? data.ai.maxTokens : 4096,
+        timeout: typeof data.ai?.timeout === 'number' && data.ai.timeout > 0 ? data.ai.timeout : 60,
         language: data.ai?.language || 'zh-TW',
       },
     }
@@ -497,6 +512,14 @@ async function loadSettings(): Promise<boolean> {
     if (aiChatStore.availableModels.length === 0 && settings.value.ai.baseUrl) {
       aiChatStore.fetchAvailableModels(settings.value.ai.baseUrl, settings.value.ai.apiKey)
     }
+
+    // 若原先持久化中的 timeout 或 maxTokens 是 0 或異常值，主動寫回校正後的正確設定，確保設定檔與執行狀態一致
+    if (!data.ai?.timeout || data.ai.timeout <= 0 || !data.ai?.maxTokens || data.ai.maxTokens <= 0) {
+      UpdateSettings(settings.value).catch(err => {
+        console.warn('自動校正異常 AI 設定失敗:', err)
+      })
+    }
+
     return true
   } catch (error) {
     console.error('Failed to load settings:', error)

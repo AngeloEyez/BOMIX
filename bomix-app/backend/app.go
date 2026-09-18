@@ -1438,16 +1438,33 @@ func (a *App) GetSettings() (*Settings, error) {
 			MaxRecentFiles: a.cfg.RecentFiles.MaxRecentFiles,
 			RecentFiles:    a.cfg.RecentFiles.RecentFiles,
 		},
-		AI: &AISettings{
-			Enabled:     a.cfg.AI.Enabled,
-			BaseURL:     a.cfg.AI.BaseURL,
-			APIKey:      maskAPIKey(a.cfg.AI.APIKey),
-			Model:       a.cfg.AI.Model,
-			Temperature: a.cfg.AI.Temperature,
-			MaxTokens:   a.cfg.AI.MaxTokens,
-			Timeout:     a.cfg.AI.Timeout,
-			Language:    a.cfg.AI.Language,
-		},
+		AI: func() *AISettings {
+			timeout := a.cfg.AI.Timeout
+			if timeout <= 0 {
+				timeout = config.DefaultConfig.AI.Timeout
+				a.cfg.AI.Timeout = timeout
+			}
+			maxTokens := a.cfg.AI.MaxTokens
+			if maxTokens <= 0 {
+				maxTokens = config.DefaultConfig.AI.MaxTokens
+				a.cfg.AI.MaxTokens = maxTokens
+			}
+			temperature := a.cfg.AI.Temperature
+			if temperature < 0 || temperature > 2.0 {
+				temperature = config.DefaultConfig.AI.Temperature
+				a.cfg.AI.Temperature = temperature
+			}
+			return &AISettings{
+				Enabled:     a.cfg.AI.Enabled,
+				BaseURL:     a.cfg.AI.BaseURL,
+				APIKey:      maskAPIKey(a.cfg.AI.APIKey),
+				Model:       a.cfg.AI.Model,
+				Temperature: temperature,
+				MaxTokens:   maxTokens,
+				Timeout:     timeout,
+				Language:    a.cfg.AI.Language,
+			}
+		}(),
 	}, nil
 }
 
@@ -1500,14 +1517,20 @@ func (a *App) UpdateSettings(settings *Settings) error {
 		if settings.AI.Model != "" {
 			a.cfg.AI.Model = settings.AI.Model
 		}
-		if settings.AI.Temperature >= 0 {
+		if settings.AI.Temperature >= 0 && settings.AI.Temperature <= 2.0 {
 			a.cfg.AI.Temperature = settings.AI.Temperature
+		} else {
+			a.cfg.AI.Temperature = config.DefaultConfig.AI.Temperature
 		}
 		if settings.AI.MaxTokens > 0 {
 			a.cfg.AI.MaxTokens = settings.AI.MaxTokens
+		} else {
+			a.cfg.AI.MaxTokens = config.DefaultConfig.AI.MaxTokens
 		}
 		if settings.AI.Timeout > 0 {
 			a.cfg.AI.Timeout = settings.AI.Timeout
+		} else {
+			a.cfg.AI.Timeout = config.DefaultConfig.AI.Timeout
 		}
 		if settings.AI.Language != "" {
 			a.cfg.AI.Language = settings.AI.Language
