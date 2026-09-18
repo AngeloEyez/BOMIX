@@ -37,9 +37,20 @@ const router = createRouter({
   routes,
 })
 
-// 依據路由 meta 設定頁面標題
+import { useAIChatStore } from '../stores/aiChat'
+
+// 依據路由 meta 設定頁面標題與存取權限
 router.beforeEach((to, _from, next) => {
   document.title = `${to.meta.title || 'BOMIX'} - BOMIX`
+
+  if (to.name === 'ai-chat' || to.path === '/ai-chat') {
+    const aiChatStore = useAIChatStore()
+    if (!aiChatStore.isEnabled) {
+      next({ path: '/workspace' })
+      return
+    }
+  }
+
   next()
 })
 

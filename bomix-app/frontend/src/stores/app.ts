@@ -178,7 +178,7 @@ export const useAppStore = defineStore('app', () => {
       const s = await GetSettings()
       if (s) {
         if (!s.import) {
-          s.import = { confirmOverwrite: val, autoImportPreviousMatrix: false }
+          s.import = { confirmOverwrite: val, autoImportPreviousMatrix: true }
         } else {
           s.import.confirmOverwrite = val
         }

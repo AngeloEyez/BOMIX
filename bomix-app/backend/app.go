@@ -1626,13 +1626,18 @@ func (a *App) getSeriesInfoFromPath(path string) (*SeriesInfoWithTime, error) {
 func (a *App) AIChatSend(messages []ai.ChatMessage) error {
 	a.mu.RLock()
 	database := a.db
+	aiCfg := a.cfg.AI
 	a.mu.RUnlock()
+
+	if !aiCfg.Enabled {
+		return errors.New("AI Assistant 功能尚未啟用，請先至設定頁面開啟「Enable Assistant」")
+	}
 
 	if database == nil {
 		return errors.New("請先開啟系列資料庫，AI 才能讀取物料與專案數據")
 	}
 
-	if a.cfg.AI.BaseURL == "" {
+	if aiCfg.BaseURL == "" {
 		return errors.New("未設定 AI API Base URL，請至設定頁面設定")
 	}
 

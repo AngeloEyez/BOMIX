@@ -36,6 +36,8 @@ export interface ChatMessageItem {
 }
 
 export const useAIChatStore = defineStore('aiChat', () => {
+  // 是否啟用 AI 助手功能 (由 Settings 連動)
+  const isEnabled = ref<boolean>(false)
   // 對話歷史訊息
   const messages = ref<ChatMessageItem[]>([])
   // 是否正在等待或生成中
@@ -256,11 +258,11 @@ export const useAIChatStore = defineStore('aiChat', () => {
       if (s) {
         if (!s.ai) {
           s.ai = {
-            enabled: true,
+            enabled: false,
             baseUrl: '',
             apiKey: '',
             model: trimmed,
-            temperature: 0.2,
+            temperature: 0.1,
             maxTokens: 4096,
             timeout: 60,
             language: 'zh-TW',
@@ -351,6 +353,7 @@ export const useAIChatStore = defineStore('aiChat', () => {
   }
 
   return {
+    isEnabled,
     messages,
     isGenerating,
     currentStatus,

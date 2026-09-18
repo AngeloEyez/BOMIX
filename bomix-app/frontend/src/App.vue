@@ -72,9 +72,9 @@
           title="Export BOM"
         />
 
-        <!-- 3. AI (僅在系列開啟時顯示/可用，與 BOM/Export 同級) -->
+        <!-- 3. AI (僅在系列開啟且啟用 AI Assistant 時顯示/可用，與 BOM/Export 同級) -->
         <Button
-          v-if="appStore.isOpen"
+          v-if="appStore.isOpen && aiChatStore.isEnabled"
           icon="pi pi-sparkles"
           label="AI"
           text
@@ -297,7 +297,7 @@ function handleExportClick(): void {
  * 處理 AI Assistant 按鈕點擊事件
  */
 function handleAIChatClick(): void {
-  if (!appStore.isOpen) return
+  if (!appStore.isOpen || !aiChatStore.isEnabled) return
   if (route.path !== '/ai-chat') {
     router.push('/ai-chat')
   }
@@ -497,6 +497,9 @@ onMounted(async () => {
     useLogStore().globalLogLevel = s.logger?.level || 'info'
     if (s.import) {
       appStore.confirmOverwrite = s.import.confirmOverwrite ?? true
+    }
+    if (s.ai) {
+      aiChatStore.isEnabled = s.ai.enabled ?? false
     }
   } catch (e) {
     appStore.applyTheme('system')

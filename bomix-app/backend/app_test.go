@@ -754,5 +754,35 @@ func TestAppImportExcel_DuplicateLocationFailsTask(t *testing.T) {
 	}
 }
 
+// TestAIChatSend_Disabled 測試當 AI 未啟用時，AIChatSend 必然回傳尚未啟用的錯誤
+func TestAIChatSend_Disabled(t *testing.T) {
+	log := logger.NewLogger(100)
+	cfg := &config.Config{
+		AI: config.AIConfig{
+			Enabled: false,
+		},
+	}
+	app := &App{
+		cfg:    cfg,
+		logger: log,
+	}
 
+	err := app.AIChatSend(nil)
+	if err == nil {
+		t.Fatal("預期 AIChatSend 回傳未啟用錯誤，但成功回傳 nil")
+	}
 
+	if !strings.Contains(err.Error(), "尚未啟用") {
+		t.Errorf("錯誤訊息應包含「尚未啟用」，實際為: %v", err)
+	}
+
+	// 測試啟用但資料庫未開啟的情境
+	cfg.AI.Enabled = true
+	err = app.AIChatSend(nil)
+	if err == nil {
+		t.Fatal("預期 AIChatSend 回傳資料庫未開啟錯誤，但成功回傳 nil")
+	}
+	if !strings.Contains(err.Error(), "請先開啟系列資料庫") {
+		t.Errorf("錯誤訊息應包含「請先開啟系列資料庫」，實際為: %v", err)
+	}
+}
