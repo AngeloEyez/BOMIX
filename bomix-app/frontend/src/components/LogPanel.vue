@@ -49,11 +49,12 @@
           v-for="log in filteredLogs"
           :key="log.id || log.timestamp"
           class="log-item"
-          :class="`log-level-${log.level.toLowerCase()}`"
+          :class="[`log-level-${log.level.toLowerCase()}`, { 'log-item-task': log.isTaskTracker }]"
+          @click="log.isTaskTracker ? openTaskDetails(log) : null"
           @dblclick="log.isTaskTracker ? openTaskDetails(log) : null"
           @contextmenu.stop.prevent="onLogItemContextMenu($event, log)"
           :style="log.isTaskTracker ? 'cursor: pointer;' : ''"
-          :title="log.isTaskTracker ? 'Double click to view task details' : ''"
+          :title="log.isTaskTracker ? '點擊檢視任務內部細節日誌' : ''"
         >
           <!-- 左側色條指示 log 等級 -->
           <span class="log-level-indicator"></span>
@@ -67,6 +68,15 @@
               <span v-if="log.attrs?.name" class="task-name-label">{{ log.attrs.name }} - </span>
               {{ log.message }}
             </span>
+            <button
+              type="button"
+              class="task-detail-pill-btn"
+              title="點開檢視內部細節日誌"
+              @click.stop="openTaskDetails(log)"
+            >
+              <i class="pi pi-list text-[10px]"></i>
+              <span>細節</span>
+            </button>
           </template>
           
           <!-- 一般 Log 顯示模式 -->
@@ -165,6 +175,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import Dialog from 'primevue/dialog'
 import ContextMenu from 'primevue/contextmenu'
+import type { MenuItem } from 'primevue/menuitem'
 import { useLogStore, useTaskStore } from '../stores'
 import type { LogEntry } from '../stores/log'
 
@@ -395,7 +406,16 @@ function onPanelContextMenu(event: MouseEvent): void {
  */
 const contextMenuItems = computed(() => {
   if (selectedLogEntry.value) {
-    return [
+    const items: MenuItem[] = []
+    if (selectedLogEntry.value.isTaskTracker) {
+      items.push({
+        label: '查看任務細節日誌 (View Task Details)',
+        icon: 'pi pi-external-link',
+        command: () => openTaskDetails(selectedLogEntry.value!)
+      })
+      items.push({ separator: true })
+    }
+    items.push(
       {
         label: '複製訊息 (Copy Message)',
         icon: 'pi pi-copy',
@@ -419,7 +439,8 @@ const contextMenuItems = computed(() => {
         disabled: logStore.logs.length === 0,
         command: handleClearLogs
       }
-    ]
+    )
+    return items
   }
 
   return [
@@ -724,6 +745,42 @@ const filteredTaskHistory = computed(() => {
 .log-status-tag.status-done {
   color: #4caf50;
   background-color: rgba(76,175,80,0.12);
+}
+
+.log-status-tag.status-cancelled {
+  color: #9e9e9e;
+  background-color: rgba(158,158,158,0.12);
+}
+
+.log-item-task {
+  transition: background-color 0.15s ease;
+}
+
+.log-item-task:hover {
+  background-color: var(--surface-hover);
+}
+
+.task-detail-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 9999px;
+  border: 1px solid var(--surface-border);
+  background-color: var(--surface-card);
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  vertical-align: middle;
+}
+
+.task-detail-pill-btn:hover {
+  background-color: var(--primary-color, #3b82f6);
+  color: #ffffff;
+  border-color: var(--primary-color, #3b82f6);
 }
 
 .task-name-label {

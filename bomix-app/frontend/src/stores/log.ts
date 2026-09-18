@@ -126,6 +126,9 @@ export const useLogStore = defineStore('log', () => {
           tracker.status = 'running'
         } else if (ts === 'queued') {
           tracker.status = 'queued'
+        } else if (ts === 'cancelled') {
+          tracker.status = 'cancelled'
+          tracker.level = 'WARN'
         }
       } else {
         // 若無 taskStatus，僅依據標準 entry.level (ERROR / WARN) 提升 Tracker 的層級

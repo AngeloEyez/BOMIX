@@ -42,14 +42,15 @@ export function AIChatGetAvailableModels(): $CancellablePromise<string[] | null>
 }
 
 /**
- * AIChatSend 接收前端對話歷史，非同步啟動 AI Agentic Loop 進行推論與查詢
+ * AIChatSend 接收前端對話歷史，以 Task 任務形式啟動 AI Agentic Loop 進行推論與查詢
  * 
  * 流程：
  * 1. 檢查 AI 設定（URL 與 Key）
  * 2. 檢查目前是否已開啟系列資料庫
  * 3. 中斷任何先前正在執行的對話任務
- * 4. 建立 Agent 實例，在背景 goroutine 中調用 agent.Run
- * 5. 立即回傳 nil，結果即時透過 ai:chunk / ai:tool_call / ai:tool_result / ai:done / ai:error 等 Wails 事件推送
+ * 4. 擷取使用者最後提問組成任務名稱，透過 taskMgr.Submit 派發 AIChat 任務
+ * 5. 執行過程透過 taskLogger 輸出結構化日誌（自動帶 taskID 歸屬 Log Group）
+ * 6. 立即回傳 nil，結果即時透過 ai:chunk / ai:tool_call / ai:tool_result / ai:done / ai:error 等事件推送
  */
 export function AIChatSend(messages: ai$0.ChatMessage[] | null): $CancellablePromise<void> {
     return $Call.ByID(3543463388, messages);

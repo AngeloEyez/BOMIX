@@ -34,10 +34,11 @@ type App struct {
 	taskMgr      *task.Manager
 	db           *gorm.DB
 	mu           sync.RWMutex
-	confirmChans map[string]chan bool
-	confirmMu    sync.Mutex
-	aiCancelFunc context.CancelFunc
-	aiMu         sync.Mutex
+	confirmChans    map[string]chan bool
+	confirmMu       sync.Mutex
+	aiCancelFunc    context.CancelFunc
+	currentAITaskID string
+	aiMu            sync.Mutex
 }
 
 // NewApp creates a new App instance
@@ -1634,14 +1635,15 @@ func (a *App) getSeriesInfoFromPath(path string) (*SeriesInfoWithTime, error) {
 
 // ==================== AI Assistant ====================
 
-// AIChatSend 接收前端對話歷史，非同步啟動 AI Agentic Loop 進行推論與查詢
+// AIChatSend 接收前端對話歷史，以 Task 任務形式啟動 AI Agentic Loop 進行推論與查詢
 //
 // 流程：
 // 1. 檢查 AI 設定（URL 與 Key）
 // 2. 檢查目前是否已開啟系列資料庫
 // 3. 中斷任何先前正在執行的對話任務
-// 4. 建立 Agent 實例，在背景 goroutine 中調用 agent.Run
-// 5. 立即回傳 nil，結果即時透過 ai:chunk / ai:tool_call / ai:tool_result / ai:done / ai:error 等 Wails 事件推送
+// 4. 擷取使用者最後提問組成任務名稱，透過 taskMgr.Submit 派發 AIChat 任務
+// 5. 執行過程透過 taskLogger 輸出結構化日誌（自動帶 taskID 歸屬 Log Group）
+// 6. 立即回傳 nil，結果即時透過 ai:chunk / ai:tool_call / ai:tool_result / ai:done / ai:error 等事件推送
 func (a *App) AIChatSend(messages []ai.ChatMessage) error {
 	a.mu.RLock()
 	database := a.db
@@ -1660,31 +1662,79 @@ func (a *App) AIChatSend(messages []ai.ChatMessage) error {
 		return errors.New("未設定 AI API Base URL，請至設定頁面設定")
 	}
 
-	// 確保先前任務已中斷
-	a.aiMu.Lock()
-	if a.aiCancelFunc != nil {
-		a.aiCancelFunc()
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	a.aiCancelFunc = cancel
-	a.aiMu.Unlock()
+	// 確保先前進行中的 AI 任務已中斷
+	_ = a.AIChatStop()
 
-	client := ai.NewClient(a.cfg.AI.BaseURL, a.cfg.AI.APIKey, a.cfg.AI.Model, a.cfg.AI.Timeout)
-	executor := ai.NewToolExecutor(database, a.logger)
-	systemPrompt := ai.GetSystemPrompt(a.cfg.AI.Language)
-	agent := ai.NewAgent(client, executor, systemPrompt, 8, a.cfg.AI.Temperature, a.cfg.AI.MaxTokens)
-
-	go func() {
-		defer func() {
-			a.aiMu.Lock()
-			a.aiCancelFunc = nil
-			a.aiMu.Unlock()
-		}()
-
-		if err := agent.Run(ctx, messages, a); err != nil {
-			a.logger.Error("AI Agent 執行錯誤", "error", err)
+	// 取得使用者最後一則提問文字作為任務名稱摘要
+	lastPrompt := "AI 對話"
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" && strings.TrimSpace(messages[i].Content) != "" {
+			runes := []rune(strings.TrimSpace(messages[i].Content))
+			if len(runes) > 25 {
+				lastPrompt = string(runes[:25]) + "..."
+			} else {
+				lastPrompt = string(runes)
+			}
+			break
 		}
-	}()
+	}
+	taskName := fmt.Sprintf("AI 對話: %s", lastPrompt)
+
+	client := ai.NewClient(aiCfg.BaseURL, aiCfg.APIKey, aiCfg.Model, aiCfg.Timeout)
+	executor := ai.NewToolExecutor(database, a.logger)
+	systemPrompt := ai.GetSystemPrompt(aiCfg.Language)
+	agent := ai.NewAgent(client, executor, systemPrompt, 8, aiCfg.Temperature, aiCfg.MaxTokens)
+
+	if a.taskMgr != nil {
+		var taskID string
+		taskID = a.taskMgr.Submit(
+			taskName,
+			"AIChat",
+			func(ctx context.Context, progress func(float64, string), taskLogger *logger.Logger) error {
+				a.aiMu.Lock()
+				a.currentAITaskID = taskID
+				a.aiMu.Unlock()
+
+				defer func() {
+					a.aiMu.Lock()
+					if a.currentAITaskID == taskID {
+						a.currentAITaskID = ""
+					}
+					a.aiMu.Unlock()
+				}()
+
+				err := agent.Run(ctx, messages, a, taskLogger, progress)
+				if err != nil {
+					if errors.Is(err, context.Canceled) || ctx.Err() == context.Canceled {
+						return ctx.Err()
+					}
+					a.logger.Error("AI Agent 執行錯誤", "taskID", taskID, "error", err)
+					return err
+				}
+				return nil
+			},
+		)
+
+		a.aiMu.Lock()
+		a.currentAITaskID = taskID
+		a.aiMu.Unlock()
+	} else {
+		// 備援：若未初始化 taskMgr (例如獨立單元測試環境)，使用一般 goroutine
+		a.aiMu.Lock()
+		ctx, cancel := context.WithCancel(context.Background())
+		a.aiCancelFunc = cancel
+		a.aiMu.Unlock()
+
+		go func() {
+			defer func() {
+				a.aiMu.Lock()
+				a.aiCancelFunc = nil
+				a.aiMu.Unlock()
+			}()
+
+			_ = agent.Run(ctx, messages, a, a.logger, nil)
+		}()
+	}
 
 	return nil
 }
@@ -1694,6 +1744,10 @@ func (a *App) AIChatStop() error {
 	a.aiMu.Lock()
 	defer a.aiMu.Unlock()
 
+	if a.currentAITaskID != "" && a.taskMgr != nil {
+		_ = a.taskMgr.Cancel(a.currentAITaskID)
+		a.currentAITaskID = ""
+	}
 	if a.aiCancelFunc != nil {
 		a.aiCancelFunc()
 		a.aiCancelFunc = nil

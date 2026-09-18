@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"bomix-app/backend/logger"
 )
 
 // EventEmitter 定義事件發送介面，用於與前端即時通訊
@@ -77,7 +79,7 @@ type ToolResultEvent struct {
 //    b. 呼叫 LLM 進行推論
 //    c. 若 LLM 請求調用工具 (tool_calls):
 //       - 發送 ai:tool_call 事件給前端
-//       - 依序透過 ToolExecutor 執行工具
+//       - 依序透過 ToolExecutor 執行工具並記錄工具狀態日誌
 //       - 發送 ai:tool_result 事件給前端
 //       - 將 tool 回應塞入對話歷史，回到步驟 a
 //    d. 若 LLM 回傳文字回覆 (finish_reason != tool_calls):
@@ -89,12 +91,30 @@ type ToolResultEvent struct {
 //   - ctx: 呼叫上下文（可傳入 context.WithCancel 支援中斷）
 //   - history: 使用者與助手的對話歷史紀錄清單
 //   - emitter: Wails 事件發送器
+//   - taskLogger: 任務結構化日誌記錄器（可為 nil）
+//   - progress: 任務進度回報回呼（可為 nil）
 //
 // 回傳:
 //   - error: 執行失敗時回傳錯誤
-func (a *Agent) Run(ctx context.Context, history []ChatMessage, emitter EventEmitter) error {
+func (a *Agent) Run(
+	ctx context.Context,
+	history []ChatMessage,
+	emitter EventEmitter,
+	taskLogger *logger.Logger,
+	progress func(float64, string),
+) error {
 	if a.client == nil {
 		return errors.New("AI 客戶端未初始化")
+	}
+
+	if taskLogger != nil {
+		taskLogger.Info(fmt.Sprintf("AI 對話啟動 | 模型: %s, 歷史訊息數: %d, 最大迭代上限: %d 輪",
+			a.client.model, len(history), a.maxIterations))
+		taskLogger.Debug(fmt.Sprintf("AI 配置參數 | BaseURL: %s, Temperature: %.2f, MaxTokens: %d",
+			a.client.baseURL, a.temperature, a.maxTokens))
+	}
+	if progress != nil {
+		progress(0.05, "AI 正在分析您的提問...")
 	}
 
 	// 1. 組裝系統訊息與對話歷史
@@ -119,6 +139,9 @@ func (a *Agent) Run(ctx context.Context, history []ChatMessage, emitter EventEmi
 	for iter := 0; iter < a.maxIterations; iter++ {
 		select {
 		case <-ctx.Done():
+			if taskLogger != nil {
+				taskLogger.Info("使用者已中斷 AI 對話生成")
+			}
 			if emitter != nil {
 				emitter.EmitEvent("ai:error", map[string]interface{}{
 					"error": "使用者已中斷生成",
@@ -126,6 +149,17 @@ func (a *Agent) Run(ctx context.Context, history []ChatMessage, emitter EventEmi
 			}
 			return ctx.Err()
 		default:
+		}
+
+		currentProgress := 0.1 + float64(iter)*0.1
+		if currentProgress > 0.85 {
+			currentProgress = 0.85
+		}
+		if progress != nil {
+			progress(currentProgress, fmt.Sprintf("AI 正在思考與推論 (輪次 %d/%d)...", iter+1, a.maxIterations))
+		}
+		if taskLogger != nil {
+			taskLogger.Debug(fmt.Sprintf("[輪次 %d/%d] 正在向 AI 模型發送推論請求...", iter+1, a.maxIterations))
 		}
 
 		req := ChatCompletionRequest{
@@ -137,9 +171,16 @@ func (a *Agent) Run(ctx context.Context, history []ChatMessage, emitter EventEmi
 
 		resp, err := a.client.SendChat(ctx, req)
 		if err != nil {
+			errMsg := fmt.Sprintf("AI 模型 API 呼叫失敗: %v", err)
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				errMsg = fmt.Sprintf("AI 模型 API 呼叫逾時 (已超過限制時間): %v", err)
+			}
+			if taskLogger != nil {
+				taskLogger.Error(errMsg, "round", iter+1)
+			}
 			if emitter != nil {
 				emitter.EmitEvent("ai:error", map[string]interface{}{
-					"error": fmt.Sprintf("AI 呼叫失敗: %v", err),
+					"error": errMsg,
 				})
 			}
 			return fmt.Errorf("AI 呼叫失敗: %w", err)
@@ -149,10 +190,17 @@ func (a *Agent) Run(ctx context.Context, history []ChatMessage, emitter EventEmi
 			roundPromptTokens += resp.Usage.PromptTokens
 			roundCompletionTokens += resp.Usage.CompletionTokens
 			roundTotalTokens += resp.Usage.TotalTokens
+			if taskLogger != nil {
+				taskLogger.Debug(fmt.Sprintf("[輪次 %d/%d] 本次耗用 Tokens: Prompt=%d, Completion=%d, Total=%d",
+					iter+1, a.maxIterations, resp.Usage.PromptTokens, resp.Usage.CompletionTokens, resp.Usage.TotalTokens))
+			}
 		}
 
 		if len(resp.Choices) == 0 {
-			err = errors.New("模型未回傳任何候選回應")
+			err = errors.New("模型未回傳任何候選回應 (Choices 為空)")
+			if taskLogger != nil {
+				taskLogger.Warn(err.Error(), "round", iter+1)
+			}
 			if emitter != nil {
 				emitter.EmitEvent("ai:error", map[string]interface{}{"error": err.Error()})
 			}
@@ -164,12 +212,17 @@ func (a *Agent) Run(ctx context.Context, history []ChatMessage, emitter EventEmi
 
 		// 情況 A: 模型請求調用工具
 		if len(msg.ToolCalls) > 0 {
-			// 將 Assistant 的工具調用訊息加入歷史
 			conversation = append(conversation, msg)
+			if taskLogger != nil {
+				taskLogger.Info(fmt.Sprintf("[輪次 %d/%d] AI 請求調用 %d 個工具", iter+1, a.maxIterations, len(msg.ToolCalls)))
+			}
 
-			for _, tc := range msg.ToolCalls {
+			for tcIdx, tc := range msg.ToolCalls {
 				select {
 				case <-ctx.Done():
+					if taskLogger != nil {
+						taskLogger.Info("使用者已中斷 AI 對話生成 (工具調用中)")
+					}
 					return ctx.Err()
 				default:
 				}
@@ -181,6 +234,20 @@ func (a *Agent) Run(ctx context.Context, history []ChatMessage, emitter EventEmi
 					if exp, ok := argMap["explanation"].(string); ok {
 						explanation = exp
 					}
+				}
+
+				if taskLogger != nil {
+					argPreview := tc.Function.Arguments
+					if len(argPreview) > 300 {
+						argPreview = argPreview[:300] + "... (已截斷)"
+					}
+					taskLogger.Info(fmt.Sprintf("調用工具 [%d/%d]: %s", tcIdx+1, len(msg.ToolCalls), tc.Function.Name),
+						"explanation", explanation)
+					taskLogger.Debug(fmt.Sprintf("工具引數 [%s]: %s", tc.Function.Name, argPreview))
+				}
+
+				if progress != nil {
+					progress(currentProgress+0.05, fmt.Sprintf("正在執行工具: %s...", tc.Function.Name))
 				}
 
 				if emitter != nil {
@@ -196,19 +263,33 @@ func (a *Agent) Run(ctx context.Context, history []ChatMessage, emitter EventEmi
 					})
 				}
 
-				// 執行工具
+				// 執行工具並量測耗時
 				var resultStr string
 				var execErr error
+				toolStartTime := time.Now()
 				if a.toolExecutor != nil {
 					resultStr, execErr = a.toolExecutor.Execute(ctx, tc.Function.Name, tc.Function.Arguments)
 				} else {
 					execErr = errors.New("工具執行器未就緒")
 				}
+				toolDuration := time.Since(toolStartTime)
 
 				success := true
 				if execErr != nil {
 					success = false
 					resultStr = fmt.Sprintf("Tool execution error: %v", execErr)
+					if taskLogger != nil {
+						taskLogger.Error(fmt.Sprintf("工具 [%s] 執行失敗 (耗時 %v): %v", tc.Function.Name, toolDuration, execErr))
+					}
+				} else {
+					if taskLogger != nil {
+						resPreview := resultStr
+						if len(resPreview) > 250 {
+							resPreview = resPreview[:250] + "... (已截斷)"
+						}
+						taskLogger.Info(fmt.Sprintf("工具 [%s] 執行成功 (耗時 %v, 回傳長度 %d 字元)", tc.Function.Name, toolDuration, len(resultStr)))
+						taskLogger.Debug(fmt.Sprintf("工具 [%s] 回傳內容: %s", tc.Function.Name, resPreview))
+					}
 				}
 
 				if emitter != nil {
@@ -236,6 +317,13 @@ func (a *Agent) Run(ctx context.Context, history []ChatMessage, emitter EventEmi
 		// 情況 B: 模型給出最終文字回覆 (無更多工具調用)
 		content := msg.Content
 
+		if taskLogger != nil {
+			taskLogger.Info(fmt.Sprintf("AI 推論完成，開始輸出文字回覆 (共 %d 字元)", len(content)))
+		}
+		if progress != nil {
+			progress(0.9, "AI 正在回覆...")
+		}
+
 		if emitter != nil {
 			emitter.EmitEvent("ai:status", map[string]interface{}{
 				"status":  "streaming",
@@ -248,6 +336,9 @@ func (a *Agent) Run(ctx context.Context, history []ChatMessage, emitter EventEmi
 			for i := 0; i < len(runes); i += chunkSize {
 				select {
 				case <-ctx.Done():
+					if taskLogger != nil {
+						taskLogger.Info("使用者已中斷回覆串流")
+					}
 					return ctx.Err()
 				default:
 				}
@@ -275,8 +366,25 @@ func (a *Agent) Run(ctx context.Context, history []ChatMessage, emitter EventEmi
 			})
 		}
 
+		if taskLogger != nil {
+			taskLogger.Info(fmt.Sprintf("AI 對話生成完成 | 消耗 Tokens: Prompt=%d, Completion=%d, Total=%d",
+				roundPromptTokens, roundCompletionTokens, roundTotalTokens))
+		}
+		if progress != nil {
+			progress(1.0, "AI 對話完成")
+		}
+
 		return nil
 	}
 
-	return fmt.Errorf("達到 Agentic Loop 最大迭代次數 (%d)，已中止執行", a.maxIterations)
+	limitErr := fmt.Errorf("達到 Agentic Loop 最大迭代次數 (%d 輪)，AI 未能在限制次數內完成推論，已中止執行", a.maxIterations)
+	if taskLogger != nil {
+		taskLogger.Warn(limitErr.Error(), "maxIterations", a.maxIterations)
+	}
+	if emitter != nil {
+		emitter.EmitEvent("ai:error", map[string]interface{}{
+			"error": limitErr.Error(),
+		})
+	}
+	return limitErr
 }

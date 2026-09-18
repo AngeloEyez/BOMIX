@@ -153,12 +153,12 @@ func (te *ToolExecutor) handleGetDatabaseSchema(ctx context.Context) (string, er
 	}
 
 	type ColumnInfo struct {
-		CID       int         `gorm:"column:cid" json:"cid"`
-		Name      string      `gorm:"column:name" json:"name"`
-		Type      string      `gorm:"column:type" json:"type"`
-		NotNull   int         `gorm:"column:notnull" json:"notnull"`
-		DfltValue interface{} `gorm:"column:dflt_value" json:"dflt_value"`
-		PK        int         `gorm:"column:pk" json:"pk"`
+		CID       int     `gorm:"column:cid" json:"cid"`
+		Name      string  `gorm:"column:name" json:"name"`
+		Type      string  `gorm:"column:type" json:"type"`
+		NotNull   int     `gorm:"column:notnull" json:"notnull"`
+		DfltValue *string `gorm:"column:dflt_value" json:"dflt_value"`
+		PK        int     `gorm:"column:pk" json:"pk"`
 	}
 
 	type ForeignKeyInfo struct {
@@ -179,10 +179,14 @@ func (te *ToolExecutor) handleGetDatabaseSchema(ctx context.Context) (string, er
 	schemaMap := make(map[string]TableSchema, len(tableNames))
 	for _, tbl := range tableNames {
 		var cols []ColumnInfo
-		_ = te.db.WithContext(ctx).Raw(fmt.Sprintf("PRAGMA table_info(%s);", tbl)).Scan(&cols).Error
+		if err := te.db.WithContext(ctx).Raw(fmt.Sprintf("PRAGMA table_info(%s);", tbl)).Scan(&cols).Error; err != nil {
+			te.logger.Warn("查詢資料表欄位結構失敗", "table", tbl, "error", err)
+		}
 
 		var fks []ForeignKeyInfo
-		_ = te.db.WithContext(ctx).Raw(fmt.Sprintf("PRAGMA foreign_key_list(%s);", tbl)).Scan(&fks).Error
+		if err := te.db.WithContext(ctx).Raw(fmt.Sprintf("PRAGMA foreign_key_list(%s);", tbl)).Scan(&fks).Error; err != nil {
+			te.logger.Warn("查詢資料表外鍵清單失敗", "table", tbl, "error", err)
+		}
 
 		schemaMap[tbl] = TableSchema{
 			Columns:     cols,
