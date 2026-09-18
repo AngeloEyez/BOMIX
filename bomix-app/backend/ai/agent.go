@@ -114,6 +114,8 @@ func (a *Agent) Run(ctx context.Context, history []ChatMessage, emitter EventEmi
 		})
 	}
 
+	var roundPromptTokens, roundCompletionTokens, roundTotalTokens int
+
 	for iter := 0; iter < a.maxIterations; iter++ {
 		select {
 		case <-ctx.Done():
@@ -141,6 +143,12 @@ func (a *Agent) Run(ctx context.Context, history []ChatMessage, emitter EventEmi
 				})
 			}
 			return fmt.Errorf("AI 呼叫失敗: %w", err)
+		}
+
+		if resp.Usage != nil {
+			roundPromptTokens += resp.Usage.PromptTokens
+			roundCompletionTokens += resp.Usage.CompletionTokens
+			roundTotalTokens += resp.Usage.TotalTokens
 		}
 
 		if len(resp.Choices) == 0 {
@@ -255,6 +263,11 @@ func (a *Agent) Run(ctx context.Context, history []ChatMessage, emitter EventEmi
 
 			emitter.EmitEvent("ai:done", map[string]interface{}{
 				"full_response": content,
+				"usage": map[string]interface{}{
+					"prompt_tokens":     roundPromptTokens,
+					"completion_tokens": roundCompletionTokens,
+					"total_tokens":      roundTotalTokens,
+				},
 			})
 			emitter.EmitEvent("ai:status", map[string]interface{}{
 				"status":  "idle",

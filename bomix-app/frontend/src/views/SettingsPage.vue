@@ -181,6 +181,7 @@
             placeholder="https://api.openai.com/v1"
             size="small"
             class="compact-input-text"
+            @blur="onBaseUrlBlur"
           />
         </div>
 
@@ -199,16 +200,58 @@
           />
         </div>
 
-        <!-- Model -->
+        <!-- Model (與 AIChatPage 同步，支援選擇伺服器可用模型或手動自訂) -->
         <div class="setting-row">
-          <label for="ai-model" class="setting-label">Model</label>
-          <InputText
+          <div class="flex items-center justify-between w-full">
+            <label for="ai-model" class="setting-label">Model (模型)</label>
+            <button
+              type="button"
+              class="text-[11px] text-primary hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-none p-0"
+              title="向伺服器重新拉取可用模型清單"
+              :disabled="aiChatStore.isLoadingModels || !settings.ai.baseUrl"
+              @click="onRefreshModels"
+            >
+              <i :class="['pi text-[10px]', aiChatStore.isLoadingModels ? 'pi-spin pi-spinner' : 'pi-refresh']"></i>
+              <span>{{ aiChatStore.isLoadingModels ? '更新中...' : '重新整理模型' }}</span>
+            </button>
+          </div>
+          <Select
             id="ai-model"
             v-model="settings.ai.model"
-            placeholder="gpt-4o-mini"
+            :options="modelOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="請選擇伺服器提供的模型"
             size="small"
-            class="compact-input-text"
+            class="compact-select-wide"
+            @change="onModelChange"
           />
+        </div>
+
+        <!-- 自訂模型代碼 (手動設定) -->
+        <div class="setting-row custom-model-input-row">
+          <label for="ai-custom-model" class="setting-label">自訂模型代碼 (Custom Model)</label>
+          <div class="flex items-center gap-2 w-full">
+            <InputText
+              id="ai-custom-model"
+              v-model="customModelInput"
+              placeholder="若伺服器未列出，請直接在此輸入自訂模型代碼 (如 deepseek-chat)..."
+              size="small"
+              class="compact-input-text flex-1"
+              @keydown.enter.stop="applyCustomModel"
+            />
+            <Button
+              label="套用"
+              icon="pi pi-check"
+              size="small"
+              outlined
+              :disabled="!customModelInput.trim()"
+              @click="applyCustomModel"
+            />
+          </div>
+          <span class="text-[11px] opacity-60">
+            在此輸入的模型代碼將套用至設定檔，並自動同步至 AI Chat 對話頁面。
+          </span>
         </div>
 
         <!-- Timeout (秒) -->
@@ -269,7 +312,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import Select from 'primevue/select'
 import SelectButton from 'primevue/selectbutton'
 import Checkbox from 'primevue/checkbox'
@@ -280,9 +323,11 @@ import Button from 'primevue/button'
 import { GetSettings, UpdateSettings, AIChatTestConnection, type Settings, type AISettings } from '../services/api'
 import { useAppStore } from '../stores/app'
 import { useLogStore } from '../stores/log'
+import { useAIChatStore } from '../stores/aiChat'
 
 const appStore = useAppStore()
 const logStore = useLogStore()
+const aiChatStore = useAIChatStore()
 
 // 內部表單設定介面，確保 AI 欄位完整存在
 interface SettingsForm extends Settings {
@@ -311,13 +356,60 @@ const settings = ref<SettingsForm>({
     enabled: false,
     baseUrl: 'https://api.openai.com/v1',
     apiKey: '',
-    model: 'gpt-4o-mini',
+    model: '',
     temperature: 0.1,
     maxTokens: 4096,
     timeout: 60,
     language: 'zh-TW',
   },
 })
+
+// 可用模型選項 (與 aiChatStore.availableModels 雙向同步)
+const modelOptions = computed(() => {
+  const list = aiChatStore.availableModels.map(m => ({ label: m, value: m }))
+  const current = settings.value.ai?.model?.trim()
+  if (current && !list.some(item => item.value === current)) {
+    return [{ label: current, value: current }, ...list]
+  }
+  return list
+})
+
+// Base URL 失焦時自動拉取伺服器可用模型
+async function onBaseUrlBlur(): Promise<void> {
+  const url = settings.value.ai?.baseUrl?.trim()
+  if (url) {
+    await aiChatStore.fetchAvailableModels(url, settings.value.ai?.apiKey)
+  }
+}
+
+// 點擊手動重新整理模型
+async function onRefreshModels(): Promise<void> {
+  const url = settings.value.ai?.baseUrl?.trim()
+  if (url) {
+    await aiChatStore.fetchAvailableModels(url, settings.value.ai?.apiKey)
+  }
+}
+
+// 自訂模型代碼輸入
+const customModelInput = ref('')
+
+// 套用自訂模型
+function applyCustomModel(): void {
+  const trimmed = customModelInput.value.trim()
+  if (trimmed) {
+    settings.value.ai.model = trimmed
+    aiChatStore.currentModel = trimmed
+    aiChatStore.switchModel(trimmed)
+    customModelInput.value = ''
+  }
+}
+
+// 模型變更時同步目前選擇給 aiChatStore
+function onModelChange(): void {
+  if (settings.value.ai?.model) {
+    aiChatStore.currentModel = settings.value.ai.model
+  }
+}
 
 // Theme options
 const themeOptions = [
@@ -351,7 +443,13 @@ async function testConnection(): Promise<void> {
     // 先儲存目前填入的設定，確保後端拿到最新資料
     await UpdateSettings(settings.value)
     await AIChatTestConnection()
-    testAIResult.value = { success: true, message: '連線成功！API 端點與金鑰有效。' }
+    // 同步拉取模型清單
+    const models = await aiChatStore.fetchAvailableModels(settings.value.ai.baseUrl, settings.value.ai.apiKey)
+    if (models.length > 0) {
+      testAIResult.value = { success: true, message: `連線成功！已同步 ${models.length} 個可用伺服器模型。` }
+    } else {
+      testAIResult.value = { success: true, message: '連線成功！API 端點與金鑰有效。' }
+    }
   } catch (err: any) {
     testAIResult.value = { success: false, message: err?.message || '連線測試失敗' }
   } finally {
@@ -382,7 +480,7 @@ async function loadSettings(): Promise<boolean> {
         enabled: data.ai?.enabled ?? false,
         baseUrl: data.ai?.baseUrl || 'https://api.openai.com/v1',
         apiKey: data.ai?.apiKey || '',
-        model: data.ai?.model || 'gpt-4o-mini',
+        model: data.ai?.model || '',
         temperature: data.ai?.temperature ?? 0.1,
         maxTokens: data.ai?.maxTokens ?? 4096,
         timeout: data.ai?.timeout ?? 60,
@@ -390,9 +488,15 @@ async function loadSettings(): Promise<boolean> {
       },
     }
     
-    // 初始化同步至 logStore 與 appStore
+    // 初始化同步至 logStore、appStore 與 aiChatStore
     logStore.globalLogLevel = settings.value.logger.level
     appStore.confirmOverwrite = settings.value.import.confirmOverwrite
+    if (settings.value.ai.model) {
+      aiChatStore.currentModel = settings.value.ai.model
+    }
+    if (aiChatStore.availableModels.length === 0 && settings.value.ai.baseUrl) {
+      aiChatStore.fetchAvailableModels(settings.value.ai.baseUrl, settings.value.ai.apiKey)
+    }
     return true
   } catch (error) {
     console.error('Failed to load settings:', error)
@@ -696,6 +800,17 @@ onMounted(async () => {
   margin-top: 0.5rem;
   padding-top: 0.5rem;
   border-top: 1px solid var(--surface-border, rgba(125, 125, 125, 0.15));
+}
+
+.custom-model-input-row {
+  align-items: flex-start !important;
+  flex-direction: column !important;
+  gap: 0.35rem !important;
+  background-color: var(--surface-hover, rgba(125, 125, 125, 0.05));
+  padding: 0.45rem 0.6rem !important;
+  border-radius: 4px;
+  border: 1px dashed var(--surface-border, rgba(125, 125, 125, 0.2));
+  margin-top: 0.25rem;
 }
 </style>
 

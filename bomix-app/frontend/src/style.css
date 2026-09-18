@@ -26,6 +26,12 @@
   --bom-text-main: #1e293b;
   --bom-text-second: #64748b;
   --bom-cell-border: #e2e8f0;
+
+  /* AI 對話助手專用變數 (Light Theme) */
+  --user-bubble-bg: #f1f5f9;
+  --user-bubble-border: #e2e8f0;
+  --user-bubble-text: #1e293b;
+  --user-bubble-time: #94a3b8;
 }
 
 /* ==========================================================================
@@ -57,6 +63,23 @@ textarea *,
 .select-text *,
 .can-select,
 .can-select *,
+.ai-chat-page,
+.ai-chat-page .user-message-pill,
+.ai-chat-page .user-message-pill *,
+.ai-chat-page .user-message-text,
+.ai-chat-page .user-message-text *,
+.ai-chat-page .assistant-message-row,
+.ai-chat-page .assistant-message-row *,
+.ai-chat-page .assistant-content-wrapper,
+.ai-chat-page .assistant-content-wrapper *,
+.ai-chat-page .antigravity-tool-item,
+.ai-chat-page .antigravity-tool-item *,
+.ai-chat-page .markdown-body,
+.ai-chat-page .markdown-body *,
+.ai-chat-page .chat-messages-viewport,
+.ai-chat-page .chat-messages-viewport *,
+.ai-chat-content,
+.ai-chat-content *,
 .log-content,
 .log-content *,
 .task-log-content,
@@ -149,6 +172,12 @@ html.app-dark {
     --bom-text-main: #e2e8f0;
     --bom-text-second: #94a3b8;
     --bom-cell-border: #2d2d2d;
+
+    /* AI 對話助手專用變數 (Dark Theme)：深灰色底色，與背景 #1e1e1e 形成舒適區隔 */
+    --user-bubble-bg: #2e2e32;
+    --user-bubble-border: #434348;
+    --user-bubble-text: #e2e8f0;
+    --user-bubble-time: #a1a1aa;
   }
 
 /* ==========================================================================
@@ -216,5 +245,37 @@ html.app-dark {
 .p-dialog-footer .p-button {
   height: 28px !important;
   padding: 0 0.75rem !important;
+}
+
+/* ==========================================================================
+   AI 對話使用者膠囊卡片全域樣式 (User Message Pill Global Theme)
+   ========================================================================== */
+.user-message-pill {
+  background-color: var(--user-bubble-bg, #f1f5f9) !important;
+  border: 1px solid var(--user-bubble-border, #e2e8f0) !important;
+  color: var(--user-bubble-text, #1e293b) !important;
+}
+
+.app-dark .user-message-pill,
+.dark .user-message-pill,
+html.app-dark .user-message-pill,
+html.dark .user-message-pill {
+  background-color: #2e2e32 !important;
+  border-color: #434348 !important;
+  color: #e2e8f0 !important;
+}
+
+.app-dark .user-message-time,
+.dark .user-message-time,
+html.app-dark .user-message-time,
+html.dark .user-message-time {
+  color: #a1a1aa !important;
+}
+
+.app-dark .user-copy-icon-btn,
+.dark .user-copy-icon-btn,
+html.app-dark .user-copy-icon-btn,
+html.dark .user-copy-icon-btn {
+  color: #a1a1aa !important;
 }
 

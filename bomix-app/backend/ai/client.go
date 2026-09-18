@@ -120,6 +120,20 @@ func NewClient(baseURL, apiKey, model string, timeoutSec int) *Client {
 	}
 }
 
+// ModelListResponse OpenAI 相容端點的 /models 回應結構
+type ModelListResponse struct {
+	Object string      `json:"object"`
+	Data   []ModelItem `json:"data"`
+}
+
+// ModelItem 單一模型資訊
+type ModelItem struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created,omitempty"`
+	OwnedBy string `json:"owned_by,omitempty"`
+}
+
 // buildURL 組合完整的 chat/completions 端點 URL
 func (c *Client) buildURL() string {
 	if strings.HasSuffix(c.baseURL, "/chat/completions") {
@@ -129,6 +143,68 @@ func (c *Client) buildURL() string {
 		return c.baseURL + "/chat/completions"
 	}
 	return c.baseURL + "/v1/chat/completions"
+}
+
+// buildModelsURL 組合完整的 models 端點 URL (OpenAI 相容規範為 GET /v1/models 或 /models)
+func (c *Client) buildModelsURL() string {
+	base := strings.TrimRight(c.baseURL, "/")
+	if strings.HasSuffix(base, "/chat/completions") {
+		base = strings.TrimSuffix(base, "/chat/completions")
+	}
+	if strings.HasSuffix(base, "/v1") {
+		return base + "/models"
+	}
+	return base + "/v1/models"
+}
+
+// ListModels 呼叫 GET /models 取得可用的模型 ID 清單
+//
+// 參數:
+//   - ctx: 呼叫上下文
+//
+// 回傳:
+//   - []string: 伺服器回傳之模型 ID 清單
+//   - error: 請求失敗或非 200 狀態碼時回傳錯誤
+func (c *Client) ListModels(ctx context.Context) ([]string, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.buildModelsURL(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("建立模型清單 HTTP 請求失敗: %w", err)
+	}
+
+	httpReq.Header.Set("Accept", "application/json")
+	if c.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("發送模型清單請求失敗: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("讀取模型清單回應資料失敗: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("取得模型清單失敗 (HTTP %d): %s", resp.StatusCode, string(respBytes))
+	}
+
+	var listResp ModelListResponse
+	if err := json.Unmarshal(respBytes, &listResp); err != nil {
+		return nil, fmt.Errorf("解析模型清單 JSON 失敗: %w", err)
+	}
+
+	models := make([]string, 0, len(listResp.Data))
+	for _, item := range listResp.Data {
+		trimmedID := strings.TrimSpace(item.ID)
+		if trimmedID != "" {
+			models = append(models, trimmedID)
+		}
+	}
+
+	return models, nil
 }
 
 // SendChat 發送同步對話請求（非串流模式，供 Agentic Loop 內部呼叫）

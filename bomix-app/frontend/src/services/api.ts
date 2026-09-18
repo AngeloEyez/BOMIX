@@ -753,3 +753,27 @@ export async function AIChatTestConnection(): Promise<void> {
   }
 }
 
+/**
+ * 取得當前設定伺服器提供的可用模型清單
+ */
+export async function AIChatGetAvailableModels(): Promise<string[]> {
+  try {
+    const list = await (App as any).AIChatGetAvailableModels()
+    return Array.isArray(list) ? list : []
+  } catch (error) {
+    handleApiError(error, 'AIChatGetAvailableModels')
+  }
+}
+
+/**
+ * 依指定 Base URL 與 API Key 即時取得伺服器提供的可用模型清單
+ */
+export async function AIChatFetchModelsWithConfig(baseUrl: string, apiKey: string): Promise<string[]> {
+  try {
+    const list = await (App as any).AIChatFetchModelsWithConfig(baseUrl, apiKey)
+    return Array.isArray(list) ? list : []
+  } catch (error) {
+    handleApiError(error, 'AIChatFetchModelsWithConfig')
+  }
+}
+

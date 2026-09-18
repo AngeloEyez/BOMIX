@@ -1,7 +1,15 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { Events } from '@wailsio/runtime'
-import { AIChatSend, AIChatStop, type AIChatMessage } from '../services/api'
+import {
+  AIChatSend,
+  AIChatStop,
+  AIChatGetAvailableModels,
+  AIChatFetchModelsWithConfig,
+  GetSettings,
+  UpdateSettings,
+  type AIChatMessage,
+} from '../services/api'
 
 /**
  * 工具呼叫資訊結構
@@ -36,6 +44,19 @@ export const useAIChatStore = defineStore('aiChat', () => {
   const currentStatus = ref<string>('')
   // 當前進行中的工具呼叫
   const activeToolCalls = ref<ToolCallItem[]>([])
+
+  // 當前選擇模型 (例如 gpt-4o-mini, o3-mini 等)
+  const currentModel = ref<string>('')
+  // 伺服器提供的可用模型 ID 清單（遵照使用者指示：無模型時為空，不自動補假清單）
+  const availableModels = ref<string[]>([])
+  // 是否正在取得可用模型
+  const isLoadingModels = ref<boolean>(false)
+  // 本輪生成的 Token 數量
+  const currentRoundTokens = ref<number>(0)
+  // 全局累計消耗的 Token 數量
+  const totalTokens = ref<number>(0)
+  // 最近一次發送內容字元長度 (供備援預估 Token 使用)
+  let lastPromptLength = 0
 
   // 是否已有對話訊息
   const hasMessages = computed(() => messages.value.length > 0)
@@ -120,6 +141,19 @@ export const useAIChatStore = defineStore('aiChat', () => {
             lastMsg.content = data.full_response
           }
         }
+
+        // 統計本輪與累計 Token 數量
+        if (data?.usage?.total_tokens && data.usage.total_tokens > 0) {
+          currentRoundTokens.value = data.usage.total_tokens
+          totalTokens.value += data.usage.total_tokens
+        } else {
+          // 備援方案：依輸入與回傳字元長度加權估算 Token (約 1.3-1.5 chars/token)
+          const replyLen = data?.full_response?.length || (lastMsg?.content?.length || 0)
+          const est = Math.max(1, Math.round((lastPromptLength + replyLen) * 0.75))
+          currentRoundTokens.value = est
+          totalTokens.value += est
+        }
+
         isGenerating.value = false
         currentStatus.value = ''
         activeToolCalls.value = []
@@ -156,6 +190,92 @@ export const useAIChatStore = defineStore('aiChat', () => {
   }
 
   /**
+   * 取得伺服器提供的可用模型清單
+   * @param customBaseUrl 可選自訂 Base URL (例如設定頁輸入)
+   * @param customApiKey 可選自訂 API Key
+   */
+  async function fetchAvailableModels(customBaseUrl?: string, customApiKey?: string): Promise<string[]> {
+    isLoadingModels.value = true
+    try {
+      let list: string[] = []
+      if (customBaseUrl !== undefined && customBaseUrl.trim() !== '') {
+        list = await AIChatFetchModelsWithConfig(customBaseUrl, customApiKey || '')
+      } else {
+        list = await AIChatGetAvailableModels()
+      }
+
+      availableModels.value = Array.isArray(list) ? list : []
+
+      // 檢查目前選取的 model
+      if (availableModels.value.length > 0) {
+        if (!currentModel.value) {
+          const s = await GetSettings()
+          if (s?.ai?.model && availableModels.value.includes(s.ai.model)) {
+            currentModel.value = s.ai.model
+          } else {
+            currentModel.value = availableModels.value[0]
+          }
+        }
+      }
+      return availableModels.value
+    } catch (err) {
+      console.warn('拉取可用模型清單失敗或無可用模型:', err)
+      // 使用者明確交代：不要自動推薦清單，若真的沒有任何模型，選單可以空白
+      availableModels.value = []
+      return []
+    } finally {
+      isLoadingModels.value = false
+    }
+  }
+
+  /**
+   * 取得並載入當前設定的模型名稱 (僅讀取持久化中記錄的選中 model)
+   */
+  async function fetchCurrentModel(): Promise<string> {
+    try {
+      const s = await GetSettings()
+      if (s?.ai?.model) {
+        currentModel.value = s.ai.model
+      }
+    } catch (err) {
+      console.error('載入設定模型失敗:', err)
+    }
+    return currentModel.value
+  }
+
+  /**
+   * 即時切換 AI 模型並同步儲存設定
+   * @param newModel 模型名稱 (例如 'Gemini 3.8 Flash High', 'gpt-4o', 'deepseek-chat')
+   */
+  async function switchModel(newModel: string): Promise<void> {
+    const trimmed = newModel.trim()
+    if (!trimmed) return
+    currentModel.value = trimmed
+    try {
+      const s = await GetSettings()
+      if (s) {
+        if (!s.ai) {
+          s.ai = {
+            enabled: true,
+            baseUrl: '',
+            apiKey: '',
+            model: trimmed,
+            temperature: 0.2,
+            maxTokens: 4096,
+            timeout: 60,
+            language: 'zh-TW',
+          }
+        } else {
+          s.ai.model = trimmed
+        }
+        await UpdateSettings(s)
+      }
+    } catch (err) {
+      console.error('儲存切換模型失敗:', err)
+    }
+  }
+
+  /**
    * 發送使用者訊息
    * @param text 使用者輸入字串
    */
@@ -164,6 +284,9 @@ export const useAIChatStore = defineStore('aiChat', () => {
     if (!trimmed || isGenerating.value) return
 
     initEventListeners()
+
+    // 記錄字元長度
+    lastPromptLength = trimmed.length
 
     // 1. 新增使用者訊息
     messages.value.push({
@@ -224,6 +347,7 @@ export const useAIChatStore = defineStore('aiChat', () => {
     activeToolCalls.value = []
     isGenerating.value = false
     currentStatus.value = ''
+    currentRoundTokens.value = 0
   }
 
   return {
@@ -232,7 +356,15 @@ export const useAIChatStore = defineStore('aiChat', () => {
     currentStatus,
     activeToolCalls,
     hasMessages,
+    currentModel,
+    availableModels,
+    isLoadingModels,
+    currentRoundTokens,
+    totalTokens,
     initEventListeners,
+    fetchCurrentModel,
+    fetchAvailableModels,
+    switchModel,
     sendMessage,
     stopGeneration,
     clearMessages,

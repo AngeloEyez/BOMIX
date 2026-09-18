@@ -28,6 +28,20 @@ import * as context$0 from "../../context/models.js";
 import * as $models from "./models.js";
 
 /**
+ * AIChatFetchModelsWithConfig 支援前端使用指定的 BaseURL 與 APIKey 即時取得伺服器提供的可用模型清單
+ */
+export function AIChatFetchModelsWithConfig(baseURL: string, apiKey: string): $CancellablePromise<string[] | null> {
+    return $Call.ByID(3556992322, baseURL, apiKey);
+}
+
+/**
+ * AIChatGetAvailableModels 透過當前設定的 BaseURL 與 APIKey 取得伺服器提供的可用模型清單
+ */
+export function AIChatGetAvailableModels(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(1021659951);
+}
+
+/**
  * AIChatSend 接收前端對話歷史，非同步啟動 AI Agentic Loop 進行推論與查詢
  * 
  * 流程：

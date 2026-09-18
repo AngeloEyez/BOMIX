@@ -1682,3 +1682,36 @@ func (a *App) AIChatTestConnection() error {
 	return nil
 }
 
+// AIChatGetAvailableModels 透過當前設定的 BaseURL 與 APIKey 取得伺服器提供的可用模型清單
+func (a *App) AIChatGetAvailableModels() ([]string, error) {
+	baseURL := a.cfg.AI.BaseURL
+	if baseURL == "" {
+		return nil, errors.New("API Base URL 不能為空")
+	}
+
+	timeoutSec := a.cfg.AI.Timeout
+	if timeoutSec <= 0 || timeoutSec > 15 {
+		timeoutSec = 15
+	}
+	client := ai.NewClient(baseURL, a.cfg.AI.APIKey, a.cfg.AI.Model, timeoutSec)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
+	defer cancel()
+
+	return client.ListModels(ctx)
+}
+
+// AIChatFetchModelsWithConfig 支援前端使用指定的 BaseURL 與 APIKey 即時取得伺服器提供的可用模型清單
+func (a *App) AIChatFetchModelsWithConfig(baseURL, apiKey string) ([]string, error) {
+	if strings.TrimSpace(baseURL) == "" {
+		return nil, errors.New("API Base URL 不能為空")
+	}
+
+	client := ai.NewClient(strings.TrimSpace(baseURL), strings.TrimSpace(apiKey), "", 15)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	return client.ListModels(ctx)
+}
+

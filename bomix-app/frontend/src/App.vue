@@ -143,7 +143,7 @@ import { Window } from '@wailsio/runtime'
 import SplitButton from 'primevue/splitbutton'
 import Button from 'primevue/button'
 import type { MenuItem } from 'primevue/menuitem'
-import { useAppStore, useProjectStore, useLogStore, useTaskStore } from './stores'
+import { useAppStore, useProjectStore, useLogStore, useTaskStore, useAIChatStore } from './stores'
 import LogPanel from './components/LogPanel.vue'
 import SidebarPanel from './components/SidebarPanel.vue'
 import WindowControls from './components/WindowControls.vue'
@@ -155,6 +155,7 @@ const appStore = useAppStore()
 const projectStore = useProjectStore()
 const logStore = useLogStore()
 const taskStore = useTaskStore()
+const aiChatStore = useAIChatStore()
 
 /**
  * 全域攔截右鍵選單，防止 WebView2 彈出瀏覽器預設網頁選單 (Reload, Back, Inspect 等)
@@ -515,6 +516,14 @@ onMounted(async () => {
 
   // Check for auto-open last file
   checkAutoOpen()
+
+  // App 啟動時自動讀取設定中選中的模型並更新伺服器可用模型清單
+  try {
+    await aiChatStore.fetchCurrentModel()
+    aiChatStore.fetchAvailableModels()
+  } catch (err) {
+    console.warn('App 啟動拉取 AI 模型清單失敗:', err)
+  }
 })
 
 onUnmounted(() => {
@@ -659,7 +668,20 @@ body {
 .main-content-container {
   flex: 1 1 0%;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+}
+
+/* 確保所有透過 router-view 渲染的主視圖元件強制填滿 Main Content 區域並隨 sidebar/視窗彈性調適 */
+.main-content-container > * {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
 }
 
 #app {
