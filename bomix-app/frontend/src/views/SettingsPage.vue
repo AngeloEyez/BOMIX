@@ -466,6 +466,29 @@
                 />
               </div>
             </div>
+
+            <!-- Max Iterations (推論輪次上限) -->
+            <div class="vscode-setting-item">
+              <div class="setting-title-line">
+                <span class="setting-name">Max Reasoning Iterations</span>
+              </div>
+              <p class="setting-desc">
+                AI 助手推論思考與工具調用的最大迭代輪次上限（預設 8 輪，範圍 1 - 30 輪）。
+              </p>
+              <div class="setting-control">
+                <InputNumber
+                  id="ai-max-iterations"
+                  v-model="settings.ai.maxIterations"
+                  :show-buttons="true"
+                  :min="1"
+                  :max="30"
+                  :step="1"
+                  :disabled="!settings.ai.enabled"
+                  size="small"
+                  class="compact-input-number"
+                />
+              </div>
+            </div>
           </div>
         </section>
       </div>
@@ -633,6 +656,7 @@ function getInitialFormData(): SettingsForm {
       model: '',
       temperature: 0.1,
       maxTokens: 4096,
+      maxIterations: 8,
       timeout: 60,
       language: 'zh-TW',
     },

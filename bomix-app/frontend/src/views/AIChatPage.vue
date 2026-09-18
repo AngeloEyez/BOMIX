@@ -234,12 +234,6 @@
             </div>
           </div>
         </div>
-
-        <!-- 進行中的執行狀態提示 (若有) -->
-        <div v-if="aiChatStore.currentStatus" class="chat-status-active mt-1 px-1 select-none">
-          <i class="pi pi-spin pi-spinner text-[9px]"></i>
-          <span class="truncate text-[10px]">{{ aiChatStore.currentStatus }}</span>
-        </div>
       </div>
     </footer>
   </div>
@@ -1016,19 +1010,6 @@ function handleClear(): void {
 
 .action-btn-stop:hover {
   background-color: #dc2626;
-}
-
-/* 狀態微型提示條 (精巧微字體) */
-.chat-status-active {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  font-size: 0.65rem; /* ~10px 微型精細字型 */
-  line-height: 1.2;
-  color: var(--primary-color, #3b82f6);
-  font-weight: 450;
-  opacity: 0.85;
-  animation: pulse 2s infinite ease-in-out;
 }
 
 /* ==========================================================================

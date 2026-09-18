@@ -129,6 +129,7 @@
         class="resize-handle"
         @mousedown="startBottomResize"
         @dblclick="resetBottomHeight"
+        title="拖曳以調整高度，雙擊重置為單行預設高度"
       ></div>
       <LogPanel />
     </div>
@@ -468,8 +469,9 @@ let isResizingSidebar = false
 let startSidebarX = 0
 let startSidebarWidth = 0
 
-// Bottom panel height
-const bottomPanelHeight = ref(window.innerHeight * 0.1) // Default 10%
+// Bottom panel 預設高度：單行模式 (24px：含 4px 拖曳控制條與 20px 日誌面板)
+const DEFAULT_BOTTOM_HEIGHT = 24
+const bottomPanelHeight = ref(DEFAULT_BOTTOM_HEIGHT)
 let isResizingBottom = false
 let startY = 0
 let startHeight = 0
@@ -615,8 +617,8 @@ function handleBottomResize(event: MouseEvent): void {
   if (!isResizingBottom) return
   const deltaY = event.clientY - startY
   const newHeight = startHeight - deltaY
-  // 最小高度 18px（單行 log 高度），最大 50% 視窗高度
-  bottomPanelHeight.value = Math.max(18, Math.min(newHeight, window.innerHeight * 0.5))
+  // 最小高度為單行預設高度 (24px)，最大限制為 50% 視窗高度
+  bottomPanelHeight.value = Math.max(DEFAULT_BOTTOM_HEIGHT, Math.min(newHeight, window.innerHeight * 0.5))
 }
 
 function stopBottomResize(): void {
@@ -626,7 +628,7 @@ function stopBottomResize(): void {
 }
 
 function resetBottomHeight(): void {
-  bottomPanelHeight.value = window.innerHeight * 0.1
+  bottomPanelHeight.value = DEFAULT_BOTTOM_HEIGHT
 }
 
 /**

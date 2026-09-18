@@ -174,10 +174,11 @@ type AISettings struct {
 	BaseURL     string  `json:"baseUrl"`
 	APIKey      string  `json:"apiKey"`
 	Model       string  `json:"model"`
-	Temperature float64 `json:"temperature"`
-	MaxTokens   int     `json:"maxTokens"`
-	Timeout     int     `json:"timeout"`
-	Language    string  `json:"language"`
+	Temperature   float64 `json:"temperature"`
+	MaxTokens     int     `json:"maxTokens"`
+	MaxIterations int     `json:"maxIterations"`
+	Timeout       int     `json:"timeout"`
+	Language      string  `json:"language"`
 }
 
 // ImportSettings represents import settings for the frontend

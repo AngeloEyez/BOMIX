@@ -1441,6 +1441,10 @@ func configToSettings(cfg *config.Config, maskKey bool) *Settings {
 	if maxTokens <= 0 {
 		maxTokens = config.DefaultConfig.AI.MaxTokens
 	}
+	maxIterations := cfg.AI.MaxIterations
+	if maxIterations <= 0 {
+		maxIterations = config.DefaultConfig.AI.MaxIterations
+	}
 	temperature := cfg.AI.Temperature
 	if temperature < 0 || temperature > 2.0 {
 		temperature = config.DefaultConfig.AI.Temperature
@@ -1464,14 +1468,15 @@ func configToSettings(cfg *config.Config, maskKey bool) *Settings {
 			RecentFiles:    cfg.RecentFiles.RecentFiles,
 		},
 		AI: &AISettings{
-			Enabled:     cfg.AI.Enabled,
-			BaseURL:     cfg.AI.BaseURL,
-			APIKey:      apiKey,
-			Model:       cfg.AI.Model,
-			Temperature: temperature,
-			MaxTokens:   maxTokens,
-			Timeout:     timeout,
-			Language:    cfg.AI.Language,
+			Enabled:       cfg.AI.Enabled,
+			BaseURL:       cfg.AI.BaseURL,
+			APIKey:        apiKey,
+			Model:         cfg.AI.Model,
+			Temperature:   temperature,
+			MaxTokens:     maxTokens,
+			MaxIterations: maxIterations,
+			Timeout:       timeout,
+			Language:      cfg.AI.Language,
 		},
 	}
 }
@@ -1546,6 +1551,11 @@ func (a *App) UpdateSettings(settings *Settings) error {
 			a.cfg.AI.MaxTokens = settings.AI.MaxTokens
 		} else {
 			a.cfg.AI.MaxTokens = config.DefaultConfig.AI.MaxTokens
+		}
+		if settings.AI.MaxIterations > 0 {
+			a.cfg.AI.MaxIterations = settings.AI.MaxIterations
+		} else {
+			a.cfg.AI.MaxIterations = config.DefaultConfig.AI.MaxIterations
 		}
 		if settings.AI.Timeout > 0 {
 			a.cfg.AI.Timeout = settings.AI.Timeout
@@ -1683,7 +1693,7 @@ func (a *App) AIChatSend(messages []ai.ChatMessage) error {
 	client := ai.NewClient(aiCfg.BaseURL, aiCfg.APIKey, aiCfg.Model, aiCfg.Timeout)
 	executor := ai.NewToolExecutor(database, a.logger)
 	systemPrompt := ai.GetSystemPrompt(aiCfg.Language)
-	agent := ai.NewAgent(client, executor, systemPrompt, 8, aiCfg.Temperature, aiCfg.MaxTokens)
+	agent := ai.NewAgent(client, executor, systemPrompt, aiCfg.MaxIterations, aiCfg.Temperature, aiCfg.MaxTokens)
 
 	if a.taskMgr != nil {
 		var taskID string
@@ -1703,7 +1713,8 @@ func (a *App) AIChatSend(messages []ai.ChatMessage) error {
 					a.aiMu.Unlock()
 				}()
 
-				err := agent.Run(ctx, messages, a, taskLogger, progress)
+				// AI 對話不需要回報覆蓋在 log panel 的進度條，progress 傳入 nil
+				err := agent.Run(ctx, messages, a, taskLogger, nil)
 				if err != nil {
 					if errors.Is(err, context.Canceled) || ctx.Err() == context.Canceled {
 						return ctx.Err()

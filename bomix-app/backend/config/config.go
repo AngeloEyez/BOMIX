@@ -62,6 +62,9 @@ func Save(path string, cfg *Config) error {
 	if cfg.AI.MaxTokens <= 0 {
 		cfg.AI.MaxTokens = DefaultConfig.AI.MaxTokens
 	}
+	if cfg.AI.MaxIterations <= 0 {
+		cfg.AI.MaxIterations = DefaultConfig.AI.MaxIterations
+	}
 	if cfg.AI.Temperature < 0 || cfg.AI.Temperature > 2.0 {
 		cfg.AI.Temperature = DefaultConfig.AI.Temperature
 	}
@@ -161,6 +164,9 @@ func mergeWithDefaults(cfg *Config, md toml.MetaData) {
 	if !md.IsDefined("ai", "max_tokens") || cfg.AI.MaxTokens <= 0 {
 		cfg.AI.MaxTokens = DefaultConfig.AI.MaxTokens
 	}
+	if !md.IsDefined("ai", "max_iterations") || cfg.AI.MaxIterations <= 0 {
+		cfg.AI.MaxIterations = DefaultConfig.AI.MaxIterations
+	}
 	if !md.IsDefined("ai", "timeout") || cfg.AI.Timeout <= 0 {
 		cfg.AI.Timeout = DefaultConfig.AI.Timeout
 	}
@@ -257,6 +263,10 @@ func createDeltaMap(cfg *Config) map[string]interface{} {
 	}
 	if cfg.AI.MaxTokens > 0 && cfg.AI.MaxTokens != DefaultConfig.AI.MaxTokens {
 		aiMap["max_tokens"] = cfg.AI.MaxTokens
+		aiChanged = true
+	}
+	if cfg.AI.MaxIterations > 0 && cfg.AI.MaxIterations != DefaultConfig.AI.MaxIterations {
+		aiMap["max_iterations"] = cfg.AI.MaxIterations
 		aiChanged = true
 	}
 	if cfg.AI.Timeout > 0 && cfg.AI.Timeout != DefaultConfig.AI.Timeout {

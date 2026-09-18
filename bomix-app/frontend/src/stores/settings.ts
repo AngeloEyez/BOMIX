@@ -58,6 +58,7 @@ export const useSettingsStore = defineStore('settings', () => {
         model: current.ai?.model !== undefined ? current.ai.model : (fallback.ai?.model || ''),
         temperature: current.ai?.temperature !== undefined ? current.ai.temperature : (fallback.ai?.temperature ?? 0.1),
         maxTokens: current.ai?.maxTokens !== undefined ? current.ai.maxTokens : (fallback.ai?.maxTokens ?? 4096),
+        maxIterations: current.ai?.maxIterations !== undefined ? current.ai.maxIterations : (fallback.ai?.maxIterations ?? 8),
         timeout: current.ai?.timeout !== undefined ? current.ai.timeout : (fallback.ai?.timeout ?? 60),
         language: current.ai?.language || fallback.ai?.language || 'zh-TW',
       },

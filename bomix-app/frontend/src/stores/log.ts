@@ -91,12 +91,15 @@ export const useLogStore = defineStore('log', () => {
           level: entry.level,
           message: entry.message,
           timestamp: entry.timestamp,
-          attrs: entry.attrs,
+          attrs: entry.attrs ? { ...entry.attrs } : undefined,
           status: 'queued',
           history: []
         }
         taskMap.set(taskId, tracker)
         logs.value.push(tracker)
+      } else if (entry.attrs) {
+        // 合併新進屬性，確保 name、type 等重要中繼資料不被後續子日誌沖刷掉
+        tracker.attrs = { ...(tracker.attrs || {}), ...entry.attrs }
       }
 
       // 將原始 Log 記錄在 Task 的 history 裡 (包含它原本的時間與內容)
@@ -215,6 +218,36 @@ export const useLogStore = defineStore('log', () => {
     })
   }
 
+  /**
+   * 即時更新當前執行中的 AI 對話 Task Tracker 的狀態訊息，使其直接顯示在 Log Panel 最新一行
+   * @param message 即時狀態訊息（如「AI 正在分析您的提問...」、「正在執行工具: get_series_overview」）
+   * @param taskId 可選指定的 Task ID
+   */
+  function updateActiveAIChatMessage(message: string, taskId?: string): void {
+    if (!message) return
+
+    if (taskId) {
+      const tracker = taskMap.get(taskId)
+      if (tracker) {
+        tracker.message = message
+        return
+      }
+    }
+
+    // 若未指定 taskId 或未由 map 找到，尋找當前 status 為 running 的 AIChat 任務
+    for (let i = logs.value.length - 1; i >= 0; i--) {
+      const log = logs.value[i]
+      if (
+        log.isTaskTracker &&
+        log.status === 'running' &&
+        (log.attrs?.type === 'AIChat' || log.attrs?.name?.includes('AI 對話'))
+      ) {
+        log.message = message
+        return
+      }
+    }
+  }
+
   return {
     // State
     logs,
@@ -234,5 +267,6 @@ export const useLogStore = defineStore('log', () => {
     removeLog,
     loadLogs,
     startListening,
+    updateActiveAIChatMessage,
   }
 })

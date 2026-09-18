@@ -10,6 +10,7 @@ import {
   UpdateSettings,
   type AIChatMessage,
 } from '../services/api'
+import { useLogStore } from './log'
 
 /**
  * 工具呼叫資訊結構
@@ -79,6 +80,13 @@ export const useAIChatStore = defineStore('aiChat', () => {
         const data = e?.data !== undefined ? e.data : e
         if (data?.message) {
           currentStatus.value = data.message
+          // 即時同步至 Log 系統最新一行 Task Tracker
+          try {
+            const logStore = useLogStore()
+            logStore.updateActiveAIChatMessage(data.message)
+          } catch {
+            // 忽略未初始化例外
+          }
         }
       })
       unlisteners.push(u1)
@@ -284,7 +292,13 @@ export const useAIChatStore = defineStore('aiChat', () => {
     })
 
     isGenerating.value = true
-    currentStatus.value = 'AI 思考中...'
+    currentStatus.value = 'AI 正在分析您的提問...'
+    try {
+      const logStore = useLogStore()
+      logStore.updateActiveAIChatMessage('AI 正在分析您的提問...')
+    } catch {
+      // ignore
+    }
     activeToolCalls.value = []
 
     // 2. 轉換為後端格式

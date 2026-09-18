@@ -1,10 +1,10 @@
 <template>
   <div class="log-panel" ref="panelRef">
     <!--
-      篩選列：當面板高度足夠時顯示（非單行模式）。
-      單行模式下隱藏，讓最新一條 log 佔滿整個面板高度。
+      篩選列：當面板高度超過三行（且能容納工具列與至少三行日誌）時才顯示。
+      高度拉開小於或等於三行時隱藏，騰出最大可視空間呈現最新日誌。
     -->
-    <div v-show="!isSingleLine" class="panel-header">
+    <div v-show="showFilterToolbar" class="panel-header">
       <div class="tabs-wrapper">
         <button
           v-for="(tab, index) in tabs"
@@ -23,7 +23,12 @@
     </div>
 
     <!-- 日誌顯示區：flex-direction: column，新資訊在下 -->
-    <div class="log-content" ref="logContentRef" @contextmenu.stop.prevent="onPanelContextMenu">
+    <div
+      class="log-content"
+      ref="logContentRef"
+      :class="{ 'is-single-line': isSingleLine }"
+      @contextmenu.stop.prevent="onPanelContextMenu"
+    >
       <!--
         無日誌時：顯示單一 "Ready" 狀態文字（對齊底部，仿 VS Code 狀態列）。
       -->
@@ -31,20 +36,58 @@
         Ready
       </div>
 
-      <!-- 單行模式：只顯示最新一條 log（推至底部），不顯示時間戳記 -->
+      <!-- 單行模式：顯示最新一條 log（完整支援時間、TASK 標籤、主次標題內容與細節按鈕） -->
       <div
         v-else-if="isSingleLine && latestLog"
         class="log-item log-single-line"
-        :class="`log-level-${latestLog.level.toLowerCase()}`"
+        :class="[`log-level-${latestLog.level.toLowerCase()}`, { 'log-item-task': latestLog.isTaskTracker }]"
+        @click="latestLog.isTaskTracker ? openTaskDetails(latestLog) : null"
+        @dblclick="latestLog.isTaskTracker ? openTaskDetails(latestLog) : null"
         @contextmenu.stop.prevent="onLogItemContextMenu($event, latestLog)"
+        :style="latestLog.isTaskTracker ? 'cursor: pointer;' : ''"
+        :title="latestLog.isTaskTracker ? '點擊檢視任務內部細節日誌' : ''"
       >
+        <!-- 左側色條指示 log 等級 -->
         <span class="log-level-indicator"></span>
-        <span class="log-level-tag">{{ latestLog.level }}</span>
-        <span class="log-message">{{ latestLog.message }}</span>
+
+        <!-- Task Tracker 顯示模式 -->
+        <template v-if="latestLog.isTaskTracker">
+          <span class="log-time">{{ formatTime(latestLog.timestamp) }}</span>
+          <span class="log-task-indicator">TASK</span>
+          <span class="log-status-tag" :class="`status-${latestLog.status}`">
+            <i v-if="latestLog.status?.toLowerCase() === 'running'" class="pi pi-spin pi-spinner mr-1 text-[8px]"></i>
+            {{ latestLog.status }}
+          </span>
+          <span class="log-message">
+            <span v-if="latestLog.attrs?.name" class="task-name-label">{{ latestLog.attrs.name }} - </span>
+            {{ latestLog.message }}
+          </span>
+          <button
+            type="button"
+            class="task-detail-pill-btn"
+            title="點開檢視內部細節日誌"
+            @click.stop="openTaskDetails(latestLog)"
+          >
+            <i class="pi pi-list text-[10px]"></i>
+            <span>細節</span>
+          </button>
+        </template>
+
+        <!-- 一般 Log 顯示模式 -->
+        <template v-else>
+          <span class="log-time">{{ formatTime(latestLog.timestamp) }}</span>
+          <span class="log-level-tag">{{ latestLog.level }}</span>
+          <span class="log-message">{{ latestLog.message }}</span>
+          <span v-if="latestLog.attrs && Object.keys(latestLog.attrs).length > 0" class="log-attrs">
+            {{ formatAttrs(latestLog.attrs) }}
+          </span>
+        </template>
       </div>
 
       <!-- 多行模式：顯示完整日誌列表（新資訊在下方） -->
       <template v-else>
+        <!-- 彈性頂部填充：當日誌行數未填滿容器時，自動吸收頂部空間將日誌推至底部對齊，確保最新日誌優先可見 -->
+        <div class="log-content-spacer"></div>
         <div
           v-for="log in filteredLogs"
           :key="log.id || log.timestamp"
@@ -63,7 +106,10 @@
           <template v-if="log.isTaskTracker">
             <span class="log-time">{{ formatTime(log.timestamp) }}</span>
             <span class="log-task-indicator">TASK</span>
-            <span class="log-status-tag" :class="`status-${log.status}`">{{ log.status }}</span>
+            <span class="log-status-tag" :class="`status-${log.status}`">
+              <i v-if="log.status?.toLowerCase() === 'running'" class="pi pi-spin pi-spinner mr-1 text-[8px]"></i>
+              {{ log.status }}
+            </span>
             <span class="log-message">
               <span v-if="log.attrs?.name" class="task-name-label">{{ log.attrs.name }} - </span>
               {{ log.message }}
@@ -102,7 +148,10 @@
           :class="`task-status-${task.status}`"
         >
           <span class="task-name">{{ task.name }}</span>
-          <span class="task-status-tag">{{ task.status }}</span>
+          <span class="task-status-tag">
+            <i v-if="task.status?.toLowerCase() === 'running'" class="pi pi-spin pi-spinner mr-1 text-[8px]"></i>
+            {{ task.status }}
+          </span>
           <!-- 極細進度條 -->
           <div class="task-progress-bar">
             <div
@@ -195,16 +244,30 @@ const logContentRef = ref<HTMLElement | null>(null)
 /** 目前面板高度（px），由 ResizeObserver 動態更新 */
 const panelHeight = ref(0)
 
+/** 單條日誌項目固定行高 (px) */
+const LOG_LINE_HEIGHT = 18
+/** 篩選工具列固定高度 (px，含 1px 下框線) */
+const TOOLBAR_HEIGHT = 23
 /**
- * 單行模式閾值（px）。
- * 篩選列高度約 22px，單條 log 行高約 18px。
- * 當面板總高度縮至此值以下時，切換為單行模式。
+ * 單行模式高度閾值 (px)。
+ * 面板高度在此數值以內時切換為單行極簡模式（僅顯示最新一條日誌）。
  */
-const SINGLE_LINE_THRESHOLD = 44
+const SINGLE_LINE_THRESHOLD = 28
+/**
+ * 篩選工具列顯示閾值 (px)。
+ * 超過三行日誌高度（且能容納篩選列與至少三行日誌）時才顯示。
+ * 23px (篩選列) + 3 * 18px (三行日誌) = 77px。
+ */
+const FILTER_TOOLBAR_THRESHOLD = TOOLBAR_HEIGHT + 3 * LOG_LINE_HEIGHT
 
-/** 是否處於單行模式（面板縮至最小） */
+/** 是否處於單行模式（面板高度縮至僅能顯示單行） */
 const isSingleLine = computed(() =>
   panelHeight.value > 0 && panelHeight.value <= SINGLE_LINE_THRESHOLD
+)
+
+/** 是否顯示篩選工具列（拉開高度超過三行後才顯示） */
+const showFilterToolbar = computed(() =>
+  panelHeight.value > FILTER_TOOLBAR_THRESHOLD
 )
 
 // ── 標籤頁管理 ─────────────────────────────────────────
@@ -251,38 +314,66 @@ const latestLog = computed<LogEntry | null>(() =>
     : null
 )
 
-/** 活躍任務列表 */
-const activeTasks = computed(() => taskStore.activeTasks)
+/**
+ * 活躍任務列表
+ * 注意：排除 AIChat 任務，取消 AI 對話進行中於日誌面板覆蓋之進度條
+ */
+const activeTasks = computed(() =>
+  taskStore.activeTasks.filter(task => task.type !== 'AIChat')
+)
 
 // ── 自動捲動到底部 ─────────────────────────────────────
 /**
- * 監聽 filteredLogs 長度變化，新增日誌時自動捲動到最底部，
- * 確保最新資訊永遠可見。
+ * 將日誌內容區域平滑捲動至最底部，確保最新資訊永遠優先可見
  */
-watch(
-  () => filteredLogs.value.length,
-  async () => {
-    await nextTick()
+function scrollToBottom(): void {
+  nextTick(() => {
     if (logContentRef.value) {
       logContentRef.value.scrollTop = logContentRef.value.scrollHeight
     }
+  })
+}
+
+/**
+ * 監聽 filteredLogs 長度變化，新增日誌時自動捲動到最底部
+ */
+watch(
+  () => filteredLogs.value.length,
+  () => {
+    scrollToBottom()
   }
 )
+
+/**
+ * 監聽面板高度變更（拉伸調整高度）時自動重新定位至最底部，確保最新日誌始終優先可見
+ */
+watch(panelHeight, () => {
+  scrollToBottom()
+})
+
+/**
+ * 監聽分類標籤切換時自動滾動至最底部
+ */
+watch(activeTab, () => {
+  scrollToBottom()
+})
 
 // ── ResizeObserver 偵測面板高度 ────────────────────────
 let resizeObserver: ResizeObserver | null = null
 
 onMounted(() => {
   if (panelRef.value) {
-    // 使用 ResizeObserver 監聽面板大小變化
+    // 使用 ResizeObserver 監聽面板大小變化，即時同步滾動至底部保持最新日誌可見
     resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         panelHeight.value = entry.contentRect.height
       }
+      scrollToBottom()
     })
     resizeObserver.observe(panelRef.value)
-    // 記錄初始高度
+    // 記錄初始高度並滾動至底部
     panelHeight.value = panelRef.value.clientHeight
+    scrollToBottom()
   }
 })
 
@@ -585,6 +676,22 @@ const filteredTaskHistory = computed(() => {
   min-height: 0;
 }
 
+/* 單行模式隱藏垂直捲軸並垂直置中，避免縮放小數點誤差導致短暫出現捲軸 */
+.log-content.is-single-line {
+  overflow-y: hidden;
+  justify-content: center;
+}
+
+.log-content.is-single-line .log-single-line {
+  margin-top: 0;
+}
+
+/* 彈性頂部間隔：日誌未填滿時自動推到底部，填滿溢出時收縮為 0px 支援正常捲動 */
+.log-content-spacer {
+  margin-top: auto;
+  flex-shrink: 0;
+}
+
 .log-content::-webkit-scrollbar {
   width: 6px;
 }
@@ -680,6 +787,7 @@ const filteredTaskHistory = computed(() => {
 /* 主訊息文字 */
 .log-message {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -714,7 +822,7 @@ const filteredTaskHistory = computed(() => {
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.03em;
-  padding: 0 3px;
+  padding: 0 4px;
   border-radius: 2px;
   background-color: var(--surface-hover);
   color: var(--text-color-secondary);
@@ -722,8 +830,9 @@ const filteredTaskHistory = computed(() => {
   text-transform: uppercase;
   line-height: 13px;
   height: 13px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  gap: 2px;
 }
 
 .log-status-tag.status-error {
@@ -775,6 +884,7 @@ const filteredTaskHistory = computed(() => {
   cursor: pointer;
   transition: all 0.15s ease;
   vertical-align: middle;
+  flex-shrink: 0;
 }
 
 .task-detail-pill-btn:hover {
@@ -865,6 +975,9 @@ const filteredTaskHistory = computed(() => {
   font-size: 9px;
   color: var(--text-color-secondary);
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 
 /* 進度條：極細（3px 高） */

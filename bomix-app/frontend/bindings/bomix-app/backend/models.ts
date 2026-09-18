@@ -11,6 +11,7 @@ export interface AISettings {
     "model": string;
     "temperature": number;
     "maxTokens": number;
+    "maxIterations": number;
     "timeout": number;
     "language": string;
 }

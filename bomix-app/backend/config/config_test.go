@@ -295,6 +295,7 @@ func TestLoad_ZeroAISettingsSanitized(t *testing.T) {
 enabled = true
 timeout = 0
 max_tokens = 0
+max_iterations = 0
 temperature = -1.0
 `
 	if err := os.WriteFile(configPath, []byte(tomlContent), 0644); err != nil {
@@ -311,6 +312,9 @@ temperature = -1.0
 	}
 	if cfg.AI.MaxTokens != DefaultConfig.AI.MaxTokens {
 		t.Errorf("MaxTokens 應正規化為 %d, 實際取得 %d", DefaultConfig.AI.MaxTokens, cfg.AI.MaxTokens)
+	}
+	if cfg.AI.MaxIterations != DefaultConfig.AI.MaxIterations {
+		t.Errorf("MaxIterations 應正規化為 %d, 實際取得 %d", DefaultConfig.AI.MaxIterations, cfg.AI.MaxIterations)
 	}
 	if cfg.AI.Temperature != DefaultConfig.AI.Temperature {
 		t.Errorf("Temperature 應正規化為 %v, 實際取得 %v", DefaultConfig.AI.Temperature, cfg.AI.Temperature)
