@@ -1,3 +1,13 @@
+<!--
+  @file LoggerSettings.vue
+  @description 系統日誌輸出與記憶體緩衝區設定元件 (Logger Settings)
+  
+  職責說明：
+  1. 日誌層級門檻：配置系統與底部日誌面板顯示之最低嚴重性層級 (Debug / Info / Warning / Error)。
+  2. 環形緩衝區容量：設定記憶體環形緩衝區 (Ring Buffer) 保留之日誌最大筆數 (100 ~ 5,000 筆)。
+  3. 雙向資料綁定：透過 defineModel 與父層 settings.logger 物件雙向連動，由父層集中防抖存檔。
+-->
+
 <template>
   <!-- ==================== 4. Logger ==================== -->
   <section id="category-logger" class="category-section">

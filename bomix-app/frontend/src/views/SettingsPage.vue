@@ -1,3 +1,16 @@
+<!--
+  @file SettingsPage.vue
+  @description 系統設定主頁面骨架容器 (Shell Layout)
+  
+  職責說明：
+  1. 頁面骨架佈局：提供左右雙欄分割視窗（左側導覽面板 + 右側主要捲動內容區）。
+  2. VSCode 風格樹狀導覽：管理分類選單 (Tree)，支援點擊平滑滾動至對應章節 (scrollIntoView)。
+  3. 雙向滾動聯動 (ScrollSpy)：監聽右側內容捲動位置，即時動態高亮左側對應導覽節點。
+  4. 設定載入與初始化 (SSOT)：自後端載入唯一真實設定值，杜絕前端硬編碼業務預設值。
+  5. 集中式防抖自動存檔 (Auto-save)：深層監聽全域表單變更，集中處理 500ms 防抖儲存，避免子元件各自存檔引發並行競爭。
+  6. 子模組編排：組合 Appearance, General, Import, Logger, AI Assistant 等各獨立設定元件。
+-->
+
 <template>
   <div class="settings-page">
     <!-- 左側樹狀導覽 Panel (VSCode Style Navigation) -->

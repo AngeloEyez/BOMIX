@@ -1,3 +1,13 @@
+<!--
+  @file ImportSettings.vue
+  @description Excel BOM 匯入偏好與版本合併設定元件 (Import Settings)
+  
+  職責說明：
+  1. 版本覆蓋確認：控制匯入同名版本時是否主動彈窗提示確認，防止意外覆蓋現有資料。
+  2. 矩陣設定延續：控制匯入全新 EBOM 時是否自動搜尋上一版本並沿用其 Matrix 勾選設定。
+  3. 雙向資料綁定：透過 defineModel 雙向連動父層表單物件，變更時由父層集中防抖存檔。
+-->
+
 <template>
   <!-- ==================== 3. Import Settings ==================== -->
   <section id="category-import" class="category-section">

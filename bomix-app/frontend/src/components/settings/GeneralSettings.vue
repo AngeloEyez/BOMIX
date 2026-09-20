@@ -1,3 +1,14 @@
+<!--
+  @file GeneralSettings.vue
+  @description 一般系統設定元件 (General Settings)
+  
+  職責說明：
+  1. 系統啟動行為：配置啟動應用程式時是否自動開啟上次最後使用的專案檔 (.bomx)。
+  2. 專案歷程管理：設定歡迎頁面「最近開啟檔案」歷史清單所保留的最大筆數上限 (1 ~ 50 筆)。
+  3. 狀態資訊展示：唯讀呈現上次開啟之專案完整檔案路徑 (Badge 徽章展示)。
+  4. 雙向資料綁定：透過 defineModel 雙向連動父層表單物件，觸發父層集中防抖存檔。
+-->
+
 <template>
   <!-- ==================== 2. General ==================== -->
   <section id="category-general" class="category-section">

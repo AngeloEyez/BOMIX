@@ -1,3 +1,13 @@
+<!--
+  @file AppearanceSettings.vue
+  @description 外觀視覺與主題模式設定元件 (Appearance Settings)
+  
+  職責說明：
+  1. 主題模式切換：提供淺色 (Light)、深色 (Dark) 或依照系統 (System) 三種主題切換。
+  2. 雙向資料綁定：透過 defineModel 與父層 settings.theme 雙向連動，變更時觸發全域主題切換與存檔。
+  3. 擬真按鈕樣式封裝：封裝專屬 PrimeVue SelectButton 客製化樣式，提供擬真 EBOM/Matrix 按鈕操作質感。
+-->
+
 <template>
   <!-- ==================== 1. Appearance ==================== -->
   <section id="category-appearance" class="category-section">

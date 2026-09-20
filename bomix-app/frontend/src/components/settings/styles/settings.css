@@ -1,9 +1,12 @@
 /**
  * @file settings.css
- * @description 前端設定頁面與子元件共用樣式表
+ * @description 前端設定頁面與子元件共用樣式表 (Shared Settings Styles)
  * 
- * 定義大分類區塊、標題欄位、VSCode 風格設定項目條目排版，
- * 以及緊湊型輸入元件（Select、InputNumber 等）的通用尺寸與外觀規格。
+ * 職責說明：
+ * 1. 章節外層規範：定義設定大分類區塊排版、標題、圖示與說明文字佈局 (.category-section, .category-header 等)。
+ * 2. 條目排版規格：提供 VSCode 風格之設定條目標題、說明、控制項容器排版 (.vscode-setting-item 等)。
+ * 3. 欄位開關樣式：統一 ToggleSwitch 位於標題左側之佈局與標籤游標互動 (.switch-title-line 等)。
+ * 4. 緊湊控制元件尺寸：統一下拉選單 (.compact-select) 與數值輸入器 (.compact-input-number) 之高度、內距與按鈕群組微調。
  */
 
 /* 大分類區塊 */

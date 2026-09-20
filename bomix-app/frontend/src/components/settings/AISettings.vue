@@ -1,3 +1,16 @@
+<!--
+  @file AISettings.vue
+  @description 大型語言模型 (LLM) 與 AI 助手設定元件 (AI Assistant Settings)
+  
+  職責說明：
+  1. 助手總開關與回應語言：控制 AI 助手啟動狀態及生成內容之優先自然語言 (繁中/簡中/英文)。
+  2. API 端點與金鑰憑證管理：配置 OpenAI 相容端點網址及本機安全加密儲存之 API Key。
+  3. 即時連線測試：提供「測試連線」操作，主動向後端儲存憑證並驗證 LLM 端點有效性。
+  4. 伺服器模型拉取與同步：支援手動重新整理與失焦自動拉取遠端伺服器可用模型清單，支援自訂輸入模型名稱。
+  5. 推論參數微調：精確調節 Timeout（秒）、Temperature 隨機性、Max Tokens 輸出上限及推論迭代輪次上限 (Max Iterations)。
+  6. 互動樣式與狀態管理：提供連線測試反饋燈號、禁用時淡化遮罩及專用緊湊型輸入控制項樣式。
+-->
+
 <template>
   <!-- ==================== 5. AI Assistant ==================== -->
   <section id="category-ai" class="category-section">
