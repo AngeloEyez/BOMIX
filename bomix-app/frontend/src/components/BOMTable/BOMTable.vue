@@ -68,7 +68,7 @@
       </Column>
 
       <!-- Description -->
-      <Column field="description" header="Description" :style="{ width: columnWidths.description + 'px', minWidth: '220px', maxWidth: columnWidths.description + 'px' }" sortable>
+      <Column field="description" header="Description" :style="{ width: columnWidths.description + 'px', minWidth: COLUMN_WIDTH_LIMITS.description.min + 'px', maxWidth: columnWidths.description + 'px' }" sortable>
         <template #body="slotProps">
           <div
             class="cell-text"
@@ -99,7 +99,7 @@
       </Column>
 
       <!-- Location -->
-      <Column field="locations" header="Location" :style="{ width: columnWidths.locations + 'px', minWidth: '90px', maxWidth: columnWidths.locations + 'px' }">
+      <Column field="locations" header="Location" :style="{ width: columnWidths.locations + 'px', minWidth: COLUMN_WIDTH_LIMITS.locations.min + 'px', maxWidth: columnWidths.locations + 'px' }">
         <template #body="slotProps">
           <div
             class="cell-text cell-mono"
@@ -117,9 +117,9 @@
           v-for="revCol in revisionColumns"
           :key="'ebom-qty-' + revCol.revisionId"
           :style="{
-            width: (revCol.columnWidth || 54) + 'px',
-            minWidth: (revCol.columnWidth || 54) + 'px',
-            maxWidth: ((revCol.columnWidth || 54) + 8) + 'px'
+            width: (revCol.columnWidth || COLUMN_WIDTH_LIMITS.ebomRevisionDefault) + 'px',
+            minWidth: (revCol.columnWidth || COLUMN_WIDTH_LIMITS.ebomRevisionDefault) + 'px',
+            maxWidth: ((revCol.columnWidth || COLUMN_WIDTH_LIMITS.ebomRevisionDefault) + 8) + 'px'
           }"
           header-class="two-line-header-col"
         >
@@ -200,8 +200,8 @@
           </template>
         </Column>
 
-        <!-- Notes (僅 Matrix 模式顯示，下限 100px 且超過部分截斷顯示) -->
-        <Column field="notes" header="Notes" :style="{ width: columnWidths.notes + 'px', minWidth: '100px', maxWidth: columnWidths.notes + 'px' }">
+        <!-- Notes (僅 Matrix 模式顯示，下限由 COLUMN_WIDTH_LIMITS.notes.min 約束且超過部分截斷顯示) -->
+        <Column field="notes" header="Notes" :style="{ width: columnWidths.notes + 'px', minWidth: COLUMN_WIDTH_LIMITS.notes.min + 'px', maxWidth: columnWidths.notes + 'px' }">
           <template #body="slotProps">
             <div
               class="bom-notes-cell cell-text cursor-pointer transition-colors rounded px-1 -mx-1 w-full min-h-[20px]"
@@ -300,7 +300,7 @@ import MatrixModelEditDialog from './components/MatrixModelEditDialog.vue'
 
 // Composables
 import { useBOMData } from './composables/useBOMData'
-import { useColumnWidths } from './composables/useColumnWidths'
+import { useColumnWidths, COLUMN_WIDTH_LIMITS } from './composables/useColumnWidths'
 import { useCellAutoScroll } from './composables/useCellAutoScroll'
 import { useBOMContextMenu } from './composables/useBOMContextMenu'
 import { useCellHoverCard } from './composables/useCellHoverCard'
@@ -398,8 +398,8 @@ function handleViewChange(): void {
 
 /** 執行欄寬重算 */
 function triggerColumnWidthsCompute(): void {
-  const totalMatrixModelWidth = matrixModelColumns.value.reduce((sum, c) => sum + (c.columnWidth || 72), 0)
-  const totalEBOMRevisionWidth = revisionColumns.value.reduce((sum, c) => sum + (c.columnWidth || 54), 0)
+  const totalMatrixModelWidth = matrixModelColumns.value.reduce((sum, c) => sum + (c.columnWidth || COLUMN_WIDTH_LIMITS.matrixModelDefault), 0)
+  const totalEBOMRevisionWidth = revisionColumns.value.reduce((sum, c) => sum + (c.columnWidth || COLUMN_WIDTH_LIMITS.ebomRevisionDefault), 0)
   computeColumnWidths(
     displayRows.value,
     selectedBomType.value,
