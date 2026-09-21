@@ -9,6 +9,12 @@ vars:
   # by `wails3 build GOOS=...` (or the GOOS env var) for cross-compilation. The
   # tasks below dispatch to the matching platform Taskfile via this variable.
   GOOS: '{{.GOOS | default OS}}'
+  # 版本解析 SSOT：優先由命令列變數傳入，次之取環境變數 VERSION，最後 fallback 為 "dev"
+  VERSION: '{{.VERSION | default (env "VERSION") | default "dev"}}'
+  GIT_COMMIT:
+    sh: git rev-parse --short HEAD 2> /dev/null || echo "none"
+  BUILD_TIME:
+    sh: git log -1 --format=%cI 2> /dev/null || echo "unknown"
 
 includes:
   common: ./build/Taskfile.yml
@@ -23,11 +29,19 @@ tasks:
     summary: Builds the application
     cmds:
       - task: "{{.GOOS}}:build"
+        vars:
+          VERSION: '{{.VERSION}}'
+          GIT_COMMIT: '{{.GIT_COMMIT}}'
+          BUILD_TIME: '{{.BUILD_TIME}}'
 
   package:
     summary: Packages a production build of the application
     cmds:
       - task: "{{.GOOS}}:package"
+        vars:
+          VERSION: '{{.VERSION}}'
+          GIT_COMMIT: '{{.GIT_COMMIT}}'
+          BUILD_TIME: '{{.BUILD_TIME}}'
 
   run:
     summary: Runs the application

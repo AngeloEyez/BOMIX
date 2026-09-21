@@ -716,17 +716,48 @@ export function Quit(): void {
   }
 }
 
-export function GetVersion(): string {
+/**
+ * 應用程式版本資訊介面
+ */
+export interface AppInfo {
+  version: string
+  gitCommit: string
+  buildTime: string
+}
+
+/**
+ * 取得目前應用程式版本號字串
+ * @returns {Promise<string>} 版本號字串 (如 "1.0.0" 或 "dev")
+ */
+export async function GetVersion(): Promise<string> {
   try {
-    // Wails v3 GetVersion usually returns a promise, so we should await it if possible
-    // But since this function signature is synchronous string return, we'll try to handle it.
-    // Actually in Wails v3, App.GetVersion() is a Promise. Let's return a dummy or fix the signature if needed.
-    // For now we return "1.0.0" because returning a Promise in a sync function will fail.
-    App.GetVersion().then(v => console.log('Version:', v))
-    return '1.0.0'
+    const v = await App.GetVersion()
+    return v || 'dev'
   } catch (error) {
     console.error('Failed to get version:', error)
     return 'unknown'
+  }
+}
+
+/**
+ * 取得目前應用程式詳細版本與建置元資料
+ * @returns {Promise<AppInfo>} 包含版本號、Commit 與建置時間的結構體
+ */
+export async function GetAppInfo(): Promise<AppInfo> {
+  try {
+    const info = await App.GetAppInfo()
+    return {
+      version: info?.version || 'dev',
+      gitCommit: info?.gitCommit || 'none',
+      buildTime: info?.buildTime || 'unknown',
+    }
+  } catch (error) {
+    console.error('Failed to get app info:', error)
+    return {
+      version: 'unknown',
+      gitCommit: 'none',
+      buildTime: 'unknown',
+    }
   }
 }
 

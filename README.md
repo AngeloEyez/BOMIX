@@ -103,29 +103,32 @@ npm run dev
 
 ---
 
-### 3. 生產環境打包與編譯 (Production Build)
+### 3. 生產環境打包與版本發布 (Production Build & Release)
 
-BOMIX 生產環境編譯最終會產生單一可執行的獨立 `.exe` 檔案（所有前端靜態資源與 Excel 樣板皆以 `//go:embed` 打包進執行檔）。
+BOMIX 生產環境編譯最終會產生單一可執行的獨立 `.exe` 檔案（所有前端靜態資源與 Excel 樣板皆以 `//go:embed` 打包進執行檔）。專案採用 **Git Tag 作為版本號單一真實來源 (SSOT)**，並以 **Taskfile** 作為統一建置核心。
 
-#### 在 Windows 本地編譯：
+#### 本機建置 (使用 Taskfile)：
 
 ```bash
 # 進入應用程式目錄
 cd bomix-app
 
-# 執行生產建置
-wails3 build
+# 1. 預設建置 (標記為 dev 版本，自動推導 Git Commit 與時間)
+task build
+
+# 2. 模擬特定版本建置 (例如 1.2.0，自動同步至 Windows 屬性與 UI)
+task build VERSION=1.2.0
 ```
 *編譯完成的可執行檔將輸出至 `bomix-app/bin/BOMIX.exe`。*
 
-#### 跨平台編譯 (Linux / macOS 編譯出 Windows 執行檔)：
+#### 自動化版本發布 (Release SOP)：
 
-由於 Wails v3 在 Windows 上使用原生 Go syscall 且無需 CGO，可以直接進行跨平台編譯：
+專案配置了 GitHub Actions CI 自動化發布流水線（以 Taskfile 為核心）：
+1. 建立 Git Tag：`git tag -a v1.0.0 -m "Release v1.0.0"`
+2. 推送至遠端：`git push origin v1.0.0`
+3. CI 將自動觸發、解析版本號、執行 `task build VERSION=1.0.0` 並發布 Release。
 
-```bash
-cd bomix-app
-wails3 build GOOS=windows GOARCH=amd64
-```
+> 📖 更詳盡之版本架構與 SOP 請參閱 [建置與發布手冊 (docs/build-and-release.md)](./docs/build-and-release.md)。
 
 ---
 

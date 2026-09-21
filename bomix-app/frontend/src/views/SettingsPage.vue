@@ -93,6 +93,11 @@
           v-model="settings.ai"
           @save-settings="handleImmediateSave"
         />
+
+        <Divider class="section-divider" />
+
+        <!-- 6. About -->
+        <AboutSettings />
       </div>
     </main>
   </div>
@@ -118,6 +123,7 @@ import GeneralSettings from '../components/settings/GeneralSettings.vue'
 import ImportSettings from '../components/settings/ImportSettings.vue'
 import LoggerSettings from '../components/settings/LoggerSettings.vue'
 import AISettingsPanel from '../components/settings/AISettings.vue'
+import AboutSettings from '../components/settings/AboutSettings.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -168,6 +174,11 @@ const navTreeNodes = ref<NavTreeNode[]>([
     label: 'AI Assistant',
     icon: 'pi pi-sparkles',
   },
+  {
+    key: 'about',
+    label: 'About',
+    icon: 'pi pi-info-circle',
+  },
 ])
 
 // 樹狀選取狀態，預設選中 appearance
@@ -215,7 +226,7 @@ function handleRightScroll(): void {
   const container = scrollContainerRef.value
   const containerRect = container.getBoundingClientRect()
 
-  const categories = ['appearance', 'general', 'import', 'logger', 'ai']
+  const categories = ['appearance', 'general', 'import', 'logger', 'ai', 'about']
   let currentKey = categories[0]
 
   for (const key of categories) {
@@ -229,6 +240,11 @@ function handleRightScroll(): void {
         currentKey = key
       }
     }
+  }
+
+  // 若滾動接近或已抵達最底端，選中最後一個分類 (About)
+  if (container.scrollTop + container.clientHeight >= container.scrollHeight - 20) {
+    currentKey = categories[categories.length - 1]
   }
 
   // 若當前高亮與當前計算出的分類不同則更新

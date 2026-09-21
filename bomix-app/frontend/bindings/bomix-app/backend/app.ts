@@ -19,6 +19,9 @@ import * as ai$0 from "./ai/models.js";
 import * as db$0 from "./db/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as version$0 from "./version/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as view$0 from "./view/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -205,6 +208,16 @@ export function ExportExcel(options: $models.ExportOptions | null): $Cancellable
 }
 
 /**
+ * GetAppInfo 取得目前應用程式詳細版本與建置元資料
+ * 
+ * 回傳：
+ *   - version.Info: 包含版本號、Git Commit 與建置時間的結構體
+ */
+export function GetAppInfo(): $CancellablePromise<version$0.Info> {
+    return $Call.ByID(1473601445);
+}
+
+/**
  * GetBOMView 查詢 BOM 視圖資料，是 View 系統的 Wails 綁定入口。
  * 
  * View 系統為無狀態設計，前端顯示與後端匯出可同時以不同條件查詢。
@@ -366,7 +379,7 @@ export function GetTask(id: string): $CancellablePromise<$models.Task | null> {
  * GetVersion 取得目前應用程式版本號字串
  * 
  * 回傳：
- *   - string: 版本號
+ *   - string: 版本號 (例如 "1.0.0" 或 "dev")
  */
 export function GetVersion(): $CancellablePromise<string> {
     return $Call.ByID(1976651186);

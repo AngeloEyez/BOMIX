@@ -7,6 +7,7 @@ import (
 	"bomix-app/backend/config"
 	"bomix-app/backend/logger"
 	"bomix-app/backend/task"
+	"bomix-app/backend/version"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"gorm.io/gorm"
@@ -85,7 +86,16 @@ func (a *App) Quit() {
 // GetVersion 取得目前應用程式版本號字串
 //
 // 回傳：
-//   - string: 版本號
+//   - string: 版本號 (例如 "1.0.0" 或 "dev")
 func (a *App) GetVersion() string {
-	return "1.0.0"
+	return version.GetVersion()
 }
+
+// GetAppInfo 取得目前應用程式詳細版本與建置元資料
+//
+// 回傳：
+//   - version.Info: 包含版本號、Git Commit 與建置時間的結構體
+func (a *App) GetAppInfo() version.Info {
+	return version.Get()
+}
+

@@ -5,11 +5,11 @@ on:
     branches:
       - '**' # 監聽所有分支推送
     tags:
-      - 'v*' # 當打上 v 開頭的標籤時觸發
+      - 'v*' # 當打上 v 開頭的語意化標籤時觸發 (例如 v1.0.0)
 
 jobs:
   build-and-release:
-    name: Build & Release Windows App
+    name: Build & Release Windows App (Taskfile Core)
     runs-on: windows-latest
     permissions:
       contents: write
@@ -18,86 +18,87 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 務必設定為 0（完整拉取歷史紀錄），否則 Git 無法判斷 Tag 屬於哪個分支
+          fetch-depth: 0 # 完整拉取歷史紀錄以利 Git Tag 與 Commit 解析
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25' # 與 go.mod 一致 (go 1.25.0)
+          go-version: '1.25' # 與 go.mod 一致
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22' # 與本地環境一致 (v22.23.1)
+          node-version: '22' # 與本地 LTS 環境一致
 
-      # 💡 修正：前端目錄路徑改為 bomix-app/frontend
-      - name: Install Frontend Dependencies
-        working-directory: bomix-app/frontend
-        run: |
-          Write-Host "正在安裝前端依賴..."
-          npm install --legacy-peer-deps
+      - name: Setup Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 💡 安裝 Wails v3 CLI (鎖定與 go.mod 相同的版本)
       - name: Install Wails v3 CLI
         working-directory: bomix-app
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha2.117
 
-      # 💡 在 bomix-app 目錄下執行 build
-      - name: Build Application
+      # ⭐ 核心邏輯：動態解析版本號 SSOT 與判定正式/測試發布
+      - name: Determine Release Variables
+        id: determine_env
+        shell: pwsh
+        run: |
+          git fetch origin main --depth=1
+
+          if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
+            # 情況 A：由 v* Tag 觸發
+            $tag = "${{ github.ref_name }}"
+            $ver = $tag.TrimStart("v")
+            Write-Host "Triggered by Git Tag: $tag (App Version: $ver)"
+            "VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+            # 檢查當前 Tag 是否在 main 分支歷史中
+            git merge-base --is-ancestor HEAD origin/main
+            if ($LASTEXITCODE -eq 0) {
+              "RELEASE_NAME=Release $tag" | Out-File -FilePath $env:GITHUB_ENV -Append
+              "IS_PRERELEASE=false" | Out-File -FilePath $env:GITHUB_ENV -Append
+            } else {
+              "RELEASE_NAME=Release $tag (Beta)" | Out-File -FilePath $env:GITHUB_ENV -Append
+              "IS_PRERELEASE=true" | Out-File -FilePath $env:GITHUB_ENV -Append
+            }
+          } elseif ("${{ github.ref }}" -eq "refs/heads/main") {
+            # 情況 B：由 main 分支直接 push 觸發
+            "VERSION=main-latest" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "RELEASE_TAG=main-latest" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "RELEASE_NAME=Main 最新穩定版" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "IS_PRERELEASE=false" | Out-File -FilePath $env:GITHUB_ENV -Append
+          } else {
+            # 情況 C：由其他分支直接 push 觸發
+            $branch = "${{ github.ref_name }}"
+            $safeBranch = $branch -replace '[^a-zA-Z0-9_.-]', '-'
+            "VERSION=$safeBranch" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "RELEASE_TAG=${safeBranch}-beta-latest" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "RELEASE_NAME=${branch} 分支 自動測試版 (Beta)" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "IS_PRERELEASE=true" | Out-File -FilePath $env:GITHUB_ENV -Append
+          }
+
+      # 🚀 以 Taskfile 為唯一核心執行統一建置流程
+      # 自動觸發：前端 npm build、info.json 版本同步、syso 生成、Go -ldflags 注入
+      - name: Build Application via Taskfile
         working-directory: bomix-app
-        run: wails3 build GOOS=windows GOARCH=amd64
+        shell: pwsh
+        run: |
+          Write-Host "執行 Taskfile 建置，注入 VERSION=$env:VERSION ..."
+          task build VERSION=$env:VERSION
 
       - name: Package Windows Binary (ZIP)
         shell: pwsh
         run: |
-          # 根據專案結構，輸出路徑為 bomix-app/bin/
-          if (Test-Path "bomix-app/bin") {
-              Compress-Archive -Path bomix-app/bin/* -DestinationPath wails-app-windows.zip
-          } elseif (Test-Path "build/bin") {
-              Compress-Archive -Path build/bin/* -DestinationPath wails-app-windows.zip
+          if (Test-Path "bomix-app/bin/BOMIX.exe") {
+            Compress-Archive -Path "bomix-app/bin/*" -DestinationPath "BOMIX-windows.zip"
+            Write-Host "成功封裝產出包: BOMIX-windows.zip"
           } else {
-              Write-Host "錯誤：未找到編譯輸出目錄"
-              exit 1
+            Write-Error "錯誤：未找到編譯輸出檔案 bomix-app/bin/BOMIX.exe"
+            exit 1
           }
-
-      # ⭐ 核心邏輯：動態判斷正式版與 Beta 版
-      - name: Determine Release Variables
-        id: determine_env
-        shell: bash
-        run: |
-          # 抓取遠端 main 分支資訊以利比對
-          git fetch origin main --depth=1
-
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            # 情況 A：由 v* Tag 觸發
-            echo "RELEASE_TAG=${{ github.ref_name }}" >> $GITHUB_ENV
-
-            # 檢查當前 Tag 的 Commit 是否存在於 main 分支的歷史紀錄中
-            if git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
-              # 如果在 main 分支上：判定為正式版
-              echo "RELEASE_NAME=Release ${{ github.ref_name }}" >> $GITHUB_ENV
-              echo "IS_PRERELEASE=false" >> $GITHUB_ENV
-            else
-              # 如果在其他分支上：判定為 Beta 版
-              echo "RELEASE_NAME=Release ${{ github.ref_name }} (Beta)" >> $GITHUB_ENV
-              echo "IS_PRERELEASE=true" >> $GITHUB_ENV
-            fi
-
-          elif [[ "${{ github.ref }}" == refs/heads/main ]]; then
-            # 情況 B：由 main 分支直接 push 觸發 -> 正式版
-            echo "RELEASE_TAG=main-latest" >> $GITHUB_ENV
-            echo "RELEASE_NAME=Main 最新穩定版" >> $GITHUB_ENV
-            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
-
-          elif [[ "${{ github.ref }}" == refs/heads/* ]]; then
-            # 情況 C：由其他任何分支直接 push 觸發 -> 測試版 (Beta)
-            BRANCH_NAME="${{ github.ref_name }}"
-            # 將分支名稱中的斜線 / 替換為 -，確保 Release Tag 合法
-            SAFE_BRANCH_NAME="${BRANCH_NAME//\//-}"
-            echo "RELEASE_TAG=${SAFE_BRANCH_NAME}-beta-latest" >> $GITHUB_ENV
-            echo "RELEASE_NAME=${BRANCH_NAME} 分支 自動測試版 (Beta)" >> $GITHUB_ENV
-            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
-          fi
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -106,6 +107,6 @@ jobs:
           name: ${{ env.RELEASE_NAME }}
           prerelease: ${{ env.IS_PRERELEASE }}
           files: |
-            wails-app-windows.zip
+            BOMIX-windows.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
