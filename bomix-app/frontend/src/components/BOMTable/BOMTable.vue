@@ -224,21 +224,16 @@
     <!-- 右鍵選單元件 -->
     <ContextMenu ref="contextMenuRef" :model="contextMenuItems" />
 
-    <!-- 儲存格互動式懸停卡片 (支援文字選取、複製與 Notes 多行編輯) -->
+    <!-- 儲存格互動式懸停卡片 (純檢視預覽，支援文字選取與複製) -->
     <BOMCellHoverCard
       :visible="isCardVisible && !isNotesEditorVisible"
       :field="activeField"
       :row="activeRow"
       :content="activeContent"
       :target-rect="targetRect"
-      :is-editing="isEditing"
-      v-model:draft-notes="draftNotes"
       @card-mouse-enter="handleCardMouseEnter"
       @card-mouse-leave="handleCardMouseLeave"
       @close="closeCard(true)"
-      @start-editing="startEditing"
-      @cancel-editing="cancelEditing"
-      @save-notes="handleSaveNotes"
     />
 
     <!-- Notes 欄位專用小編輯視窗 (支援多行 Shift+Enter 換行，Enter 或點擊外部即時儲存) -->

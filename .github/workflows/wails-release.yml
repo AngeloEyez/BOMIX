@@ -3,8 +3,7 @@ name: Wails v3 Windows Release Workflow
 on:
   push:
     branches:
-      - main
-      - v1
+      - '**' # 監聽所有分支推送
     tags:
       - 'v*' # 當打上 v 開頭的標籤時觸發
 
@@ -66,38 +65,37 @@ jobs:
         id: determine_env
         shell: bash
         run: |
-          # 先行抓取遠端分支資訊
-          git fetch origin main v1 --depth=1
+          # 抓取遠端 main 分支資訊以利比對
+          git fetch origin main --depth=1
 
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             # 情況 A：由 v* Tag 觸發
             echo "RELEASE_TAG=${{ github.ref_name }}" >> $GITHUB_ENV
 
-            # 檢查當前 Tag 的 Commit 是否存在於 main 或 v1 分支的歷史紀錄中
+            # 檢查當前 Tag 的 Commit 是否存在於 main 分支的歷史紀錄中
             if git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
               # 如果在 main 分支上：判定為正式版
               echo "RELEASE_NAME=Release ${{ github.ref_name }}" >> $GITHUB_ENV
               echo "IS_PRERELEASE=false" >> $GITHUB_ENV
-            elif git merge-base --is-ancestor HEAD origin/v1 2>/dev/null; then
-              # 如果在 v1 分支上：判定為 Beta 版
-              echo "RELEASE_NAME=Release ${{ github.ref_name }} (Beta)" >> $GITHUB_ENV
-              echo "IS_PRERELEASE=true" >> $GITHUB_ENV
             else
-              # 無法確認分支：預設為 Beta
-              echo "RELEASE_NAME=Release ${{ github.ref_name }} (Unknown)" >> $GITHUB_ENV
+              # 如果在其他分支上：判定為 Beta 版
+              echo "RELEASE_NAME=Release ${{ github.ref_name }} (Beta)" >> $GITHUB_ENV
               echo "IS_PRERELEASE=true" >> $GITHUB_ENV
             fi
 
           elif [[ "${{ github.ref }}" == refs/heads/main ]]; then
-            # 情況 B：由 main 分支直接 push 觸發
+            # 情況 B：由 main 分支直接 push 觸發 -> 正式版
             echo "RELEASE_TAG=main-latest" >> $GITHUB_ENV
             echo "RELEASE_NAME=Main 最新穩定版" >> $GITHUB_ENV
             echo "IS_PRERELEASE=false" >> $GITHUB_ENV
 
-          elif [[ "${{ github.ref }}" == refs/heads/v1 ]]; then
-            # 情況 C：由 v1 分支直接 push 觸發
-            echo "RELEASE_TAG=v1-beta-latest" >> $GITHUB_ENV
-            echo "RELEASE_NAME=v1 分支 自動測試版 (Beta)" >> $GITHUB_ENV
+          elif [[ "${{ github.ref }}" == refs/heads/* ]]; then
+            # 情況 C：由其他任何分支直接 push 觸發 -> 測試版 (Beta)
+            BRANCH_NAME="${{ github.ref_name }}"
+            # 將分支名稱中的斜線 / 替換為 -，確保 Release Tag 合法
+            SAFE_BRANCH_NAME="${BRANCH_NAME//\//-}"
+            echo "RELEASE_TAG=${SAFE_BRANCH_NAME}-beta-latest" >> $GITHUB_ENV
+            echo "RELEASE_NAME=${BRANCH_NAME} 分支 自動測試版 (Beta)" >> $GITHUB_ENV
             echo "IS_PRERELEASE=true" >> $GITHUB_ENV
           fi
 

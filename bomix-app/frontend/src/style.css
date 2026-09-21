@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *), &:where(.app-dark, .app-dark *));
 
 /* PrimeVue Aura theme with @primeuix/themes v5 */
 :root {
@@ -26,6 +27,22 @@
   --bom-text-main: #1e293b;
   --bom-text-second: #64748b;
   --bom-cell-border: #e2e8f0;
+
+  /* BOM 表格懸停浮動卡片與編輯彈窗主題變數 (Light Theme) */
+  --bom-card-bg: #ffffff;
+  --bom-card-border: #cbd5e1;
+  --bom-card-text: #1e293b;
+  --bom-card-text-muted: #94a3b8;
+  --bom-card-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.25), 0 0 1px 1px rgba(0, 0, 0, 0.08);
+  --bom-card-input-bg: #ffffff;
+  --bom-card-input-border: #cbd5e1;
+  --bom-card-input-text: #1e293b;
+  --bom-card-btn-bg: #f1f5f9;
+  --bom-card-btn-border: #cbd5e1;
+  --bom-card-btn-text: #475569;
+  --bom-card-btn-hover-bg: #e2e8f0;
+  --bom-card-scrollbar-thumb: rgba(156, 163, 175, 0.5);
+  --bom-card-scrollbar-thumb-hover: rgba(107, 114, 128, 0.7);
 
   /* AI 對話助手專用變數 (Light Theme) */
   --user-bubble-bg: #f1f5f9;
@@ -172,6 +189,22 @@ html.app-dark {
     --bom-text-main: #e2e8f0;
     --bom-text-second: #94a3b8;
     --bom-cell-border: #2d2d2d;
+
+    /* BOM 表格懸停浮動卡片與編輯彈窗主題變數 (Dark Theme) */
+    --bom-card-bg: #1e1e1e;
+    --bom-card-border: #454545;
+    --bom-card-text: #cccccc;
+    --bom-card-text-muted: #858585;
+    --bom-card-shadow: 0 12px 36px -4px rgba(0, 0, 0, 0.7), 0 0 1px 1px #3c3c3c;
+    --bom-card-input-bg: #252526;
+    --bom-card-input-border: #444444;
+    --bom-card-input-text: #e2e8f0;
+    --bom-card-btn-bg: #2d2d2d;
+    --bom-card-btn-border: #454545;
+    --bom-card-btn-text: #cbd5e1;
+    --bom-card-btn-hover-bg: #383838;
+    --bom-card-scrollbar-thumb: rgba(255, 255, 255, 0.25);
+    --bom-card-scrollbar-thumb-hover: rgba(255, 255, 255, 0.45);
 
     /* AI 對話助手專用變數 (Dark Theme)：深灰色底色，與背景 #1e1e1e 形成舒適區隔 */
     --user-bubble-bg: #2e2e32;

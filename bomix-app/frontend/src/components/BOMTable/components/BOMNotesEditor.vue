@@ -236,15 +236,16 @@ const editorPositionStyle = computed(() => {
   height: fit-content !important;
   max-width: none !important;
   padding: 8px !important;
-  background-color: #ffffff !important;
-  border: 1px solid #cbd5e1 !important;
+  background-color: var(--bom-card-bg, #ffffff) !important;
+  border: 1px solid var(--bom-card-border, #cbd5e1) !important;
   border-radius: 8px !important;
-  box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.25), 0 0 1px 1px rgba(0, 0, 0, 0.08) !important;
+  box-shadow: var(--bom-card-shadow, 0 12px 32px -4px rgba(0, 0, 0, 0.25), 0 0 1px 1px rgba(0, 0, 0, 0.08)) !important;
   outline: none !important;
 }
 
-:global(.app-dark) .bom-notes-editor,
-:global(.dark) .bom-notes-editor {
+:global(.app-dark .bom-notes-editor),
+:global(.dark .bom-notes-editor),
+:global(html.app-dark .bom-notes-editor) {
   background-color: #1e1e1e !important;
   border-color: #454545 !important;
   box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.75), 0 0 1px 1px #3c3c3c !important;
@@ -263,25 +264,36 @@ const editorPositionStyle = computed(() => {
   overflow: auto;
   box-sizing: border-box;
   padding: 8px 10px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--bom-card-input-border, #cbd5e1);
   border-radius: 6px;
   font-family: inherit;
   font-size: 12px;
   line-height: 1.5;
-  background-color: #ffffff;
-  color: #1e293b;
+  background-color: var(--bom-card-input-bg, #ffffff);
+  color: var(--bom-card-input-text, #1e293b);
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-:global(.app-dark) .notes-textarea,
-:global(.dark) .notes-textarea {
+.notes-textarea::placeholder {
+  color: var(--bom-card-text-muted, #94a3b8);
+}
+
+:global(.app-dark .notes-textarea),
+:global(.dark .notes-textarea),
+:global(html.app-dark .notes-textarea) {
   background-color: #252526 !important;
   color: #e2e8f0 !important;
   border-color: #525252 !important;
 }
 
+:global(.app-dark .notes-textarea::placeholder),
+:global(.dark .notes-textarea::placeholder) {
+  color: #666666 !important;
+}
+
 .notes-textarea:focus {
-  border-color: var(--p-primary-color, #10b981) !important;
+  border-color: var(--p-primary-500, #10b981) !important;
   box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2) !important;
 }
 
