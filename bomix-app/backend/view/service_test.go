@@ -203,6 +203,140 @@ func TestFilter_Apply_CCL(t *testing.T) {
 	})
 }
 
+// TestFilter_Apply_CCL_WithMatrixSelection 測試 CCL 視圖對 Matrix Selection 勾選物料的篩選擴充規則。
+//
+// 驗證重點：
+//  1. 物料 CCL=false，但在目標匯出 Revision 中有 Matrix Selection 勾選，必須保留匯出。
+//  2. 物料 CCL=false，但僅在非匯出 Revision 中有勾選，在當前匯出 Revision 必須被排除（Revision 隔離性）。
+//  3. 物料 CCL=false 且無勾選（或選取取消），必須被排除。
+//  4. 物料 CCL=false 且 BOMStatus=X，若在目標 Revision 有勾選，仍必須被保留匯出。
+//  5. 多 Revision 匯出（BigMatrix 整合聯集）情境：任一目標 Revision 有勾選即保留匯出。
+func TestFilter_Apply_CCL_WithMatrixSelection(t *testing.T) {
+	filter := NewFilter()
+
+	// 建立測試資料
+	// P_CCL: 傳統 CCL 零件 (CCL=true, Status=I, 無勾選)
+	pCCL := makeTestPart("SupA", "PN_CCL", "SMD", "I", true, []int64{1, 2})
+
+	// P_SelRev1: 非 CCL 零件，在 Revision 1 有勾選 (SelectedMaterialID = 101)
+	pSelRev1 := makeTestPart("SupB", "PN_SelRev1", "SMD", "I", false, []int64{1, 2})
+	pSelRev1.Selections = []ViewModelSelection{
+		{RevisionID: 1, SortOrder: 0, ModelName: "Model A", SelectedMaterialID: 101},
+	}
+
+	// P_SelRev2: 非 CCL 零件，僅在 Revision 2 有勾選 (SelectedMaterialID = 201)
+	pSelRev2 := makeTestPart("SupC", "PN_SelRev2", "SMD", "I", false, []int64{1, 2})
+	pSelRev2.Selections = []ViewModelSelection{
+		{RevisionID: 2, SortOrder: 0, ModelName: "Model A", SelectedMaterialID: 201},
+	}
+
+	// P_NoSel: 非 CCL 零件，且無任何勾選
+	pNoSel := makeTestPart("SupD", "PN_NoSel", "SMD", "I", false, []int64{1, 2})
+
+	// P_SelUnchecked: 非 CCL 零件，在 Revision 1 記錄為未勾選 (SelectedMaterialID = 0)
+	pSelUnchecked := makeTestPart("SupE", "PN_SelUnchecked", "SMD", "I", false, []int64{1, 2})
+	pSelUnchecked.Selections = []ViewModelSelection{
+		{RevisionID: 1, SortOrder: 0, ModelName: "Model A", SelectedMaterialID: 0},
+	}
+
+	// P_NIWithSel: 非 CCL 零件且 BOMStatus=X (不上件)，但在 Revision 1 有勾選
+	pNIWithSel := makeTestPart("SupF", "PN_NIWithSel", "SMD", "X", false, []int64{1, 2})
+	pNIWithSel.Selections = []ViewModelSelection{
+		{RevisionID: 1, SortOrder: 0, ModelName: "Model A", SelectedMaterialID: 301},
+	}
+
+	allParts := []ViewPartGroup{pCCL, pSelRev1, pSelRev2, pNoSel, pSelUnchecked, pNIWithSel}
+
+	t.Run("單一 Revision 匯出 (Revision 1): 應包含 CCL、Rev1 勾選料、NI 但有勾選料；排除 Rev2 勾選料與未勾選料", func(t *testing.T) {
+		query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewCCL, ModeOverride: "NPI"}
+		result := filter.Apply(allParts, query)
+
+		found := make(map[string]bool)
+		for _, p := range result {
+			found[p.MainSupplierPN] = true
+		}
+
+		// 應包含
+		if !found["PN_CCL"] {
+			t.Errorf("期望包含傳統 CCL 零件 PN_CCL")
+		}
+		if !found["PN_SelRev1"] {
+			t.Errorf("期望包含在 Rev1 有勾選之零件 PN_SelRev1")
+		}
+		if !found["PN_NIWithSel"] {
+			t.Errorf("期望包含在 Rev1 有勾選之 NI 零件 PN_NIWithSel")
+		}
+
+		// 應排除
+		if found["PN_SelRev2"] {
+			t.Errorf("不應包含僅在 Rev2 有勾選之零件 PN_SelRev2")
+		}
+		if found["PN_NoSel"] {
+			t.Errorf("不應包含無勾選非 CCL 零件 PN_NoSel")
+		}
+		if found["PN_SelUnchecked"] {
+			t.Errorf("不應包含取消勾選之零件 PN_SelUnchecked")
+		}
+
+		if len(result) != 3 {
+			t.Errorf("期望過濾結果共 3 筆，實際得到 %d 筆", len(result))
+		}
+	})
+
+	t.Run("多 Revision 匯出 (Revision 1 + 2 整合聯集): 應同時包含 Rev1 與 Rev2 之勾選料", func(t *testing.T) {
+		query := ViewQuery{RevisionIDs: []int64{1, 2}, ViewType: ViewCCL, ModeOverride: "NPI"}
+		result := filter.Apply(allParts, query)
+
+		found := make(map[string]bool)
+		for _, p := range result {
+			found[p.MainSupplierPN] = true
+		}
+
+		if !found["PN_CCL"] || !found["PN_SelRev1"] || !found["PN_SelRev2"] || !found["PN_NIWithSel"] {
+			t.Errorf("多 Revision 匯出期望包含 CCL、Rev1勾選、Rev2勾選與NI勾選，實際結果: %+v", found)
+		}
+
+		if found["PN_NoSel"] || found["PN_SelUnchecked"] {
+			t.Errorf("多 Revision 匯出仍應排除完全無勾選之非 CCL 零件，實際結果: %+v", found)
+		}
+
+		if len(result) != 4 {
+			t.Errorf("期望過濾結果共 4 筆，實際得到 %d 筆", len(result))
+		}
+	})
+
+	t.Run("單一 Revision 匯出 (Revision 2): 僅包含 CCL 與 Rev2 勾選料，排除 Rev1 勾選料", func(t *testing.T) {
+		query := ViewQuery{RevisionIDs: []int64{2}, ViewType: ViewCCL, ModeOverride: "NPI"}
+		result := filter.Apply(allParts, query)
+
+		found := make(map[string]bool)
+		for _, p := range result {
+			found[p.MainSupplierPN] = true
+		}
+
+		if !found["PN_CCL"] || !found["PN_SelRev2"] {
+			t.Errorf("期望包含 PN_CCL 與 PN_SelRev2，實際結果: %+v", found)
+		}
+		if found["PN_SelRev1"] || found["PN_NIWithSel"] {
+			t.Errorf("不應包含僅在 Rev1 勾選之物料，實際結果: %+v", found)
+		}
+		if len(result) != 2 {
+			t.Errorf("期望過濾結果共 2 筆，實際得到 %d 筆", len(result))
+		}
+	})
+
+	t.Run("容錯備援: Selections 列表為空但 MainSelectionsByOrder 有勾選", func(t *testing.T) {
+		pFallback := makeTestPart("SupFallback", "PN_Fallback", "SMD", "I", false, []int64{1})
+		pFallback.MainSelectionsByOrder = map[int]bool{0: true}
+
+		query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewCCL}
+		result := filter.Apply([]ViewPartGroup{pFallback}, query)
+		if len(result) != 1 {
+			t.Errorf("容錯備援期望保留 MainSelectionsByOrder 為 true 之零件，實際得到 %d 筆", len(result))
+		}
+	})
+}
+
 // TestFilter_Apply_EmptyViewType 測試空 ViewType 預設為 ALL
 func TestFilter_Apply_EmptyViewType(t *testing.T) {
 	filter := NewFilter()

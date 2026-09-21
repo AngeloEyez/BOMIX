@@ -57,7 +57,7 @@ func (f *Filter) Apply(parts []ViewPartGroup, query ViewQuery, modes ...string) 
 	case ViewMP:
 		return f.filterByBOMStatus(parts, "M")
 	case ViewCCL:
-		return f.filterCCL(parts, mode)
+		return f.filterCCL(parts, query, mode)
 	default:
 		// 未知視圖類型：回傳全部（不過濾）
 		return parts
@@ -156,31 +156,93 @@ func (f *Filter) filterByBOMStatus(parts []ViewPartGroup, status string) []ViewP
 	return result
 }
 
-// filterCCL 過濾出關鍵零件 (CCL = true) 且 bom_status 符合當前 BOM 模式 (NPI: I+P, MP: I+M) 的有效物料。
+// hasAnyMatrixSelection 檢查該物料群組在指定 revisionIDs 列表中是否有任何 Matrix Selection 勾選。
+//
+// 判定規則：
+//  1. 優先檢查 part.Selections：若存在任一項其 RevisionID 屬於目標 revisionIDs（若未指定 revisionIDs 則視為全部有效），
+//     且該項已被選中（SelectedMaterialID != 0 或 SelectedPN != ""），則判定為有勾選。
+//  2. 容錯備援：若 part.Selections 為空（例如手動 Mock 測試資料），且查詢未限定多 revision，
+//     則檢查 part.MainSelectionsByOrder 或其 SecondSources[].SelectionsByOrder 是否有任一項為 true。
+//
+// 參數：
+//   - part: 物料群組
+//   - revisionIDs: 當前查詢或匯出的 BOM Revision ID 列表
+//
+// 回傳：
+//   - bool: 是否存在任何有效的 Matrix Selection 勾選
+func hasAnyMatrixSelection(part ViewPartGroup, revisionIDs []int64) bool {
+	targetRevMap := make(map[int64]bool, len(revisionIDs))
+	for _, id := range revisionIDs {
+		targetRevMap[id] = true
+	}
+
+	for _, sel := range part.Selections {
+		if len(targetRevMap) > 0 && !targetRevMap[sel.RevisionID] {
+			continue
+		}
+		if sel.SelectedMaterialID != 0 || sel.SelectedPN != "" {
+			return true
+		}
+	}
+
+	// 容錯檢查：若 Selections 列表為空且未指定 revisionIDs 或僅指定單一 revision
+	if len(part.Selections) == 0 && len(targetRevMap) <= 1 {
+		for _, isSel := range part.MainSelectionsByOrder {
+			if isSel {
+				return true
+			}
+		}
+		for _, ss := range part.SecondSources {
+			for _, isSel := range ss.SelectionsByOrder {
+				if isSel {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// filterCCL 過濾出關鍵零件 (CCL = true 且符合當前 BOM 模式) 或在查詢/匯出 revisions 中有任何 matrix selection 勾選的有效物料。
 // See product-spec section 6.4.2 & 8.1.6
+//
+// 過濾規則 (滿足任一條件即保留)：
+//  1. 原有條件：part.CCL 為 true，且 bom_status 符合當前 BOM 模式 (NPI: I+P, MP: I+M)。
+//  2. 矩陣勾選條件：在 query.RevisionIDs 範圍內，該物料群組存在任一 Model 的 Matrix Selection 勾選。
 //
 // 參數：
 //   - parts：待過濾列表
+//   - query：視圖查詢參數（包含目標 RevisionIDs）
 //   - mode：當前 BOM 模式（NPI 或 MP）
 //
 // 回傳：
 //   - []ViewPartGroup：過濾後的列表
-func (f *Filter) filterCCL(parts []ViewPartGroup, mode string) []ViewPartGroup {
+func (f *Filter) filterCCL(parts []ViewPartGroup, query ViewQuery, mode string) []ViewPartGroup {
 	result := make([]ViewPartGroup, 0)
 	mode = strings.ToUpper(strings.TrimSpace(mode))
 
 	for _, part := range parts {
-		if !part.CCL {
-			continue
+		// 1. 檢查原有 CCL 條件
+		isCCLMatch := false
+		if part.CCL {
+			if mode == "MP" {
+				if part.BOMStatus == "I" || part.BOMStatus == "M" {
+					isCCLMatch = true
+				}
+			} else {
+				if part.BOMStatus == "I" || part.BOMStatus == "P" {
+					isCCLMatch = true
+				}
+			}
 		}
-		if mode == "MP" {
-			if part.BOMStatus == "I" || part.BOMStatus == "M" {
-				result = append(result, part)
-			}
-		} else {
-			if part.BOMStatus == "I" || part.BOMStatus == "P" {
-				result = append(result, part)
-			}
+
+		// 2. 檢查在匯出/查詢的 revisions 中是否有任何 matrix selection 勾選
+		hasSelection := hasAnyMatrixSelection(part, query.RevisionIDs)
+
+		// 符合任一條件即保留
+		if isCCLMatch || hasSelection {
+			result = append(result, part)
 		}
 	}
 	return result
@@ -226,9 +288,9 @@ func DescribeCondition(viewType string, mode string) string {
 		return "bom_status = 'M' (量產專用)"
 	case ViewCCL:
 		if m == "MP" {
-			return "ccl = true AND bom_status in ('I', 'M')"
+			return "(ccl = true AND bom_status in ('I', 'M')) OR (選取 revision 中有 matrix selection 勾選)"
 		}
-		return "ccl = true AND bom_status in ('I', 'P')"
+		return "(ccl = true AND bom_status in ('I', 'P')) OR (選取 revision 中有 matrix selection 勾選)"
 	default:
 		return "不過濾 (全部顯示)"
 	}

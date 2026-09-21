@@ -211,7 +211,8 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 // loadExportData 透過 View 系統從資料庫讀取匯出所需的 Revisions 與 Parts 資料。
 //
 // 此函數透過 View 系統的 Query() 取得資料，
-// 依據 product-spec 8.1.6 規定使用 ViewCCL 視圖條件過濾 (ccl=Y, bom_status=I + P/M)。
+// 依據 product-spec 8.1.6 規定使用 ViewCCL 視圖條件過濾：
+// 包含 CCL=true (依模式過濾 bom_status=I + P/M) 或在當次匯出之 revisions 中有任何 matrix selection 勾選之物料群組。
 //
 // 匯出時使用「整合聯集」視圖（多 revision 時取聯集），
 // ViewPartGroup 中的 SourceRevisionIDs 會被傳遞至 PartData，
@@ -234,7 +235,7 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64, gro
 
 	query := view.ViewQuery{
 		RevisionIDs: revisionIDs,
-		ViewType:    view.ViewCCL, // BigMatrix/Matrix 匯出依 product-spec 8.1.6 需使用 CCL 視圖過濾 (ccl=Y, bom_status!=X)
+		ViewType:    view.ViewCCL, // BigMatrix/Matrix 匯出依 product-spec 8.1.6 需使用 CCL 視圖過濾 (CCL=Y 或有 Matrix Selection 勾選)
 	}
 
 	if lg != nil {
