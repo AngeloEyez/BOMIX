@@ -38,6 +38,19 @@ export interface BomRevision {
   updatedAt: string
 }
 
+/**
+ * 版本選項介面（提供下拉選單、匯出視圖與版本複製窗口使用）
+ */
+export interface RevisionOption {
+  id: number
+  projectId: number
+  projectCode: string
+  phase: string
+  version: string
+  label: string
+  modelCount: number
+}
+
 export const useProjectStore = defineStore('project', () => {
   // State
   const projects = ref<Project[]>([])
@@ -103,6 +116,38 @@ export const useProjectStore = defineStore('project', () => {
         data: rev
       }))
     }))
+  })
+
+  /**
+   * 取得系列下所有專案的實際 Revision 選項清單 (響應式計算，附帶機種數量描述)
+   */
+  const allRevisionOptions = computed<RevisionOption[]>(() => {
+    const list: RevisionOption[] = []
+    if (!projects.value || projects.value.length === 0) return list
+
+    for (const p of projects.value) {
+      if (p.revisions && p.revisions.length > 0) {
+        for (const r of p.revisions) {
+          const pCode = p.code || p.name || `Project ${p.id}`
+          const phaseStr = (r.phase || '').trim()
+          const verStr = (r.version || '').trim()
+          const phaseVer = [phaseStr, verStr].filter(Boolean).join(' ')
+          const count = r.modelCount || 0
+          const countDesc = count > 0 ? `(${count} Models)` : '(No Model)'
+          const mainLabel = phaseVer ? `${pCode} - ${phaseVer}` : pCode
+          list.push({
+            id: r.id,
+            projectId: p.id,
+            projectCode: pCode,
+            phase: phaseStr,
+            version: verStr,
+            label: `${mainLabel} ${countDesc}`,
+            modelCount: count
+          })
+        }
+      }
+    }
+    return list
   })
 
   // Actions
@@ -249,6 +294,7 @@ export const useProjectStore = defineStore('project', () => {
     selectedRevisions,
     currentBom,
     projectTree,
+    allRevisionOptions,
     // Actions
     loadProjects,
     loadRevisions,

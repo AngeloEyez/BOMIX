@@ -526,3 +526,118 @@ func TestSaveRevisionMatrixModels(t *testing.T) {
 	assert.Len(t, selBDeleted, 0, "被刪減的 Model B 其勾選紀錄應被同步清除")
 }
 
+// TestImportMatrixSelections_Comprehensive 測試 ImportMatrixSelections 複製邏輯：包含防誤刪、階層替代料驗證與覆蓋複製
+func TestImportMatrixSelections_Comprehensive(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := CreateSeries(database, "Series Matrix Copy", "Test")
+	assert.NoError(t, err)
+	project, err := GetOrCreateProject(database, 1, "PROJ-COPY", "Copy Project")
+	assert.NoError(t, err)
+
+	// 建立來源版本與目標版本
+	revSource, err := CreateRevision(database, project.ID, "PV", "0.1", "Source Rev")
+	assert.NoError(t, err)
+	revTarget, err := CreateRevision(database, project.ID, "PV", "0.2", "Target Rev")
+	assert.NoError(t, err)
+
+	// 建立物料
+	mats := []Material{
+		{Supplier: "VendorA", SupplierPN: "MAIN-101"},
+		{Supplier: "VendorB", SupplierPN: "SEC-101"},
+		{Supplier: "VendorC", SupplierPN: "OTHER-999"},
+	}
+	_, _, err = UpsertMaterials(database, mats, nil)
+	assert.NoError(t, err)
+	matMain, _ := GetMaterialBySupplierPN(database, "VendorA", "MAIN-101")
+	matSec, _ := GetMaterialBySupplierPN(database, "VendorB", "SEC-101")
+	matOther, _ := GetMaterialBySupplierPN(database, "VendorC", "OTHER-999")
+
+	// 1. 測試：來源無任何 MatrixModel 時，不應覆蓋清空目標版本的既有資料
+	targetModelPre := MatrixModel{RevisionID: revTarget.ID, SortOrder: 0, ModelName: "TargetPre", Qty: 1}
+	err = database.Create(&targetModelPre).Error
+	assert.NoError(t, err)
+
+	statsEmpty, err := ImportMatrixSelections(database, revSource.ID, revTarget.ID, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, statsEmpty.SourceModelCount)
+
+	// 確認目標版本的既有 Model 依然存在
+	var targetModelsAfterEmpty []MatrixModel
+	database.Where("revision_id = ?", revTarget.ID).Find(&targetModelsAfterEmpty)
+	assert.Len(t, targetModelsAfterEmpty, 1, "來源無 Model 時，目標版本的既有 Model 不應被刪除")
+
+	// 2. 在來源建立 Model 與 Component
+	compSourceMain := RevisionComponent{RevisionID: revSource.ID, MaterialID: matMain.ID, Role: "M"}
+	err = database.Create(&compSourceMain).Error
+	assert.NoError(t, err)
+	compSourceSec := RevisionComponent{RevisionID: revSource.ID, MaterialID: matSec.ID, Role: "S", ParentComponentID: compSourceMain.ID}
+	err = database.Create(&compSourceSec).Error
+	assert.NoError(t, err)
+
+	modelSourceA := MatrixModel{RevisionID: revSource.ID, SortOrder: 0, ModelName: "Model Alpha", Qty: 2}
+	modelSourceB := MatrixModel{RevisionID: revSource.ID, SortOrder: 1, ModelName: "Model Beta", Qty: 3}
+	err = database.Create(&modelSourceA).Error
+	assert.NoError(t, err)
+	err = database.Create(&modelSourceB).Error
+	assert.NoError(t, err)
+
+	// 來源 Model A 選用主料自身，Model B 選用替代料 matSec
+	err = database.Create(&MatrixSelection{
+		RevisionID:         revSource.ID,
+		ModelID:            modelSourceA.ID,
+		ComponentID:        compSourceMain.ID,
+		MainMaterialID:     matMain.ID,
+		SelectedMaterialID: matMain.ID,
+	}).Error
+	assert.NoError(t, err)
+
+	err = database.Create(&MatrixSelection{
+		RevisionID:         revSource.ID,
+		ModelID:            modelSourceB.ID,
+		ComponentID:        compSourceMain.ID,
+		MainMaterialID:     matMain.ID,
+		SelectedMaterialID: matSec.ID,
+	}).Error
+	assert.NoError(t, err)
+
+	// 3. 在目標版本中建立零件：
+	// 目標版本具有 matMain 主料，但故意不將 matSec 作為其替代料；
+	// 同時建立第二個主料零件，將 matOther 作為第二個零件的替代料，驗證不同零件的替代料不會被跨零件錯誤採納。
+	compTargetMain := RevisionComponent{RevisionID: revTarget.ID, MaterialID: matMain.ID, Role: "M"}
+	err = database.Create(&compTargetMain).Error
+	assert.NoError(t, err)
+
+	compTargetOtherMain := RevisionComponent{RevisionID: revTarget.ID, MaterialID: 99999, Role: "M"}
+	err = database.Create(&compTargetOtherMain).Error
+	assert.NoError(t, err)
+
+	compTargetOtherSec := RevisionComponent{RevisionID: revTarget.ID, MaterialID: matOther.ID, Role: "S", ParentComponentID: compTargetOtherMain.ID}
+	err = database.Create(&compTargetOtherSec).Error
+	assert.NoError(t, err)
+
+	// 執行複製
+	stats, err := ImportMatrixSelections(database, revSource.ID, revTarget.ID, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, stats.SourceModelCount)
+	// Model A 成功複製（主料選中），Model B 因目標無該主料直屬替代料 matSec 而被忽略
+	assert.Equal(t, 1, stats.CopiedSelectionsCount)
+	assert.Equal(t, 1, stats.IgnoredSecondParts)
+	assert.Equal(t, 0, stats.IgnoredMainParts)
+
+	// 驗證目標版本的 Model 結構
+	targetModels, err := GetMatrixModels(database, revTarget.ID)
+	assert.NoError(t, err)
+	assert.Len(t, targetModels, 2)
+	assert.Equal(t, "Model Alpha", targetModels[0].ModelName)
+	assert.Equal(t, "Model Beta", targetModels[1].ModelName)
+
+	// 驗證目標版本的 Selection
+	targetSels, err := GetMatrixSelectionsByRevision(database, revTarget.ID)
+	assert.NoError(t, err)
+	assert.Len(t, targetSels, 1)
+	assert.Equal(t, matMain.ID, targetSels[0].SelectedMaterialID)
+	assert.True(t, targetSels[0].IsAutoSelected)
+	assert.Equal(t, compTargetMain.ID, targetSels[0].ComponentID)
+}
+

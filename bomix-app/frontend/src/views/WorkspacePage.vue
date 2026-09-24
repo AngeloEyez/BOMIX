@@ -63,9 +63,9 @@ import { ref, computed, onMounted } from 'vue'
 import Button from 'primevue/button'
 import { useAppStore, useProjectStore, useLogStore, useTaskStore, useBOMTableStore } from '../stores'
 import BOMTable from '../components/BOMTable'
-import ExportView, { type RevisionOption } from '../components/workspace/ExportView.vue'
+import ExportView from '../components/workspace/ExportView.vue'
 import CopyMatrixDialog from '../components/workspace/CopyMatrixDialog.vue'
-import type { Project, BomRevision } from '../stores/project'
+import type { Project, BomRevision, RevisionOption } from '../stores/project'
 
 const appStore = useAppStore()
 const projectStore = useProjectStore()
@@ -73,8 +73,8 @@ const logStore = useLogStore()
 const taskStore = useTaskStore()
 const bomTableStore = useBOMTableStore()
 
-// 版本選項列表
-const allRevisions = ref<RevisionOption[]>([])
+// 響應式取得所有 Revision 選項列表
+const allRevisions = computed<RevisionOption[]>(() => projectStore.allRevisionOptions)
 
 /**
  * 依據專案最新 BOM 版本的 ID 降冪排序，最新匯入的專案排在最前面
@@ -107,50 +107,15 @@ const sortedProjects = computed(() => {
 
 onMounted(() => {
   taskStore.startListening()
-  if (appStore.isOpen) {
-    loadProjects()
+  if (appStore.isOpen && (!projectStore.projects || projectStore.projects.length === 0)) {
+    if (appStore.seriesInfo?.id) {
+      projectStore.loadProjects(appStore.seriesInfo.id).catch(err => {
+        const msg = err instanceof Error ? err.message : String(err)
+        logStore.addLogEntry('ERROR', `載入專案資料失敗：${msg}`)
+      })
+    }
   }
 })
-
-/**
- * 載入當前 Series 下所有專案與 Revisions 選項
- */
-async function loadProjects(): Promise<void> {
-  try {
-    const list: RevisionOption[] = []
-    if (projectStore.projects && projectStore.projects.length > 0) {
-      for (const p of projectStore.projects) {
-        if (p.revisions) {
-          for (const r of p.revisions) {
-            const pCode = p.code || p.name || `Project ${p.id}`
-            const phaseStr = (r.phase || '').trim()
-            const verStr = (r.version || '').trim()
-            const phaseVer = [phaseStr, verStr].filter(Boolean).join(' ')
-            list.push({
-              id: r.id,
-              projectId: p.id,
-              projectCode: pCode,
-              phase: phaseStr,
-              version: verStr,
-              label: phaseVer ? `${pCode} - ${phaseVer}` : pCode,
-              modelCount: r.modelCount || 0
-            })
-          }
-        }
-      }
-    }
-    if (list.length === 0) {
-      list.push(
-        { id: 1, projectId: 101, projectCode: 'PROJECT-A', phase: 'PV', version: '0.1', label: 'PROJECT-A - PV 0.1', modelCount: 0 },
-        { id: 2, projectId: 101, projectCode: 'PROJECT-A', phase: 'PV', version: '0.2', label: 'PROJECT-A - PV 0.2', modelCount: 2 }
-      )
-    }
-    allRevisions.value = list
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    logStore.addLogEntry('ERROR', `載入專案資料失敗：${msg}`)
-  }
-}
 
 /**
  * 取得專案最新版本的 BomRevision 物件

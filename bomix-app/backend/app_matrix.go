@@ -202,6 +202,14 @@ func (a *App) CopyMatrixSelections(sourceRevisionID, targetRevisionID int64) (st
 		return "", fmt.Errorf("no series is currently open")
 	}
 
+	if sourceRevisionID <= 0 || targetRevisionID <= 0 {
+		return "", fmt.Errorf("無效的版本 ID (source=%d, target=%d)", sourceRevisionID, targetRevisionID)
+	}
+
+	if sourceRevisionID == targetRevisionID {
+		return "", fmt.Errorf("來源版本與目標版本不可相同")
+	}
+
 	// 預先讀取 source 與 target revision 資訊，供 Task Log 使用
 	var sourceRev, targetRev db.BomRevision
 	if err := dbConn.First(&sourceRev, sourceRevisionID).Error; err != nil {
@@ -209,6 +217,15 @@ func (a *App) CopyMatrixSelections(sourceRevisionID, targetRevisionID int64) (st
 	}
 	if err := dbConn.First(&targetRev, targetRevisionID).Error; err != nil {
 		return "", fmt.Errorf("找不到目標 Revision ID=%d: %w", targetRevisionID, err)
+	}
+
+	// 檢查來源版本是否具備任何 Matrix 機種
+	var sourceModelCount int64
+	if err := dbConn.Model(&db.MatrixModel{}).Where("revision_id = ?", sourceRevisionID).Count(&sourceModelCount).Error; err != nil {
+		return "", fmt.Errorf("查詢來源版本機種失敗: %w", err)
+	}
+	if sourceModelCount == 0 {
+		return "", fmt.Errorf("來源版本 (%s %s) 尚未建立任何 Matrix 機種，無法複製", sourceRev.Phase, sourceRev.Version)
 	}
 
 	taskName := fmt.Sprintf("Copy Matrix: %s → %s", sourceRev.Version, targetRev.Version)

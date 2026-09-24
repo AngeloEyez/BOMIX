@@ -3,6 +3,7 @@ import { ref, computed, reactive } from 'vue'
 import { ListenToEvents, GetLogs, LogFrontend } from '../services/api'
 import { useAppStore } from './app'
 import { useProjectStore } from './project'
+import { useBOMTableStore } from './bomTable'
 
 export interface LogEntry {
   id?: string
@@ -24,6 +25,8 @@ export const useLogStore = defineStore('log', () => {
     try {
       const appStore = useAppStore()
       const projectStore = useProjectStore()
+      const bomTableStore = useBOMTableStore()
+      bomTableStore.clearDataCache()
       if (appStore.seriesInfo?.id) {
         projectStore.loadProjects(appStore.seriesInfo.id).catch(err => {
           console.error('Failed to auto-reload projects after task completion:', err)

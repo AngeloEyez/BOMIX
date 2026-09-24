@@ -190,18 +190,8 @@ export interface SelectedRevisionCard {
   dbModelCount: number
 }
 
-/**
- * Revision 下拉選單/選項介面（向下相容 CopyMatrixDialog 等引用）
- */
-export interface RevisionOption {
-  id: number
-  projectId: number
-  projectCode: string
-  phase: string
-  version: string
-  label: string
-  modelCount: number
-}
+import type { RevisionOption } from '../../stores/project'
+export type { RevisionOption }
 
 /**
  * Component Emits 定義

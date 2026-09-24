@@ -314,6 +314,78 @@ func TestUpdateRevisionMatrixModels(t *testing.T) {
 	}
 }
 
+// TestCopyMatrixSelections_Validation 測試 App.CopyMatrixSelections 的防呆驗證與成功建立任務流程
+func TestCopyMatrixSelections_Validation(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_app_copy_matrix.bomx")
+	testDB, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("無法建立測試資料庫: %v", err)
+	}
+	defer db.Close(testDB)
+
+	if err := db.AutoMigrate(testDB); err != nil {
+		t.Fatalf("無法初始化資料庫結構: %v", err)
+	}
+
+	l := logger.NewLogger(100)
+	cfg := &config.Config{}
+	app := NewApp(nil, l, cfg)
+
+	// 1. 未開啟系列時應報錯
+	_, err = app.CopyMatrixSelections(1, 2)
+	if err == nil {
+		t.Fatalf("期望未開啟系列時報錯，但成功回傳")
+	}
+
+	app.db = testDB
+
+	// 2. 無效 ID 應報錯
+	_, err = app.CopyMatrixSelections(0, 2)
+	if err == nil {
+		t.Fatalf("期望無效 ID 時報錯，但成功回傳")
+	}
+
+	// 3. 來源與目標相同應報錯
+	_, err = app.CopyMatrixSelections(1, 1)
+	if err == nil {
+		t.Fatalf("期望相同 Revision ID 時報錯，但成功回傳")
+	}
+
+	// 建立系列與專案
+	series, _ := db.CreateSeries(testDB, "Test App Copy Series", "")
+	proj, _ := db.GetOrCreateProject(testDB, series.ID, "PROJ-APP", "Test App")
+	revSource, _ := db.CreateRevision(testDB, proj.ID, "PV", "0.1", "")
+	revTarget, _ := db.CreateRevision(testDB, proj.ID, "PV", "0.2", "")
+
+	// 4. 來源無機種 (0 Models) 時應報錯
+	_, err = app.CopyMatrixSelections(revSource.ID, revTarget.ID)
+	if err == nil {
+		t.Fatalf("期望來源無機種時報錯，但成功回傳")
+	}
+
+	// 5. 來源有機種時應成功建立 Task 並回傳 taskID
+	model := db.MatrixModel{RevisionID: revSource.ID, SortOrder: 0, ModelName: "Model 1", Qty: 1}
+	testDB.Create(&model)
+
+	taskID, err := app.CopyMatrixSelections(revSource.ID, revTarget.ID)
+	if err != nil {
+		t.Fatalf("期望複製成功提交任務，但發生錯誤: %v", err)
+	}
+	if taskID == "" {
+		t.Fatalf("期望回傳非空 taskID，實際為空字串")
+	}
+
+	// 6. 等待非同步任務在背景執行完畢
+	for i := 0; i < 50; i++ {
+		tObj, err := app.GetTask(taskID)
+		if err == nil && (tObj.Status == "completed" || tObj.Status == "error") {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // TestIsMatrixFile 測試檔案名稱之 Matrix 判定邏輯（不區分大小寫，且僅以檔名為主）
 func TestIsMatrixFile(t *testing.T) {
 	tests := []struct {
