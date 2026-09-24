@@ -383,11 +383,39 @@ function handleGlobalKeyDown(e: KeyboardEvent): void {
 }
 
 /**
- * 視窗失焦防護處理 (當視窗失焦或切換至外部程式時自動重置拖曳遮罩)
+ * 視窗失焦防護處理 (當視窗失焦或切換至外部程式時自動重置拖曳遮罩、游標樣式與 Wails 縮放狀態)
  */
 function handleWindowBlur(): void {
   if (isDraggingOver.value) {
     resetDragState()
+  }
+  // 防護：若游標處於 Wails 邊界縮放樣式，於失焦時重置，避免焦點返回時游標滯留
+  if (document.body.style.cursor && document.body.style.cursor.includes('resize')) {
+    document.body.style.cursor = 'auto'
+  }
+  // 強制重置 Wails drag.js 內部模組級別的殘留縮放狀態 (resizeEdge, canResize, resizing)
+  if ((window as any)._wails?.setResizable) {
+    ;(window as any)._wails.setResizable(false)
+    ;(window as any)._wails.setResizable(true)
+  }
+}
+
+/**
+ * 全域滑鼠離開視窗防護處理
+ * 當滑鼠由頂部或邊界快速滑出視窗外時，重置 body 縮放游標樣式，並徹底清理 Wails drag.js 內部狀態
+ * @param {MouseEvent} e - 滑鼠事件物件
+ */
+function handleGlobalMouseLeave(e: MouseEvent): void {
+  // 如果移動至視窗外 (relatedTarget 為 null)
+  if (!e.relatedTarget) {
+    if (document.body.style.cursor && document.body.style.cursor.includes('resize')) {
+      document.body.style.cursor = 'auto'
+    }
+    // 強制重置 Wails drag.js 內部模組級別的殘留縮放狀態
+    if ((window as any)._wails?.setResizable) {
+      ;(window as any)._wails.setResizable(false)
+      ;(window as any)._wails.setResizable(true)
+    }
   }
 }
 
@@ -530,6 +558,7 @@ onMounted(async () => {
   window.addEventListener('drop', handleDrop, false)
   window.addEventListener('keydown', handleGlobalKeyDown)
   window.addEventListener('blur', handleWindowBlur)
+  document.addEventListener('mouseleave', handleGlobalMouseLeave)
 
   // 確保根節點具備 Wails v3 所需之 data-file-drop-target 屬性
   document.documentElement.setAttribute('data-file-drop-target', 'true')
@@ -581,6 +610,7 @@ onUnmounted(() => {
   window.removeEventListener('drop', handleDrop, false)
   window.removeEventListener('keydown', handleGlobalKeyDown)
   window.removeEventListener('blur', handleWindowBlur)
+  document.removeEventListener('mouseleave', handleGlobalMouseLeave)
   document.removeEventListener('mousemove', handleSidebarResize)
   document.removeEventListener('mouseup', stopSidebarResize)
 })
@@ -727,6 +757,8 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding-right: 5px;
+  box-sizing: border-box;
 }
 
 /* 確保所有透過 router-view 渲染的主視圖元件強制填滿 Main Content 區域並隨 sidebar/視窗彈性調適 */
@@ -762,7 +794,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 36px;
+  height: 38px;
+  padding-top: 2px;
   padding-left: 0.6rem;
   padding-right: 0; /* 右側貼齊視窗邊界，符合 Windows 原生視窗按鈕貼邊規範 */
   background: var(--surface-card);
@@ -1004,6 +1037,8 @@ body {
   flex-direction: column;
   background: var(--surface-card);
   flex-shrink: 0;
+  padding-right: 5px;
+  box-sizing: border-box;
 }
 
 /*
