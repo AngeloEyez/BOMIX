@@ -14,6 +14,8 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding-right: 5px;
+  box-sizing: border-box;
 }
 
 /* Table styling - VS Code 風格高緊湊表格，最大化可視範圍 */
