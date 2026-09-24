@@ -24,6 +24,7 @@
       :row-class="getRowClass"
       class="bom-table"
       table-class="bom-table"
+      :table-style="{ minWidth: totalTableMinWidth > 0 ? `${totalTableMinWidth}px` : '100%', width: '100%' }"
       :lazy="true"
       :sort-field="sortField"
       :sort-order="sortOrder"
@@ -382,6 +383,7 @@ function getRevisionQty(row: BOMDisplayRow, revisionId: number): string | number
 const {
   columnWidths,
   tableWrapperRef,
+  totalTableMinWidth,
   computeColumnWidths,
   invalidateBaseWidthsCache,
   setupResizeListener,

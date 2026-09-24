@@ -38,14 +38,14 @@
   background-color: var(--bom-row-even-bg) !important;
 }
 
-/* 強制表格遵守設定欄寬，徹底防止長文字欄位將單元格無限撐開 */
+/* 強制表格遵守設定欄寬，徹底防止長文字欄位將單元格無限撐開；設定 min-width 保底並允許水平撐開 */
 :deep(.bom-table-container table),
 :deep(table.p-datatable-table),
 :deep(table.bom-table),
 :deep(.bom-table table),
 :deep(.bom-table .p-datatable-table) {
   table-layout: fixed !important;
-  width: 100% !important;
+  min-width: 100%;
   background-color: var(--bom-row-even-bg) !important;
 }
 

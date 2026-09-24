@@ -48,7 +48,7 @@ export const COLUMN_WIDTH_LIMITS = {
   /** 備註 (Remark) 內容適應寬度區間 (px) */
   remark: { min: 50, max: 130, default: 120 },
   /** 註記 (Notes) 彈性自適應欄位 (px) */
-  notes: { min: 100, max: 350, default: 110 },
+  notes: { min: 150, max: 350, default: 110 },
   /** EBOM 模式下單一 Revision Qty 預設欄寬 (px) */
   ebomRevisionDefault: 54,
   /** Matrix 模式下單一 Model 預設欄寬 (px) */
@@ -95,6 +95,9 @@ export function useColumnWidths() {
 
   /** 表格容器 template ref，用於精準讀取父層分配之可用寬度 */
   const tableWrapperRef = ref<HTMLElement | null>(null)
+
+  /** 所有欄位最小保底寬度之總和 (用於提供 DataTable tableStyle 之 min-width，確保多 Model 狀態不被擠壓) */
+  const totalTableMinWidth = ref(0)
 
   /** 快取的基礎固定欄位寬度量測結果 (資料未變動前完全複用，切換模式或 CCL 篩選時 0ms 完成) */
   let cachedBaseWidths: BaseColumnWidths | null = null
@@ -340,6 +343,9 @@ export function useColumnWidths() {
     const minNotes = hasNotes ? MIN_NOTES_WIDTH : 0
     const totalRequiredMinWidth = fixedTotal + MIN_LOC_WIDTH + MIN_DESC_WIDTH + minNotes
 
+    // 同步更新表格最小總寬度，供外部 DataTable tableStyle 動態撐開橫向捲軸
+    totalTableMinWidth.value = totalRequiredMinWidth
+
     // 4. 取得可用可視寬度
     const visibleWidth = getWorkspaceVisibleWidth()
 
@@ -454,6 +460,7 @@ export function useColumnWidths() {
   return {
     columnWidths,
     tableWrapperRef,
+    totalTableMinWidth,
     computeColumnWidths,
     invalidateBaseWidthsCache,
     setupResizeListener,
