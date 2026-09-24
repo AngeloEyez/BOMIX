@@ -791,7 +791,7 @@ BOM 資料的聚合、過濾與多 BOM Revision 整合均由 **View 系統（`ba
 3. **多 BOM 聯集合併**：當查詢包含多份 BOM Revision 時，建立所有 BOM 中的主料與替代料（2nd Source）聯集合併群組。
 4. **Location 與 Qty 聚合**：合併同群組的 Location 為逗號分隔字串，並自動計算打件數量 Qty（預設取自第一個包含此物料的 BOM Revision）。
 5. **來源歸屬標記**：每個物料群組附帶 `SourceRevisionIDs`，列出其存在的 BOM Revision ID 列表。
-6. **PROTO 物料判定與視覺呈現**：當一個群組中的 Location 在每個包含該物料的 Revision 中其 `bom_status` 均為 `P` 時，該物料群組判定為 PROTO 物料（`BOMStatus = "P"`）。在前端 BOMTable 顯示時，該物料群組的主料 Row 文字顏色統一以 `#8080C0` 呈現（替代料 Row 則維持次級層次文字色彩）。
+6. **PROTO 物料判定與視覺呈現**：當一個群組中的 Location 在每個包含該物料的 Revision 中其 `bom_status` 均為 `P` 時，該物料群組判定為 PROTO 物料（`BOMStatus = "P"`）。在前端 BOMTable 顯示時，該物料群組的主料與替代料 Row 文字顏色統一以 `#8080C0` 呈現（替代料 Row 維持 12px 次級層次字級大小）。
 
 #### 6.4.2 視圖過濾類別
 

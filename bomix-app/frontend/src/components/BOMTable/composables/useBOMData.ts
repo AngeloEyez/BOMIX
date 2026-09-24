@@ -576,7 +576,7 @@ export function useBOMData(options: UseBOMDataOptions) {
             mainSelectionsByOrder: {},
             selections: selectionsMap,
             bomStatus: part.bom_status || 'I',
-            isProto: false,
+            isProto: isProto,
           })
         })
       }
@@ -870,7 +870,7 @@ export function useBOMData(options: UseBOMDataOptions) {
   function getRowClass(data: BOMDisplayRow): string {
     const zebraClass = data.groupIndex % 2 === 0 ? 'group-even' : 'group-odd'
     const sourceClass = data.isSecondSource ? 'second-source-row' : 'main-source-row'
-    const protoClass = (!data.isSecondSource && data.isProto) ? 'proto-row' : ''
+    const protoClass = data.isProto ? 'proto-row' : ''
     return [zebraClass, sourceClass, protoClass].filter(Boolean).join(' ')
   }
 

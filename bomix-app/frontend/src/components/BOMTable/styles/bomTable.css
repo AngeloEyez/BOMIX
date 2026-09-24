@@ -248,20 +248,20 @@
   color: var(--bom-text-main) !important;
 }
 
-/* PROTO 物料專用文字色彩：當該 group 的 location 在每個 revision 均為 P 時，主料列文字設為 #8080C0 */
-:deep(.main-source-row.proto-row),
-:deep(.main-source-row.proto-row .cell-text),
-:deep(.main-source-row.proto-row .item-number),
-:deep(.main-source-row.proto-row .qty-cell) {
-  color: #8080C0 !important;
-}
-
 :deep(.second-source-row),
 :deep(.second-source-row .cell-text),
 :deep(.second-source-row .item-number),
 :deep(.second-source-row .qty-cell) {
   color: var(--bom-text-second) !important;
   font-size: 12px !important;
+}
+
+/* PROTO 物料專用文字色彩：當該 group 判定為 PROTO 時，主料與替代料文字均統一設為 #8080C0，替代料維持 12px 次級字級區隔 */
+:deep(.proto-row),
+:deep(.proto-row .cell-text),
+:deep(.proto-row .item-number),
+:deep(.proto-row .qty-cell) {
+  color: #8080C0 !important;
 }
 
 .ccl-normal,
