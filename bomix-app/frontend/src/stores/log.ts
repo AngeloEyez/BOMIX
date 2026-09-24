@@ -26,7 +26,7 @@ export const useLogStore = defineStore('log', () => {
       const appStore = useAppStore()
       const projectStore = useProjectStore()
       const bomTableStore = useBOMTableStore()
-      bomTableStore.clearDataCache()
+      bomTableStore.triggerReload()
       if (appStore.seriesInfo?.id) {
         projectStore.loadProjects(appStore.seriesInfo.id).catch(err => {
           console.error('Failed to auto-reload projects after task completion:', err)

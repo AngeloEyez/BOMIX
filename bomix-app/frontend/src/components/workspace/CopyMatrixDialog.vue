@@ -115,7 +115,7 @@ import { ref, computed, watch } from 'vue'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import Select from 'primevue/select'
-import { useAppStore, useProjectStore, useLogStore, useTaskStore } from '../../stores'
+import { useAppStore, useProjectStore, useLogStore, useTaskStore, useBOMTableStore } from '../../stores'
 import { CopyMatrixSelections } from '../../services/api'
 import type { RevisionOption } from '../../stores/project'
 
@@ -143,6 +143,7 @@ const appStore = useAppStore()
 const projectStore = useProjectStore()
 const logStore = useLogStore()
 const taskStore = useTaskStore()
+const bomTableStore = useBOMTableStore()
 
 /**
  * v-model:visible 雙向代理計算屬性
@@ -239,6 +240,27 @@ async function executeCopyMatrix(): Promise<void> {
         progress: 0,
       })
       logStore.addLogEntry('INFO', `Matrix 複製任務已提交 (taskID: ${taskId})`)
+
+      // 監聽該複製任務的完成狀態，任務完成後即刻強制刷新 BOMTable 與專案資料
+      const unwatch = watch(
+        () => taskStore.getTask(taskId)?.status,
+        async (status) => {
+          if (status === 'completed') {
+            logStore.addLogEntry('DEBUG', `[CopyMatrixDialog] 複製任務 (taskID: ${taskId}) 執行完畢，觸發重新載入 BOMTable 與專案列表`)
+            bomTableStore.triggerReload()
+            if (appStore.seriesInfo?.id) {
+              try {
+                await projectStore.loadProjects(appStore.seriesInfo.id)
+              } catch (e) {
+                console.error('Failed to reload projects after matrix copy:', e)
+              }
+            }
+            unwatch()
+          } else if (status === 'failed' || status === 'cancelled') {
+            unwatch()
+          }
+        }
+      )
     }
     visibleModel.value = false
   } catch (error) {

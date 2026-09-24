@@ -980,6 +980,17 @@ export function useBOMData(options: UseBOMDataOptions) {
     { deep: true, immediate: true }
   )
 
+  // 監聽外部強制重新載入訊號 (例如 Matrix Selection 複製完成、背景任務更新等)
+  watch(
+    () => bomTableStore.refreshTrigger,
+    (newVal) => {
+      if (newVal > 0 && revisionIds.value && revisionIds.value.length > 0) {
+        logStore.addLogEntry('DEBUG', `[BOMTable] 收到強制重新載入訊號 (trigger=${newVal})，向後端獲取最新物料與 Matrix 資訊`)
+        loadBOMData(revisionIds.value, true)
+      }
+    }
+  )
+
   return {
     // 狀態
     selectedBomType,

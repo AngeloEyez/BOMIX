@@ -276,7 +276,7 @@ function handleCopyMatrixClick(): void {
  */
 const bomMenuItems = computed<MenuItem[]>(() => [
   {
-    label: 'Import',
+    label: 'Import BOM',
     icon: 'pi pi-upload',
     disabled: !appStore.isOpen,
     command: () => {
@@ -284,7 +284,7 @@ const bomMenuItems = computed<MenuItem[]>(() => [
     }
   },
   {
-    label: 'Matrix',
+    label: 'Matrix Copy',
     icon: 'pi pi-copy',
     disabled: !appStore.isOpen,
     command: () => {
@@ -435,7 +435,7 @@ function extractFileList(data: any): string[] {
  */
 function onGlobalImportSuccess(results: any[]): void {
   appStore.openImportResultsDialog(results)
-  bomTableStore.clearDataCache()
+  bomTableStore.triggerReload()
   if (appStore.isOpen) {
     loadProjects()
   }

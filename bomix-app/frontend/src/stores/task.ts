@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { ListenToEvents } from '../services/api'
+import { useBOMTableStore } from './bomTable'
 
 export interface Task {
   id: string
@@ -212,6 +213,13 @@ export const useTaskStore = defineStore('task', () => {
         message: payload.message || 'Completed',
         updatedAt: new Date().toISOString(),
       })
+      // 任務完成後同步觸發 BOMTable 重新載入，確保畫面即時呈現最新物料與 Matrix 狀態
+      try {
+        const bomTableStore = useBOMTableStore()
+        bomTableStore.triggerReload()
+      } catch (e) {
+        console.error('Failed to trigger BOMTable reload on task:complete:', e)
+      }
     })
 
     ListenToEvents('task:failed', (data) => {

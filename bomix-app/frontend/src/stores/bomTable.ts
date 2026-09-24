@@ -63,6 +63,9 @@ export const useBOMTableStore = defineStore('bomTable', () => {
   const cachedRevisions = shallowRef<ViewRevision[]>([])
   const cachedQueryKey = ref<string>('')
 
+  // ── 強制重新載入通知信號 (遞增計數器，提供給 useBOMData 監聽即時重新查詢) ────
+  const refreshTrigger = ref<number>(0)
+
   // ── 狀態變更方法 (Actions) ────
 
   /**
@@ -240,6 +243,17 @@ export const useBOMTableStore = defineStore('bomTable', () => {
   }
 
   /**
+   * 觸發 BOMTable 強制重新載入畫面資料
+   * 
+   * 立即清空物料快取並遞增 refreshTrigger 訊號，
+   * 讓正在檢視 BOMTable 的 useBOMData 跳過快取直接向後端獲取最新物料、Model 數量與 Checkbox 勾選狀態。
+   */
+  function triggerReload(): void {
+    clearDataCache()
+    refreshTrigger.value++
+  }
+
+  /**
    * 批次更新快取狀態 (支援部分更新)
    * 
    * @param {Partial<BOMTableState>} partial - 部分狀態更新物件
@@ -273,6 +287,7 @@ export const useBOMTableStore = defineStore('bomTable', () => {
     sortOrder.value = 1
     revisionKey.value = ''
     customStates.value = {}
+    refreshTrigger.value = 0
     clearDataCache()
   }
 
@@ -291,6 +306,7 @@ export const useBOMTableStore = defineStore('bomTable', () => {
     cachedPartGroups,
     cachedRevisions,
     cachedQueryKey,
+    refreshTrigger,
     // 操作方法
     setBomType,
     setView,
@@ -309,6 +325,7 @@ export const useBOMTableStore = defineStore('bomTable', () => {
     setDataCache,
     updateCachedParts,
     clearDataCache,
+    triggerReload,
     updateState,
     resetState,
   }
