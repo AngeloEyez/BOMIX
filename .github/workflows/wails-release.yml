@@ -51,9 +51,11 @@ jobs:
             # 情況 A：由 v* Tag 觸發
             $tag = "${{ github.ref_name }}"
             $ver = $tag.TrimStart("v")
+            $zipTag = if ($tag.StartsWith("v")) { $tag } else { "v$tag" }
             Write-Host "Triggered by Git Tag: $tag (App Version: $ver)"
             "VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append
             "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "ZIP_NAME=BOMIX_${zipTag}.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
 
             # 檢查當前 Tag 是否在 main 分支歷史中
             git merge-base --is-ancestor HEAD origin/main
@@ -68,6 +70,7 @@ jobs:
             # 情況 B：由 main 分支直接 push 觸發
             "VERSION=main-latest" | Out-File -FilePath $env:GITHUB_ENV -Append
             "RELEASE_TAG=main-latest" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "ZIP_NAME=BOMIX_main-latest.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
             "RELEASE_NAME=Main 最新穩定版" | Out-File -FilePath $env:GITHUB_ENV -Append
             "IS_PRERELEASE=false" | Out-File -FilePath $env:GITHUB_ENV -Append
           } else {
@@ -76,6 +79,7 @@ jobs:
             $safeBranch = $branch -replace '[^a-zA-Z0-9_.-]', '-'
             "VERSION=$safeBranch" | Out-File -FilePath $env:GITHUB_ENV -Append
             "RELEASE_TAG=${safeBranch}-beta-latest" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "ZIP_NAME=BOMIX_${safeBranch}-beta-latest.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
             "RELEASE_NAME=${branch} 分支 自動測試版 (Beta)" | Out-File -FilePath $env:GITHUB_ENV -Append
             "IS_PRERELEASE=true" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
@@ -89,12 +93,17 @@ jobs:
           Write-Host "執行 Taskfile 建置，注入 VERSION=$env:VERSION ..."
           task build VERSION=$env:VERSION
 
+      # 📦 封裝 Windows 執行檔為壓縮包（檔名格式依版本動態決定，如 BOMIX_v1.11.zip）
       - name: Package Windows Binary (ZIP)
         shell: pwsh
         run: |
+          $zipName = "${{ env.ZIP_NAME }}"
+          if (-not $zipName) {
+            $zipName = "BOMIX.zip"
+          }
           if (Test-Path "bomix-app/bin/BOMIX.exe") {
-            Compress-Archive -Path "bomix-app/bin/*" -DestinationPath "BOMIX-windows.zip"
-            Write-Host "成功封裝產出包: BOMIX-windows.zip"
+            Compress-Archive -Path "bomix-app/bin/*" -DestinationPath $zipName
+            Write-Host "成功封裝產出包: $zipName"
           } else {
             Write-Error "錯誤：未找到編譯輸出檔案 bomix-app/bin/BOMIX.exe"
             exit 1
@@ -107,6 +116,6 @@ jobs:
           name: ${{ env.RELEASE_NAME }}
           prerelease: ${{ env.IS_PRERELEASE }}
           files: |
-            BOMIX-windows.zip
+            ${{ env.ZIP_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -231,7 +231,14 @@ func TestSaveProjectExportOrder(t *testing.T) {
 
 	// 2. 儲存 Project 匯出排序與 Model 數量紀錄
 	expectedSettings := []ProjectExportSetting{
-		{ProjectCode: "PROJ_B", ModelCount: 4},
+		{
+			ProjectCode: "PROJ_B",
+			ModelCount:  4,
+			RevisionModelCounts: map[string]int{
+				"101": 3,
+				"102": 4,
+			},
+		},
 		{ProjectCode: "PROJ_A", ModelCount: 2},
 		{ProjectCode: "PROJ_C", ModelCount: 5},
 	}
@@ -239,7 +246,7 @@ func TestSaveProjectExportOrder(t *testing.T) {
 		t.Fatalf("SaveProjectExportOrder 失敗: %v", err)
 	}
 
-	// 3. 再次讀取並驗證 Project 順序與 ModelCounts
+	// 3. 再次讀取並驗證 Project 順序、ModelCounts 與 RevisionModelCounts
 	info2, err := app.GetSeriesInfo()
 	if err != nil {
 		t.Fatalf("GetSeriesInfo 失敗: %v", err)
@@ -258,6 +265,12 @@ func TestSaveProjectExportOrder(t *testing.T) {
 	}
 	if info2.ProjectModelCounts["PROJ_A"] != 2 {
 		t.Errorf("期望 PROJ_A ModelCount=2，實際 got %d", info2.ProjectModelCounts["PROJ_A"])
+	}
+	if info2.RevisionModelCounts["101"] != 3 {
+		t.Errorf("期望 Revision 101 ModelCount=3，實際 got %d", info2.RevisionModelCounts["101"])
+	}
+	if info2.RevisionModelCounts["102"] != 4 {
+		t.Errorf("期望 Revision 102 ModelCount=4，實際 got %d", info2.RevisionModelCounts["102"])
 	}
 }
 

@@ -173,9 +173,10 @@ func (a *App) GetSeriesInfo() (*SeriesInfo, error) {
 
 	var projectOrder []string
 	projectModelCounts := make(map[string]int)
+	revisionModelCounts := make(map[string]int)
 
 	if strings.TrimSpace(series.ProjectExportOrder) != "" {
-		// 優先解析包含 ProjectCode 與 ModelCount 的設定列表
+		// 優先解析包含 ProjectCode、ModelCount 與 RevisionModelCounts 的設定列表
 		var settings []ProjectExportSetting
 		if jsonErr := json.Unmarshal([]byte(series.ProjectExportOrder), &settings); jsonErr == nil && len(settings) > 0 {
 			projectOrder = make([]string, 0, len(settings))
@@ -184,6 +185,12 @@ func (a *App) GetSeriesInfo() (*SeriesInfo, error) {
 					projectOrder = append(projectOrder, st.ProjectCode)
 					if st.ModelCount > 0 {
 						projectModelCounts[st.ProjectCode] = st.ModelCount
+					}
+					// 提取各 Revision 的自訂 Model 數量覆蓋設定
+					for revIDStr, count := range st.RevisionModelCounts {
+						if count > 0 {
+							revisionModelCounts[revIDStr] = count
+						}
 					}
 				}
 			}
@@ -197,13 +204,14 @@ func (a *App) GetSeriesInfo() (*SeriesInfo, error) {
 	}
 
 	return &SeriesInfo{
-		ID:                 series.ID,
-		Name:               series.Name,
-		Description:        series.Description,
-		Path:               a.cfg.LastOpenedFile,
-		LastExportPath:     series.LastExportPath,
-		ProjectExportOrder: projectOrder,
-		ProjectModelCounts: projectModelCounts,
+		ID:                  series.ID,
+		Name:                series.Name,
+		Description:         series.Description,
+		Path:                a.cfg.LastOpenedFile,
+		LastExportPath:      series.LastExportPath,
+		ProjectExportOrder:  projectOrder,
+		ProjectModelCounts:  projectModelCounts,
+		RevisionModelCounts: revisionModelCounts,
 	}, nil
 }
 

@@ -15,6 +15,7 @@ export type { ViewResult, ViewPartGroup, ViewRevision, ViewSecondSource, ViewMod
 export interface ProjectExportSetting {
   projectCode: string
   modelCount: number
+  revisionModelCounts?: Record<string, number>
 }
 
 export interface SeriesInfo {
@@ -25,6 +26,7 @@ export interface SeriesInfo {
   lastExportPath: string
   projectExportOrder?: string[]
   projectModelCounts?: Record<string, number>
+  revisionModelCounts?: Record<string, number>
 }
 
 export interface RecentFile {

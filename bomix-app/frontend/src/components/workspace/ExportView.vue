@@ -109,9 +109,17 @@
                 :min="1"
                 size="small"
                 class="card-model-input"
-                @change="saveProjectOrderFromCards"
-                @update:modelValue="saveProjectOrderFromCards"
+                :class="{ 'count-mismatch': card.modelCount !== card.dbModelCount }"
+                @change="onCardModelCountChange(card)"
+                @update:modelValue="onCardModelCountChange(card)"
               />
+              <span
+                class="actual-count-label"
+                :class="{ 'is-mismatch': card.modelCount !== card.dbModelCount }"
+                :title="getModelCountTooltip(card)"
+              >
+                (實際: {{ card.dbModelCount }})
+              </span>
             </div>
             <Button
               icon="pi pi-times"
@@ -299,8 +307,20 @@ function syncCardsFromProjectStore(): void {
       const revInfo = findRevisionById(id)
       if (revInfo) {
         const dbCount = revInfo.revision.modelCount || 0
-        const savedCount = appStore.seriesInfo?.projectModelCounts?.[revInfo.projectCode]
-        const initialCount = (savedCount && savedCount > 0) ? savedCount : (dbCount > 0 ? dbCount : 3)
+        // 優先檢查該具體 Revision 是否有使用者手動調整過之自訂匯出數量記憶
+        const overrideCount = appStore.exportModelCountOverrides?.[revInfo.revision.id]
+
+        let initialCount: number
+        if (overrideCount !== undefined && overrideCount > 0) {
+          // 1. 若使用者曾手動調整過該 Revision，精確採用使用者調整值（支援調大或調小）
+          initialCount = overrideCount
+        } else if (dbCount > 0) {
+          // 2. 未手動調整過，依據規格書：以該 Revision 自身在資料庫中的實際數量為準
+          initialCount = dbCount
+        } else {
+          // 3. 該 BOM 若無任何 Model 資料，依規格書 8.1.3 預設為 3
+          initialCount = 3
+        }
         const phaseStr = (revInfo.revision.phase || '').trim()
         const verStr = (revInfo.revision.version || '').trim()
         const phaseVer = [phaseStr, verStr].filter(Boolean).join(' ')
@@ -396,12 +416,66 @@ function sortCardsByProjectRecord(cards: SelectedRevisionCard[]): SelectedRevisi
 }
 
 /**
- * 從目前 selectedCards 的順序與 ModelCount 提取 Project 設定，並即時儲存至 Series 資料表
+ * 處理卡片 Model 數量變更事件，即時記錄使用者自訂數量並同步至專案設定
+ * @param {SelectedRevisionCard} card - 目標 Revision 卡片物件
+ */
+function onCardModelCountChange(card: SelectedRevisionCard): void {
+  if (card && card.id) {
+    appStore.setExportModelCount(card.id, card.modelCount)
+  }
+  saveProjectOrderFromCards()
+}
+
+/**
+ * 取得實際 Model 數量與設定數量比對之提示文字說明 (Tooltip)
+ * @param {SelectedRevisionCard} card - 目標 Revision 卡片物件
+ * @returns {string} 提示說明文字
+ */
+function getModelCountTooltip(card: SelectedRevisionCard): string {
+  if (card.modelCount === card.dbModelCount) {
+    return `資料庫實際共有 ${card.dbModelCount} 個 Model (與目前設定一致)`
+  }
+  if (card.modelCount < card.dbModelCount) {
+    return `注意：目前設定 (${card.modelCount}) 小於實際數量 (${card.dbModelCount})，第 ${card.modelCount + 1} ~ ${card.dbModelCount} 個 Model 匯出時將被裁切省略`
+  }
+  return `提示：目前設定 (${card.modelCount}) 大於實際數量 (${card.dbModelCount})，超過的 Model 欄位內容將保持空白`
+}
+
+/**
+ * 從目前 selectedCards 的順序與 ModelCount 提取 Project 設定，並即時儲存至 Series 資料表 (含 Revision 持久化設定)
  */
 async function saveProjectOrderFromCards(): Promise<void> {
-  const settings: Array<{ projectCode: string; modelCount: number }> = []
+  const settings: Array<{ projectCode: string; modelCount: number; revisionModelCounts?: Record<string, number> }> = []
   const projectOrder: string[] = []
   const projectModelCounts: Record<string, number> = {}
+
+  // 整理每個專案所屬的 Revision Model 數量覆蓋表記錄 (包含所有已選取卡片與既有覆蓋)
+  const projectRevCounts: Record<string, Record<string, number>> = {}
+
+  // 1. 先收納目前卡片上的自訂數量
+  for (const card of selectedCards.value) {
+    if (card.projectCode) {
+      if (!projectRevCounts[card.projectCode]) {
+        projectRevCounts[card.projectCode] = {}
+      }
+      projectRevCounts[card.projectCode][String(card.id)] = card.modelCount
+    }
+  }
+
+  // 2. 保留先前已記錄但在當前視圖未勾選的 Revision 覆蓋設定
+  if (appStore.exportModelCountOverrides) {
+    for (const [revIdStr, count] of Object.entries(appStore.exportModelCountOverrides)) {
+      const revInfo = findRevisionById(Number(revIdStr))
+      if (revInfo && revInfo.projectCode) {
+        if (!projectRevCounts[revInfo.projectCode]) {
+          projectRevCounts[revInfo.projectCode] = {}
+        }
+        if (!projectRevCounts[revInfo.projectCode][revIdStr]) {
+          projectRevCounts[revInfo.projectCode][revIdStr] = count
+        }
+      }
+    }
+  }
 
   for (const card of selectedCards.value) {
     if (card.projectCode && !projectOrder.includes(card.projectCode)) {
@@ -409,7 +483,8 @@ async function saveProjectOrderFromCards(): Promise<void> {
       projectModelCounts[card.projectCode] = card.modelCount
       settings.push({
         projectCode: card.projectCode,
-        modelCount: card.modelCount
+        modelCount: card.modelCount,
+        revisionModelCounts: projectRevCounts[card.projectCode] || {}
       })
     }
   }
@@ -1054,6 +1129,28 @@ async function executeExport(): Promise<void> {
   font-size: 0.6rem !important;
   width: 0.6rem !important;
   height: 0.6rem !important;
+}
+
+/* 當設定數量與實際數量不一致時的高亮樣式 (Warning Amber) */
+:deep(.card-model-input.count-mismatch .p-inputnumber-input) {
+  color: #f59e0b !important;
+  border-color: #f59e0b !important;
+  font-weight: 600 !important;
+}
+
+/* 實際 Model 數量次要文字標籤 */
+.actual-count-label {
+  font-size: 0.72rem;
+  color: var(--text-color-secondary);
+  white-space: nowrap;
+  user-select: none;
+  cursor: help;
+  transition: color 0.15s ease;
+}
+
+.actual-count-label.is-mismatch {
+  color: #f59e0b !important;
+  font-weight: 600;
 }
 
 .remove-card-btn {

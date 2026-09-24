@@ -107,6 +107,7 @@ export interface Project {
 export interface ProjectExportSetting {
     "projectCode": string;
     "modelCount": number;
+    "revisionModelCounts"?: { [_ in string]?: number } | null;
 }
 
 /**
@@ -138,6 +139,7 @@ export interface SeriesInfo {
     "lastExportPath": string;
     "projectExportOrder": string[] | null;
     "projectModelCounts": { [_ in string]?: number } | null;
+    "revisionModelCounts": { [_ in string]?: number } | null;
 }
 
 /**

@@ -2,19 +2,21 @@ package backend
 
 // ProjectExportSetting 代表單一 Project 的匯出排序與 Model 數量設定
 type ProjectExportSetting struct {
-	ProjectCode string `json:"projectCode"`
-	ModelCount  int    `json:"modelCount"`
+	ProjectCode         string         `json:"projectCode"`
+	ModelCount          int            `json:"modelCount"`
+	RevisionModelCounts map[string]int `json:"revisionModelCounts,omitempty"`
 }
 
 // SeriesInfo represents the series information for the frontend
 type SeriesInfo struct {
-	ID                 int64          `json:"id"`
-	Name               string         `json:"name"`
-	Description        string         `json:"description"`
-	Path               string         `json:"path"`
-	LastExportPath     string         `json:"lastExportPath"`
-	ProjectExportOrder []string       `json:"projectExportOrder"`
-	ProjectModelCounts map[string]int `json:"projectModelCounts"`
+	ID                  int64          `json:"id"`
+	Name                string         `json:"name"`
+	Description         string         `json:"description"`
+	Path                string         `json:"path"`
+	LastExportPath      string         `json:"lastExportPath"`
+	ProjectExportOrder  []string       `json:"projectExportOrder"`
+	ProjectModelCounts  map[string]int `json:"projectModelCounts"`
+	RevisionModelCounts map[string]int `json:"revisionModelCounts"`
 }
 
 // SeriesInfoWithTime represents series info with last opened time

@@ -13,6 +13,7 @@ export interface SeriesInfo {
   lastExportPath?: string
   projectExportOrder?: string[]
   projectModelCounts?: Record<string, number>
+  revisionModelCounts?: Record<string, number>
 }
 
 export const useAppStore = defineStore('app', () => {
@@ -21,6 +22,9 @@ export const useAppStore = defineStore('app', () => {
   const seriesInfo = ref<SeriesInfo | null>(null)
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+
+  /** 各 Revision ID 的自訂匯出 Model 數量記憶 (revisionId -> count) */
+  const exportModelCountOverrides = ref<Record<number, number>>({})
 
   const logStore = useLogStore()
 
@@ -47,7 +51,19 @@ export const useAppStore = defineStore('app', () => {
         lastExportPath: info.lastExportPath || '',
         projectExportOrder: info.projectExportOrder || [],
         projectModelCounts: info.projectModelCounts || {},
+        revisionModelCounts: info.revisionModelCounts || {},
       }
+      // 自資料庫持久化記錄中還原各 Revision 的自訂 Model 數量覆蓋設定
+      const revCounts: Record<number, number> = {}
+      if (info.revisionModelCounts) {
+        for (const [k, v] of Object.entries(info.revisionModelCounts)) {
+          const numId = Number(k)
+          if (!isNaN(numId) && v > 0) {
+            revCounts[numId] = v
+          }
+        }
+      }
+      exportModelCountOverrides.value = revCounts
       isOpen.value = true
       useAIChatStore().clearMessages()
     } catch (err) {
@@ -75,7 +91,9 @@ export const useAppStore = defineStore('app', () => {
         lastExportPath: info?.lastExportPath || '',
         projectExportOrder: info?.projectExportOrder || [],
         projectModelCounts: info?.projectModelCounts || {},
+        revisionModelCounts: info?.revisionModelCounts || {},
       }
+      exportModelCountOverrides.value = {}
       isOpen.value = true
       useAIChatStore().clearMessages()
     } catch (err) {
@@ -100,6 +118,15 @@ export const useAppStore = defineStore('app', () => {
   }
 
   /**
+   * 設定指定 Revision 的自訂匯出 Model 數量
+   * @param {number} revisionId - Revision ID
+   * @param {number} count - 使用者自訂之 Model 數量
+   */
+  function setExportModelCount(revisionId: number, count: number): void {
+    exportModelCountOverrides.value[revisionId] = count
+  }
+
+  /**
    * 關閉當前開啟的系列資料庫，並重置主畫面與 AI 對話狀態
    * @returns {Promise<void>}
    */
@@ -113,6 +140,7 @@ export const useAppStore = defineStore('app', () => {
     } finally {
       isOpen.value = false
       seriesInfo.value = null
+      exportModelCountOverrides.value = {}
       workspaceView.value = 'table'
       useBOMTableStore().resetState()
       useAIChatStore().clearMessages()
@@ -292,6 +320,7 @@ export const useAppStore = defineStore('app', () => {
     importResultDialogVisible,
     importResults,
     copyMatrixDialogVisible,
+    exportModelCountOverrides,
     // Getters
     isSeriesOpen,
     // Actions
@@ -301,6 +330,7 @@ export const useAppStore = defineStore('app', () => {
     clearError,
     applyTheme,
     setWorkspaceView,
+    setExportModelCount,
     openImportDialog,
     addImportFiles,
     removeImportFile,

@@ -129,7 +129,7 @@ git push origin v1.0.0
    - 若該 Tag 建立於 `main` 分支的提交歷史中，自動判定為**正式釋出 (Release)**。
    - 若該 Tag 建立於開發或功能分支，自動判定為**預發布/測試版 (Pre-release / Beta)**。
 4. **Taskfile 核心建置**：調用 `task build VERSION=1.0.0` 生成標準 Windows 執行檔。
-5. **打包產物**：將二進位檔封裝為 `BOMIX-windows.zip`。
+5. **打包產物**：將二進位檔封裝為帶有版本資訊的壓縮包 `BOMIX_<版本號>.zip`（例如 `BOMIX_v1.0.0.zip` 或 `BOMIX_v1.11.zip`）。
 6. **建立 GitHub Release**：自動建立對應 Release 頁面並上傳 ZIP 檔案供使用者下載。
 
 ---
