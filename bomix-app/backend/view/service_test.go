@@ -209,7 +209,7 @@ func TestFilter_Apply_CCL(t *testing.T) {
 //  1. 物料 CCL=false，但在目標匯出 Revision 中有 Matrix Selection 勾選，必須保留匯出。
 //  2. 物料 CCL=false，但僅在非匯出 Revision 中有勾選，在當前匯出 Revision 必須被排除（Revision 隔離性）。
 //  3. 物料 CCL=false 且無勾選（或選取取消），必須被排除。
-//  4. 物料 CCL=false 且 BOMStatus=X，若在目標 Revision 有勾選，仍必須被保留匯出。
+//  4. 物料 BOMStatus=X (不上件)，依據規格書 8.1.6 規定嚴格排除 (即使在目標 Revision 有勾選仍不得匯出)。
 //  5. 多 Revision 匯出（BigMatrix 整合聯集）情境：任一目標 Revision 有勾選即保留匯出。
 func TestFilter_Apply_CCL_WithMatrixSelection(t *testing.T) {
 	filter := NewFilter()
@@ -247,7 +247,7 @@ func TestFilter_Apply_CCL_WithMatrixSelection(t *testing.T) {
 
 	allParts := []ViewPartGroup{pCCL, pSelRev1, pSelRev2, pNoSel, pSelUnchecked, pNIWithSel}
 
-	t.Run("單一 Revision 匯出 (Revision 1): 應包含 CCL、Rev1 勾選料、NI 但有勾選料；排除 Rev2 勾選料與未勾選料", func(t *testing.T) {
+	t.Run("單一 Revision 匯出 (Revision 1): 應包含 CCL、Rev1 勾選料；排除 Rev2 勾選料、不上件料與未勾選料", func(t *testing.T) {
 		query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewCCL, ModeOverride: "NPI"}
 		result := filter.Apply(allParts, query)
 
@@ -263,11 +263,11 @@ func TestFilter_Apply_CCL_WithMatrixSelection(t *testing.T) {
 		if !found["PN_SelRev1"] {
 			t.Errorf("期望包含在 Rev1 有勾選之零件 PN_SelRev1")
 		}
-		if !found["PN_NIWithSel"] {
-			t.Errorf("期望包含在 Rev1 有勾選之 NI 零件 PN_NIWithSel")
-		}
 
-		// 應排除
+		// 應排除 (包含不上件的 PN_NIWithSel)
+		if found["PN_NIWithSel"] {
+			t.Errorf("不應包含不上件 (BOMStatus=X) 之零件 PN_NIWithSel")
+		}
 		if found["PN_SelRev2"] {
 			t.Errorf("不應包含僅在 Rev2 有勾選之零件 PN_SelRev2")
 		}
@@ -278,12 +278,12 @@ func TestFilter_Apply_CCL_WithMatrixSelection(t *testing.T) {
 			t.Errorf("不應包含取消勾選之零件 PN_SelUnchecked")
 		}
 
-		if len(result) != 3 {
-			t.Errorf("期望過濾結果共 3 筆，實際得到 %d 筆", len(result))
+		if len(result) != 2 {
+			t.Errorf("期望過濾結果共 2 筆，實際得到 %d 筆", len(result))
 		}
 	})
 
-	t.Run("多 Revision 匯出 (Revision 1 + 2 整合聯集): 應同時包含 Rev1 與 Rev2 之勾選料", func(t *testing.T) {
+	t.Run("多 Revision 匯出 (Revision 1 + 2 整合聯集): 應同時包含 Rev1 與 Rev2 之勾選料，嚴格排除不上件料", func(t *testing.T) {
 		query := ViewQuery{RevisionIDs: []int64{1, 2}, ViewType: ViewCCL, ModeOverride: "NPI"}
 		result := filter.Apply(allParts, query)
 
@@ -292,20 +292,23 @@ func TestFilter_Apply_CCL_WithMatrixSelection(t *testing.T) {
 			found[p.MainSupplierPN] = true
 		}
 
-		if !found["PN_CCL"] || !found["PN_SelRev1"] || !found["PN_SelRev2"] || !found["PN_NIWithSel"] {
-			t.Errorf("多 Revision 匯出期望包含 CCL、Rev1勾選、Rev2勾選與NI勾選，實際結果: %+v", found)
+		if !found["PN_CCL"] || !found["PN_SelRev1"] || !found["PN_SelRev2"] {
+			t.Errorf("多 Revision 匯出期望包含 CCL、Rev1勾選與Rev2勾選，實際結果: %+v", found)
 		}
 
+		if found["PN_NIWithSel"] {
+			t.Errorf("多 Revision 匯出仍應嚴格排除不上件 (BOMStatus=X) 之零件 PN_NIWithSel")
+		}
 		if found["PN_NoSel"] || found["PN_SelUnchecked"] {
 			t.Errorf("多 Revision 匯出仍應排除完全無勾選之非 CCL 零件，實際結果: %+v", found)
 		}
 
-		if len(result) != 4 {
-			t.Errorf("期望過濾結果共 4 筆，實際得到 %d 筆", len(result))
+		if len(result) != 3 {
+			t.Errorf("期望過濾結果共 3 筆，實際得到 %d 筆", len(result))
 		}
 	})
 
-	t.Run("單一 Revision 匯出 (Revision 2): 僅包含 CCL 與 Rev2 勾選料，排除 Rev1 勾選料", func(t *testing.T) {
+	t.Run("單一 Revision 匯出 (Revision 2): 僅包含 CCL 與 Rev2 勾選料，排除 Rev1 勾選料與不上件料", func(t *testing.T) {
 		query := ViewQuery{RevisionIDs: []int64{2}, ViewType: ViewCCL, ModeOverride: "NPI"}
 		result := filter.Apply(allParts, query)
 
@@ -318,10 +321,22 @@ func TestFilter_Apply_CCL_WithMatrixSelection(t *testing.T) {
 			t.Errorf("期望包含 PN_CCL 與 PN_SelRev2，實際結果: %+v", found)
 		}
 		if found["PN_SelRev1"] || found["PN_NIWithSel"] {
-			t.Errorf("不應包含僅在 Rev1 勾選之物料，實際結果: %+v", found)
+			t.Errorf("不應包含僅在 Rev1 勾選或不上件之物料，實際結果: %+v", found)
 		}
 		if len(result) != 2 {
 			t.Errorf("期望過濾結果共 2 筆，實際得到 %d 筆", len(result))
+		}
+	})
+
+	t.Run("不上件防禦: 即使 BOMStatus=X 的零件在當前 Revision 有勾選且 CCL=true，CCL 視圖仍嚴格排除 (bom_status != X)", func(t *testing.T) {
+		pNI := makeTestPart("SupX", "PN_X_WithSel", "SMD", "X", true, []int64{1})
+		pNI.Selections = []ViewModelSelection{
+			{RevisionID: 1, SortOrder: 0, ModelName: "Model A", SelectedMaterialID: 999},
+		}
+		query := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewCCL}
+		result := filter.Apply([]ViewPartGroup{pNI}, query)
+		if len(result) != 0 {
+			t.Errorf("期望 BOMStatus=X 嚴格被排除，實際結果: %+v", result)
 		}
 	})
 

@@ -11,6 +11,7 @@ import (
 
 	"bomix-app/backend/config"
 	"bomix-app/backend/db"
+	"bomix-app/backend/excel"
 	"bomix-app/backend/logger"
 	"bomix-app/backend/types"
 )
@@ -912,4 +913,65 @@ func TestCloseSeries_StopsAIChat(t *testing.T) {
 		t.Error("預期 CloseSeries 之後 aiCancelFunc 會被重置為 nil")
 	}
 }
+
+// TestBigMatrixExport_ExcludesNIPartsFromSourceRevisionIDs 回歸測試：
+// 驗證 BigMatrix 匯出時（CCL 視圖 + 二階整併），不上件零件（bom_status == 'X'）嚴格被排除，
+// 不會將不上件位置（如 J42）併入上件位置，亦不會將僅有不上件位置的 BOM Revision（如 SERENNO）誤計入 SourceRevisionIDs。
+func TestBigMatrixExport_ExcludesNIPartsFromSourceRevisionIDs(t *testing.T) {
+	dbPath := "excel/testdata/FY27-D6.bomx"
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		t.Skip("跳過測試：找不到測試資料庫檔案 " + dbPath)
+	}
+
+	gdb, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("無法開啟測試資料庫: %v", err)
+	}
+	defer db.Close(gdb)
+
+	log := logger.NewLogger(100)
+
+	// 匯出 TARIS PV1-0.1 (ID=7) 與 SERENNO PV1-0.1 (ID=6)
+	targetRevIDs := []int64{7, 6}
+	_, parts, err := loadExportData(log, gdb, targetRevIDs, true)
+	if err != nil {
+		t.Fatalf("loadExportData 失敗: %v", err)
+	}
+
+	var targetPart *excel.PartData
+	for i := range parts {
+		if strings.Contains(parts[i].HHPN, "340310Y00-600-H") || strings.Contains(parts[i].SupplierPn, "2EG01817-7ADR-DH") {
+			targetPart = &parts[i]
+			break
+		}
+	}
+
+	if targetPart == nil {
+		t.Fatalf("未在匯出清單中找到物料 340310Y00-600-H")
+	}
+
+	// 1. 驗證打件數量 Qty 僅計算上件位置 (J31, J32 共 2 個)，不上件之 J42 必須被排除
+	if targetPart.Qty != 2 {
+		t.Errorf("物料打件數量 Qty 期望為 2 (僅上件 J31,J32)，實際得到: %d", targetPart.Qty)
+	}
+
+	// 2. 驗證打件位置 Location 僅包含 J31,J32
+	if targetPart.Location != "J31,J32" {
+		t.Errorf("物料打件位置 Location 期望為 'J31,J32'，實際得到: %q", targetPart.Location)
+	}
+
+	// 3. 驗證 SourceRevisionIDs 僅包含 TARIS (7)，絕不能包含 SERENNO (6)
+	if len(targetPart.SourceRevisionIDs) != 1 || targetPart.SourceRevisionIDs[0] != 7 {
+		t.Errorf("物料來源 SourceRevisionIDs 期望僅包含 [7]，實際得到: %v", targetPart.SourceRevisionIDs)
+	}
+
+	// 4. 驗證 2nd Source 替代料的 SourceRevisionIDs 亦僅包含 TARIS (7)
+	for idx, ss := range targetPart.SecondSources {
+		if len(ss.SourceRevisionIDs) != 1 || ss.SourceRevisionIDs[0] != 7 {
+			t.Errorf("替代料 [%d] (%s) 之 SourceRevisionIDs 期望僅為 [7]，實際得到: %v",
+				idx+1, ss.SupplierPn, ss.SourceRevisionIDs)
+		}
+	}
+}
+
 

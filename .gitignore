@@ -21,6 +21,8 @@ bomix-app/*.app
 bomix-app/*.deb
 bomix-app/*.AppImage
 bomix-app/*.dmg
+*.syso
+bomix-app/*.syso
 
 # Frontend build output
 bomix-app/frontend/dist/
