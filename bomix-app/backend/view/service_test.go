@@ -335,6 +335,36 @@ func TestFilter_Apply_CCL_WithMatrixSelection(t *testing.T) {
 			t.Errorf("容錯備援期望保留 MainSelectionsByOrder 為 true 之零件，實際得到 %d 筆", len(result))
 		}
 	})
+
+	t.Run("模式互斥防禦: NPI 模式下排除具有勾選的量產料 (M)，MP 模式下排除具有勾選的試產料 (P)", func(t *testing.T) {
+		// pMPWithSel: BOMStatus=M 的量產料，在 Rev 1 有勾選且 CCL=true
+		pMPWithSel := makeTestPart("SupM", "PN_MPWithSel", "SMD", "M", true, []int64{1})
+		pMPWithSel.Selections = []ViewModelSelection{
+			{RevisionID: 1, SortOrder: 0, ModelName: "Model A", SelectedMaterialID: 401},
+		}
+
+		// pProtoWithSel: BOMStatus=P 的試產料，在 Rev 1 有勾選且 CCL=true
+		pProtoWithSel := makeTestPart("SupP", "PN_ProtoWithSel", "SMD", "P", true, []int64{1})
+		pProtoWithSel.Selections = []ViewModelSelection{
+			{RevisionID: 1, SortOrder: 0, ModelName: "Model A", SelectedMaterialID: 501},
+		}
+
+		parts := []ViewPartGroup{pMPWithSel, pProtoWithSel}
+
+		// 1. NPI 模式：應排除 M 料，保留 P 料
+		queryNPI := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewCCL, ModeOverride: "NPI"}
+		resNPI := filter.Apply(parts, queryNPI)
+		if len(resNPI) != 1 || resNPI[0].MainSupplierPN != "PN_ProtoWithSel" {
+			t.Errorf("NPI 模式期望僅保留 PN_ProtoWithSel，實際結果: %+v", resNPI)
+		}
+
+		// 2. MP 模式：應排除 P 料，保留 M 料
+		queryMP := ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewCCL, ModeOverride: "MP"}
+		resMP := filter.Apply(parts, queryMP)
+		if len(resMP) != 1 || resMP[0].MainSupplierPN != "PN_MPWithSel" {
+			t.Errorf("MP 模式期望僅保留 PN_MPWithSel，實際結果: %+v", resMP)
+		}
+	})
 }
 
 // TestFilter_Apply_EmptyViewType 測試空 ViewType 預設為 ALL

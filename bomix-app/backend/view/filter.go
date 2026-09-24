@@ -207,9 +207,12 @@ func hasAnyMatrixSelection(part ViewPartGroup, revisionIDs []int64) bool {
 // filterCCL 過濾出關鍵零件 (CCL = true 且符合當前 BOM 模式) 或在查詢/匯出 revisions 中有任何 matrix selection 勾選的有效物料。
 // See product-spec section 6.4.2 & 8.1.6
 //
-// 過濾規則 (滿足任一條件即保留)：
-//  1. 原有條件：part.CCL 為 true，且 bom_status 符合當前 BOM 模式 (NPI: I+P, MP: I+M)。
-//  2. 矩陣勾選條件：在 query.RevisionIDs 範圍內，該物料群組存在任一 Model 的 Matrix Selection 勾選。
+// 過濾規則 (滿足任一條件即保留，但嚴格排除模式互斥物料)：
+//  1. 模式互斥排除：
+//     - 若 mode 為 "MP"，排除 bom_status 為 'P' (試產專用) 的物料。
+//     - 若 mode 為 "NPI" (預設)，排除 bom_status 為 'M' (量產專用) 的物料。
+//  2. 原有條件：part.CCL 為 true，且 bom_status 符合當前 BOM 模式 (NPI: I+P, MP: I+M)。
+//  3. 矩陣勾選條件：在 query.RevisionIDs 範圍內，該物料群組存在任一 Model 的 Matrix Selection 勾選。
 //
 // 參數：
 //   - parts：待過濾列表
@@ -223,7 +226,20 @@ func (f *Filter) filterCCL(parts []ViewPartGroup, query ViewQuery, mode string) 
 	mode = strings.ToUpper(strings.TrimSpace(mode))
 
 	for _, part := range parts {
-		// 1. 檢查原有 CCL 條件
+		// 1. 模式互斥檢查：
+		// 在 NPI 模式下，量產專用物料 ('M') 絕不屬於試產階段，必須排除
+		// 在 MP 模式下，試產專用物料 ('P') 絕不屬於量產階段，必須排除
+		if mode == "MP" {
+			if part.BOMStatus == "P" {
+				continue
+			}
+		} else {
+			if part.BOMStatus == "M" {
+				continue
+			}
+		}
+
+		// 2. 檢查原有 CCL 條件
 		isCCLMatch := false
 		if part.CCL {
 			if mode == "MP" {
@@ -237,7 +253,7 @@ func (f *Filter) filterCCL(parts []ViewPartGroup, query ViewQuery, mode string) 
 			}
 		}
 
-		// 2. 檢查在匯出/查詢的 revisions 中是否有任何 matrix selection 勾選
+		// 3. 檢查在匯出/查詢的 revisions 中是否有任何 matrix selection 勾選
 		hasSelection := hasAnyMatrixSelection(part, query.RevisionIDs)
 
 		// 符合任一條件即保留
@@ -288,9 +304,9 @@ func DescribeCondition(viewType string, mode string) string {
 		return "bom_status = 'M' (量產專用)"
 	case ViewCCL:
 		if m == "MP" {
-			return "(ccl = true AND bom_status in ('I', 'M')) OR (選取 revision 中有 matrix selection 勾選)"
+			return "(ccl = true AND bom_status in ('I', 'M')) OR (選取 revision 中有 matrix selection 勾選且 bom_status != 'P')"
 		}
-		return "(ccl = true AND bom_status in ('I', 'P')) OR (選取 revision 中有 matrix selection 勾選)"
+		return "(ccl = true AND bom_status in ('I', 'P')) OR (選取 revision 中有 matrix selection 勾選且 bom_status != 'M')"
 	default:
 		return "不過濾 (全部顯示)"
 	}
