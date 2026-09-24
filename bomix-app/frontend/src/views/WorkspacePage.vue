@@ -51,16 +51,6 @@
     </div>
 
     <!-- Sub-components Dialogs -->
-    <ImportDialog
-      v-model:visible="appStore.importDialogVisible"
-      @importSuccess="onImportSuccess"
-    />
-    
-    <ImportResultsDialog
-      v-model:visible="importResultDialogVisible"
-      :results="importResults"
-    />
-
     <CopyMatrixDialog
       v-model:visible="appStore.copyMatrixDialogVisible"
       :allRevisions="allRevisions"
@@ -73,11 +63,8 @@ import { ref, computed, onMounted } from 'vue'
 import Button from 'primevue/button'
 import { useAppStore, useProjectStore, useLogStore, useTaskStore, useBOMTableStore } from '../stores'
 import BOMTable from '../components/BOMTable'
-import ImportDialog from '../components/workspace/ImportDialog.vue'
-import ImportResultsDialog from '../components/workspace/ImportResultsDialog.vue'
 import ExportView, { type RevisionOption } from '../components/workspace/ExportView.vue'
 import CopyMatrixDialog from '../components/workspace/CopyMatrixDialog.vue'
-import type { ImportResult as BackendImportResult } from '../services/api'
 import type { Project, BomRevision } from '../stores/project'
 
 const appStore = useAppStore()
@@ -86,10 +73,7 @@ const logStore = useLogStore()
 const taskStore = useTaskStore()
 const bomTableStore = useBOMTableStore()
 
-const importResultDialogVisible = ref(false)
-
-// 匯入結果與版本選項列表
-const importResults = ref<BackendImportResult[]>([])
+// 版本選項列表
 const allRevisions = ref<RevisionOption[]>([])
 
 /**
@@ -215,16 +199,6 @@ function getImportDate(project: Project): string {
     }
   } catch (_) {}
   return rawDate
-}
-
-/**
- * 處理匯入完成事件，彈出進度監控對話框
- * @param {BackendImportResult[]} results - 匯入結果項目清單
- */
-function onImportSuccess(results: BackendImportResult[]): void {
-  importResults.value = results
-  importResultDialogVisible.value = true
-  bomTableStore.clearDataCache()
 }
 
 /**

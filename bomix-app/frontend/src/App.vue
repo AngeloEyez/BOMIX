@@ -3,15 +3,13 @@
     class="app-container"
     data-file-drop-target="true"
   >
-    <!-- 全域檔案拖曳視覺遮罩 (VS Code Drag Overlay) -->
+    <!-- 全域檔案拖曳視覺遮罩 (VS Code Drag Overlay，pointer-events: none 純視覺層) -->
     <div
       v-if="isDraggingOver"
       class="global-drag-overlay"
-      @dragover.prevent
-      @drop="handleDrop"
-      @click="resetDragState"
+      data-file-drop-target="true"
     >
-      <div class="drag-card" @click.stop>
+      <div class="drag-card" data-file-drop-target="true">
         <i class="pi pi-file-excel drag-icon"></i>
         <span class="drag-title">釋放滑鼠以匯入 BOM 檔案</span>
         <span class="drag-sub">支援 EBOM, BigMatrix, Matrix Excel 檔案 (.xlsx, .xls)</span>
@@ -133,6 +131,18 @@
       ></div>
       <LogPanel />
     </div>
+
+    <!-- 全域匯入對話框 (支援在任意介面獨立彈出並在背景執行) -->
+    <ImportDialog
+      v-model:visible="appStore.importDialogVisible"
+      @importSuccess="onGlobalImportSuccess"
+    />
+
+    <!-- 全域匯入即時狀態與進度監控對話框 -->
+    <ImportResultsDialog
+      v-model:visible="appStore.importResultDialogVisible"
+      :results="appStore.importResults"
+    />
   </div>
 </template>
 
@@ -144,10 +154,12 @@ import { Window } from '@wailsio/runtime'
 import SplitButton from 'primevue/splitbutton'
 import Button from 'primevue/button'
 import type { MenuItem } from 'primevue/menuitem'
-import { useAppStore, useProjectStore, useLogStore, useTaskStore, useAIChatStore, useSettingsStore } from './stores'
+import { useAppStore, useProjectStore, useLogStore, useTaskStore, useAIChatStore, useSettingsStore, useBOMTableStore } from './stores'
 import LogPanel from './components/LogPanel.vue'
 import SidebarPanel from './components/SidebarPanel.vue'
 import WindowControls from './components/WindowControls.vue'
+import ImportDialog from './components/workspace/ImportDialog.vue'
+import ImportResultsDialog from './components/workspace/ImportResultsDialog.vue'
 import { ListenToEvents } from './services/api'
 
 const route = useRoute()
@@ -158,6 +170,7 @@ const logStore = useLogStore()
 const taskStore = useTaskStore()
 const aiChatStore = useAIChatStore()
 const settingsStore = useSettingsStore()
+const bomTableStore = useBOMTableStore()
 
 /**
  * 全域攔截右鍵選單，防止 WebView2 彈出瀏覽器預設網頁選單 (Reload, Back, Inspect 等)
@@ -239,10 +252,6 @@ function handleImportClick(): void {
   if (!appStore.isOpen) {
     logStore.addLogEntry('WARN', '請先建立或開啟系列專案，方可匯入 BOM 檔案')
     return
-  }
-  if (route.path !== '/workspace') {
-    appStore.setWorkspaceView('table')
-    router.push('/workspace')
   }
   appStore.openImportDialog()
 }
@@ -332,8 +341,8 @@ function resetDragState(): void {
  */
 function handleDragEnter(e: DragEvent): void {
   e.preventDefault()
-  dragCounter++
   if (e.dataTransfer?.types?.includes('Files')) {
+    dragCounter++
     isDraggingOver.value = true
   }
 }
@@ -344,7 +353,7 @@ function handleDragEnter(e: DragEvent): void {
  */
 function handleDragOver(e: DragEvent): void {
   e.preventDefault()
-  if (e.dataTransfer) {
+  if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
     e.dataTransfer.dropEffect = 'copy'
   }
 }
@@ -355,9 +364,11 @@ function handleDragOver(e: DragEvent): void {
  */
 function handleDragLeave(e: DragEvent): void {
   e.preventDefault()
-  dragCounter--
-  if (dragCounter <= 0) {
-    resetDragState()
+  if (e.dataTransfer?.types?.includes('Files')) {
+    dragCounter--
+    if (dragCounter <= 0) {
+      resetDragState()
+    }
   }
 }
 
@@ -418,21 +429,54 @@ function extractFileList(data: any): string[] {
 }
 
 /**
+ * 全域匯入提交成功處理函式
+ * 彈出進度監控對話框，清除 BOMTable 快取，若系列已開啟則更新專案資料
+ * @param {any[]} results - 匯入結果項目清單
+ */
+function onGlobalImportSuccess(results: any[]): void {
+  appStore.openImportResultsDialog(results)
+  bomTableStore.clearDataCache()
+  if (appStore.isOpen) {
+    loadProjects()
+  }
+}
+
+/**
+ * 統一處理傳入的檔案路徑清單 (啟動全域匯入流程)
+ * @param {string[]} paths - 欲匯入之檔案絕對路徑清單
+ */
+function handleIncomingFiles(paths: string[]): void {
+  if (!paths || paths.length === 0) return
+
+  if (!appStore.isOpen) {
+    logStore.addLogEntry('WARN', '請先建立或開啟系列專案，方可匯入 BOM 檔案')
+    return
+  }
+
+  logStore.addLogEntry('DEBUG', `[DragDrop] 收到 ${paths.length} 個檔案拖曳請求: ${paths.join(', ')}`)
+  // 在當前頁面直接開啟全域匯入對話框，不強行跳轉頁面，獨立背景執行
+  appStore.handleDroppedFiles(paths)
+}
+
+/**
  * 處理接收到的拖放檔案清單 (Wails 原生視窗拖放事件)
  * @param {any} data - Wails 後端推送之拖放資料 (支援路徑陣列或物件格式)
  */
 function onFilesReceived(data: any): void {
-  // 原生拖放作業已完成，無論檔案過濾結果為何，均應立即重置拖曳提示狀態
   resetDragState()
 
   const paths = extractFileList(data)
+  logStore.addLogEntry('DEBUG', `[DragDrop] Wails 原生拖放事件觸發，解析到 ${paths.length} 個項目: ${JSON.stringify(paths)}`)
+
   const validPaths = paths.filter(path => {
     const p = String(path).toLowerCase()
     return p.endsWith('.xlsx') || p.endsWith('.xls')
   })
 
   if (validPaths.length > 0) {
-    appStore.handleDroppedFiles(validPaths)
+    handleIncomingFiles(validPaths)
+  } else if (paths.length > 0) {
+    logStore.addLogEntry('WARN', `拖入的檔案並非支援的 Excel 格式 (.xlsx, .xls)`)
   }
 }
 
@@ -441,6 +485,7 @@ function onFilesReceived(data: any): void {
  * @param {DragEvent} e - 原生拖曳事件物件
  */
 function handleDrop(e: DragEvent): void {
+  e.preventDefault()
   resetDragState()
 
   const files = e.dataTransfer?.files
@@ -459,7 +504,7 @@ function handleDrop(e: DragEvent): void {
   }
 
   if (validPaths.length > 0) {
-    appStore.handleDroppedFiles(validPaths)
+    handleIncomingFiles(validPaths)
   }
 }
 
@@ -477,17 +522,21 @@ let startY = 0
 let startHeight = 0
 
 onMounted(async () => {
-  // 註冊全域右鍵選單攔截與全域拖曳防護 (capture 模式優先監聽 drop 與 blur/keydown)
+  // 註冊全域右鍵選單攔截與全域拖曳防護 (冒泡模式監聽 drop，避免干擾底層 Wails 運行時)
   window.addEventListener('contextmenu', handleGlobalContextMenu)
   window.addEventListener('dragenter', handleDragEnter)
   window.addEventListener('dragover', handleDragOver)
   window.addEventListener('dragleave', handleDragLeave)
-  window.addEventListener('drop', handleDrop, true)
+  window.addEventListener('drop', handleDrop, false)
   window.addEventListener('keydown', handleGlobalKeyDown)
   window.addEventListener('blur', handleWindowBlur)
 
-  // 監聽 Wails 原生與後端視窗拖放事件 (包含絕對路徑)
+  // 確保根節點具備 Wails v3 所需之 data-file-drop-target 屬性
+  document.documentElement.setAttribute('data-file-drop-target', 'true')
+
+  // 監聽 Wails 原生與後端視窗拖放事件 (包含絕對路徑，相容 files:dropped 與 files-dropped)
   ListenToEvents('files:dropped', onFilesReceived)
+  ListenToEvents('files-dropped', onFilesReceived)
 
   // Start listening to events
   logStore.startListening()
@@ -529,7 +578,7 @@ onUnmounted(() => {
   window.removeEventListener('dragenter', handleDragEnter)
   window.removeEventListener('dragover', handleDragOver)
   window.removeEventListener('dragleave', handleDragLeave)
-  window.removeEventListener('drop', handleDrop, true)
+  window.removeEventListener('drop', handleDrop, false)
   window.removeEventListener('keydown', handleGlobalKeyDown)
   window.removeEventListener('blur', handleWindowBlur)
   document.removeEventListener('mousemove', handleSidebarResize)
@@ -976,6 +1025,7 @@ body {
 }
 
 /* 全域檔案拖曳視覺遮罩 (VS Code Drag Overlay) */
+/* 全域檔案拖曳視覺遮罩 (VS Code Drag Overlay，pointer-events: none 保證不干擾滑鼠與拖曳) */
 .global-drag-overlay {
   position: fixed;
   inset: 0;
@@ -985,8 +1035,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: auto;
-  cursor: pointer;
+  pointer-events: none !important;
+  user-select: none;
 }
 
 .drag-card {

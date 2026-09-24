@@ -25,6 +25,7 @@ func init() {
 	// Register custom events
 	application.RegisterEvent[string]("time")
 	application.RegisterEvent[[]string]("files:dropped")
+	application.RegisterEvent[[]string]("files-dropped")
 }
 
 // main function serves as the application's entry point. It initializes the application, creates a window,
@@ -75,7 +76,7 @@ func main() {
 		Windows: application.WindowsWindow{
 			DisableFramelessWindowDecorations: false,
 			NonClientRegionSupport:            true,
-			WebView2CompositionHosting:        true,
+			WebView2CompositionHosting:        false,
 		},
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
@@ -94,6 +95,7 @@ func main() {
 		logLogger.Info("WindowFilesDropped received", "count", len(droppedFiles), "files", droppedFiles)
 		if len(droppedFiles) > 0 {
 			wailsApp.Event.Emit("files:dropped", droppedFiles)
+			wailsApp.Event.Emit("files-dropped", droppedFiles)
 		}
 	})
 

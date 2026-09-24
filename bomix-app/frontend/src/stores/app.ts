@@ -142,6 +142,10 @@ export const useAppStore = defineStore('app', () => {
   const importFiles = ref<string[]>([])
   const confirmOverwrite = ref(true)
 
+  // 全域匯入結果與任務監控對話框狀態管理
+  const importResultDialogVisible = ref(false)
+  const importResults = ref<any[]>([])
+
   // 全域 Matrix 複製對話框狀態管理
   const copyMatrixDialogVisible = ref(false)
 
@@ -258,6 +262,22 @@ export const useAppStore = defineStore('app', () => {
     openImportDialog(paths)
   }
 
+  /**
+   * 開啟匯入結果與任務監控對話框
+   * @param {any[]} results - 匯入結果項目清單
+   */
+  function openImportResultsDialog(results: any[]): void {
+    importResults.value = results
+    importResultDialogVisible.value = true
+  }
+
+  /**
+   * 關閉匯入結果對話框
+   */
+  function closeImportResultsDialog(): void {
+    importResultDialogVisible.value = false
+  }
+
   return {
     // State
     isOpen,
@@ -269,6 +289,8 @@ export const useAppStore = defineStore('app', () => {
     importDialogVisible,
     importFiles,
     confirmOverwrite,
+    importResultDialogVisible,
+    importResults,
     copyMatrixDialogVisible,
     // Getters
     isSeriesOpen,
@@ -284,6 +306,8 @@ export const useAppStore = defineStore('app', () => {
     removeImportFile,
     clearImportFiles,
     closeImportDialog,
+    openImportResultsDialog,
+    closeImportResultsDialog,
     openCopyMatrixDialog,
     closeCopyMatrixDialog,
     handleDroppedFiles,
