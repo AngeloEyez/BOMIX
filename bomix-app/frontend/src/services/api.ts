@@ -829,3 +829,23 @@ export async function AIChatFetchModelsWithConfig(baseUrl: string, apiKey: strin
   }
 }
 
+/**
+ * 取得應用程式啟動時由命令列傳入的 .bomx 檔案路徑（如使用者雙擊檔案開啟）
+ * 
+ * @returns {Promise<string>} 檔案絕對路徑，若無則回傳空字串
+ */
+export async function GetStartupFile(): Promise<string> {
+  try {
+    if (typeof (App as any).GetStartupFile === 'function') {
+      return (await (App as any).GetStartupFile()) || ''
+    } else {
+      const { Call } = await import('@wailsio/runtime')
+      const res = await Call.ByName('backend.App.GetStartupFile')
+      return typeof res === 'string' ? res : ''
+    }
+  } catch (error) {
+    return ''
+  }
+}
+
+

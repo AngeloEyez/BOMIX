@@ -160,7 +160,7 @@ import SidebarPanel from './components/SidebarPanel.vue'
 import WindowControls from './components/WindowControls.vue'
 import ImportDialog from './components/workspace/ImportDialog.vue'
 import ImportResultsDialog from './components/workspace/ImportResultsDialog.vue'
-import { ListenToEvents } from './services/api'
+import { ListenToEvents, GetStartupFile } from './services/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -567,6 +567,22 @@ onMounted(async () => {
   ListenToEvents('files:dropped', onFilesReceived)
   ListenToEvents('files-dropped', onFilesReceived)
 
+  // 監聽外部程式（例如雙擊第二個 .bomx 檔案時）請求開啟檔案事件
+  ListenToEvents('file:open', async (filePath: any) => {
+    if (typeof filePath === 'string' && filePath.trim() !== '') {
+      logStore.addLogEntry('INFO', `偵測到外部請求開啟檔案：${filePath}`)
+      try {
+        await appStore.openSeries(filePath)
+        if (route.path !== '/workspace') {
+          router.push('/workspace')
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        logStore.addLogEntry('ERROR', `無法開啟外部傳入的檔案：${msg}`)
+      }
+    }
+  })
+
   // Start listening to events
   logStore.startListening()
   taskStore.startListening()
@@ -590,8 +606,22 @@ onMounted(async () => {
     loadProjects()
   }
 
-  // Check for auto-open last file
-  checkAutoOpen()
+  // 檢查是否有透過 Windows 檔案總管雙擊 .bomx 帶入啟動參數
+  try {
+    const startupFile = await GetStartupFile()
+    if (startupFile) {
+      logStore.addLogEntry('INFO', `由命令列參數開啟 .bomx 系列檔案：${startupFile}`)
+      await appStore.openSeries(startupFile)
+      if (route.path !== '/workspace') {
+        router.push('/workspace')
+      }
+    } else {
+      // 若無特定啟動檔案，才依據設定檢查是否自動開啟上次開啟的檔案
+      checkAutoOpen()
+    }
+  } catch (err) {
+    checkAutoOpen()
+  }
 
   // App 啟動時自動讀取設定中選中的模型並更新伺服器可用模型清單
   try {

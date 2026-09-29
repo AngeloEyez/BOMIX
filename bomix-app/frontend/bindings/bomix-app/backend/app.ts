@@ -362,6 +362,16 @@ export function GetSettings(): $CancellablePromise<$models.Settings | null> {
 }
 
 /**
+ * GetStartupFile 取得啟動時傳入的檔案路徑並清空，供前端於初始化掛載時呼叫
+ * 
+ * 回傳：
+ *   - string: 若有啟動檔案路徑則回傳，否則回傳空字串
+ */
+export function GetStartupFile(): $CancellablePromise<string> {
+    return $Call.ByID(2862834317);
+}
+
+/**
  * GetTask 依任務 ID 取得特定背景任務的詳細資訊與進度狀態
  * 
  * 參數：
@@ -491,6 +501,16 @@ export function SetMatrixModelSelection(revisionID: number, sortOrder: number, m
  */
 export function SetMatrixSelection(revisionID: number, modelID: number, mainMaterialID: number, selectedMaterialID: number): $CancellablePromise<void> {
     return $Call.ByID(2396468907, revisionID, modelID, mainMaterialID, selectedMaterialID);
+}
+
+/**
+ * SetStartupFile 設定啟動時由命令列傳入的檔案路徑（如使用者雙擊 .bomx 檔案開啟）
+ * 
+ * 參數：
+ *   - path: .bomx 檔案絕對路徑
+ */
+export function SetStartupFile(path: string): $CancellablePromise<void> {
+    return $Call.ByID(1073262393, path);
 }
 
 /**

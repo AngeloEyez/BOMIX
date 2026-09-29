@@ -27,6 +27,8 @@ type App struct {
 	aiCancelFunc    context.CancelFunc
 	currentAITaskID string
 	aiMu            sync.Mutex
+	startupFilePath string
+	startupFileMu   sync.Mutex
 }
 
 // NewApp 建立並初始化一個新的 App 實例
@@ -97,5 +99,27 @@ func (a *App) GetVersion() string {
 //   - version.Info: 包含版本號、Git Commit 與建置時間的結構體
 func (a *App) GetAppInfo() version.Info {
 	return version.Get()
+}
+
+// SetStartupFile 設定啟動時由命令列傳入的檔案路徑（如使用者雙擊 .bomx 檔案開啟）
+//
+// 參數：
+//   - path: .bomx 檔案絕對路徑
+func (a *App) SetStartupFile(path string) {
+	a.startupFileMu.Lock()
+	defer a.startupFileMu.Unlock()
+	a.startupFilePath = path
+}
+
+// GetStartupFile 取得啟動時傳入的檔案路徑並清空，供前端於初始化掛載時呼叫
+//
+// 回傳：
+//   - string: 若有啟動檔案路徑則回傳，否則回傳空字串
+func (a *App) GetStartupFile() string {
+	a.startupFileMu.Lock()
+	defer a.startupFileMu.Unlock()
+	path := a.startupFilePath
+	a.startupFilePath = ""
+	return path
 }
 
