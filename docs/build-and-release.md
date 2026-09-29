@@ -128,9 +128,13 @@ git push origin v1.0.0
 3. **正式/測試版判定**：
    - 若該 Tag 建立於 `main` 分支的提交歷史中，自動判定為**正式釋出 (Release)**。
    - 若該 Tag 建立於開發或功能分支，自動判定為**預發布/測試版 (Pre-release / Beta)**。
-4. **Taskfile 核心建置**：調用 `task build VERSION=1.0.0` 生成標準 Windows 執行檔。
-5. **打包產物**：將二進位檔封裝為帶有版本資訊的壓縮包 `BOMIX_<版本號>.zip`（例如 `BOMIX_v1.0.0.zip` 或 `BOMIX_v1.11.zip`）。
-6. **建立 GitHub Release**：自動建立對應 Release 頁面並上傳 ZIP 檔案供使用者下載。
+4. **Taskfile 核心建置**：調用 `task build VERSION=1.0.0` 生成標準 Windows 執行檔 (`BOMIX.exe`)。
+5. **手冊自動建置**：自動調用 `manual/build.js` 生成最新版本出版級手冊 (`BOMIX-使用者手冊.pdf`)。
+6. **打包產物規範 (重要)**：
+   - 建立隔離暫存目錄，**嚴格僅打包 `BOMIX.exe` 與 `BOMIX-使用者手冊.pdf`**。
+   - 排除任何 `.html` 暫存預覽檔，確保使用者取得乾淨純粹的發布包。
+   - 封裝為帶有版本資訊的壓縮包 `BOMIX_<版本號>.zip`（例如 `BOMIX_v1.0.0.zip`）。
+7. **建立 GitHub Release**：自動建立對應 Release 頁面，上傳 ZIP 發布包與獨立手冊 PDF 供使用者直接下載或線上查閱。
 
 ---
 

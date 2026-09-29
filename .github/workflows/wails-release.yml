@@ -93,7 +93,23 @@ jobs:
           Write-Host "執行 Taskfile 建置，注入 VERSION=$env:VERSION ..."
           task build VERSION=$env:VERSION
 
-      # 📦 封裝 Windows 執行檔為壓縮包（檔名格式依版本動態決定，如 BOMIX_v1.11.zip）
+      # 📖 建置使用者手冊 (PDF)
+      - name: Build User Manual (PDF)
+        working-directory: manual
+        shell: pwsh
+        run: |
+          Write-Host "執行手冊建置，確保產出最新 PDF..."
+          try {
+            node build.js
+          } catch {
+            Write-Warning "手冊建置過程出現警告，確認是否有既有 PDF 產物"
+          }
+          if (-not (Test-Path "dist/BOMIX-使用者手冊.pdf")) {
+            Write-Error "錯誤：未找到手冊 PDF 檔案 (manual/dist/BOMIX-使用者手冊.pdf)"
+            exit 1
+          }
+
+      # 📦 封裝 Windows 發布包（僅打包 BOMIX.exe 與 manual PDF，嚴格排除 HTML）
       - name: Package Windows Binary (ZIP)
         shell: pwsh
         run: |
@@ -101,13 +117,50 @@ jobs:
           if (-not $zipName) {
             $zipName = "BOMIX.zip"
           }
-          if (Test-Path "bomix-app/bin/BOMIX.exe") {
-            Compress-Archive -Path "bomix-app/bin/*" -DestinationPath $zipName
-            Write-Host "成功封裝產出包: $zipName"
+
+          $stagingDir = "release-staging"
+          if (Test-Path $stagingDir) { Remove-Item -Path $stagingDir -Recurse -Force }
+          New-Item -ItemType Directory -Path $stagingDir | Out-Null
+
+          # 1. 複製 BOMIX.exe
+          $exeSource = "bomix-app/bin/BOMIX.exe"
+          if (Test-Path $exeSource) {
+            Copy-Item -Path $exeSource -Destination $stagingDir
+            Write-Host "已加入主程式: $exeSource"
           } else {
-            Write-Error "錯誤：未找到編譯輸出檔案 bomix-app/bin/BOMIX.exe"
+            Write-Error "錯誤：未找到編譯輸出檔案 $exeSource"
             exit 1
           }
+
+          # 2. 複製說明書 PDF（僅打包 PDF，排除 HTML）
+          $pdfSource = "manual/dist/BOMIX-使用者手冊.pdf"
+          if (Test-Path $pdfSource) {
+            Copy-Item -Path $pdfSource -Destination $stagingDir
+            Write-Host "已加入說明書 PDF: $pdfSource"
+          } else {
+            Write-Error "錯誤：未找到手冊 PDF 檔案 $pdfSource"
+            exit 1
+          }
+
+          # 3. 安全防呆檢查：嚴格驗證打包內容，確保絕無 HTML 檔案
+          $stagedFiles = Get-ChildItem -Path $stagingDir
+          Write-Host "`n=== 發布包內容清單 ==="
+          foreach ($file in $stagedFiles) {
+            $mb = [math]::Round($file.Length / 1MB, 2)
+            Write-Host " - $($file.Name) ($mb MB)"
+          }
+
+          $htmlFiles = @($stagedFiles | Where-Object { $_.Extension -match '^\.html?$' })
+          if ($htmlFiles.Count -gt 0) {
+            Write-Error "安全檢查失敗：打包清單中含有 HTML 檔案，違反打包規範！"
+            exit 1
+          }
+
+          # 4. 壓縮為 ZIP
+          if (Test-Path $zipName) { Remove-Item -Path $zipName -Force }
+          Compress-Archive -Path "$stagingDir/*" -DestinationPath $zipName -Force
+          $zipSize = [math]::Round((Get-Item $zipName).Length / 1MB, 2)
+          Write-Host "`n成功封裝發布包: $zipName ($zipSize MB)"
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -117,5 +170,6 @@ jobs:
           prerelease: ${{ env.IS_PRERELEASE }}
           files: |
             ${{ env.ZIP_NAME }}
+            manual/dist/BOMIX-使用者手冊.pdf
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
