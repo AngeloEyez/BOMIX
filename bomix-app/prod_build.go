@@ -18,3 +18,10 @@ const isDevMode = false
 func setupKeyBindings() map[string]func(window application.Window) {
 	return nil
 }
+
+/**
+ * waitForDevServer 在生產模式下為空操作 (No-op)
+ */
+func waitForDevServer() {
+}
+

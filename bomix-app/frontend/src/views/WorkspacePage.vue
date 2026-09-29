@@ -168,10 +168,14 @@ function getImportDate(project: Project): string {
 
 /**
  * 處理匯出完成事件
- * @param {string[]} paths - 匯出檔案路徑清單
+ * @param {string[]} paths - 匯出檔案或目錄路徑清單
  */
 function onExportSuccess(paths: string[]): void {
-  logStore.addLogEntry('INFO', `匯出作業成功完成，檔案路徑: ${paths.join(', ')}`)
+  if (paths && paths.length > 0) {
+    logStore.addLogEntry('DEBUG', `匯出作業成功完成，檔案路徑: ${paths.join(', ')}`)
+  } else {
+    logStore.addLogEntry('DEBUG', '匯出作業成功完成')
+  }
 }
 </script>
 

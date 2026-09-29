@@ -480,12 +480,18 @@ export async function ConfirmTaskOverwrite(taskID: string, overwrite: boolean): 
   }
 }
 
+/**
+ * 匯出 Excel 檔案（非同步背景任務）
+ * @param {ExportOptions} options - 匯出選項參數
+ * @returns {Promise<string[]>} 回傳已建立之背景任務 Task ID (UUID) 列表
+ */
 export async function ExportExcel(options: ExportOptions): Promise<string[]> {
   try {
     const res = await App.ExportExcel(options as any)
     return (res || []) as string[]
   } catch (error) {
     handleApiError(error, 'ExportExcel')
+    throw error
   }
 }
 

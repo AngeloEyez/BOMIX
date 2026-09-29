@@ -268,15 +268,20 @@ func (tm *TaskManager) SubmitWithID(taskID, name, taskType string, fn TaskFunc) 
 			// Task completed successfully
 			task.Status = string(types.TaskCompleted)
 			task.Progress = 1.0
-			task.Message = "Task completed successfully"
+			doneMsg := "任務已完成"
+			if task.Message != "" && task.Message != "Task completed successfully" {
+				doneMsg = task.Message
+			}
+			task.Message = doneMsg
 			task.mu.Unlock()
 
 			tm.emitEvent(EventTaskComplete, map[string]interface{}{
-				"taskID": taskID,
+				"taskID":  taskID,
+				"message": doneMsg,
 			})
 
 			if tm.logger != nil {
-				tm.logger.Info("任務已完成",
+				tm.logger.Info(doneMsg,
 					"taskID", taskID,
 					"name", name,
 					"taskStatus", "done",

@@ -118,19 +118,19 @@ func NewWriter(lg *logger.Logger) (*WriterImpl, error) {
 func (w *WriterImpl) ExportExcel(options ExportOptions) ([]string, error) {
 	fmtStr := strings.TrimSpace(string(options.Format))
 	if w.logger != nil {
-		w.logger.Info(fmt.Sprintf("[Writer] 準備執行 Excel 匯出 (格式: %s)", fmtStr))
+		w.logger.Debug(fmt.Sprintf("[Writer] 準備執行 Excel 匯出 (格式: %s)", fmtStr))
 		w.logger.Debug(fmt.Sprintf("[Writer] 匯出選項: RevisionsCount=%d, OutputPath=%s", len(options.RevisionIDs), options.OutputPath))
 	}
 
 	switch {
 	case strings.EqualFold(fmtStr, string(types.FormatBigMatrix)):
 		if w.logger != nil {
-			w.logger.Info("[Writer] 比對成功 -> 執行 BigMatrix 匯出")
+			w.logger.Debug("[Writer] 比對成功 -> 執行 BigMatrix 匯出")
 		}
 		return w.exportBigMatrix(options)
 	case strings.EqualFold(fmtStr, string(types.FormatMatrix)):
 		if w.logger != nil {
-			w.logger.Info("[Writer] 比對成功 -> 執行 Matrix 匯出")
+			w.logger.Debug("[Writer] 比對成功 -> 執行 Matrix 匯出")
 		}
 		if len(options.Revisions) > 0 && len(options.PartData) > 0 {
 			if len(options.Revisions) == 1 {

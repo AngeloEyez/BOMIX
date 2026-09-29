@@ -175,7 +175,7 @@ import Button from 'primevue/button'
 import SelectButton from 'primevue/selectbutton'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
-import { useAppStore, useProjectStore, useLogStore } from '../../stores'
+import { useAppStore, useProjectStore, useLogStore, useTaskStore } from '../../stores'
 import {
   ExportExcel,
   SaveProjectExportOrder,
@@ -211,6 +211,7 @@ const emit = defineEmits<{
 const appStore = useAppStore()
 const projectStore = useProjectStore()
 const logStore = useLogStore()
+const taskStore = useTaskStore()
 
 // 匯出設定狀態
 const exportFormat = ref<'BigMatrix' | 'Matrix'>('BigMatrix')
@@ -809,12 +810,72 @@ async function browseExportPath(): Promise<void> {
 }
 
 /**
+ * 等待指定的背景任務清單執行完成
+ * @param {string[]} taskIds - 任務識別碼清單
+ * @returns {Promise<boolean>} 若全部任務成功完成回傳 true，若有失敗或取消則回傳 false
+ */
+function waitForTasksCompletion(taskIds: string[]): Promise<boolean> {
+  return new Promise((resolve) => {
+    let pendingCount = taskIds.length
+    let isFinished = false
+    const unwatchList: Array<() => void> = []
+
+    const cleanup = (success: boolean) => {
+      if (!isFinished) {
+        isFinished = true
+        unwatchList.forEach(unwatch => unwatch())
+        resolve(success)
+      }
+    }
+
+    // 1. 檢查任務當前狀態（處理可能在設置監聽前已完成的極速任務）
+    for (const id of taskIds) {
+      const t = taskStore.getTask(id)
+      if (t?.status === 'completed') {
+        pendingCount--
+      } else if (t?.status === 'failed' || t?.status === 'cancelled') {
+        cleanup(false)
+        return
+      }
+    }
+
+    if (pendingCount <= 0) {
+      cleanup(true)
+      return
+    }
+
+    // 2. 監聽任務狀態變更
+    taskIds.forEach((id) => {
+      const unwatch = watch(
+        () => taskStore.getTask(id)?.status,
+        (newStatus) => {
+          if (newStatus === 'completed') {
+            pendingCount--
+            if (pendingCount <= 0) {
+              cleanup(true)
+            }
+          } else if (newStatus === 'failed' || newStatus === 'cancelled') {
+            cleanup(false)
+          }
+        }
+      )
+      unwatchList.push(unwatch)
+    })
+
+    // 3. 防禦性超時 (5 分鐘)
+    setTimeout(() => {
+      cleanup(pendingCount <= 0)
+    }, 300000)
+  })
+}
+
+/**
  * 執行 Excel 匯出任務
  */
 async function executeExport(): Promise<void> {
   if (selectedCards.value.length === 0) return
   isExporting.value = true
-  logStore.addLogEntry('INFO', `開始執行匯出作業...`)
+  logStore.addLogEntry('DEBUG', '開始執行匯出作業...')
 
   try {
     const sortedRevisionIds = selectedCards.value.map(c => c.id)
@@ -841,9 +902,26 @@ async function executeExport(): Promise<void> {
       modelCountOverrides: modelCountOverrides
     }
 
-    const exportedPaths = await ExportExcel(options)
-    logStore.addLogEntry('INFO', `匯出作業完成，共產生 ${exportedPaths?.length || 0} 個檔案`)
-    emit('exportSuccess', exportedPaths || [])
+    const taskIds = await ExportExcel(options)
+    if (!taskIds || taskIds.length === 0) {
+      logStore.addLogEntry('WARN', '未建立任何匯出任務')
+      return
+    }
+
+    const targetPaths = isBigMatrix ? [finalOutputPath] : (dir ? [dir] : [])
+    if (isBigMatrix) {
+      logStore.addLogEntry('DEBUG', `BigMatrix 匯出任務已建立 (Task ID: ${taskIds.join(', ')})，輸出目標: ${finalOutputPath}`)
+    } else {
+      logStore.addLogEntry('DEBUG', `Matrix 匯出任務已建立，共 ${taskIds.length} 個任務，輸出目錄: ${dir}`)
+    }
+
+    const isSuccess = await waitForTasksCompletion(taskIds)
+    if (isSuccess) {
+      emit('exportSuccess', targetPaths)
+    } else {
+      const failedTask = taskIds.map(id => taskStore.getTask(id)).find(t => t?.status === 'failed' || t?.status === 'cancelled')
+      logStore.addLogEntry('ERROR', `匯出作業失敗：${failedTask?.error || failedTask?.message || '任務執行異常'}`)
+    }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)
     logStore.addLogEntry('ERROR', `匯出作業失敗：${msg}`)

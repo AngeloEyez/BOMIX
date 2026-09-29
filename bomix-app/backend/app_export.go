@@ -43,7 +43,7 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 		bomFormat = types.BOMFormat(formatStr)
 	}
 
-	a.logger.Info(fmt.Sprintf("[ExportExcel] 開始進行 Excel 匯出作業 (Format: %s, 選取 Revisions 數量: %d)", bomFormat, len(options.RevisionIDs)))
+	a.logger.Debug(fmt.Sprintf("[ExportExcel] 開始進行 Excel 匯出作業 (Format: %s, 選取 Revisions 數量: %d)", bomFormat, len(options.RevisionIDs)))
 	a.logger.Debug(fmt.Sprintf("[ExportExcel] 匯出詳細參數: RevisionIDs=%v, ModelCountOverrides=%+v, OutputDir=%s", options.RevisionIDs, options.ModelCountOverrides, options.OutputDir))
 
 	a.mu.RLock()
@@ -133,11 +133,14 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 						return fmt.Errorf("failed to export: %w", err)
 					}
 
-					if len(outputPaths) > 0 && taskLogger != nil {
-						taskLogger.Info(fmt.Sprintf("[ExportExcel] 成功匯出 Matrix 檔案: %s", filepath.Base(outputPaths[0])))
+					if len(outputPaths) > 0 {
+						if taskLogger != nil {
+							taskLogger.Info(fmt.Sprintf("[ExportExcel] 成功匯出 Matrix 檔案: %s", outputPaths[0]))
+						}
+						progress(1.0, outputPaths[0])
+					} else {
+						progress(1.0, "Export completed")
 					}
-
-					progress(1.0, fmt.Sprintf("Exported %d files", len(outputPaths)))
 					return nil
 				},
 			)
@@ -200,7 +203,14 @@ func (a *App) ExportExcel(options *ExportOptions) ([]string, error) {
 				return fmt.Errorf("failed to export: %w", err)
 			}
 
-			progress(1.0, fmt.Sprintf("Exported %d files", len(outputPaths)))
+			if len(outputPaths) > 0 {
+				if taskLogger != nil {
+					taskLogger.Info(fmt.Sprintf("[ExportExcel] 成功匯出 BigMatrix 檔案: %s", outputPaths[0]))
+				}
+				progress(1.0, outputPaths[0])
+			} else {
+				progress(1.0, "Export completed")
+			}
 			return nil
 		},
 	)

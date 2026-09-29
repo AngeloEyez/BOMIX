@@ -109,6 +109,9 @@ func main() {
 		}
 	}()
 
+	// 在開發模式下若有指定 FRONTEND_DEVSERVER_URL，先等待前端 Vite 伺服器啟動就緒
+	waitForDevServer()
+
 	// Run the application. This blocks until the application has been exited.
 	if err := wailsApp.Run(); err != nil {
 		log.Fatal(err)
