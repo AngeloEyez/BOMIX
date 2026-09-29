@@ -124,7 +124,7 @@
             size="small"
             severity="secondary"
             class="vscode-btn vscode-ghost-btn"
-            @click="visibleModel = false"
+            @click="handleCancelDialog"
           />
           <Button
             label="開始匯入"
@@ -149,6 +149,7 @@ import { useLogStore, useTaskStore, useAppStore } from '../../stores'
 import {
   ImportExcel,
   OpenMultipleFilesDialog,
+  isDialogCancelled,
   type ImportResult as BackendImportResult
 } from '../../services/api'
 
@@ -270,6 +271,14 @@ function clearImportFiles(): void {
 }
 
 /**
+ * 處理使用者取消匯入對話框操作
+ */
+function handleCancelDialog(): void {
+  visibleModel.value = false
+  logStore.addLogEntry('DEBUG', '使用者已取消匯入 BOM 檔案對話框')
+}
+
+/**
  * 開啟作業系統原生多檔案選擇對話框
  */
 async function browseFiles(): Promise<void> {
@@ -286,8 +295,14 @@ async function browseFiles(): Promise<void> {
     if (selectedPaths && selectedPaths.length > 0) {
       appStore.addImportFiles(selectedPaths)
       logStore.addLogEntry('DEBUG', `已選取 ${selectedPaths.length} 個匯入檔案，目前累計 ${appStore.importFiles.length} 個`)
+    } else {
+      logStore.addLogEntry('DEBUG', '使用者已取消選取匯入檔案')
     }
   } catch (error) {
+    if (isDialogCancelled(error)) {
+      logStore.addLogEntry('DEBUG', '使用者已取消選取匯入檔案')
+      return
+    }
     const msg = error instanceof Error ? error.message : String(error)
     logStore.addLogEntry('ERROR', `選取匯入檔案發生錯誤：${msg}`)
   }

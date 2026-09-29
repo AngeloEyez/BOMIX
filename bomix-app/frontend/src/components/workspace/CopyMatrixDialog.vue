@@ -97,7 +97,7 @@
         icon="pi pi-times"
         text
         severity="secondary"
-        @click="visibleModel = false"
+        @click="handleCancelDialog"
       />
       <Button
         label="開始複製"
@@ -267,6 +267,14 @@ async function executeCopyMatrix(): Promise<void> {
     const msg = error instanceof Error ? error.message : String(error)
     logStore.addLogEntry('ERROR', `Matrix 複製失敗：${msg}`)
   }
+}
+
+/**
+ * 處理使用者取消 Matrix 複製對話框操作
+ */
+function handleCancelDialog(): void {
+  visibleModel.value = false
+  logStore.addLogEntry('DEBUG', '使用者已取消 Matrix 複製對話框')
 }
 </script>
 

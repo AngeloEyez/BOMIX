@@ -181,6 +181,7 @@ import {
   SaveProjectExportOrder,
   SaveFileDialog,
   SelectFolderDialog,
+  isDialogCancelled,
   type ExportOptions
 } from '../../services/api'
 
@@ -791,6 +792,8 @@ async function browseExportPath(): Promise<void> {
       if (filePath) {
         exportOutputPath.value = filePath
         logStore.addLogEntry('INFO', `已選取匯出檔案：${filePath}`)
+      } else {
+        logStore.addLogEntry('DEBUG', '使用者已取消選取 BigMatrix 匯出儲存路徑')
       }
     } else {
       const dir = getDirectory(exportOutputPath.value)
@@ -801,9 +804,15 @@ async function browseExportPath(): Promise<void> {
       if (dirPath) {
         exportOutputPath.value = dirPath
         logStore.addLogEntry('INFO', `已選取匯出目錄：${dirPath}`)
+      } else {
+        logStore.addLogEntry('DEBUG', '使用者已取消選取匯出目錄路徑')
       }
     }
   } catch (error) {
+    if (isDialogCancelled(error)) {
+      logStore.addLogEntry('DEBUG', '使用者已取消選取匯出路徑')
+      return
+    }
     const msg = error instanceof Error ? error.message : String(error)
     logStore.addLogEntry('ERROR', `選取匯出路徑發生錯誤：${msg}`)
   }

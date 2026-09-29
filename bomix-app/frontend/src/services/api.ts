@@ -629,6 +629,27 @@ export function UnlistenToEvents(eventName: string): void {
   }
 }
 
+/**
+ * 判斷錯誤是否為使用者主動取消原生對話框 (Dialog Cancelled)
+ * 涵蓋 Wails v3 及各作業系統原生對話框常見之取消訊息
+ *
+ * @param {unknown} error - 攔截到的錯誤物件
+ * @returns {boolean} 若為使用者主動取消則回傳 true，否則回傳 false
+ */
+export function isDialogCancelled(error: unknown): boolean {
+  if (!error) return false
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase()
+  return (
+    msg.includes('cancelled by user') ||
+    msg.includes('canceled by user') ||
+    msg.includes('cancelled') ||
+    msg.includes('canceled') ||
+    msg.includes('user cancelled') ||
+    msg.includes('user canceled') ||
+    msg.includes('cancel')
+  )
+}
+
 // ==================== File Dialogs ====================
 
 export async function OpenFileDialog(options: FileDialogOptions): Promise<string> {
@@ -646,6 +667,9 @@ export async function OpenFileDialog(options: FileDialogOptions): Promise<string
     
     return Array.isArray(result) ? result[0] : (result || '')
   } catch (error) {
+    if (isDialogCancelled(error)) {
+      return ''
+    }
     handleApiError(error, 'OpenFileDialog')
   }
 }
@@ -676,6 +700,9 @@ export async function OpenMultipleFilesDialog(options: FileDialogOptions): Promi
     }
     return []
   } catch (error) {
+    if (isDialogCancelled(error)) {
+      return []
+    }
     handleApiError(error, 'OpenMultipleFilesDialog')
     return []
   }
@@ -695,6 +722,9 @@ export async function SaveFileDialog(options: FileDialogOptions): Promise<string
     
     return result || ''
   } catch (error) {
+    if (isDialogCancelled(error)) {
+      return ''
+    }
     handleApiError(error, 'SaveFileDialog')
   }
 }
@@ -710,6 +740,9 @@ export async function SelectFolderDialog(options: FileDialogOptions): Promise<st
     
     return Array.isArray(result) ? result[0] : (result || '')
   } catch (error) {
+    if (isDialogCancelled(error)) {
+      return ''
+    }
     handleApiError(error, 'SelectFolderDialog')
   }
 }

@@ -93,7 +93,7 @@
           size="small"
           class="footer-btn"
           :disabled="isSaving"
-          @click="dialogVisible = false"
+          @click="handleCancelDialog"
         />
         <Button
           label="確定"
@@ -318,6 +318,14 @@ async function handleSave(): Promise<void> {
   } finally {
     isSaving.value = false
   }
+}
+
+/**
+ * 處理使用者取消機種設定編輯對話框操作
+ */
+function handleCancelDialog(): void {
+  dialogVisible.value = false
+  logStore.addLogEntry('DEBUG', `[MatrixModelEditDialog] 使用者已取消機種設定編輯對話框 (RevisionID=${props.revisionId})`)
 }
 </script>
 

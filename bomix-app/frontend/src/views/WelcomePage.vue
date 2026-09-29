@@ -64,7 +64,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useAppStore, useLogStore } from '../stores'
-import { OpenFileDialog, SaveFileDialog, GetRecentSeries } from '../services/api'
+import { OpenFileDialog, SaveFileDialog, GetRecentSeries, isDialogCancelled } from '../services/api'
 
 const appStore = useAppStore()
 const logStore = useLogStore()
@@ -109,17 +109,24 @@ async function handleCreateSeries(): Promise<void> {
       buttonLabel: '建立',
     })
 
-    if (path) {
-      let finalPath = path
-      if (!finalPath.toLowerCase().endsWith('.bomx')) {
-        finalPath += '.bomx'
-      }
-
-      const name = finalPath.split(/[\\/]/).pop()?.replace('.bomx', '') || 'Untitled'
-      
-      await appStore.createSeries(finalPath, name, '')
+    if (!path) {
+      logStore.addLogEntry('DEBUG', '使用者已取消建立系列檔案對話框')
+      return
     }
+
+    let finalPath = path
+    if (!finalPath.toLowerCase().endsWith('.bomx')) {
+      finalPath += '.bomx'
+    }
+
+    const name = finalPath.split(/[\\/]/).pop()?.replace('.bomx', '') || 'Untitled'
+    
+    await appStore.createSeries(finalPath, name, '')
   } catch (error) {
+    if (isDialogCancelled(error)) {
+      logStore.addLogEntry('DEBUG', '使用者已取消建立系列檔案對話框')
+      return
+    }
     const msg = error instanceof Error ? error.message : String(error)
     logStore.addLogEntry('ERROR', `建立系列對話框或程序發生錯誤：${msg}`)
     console.error('Failed to create series:', error)
@@ -135,10 +142,17 @@ async function browseFile(): Promise<void> {
       buttonLabel: '選取',
     })
 
-    if (path) {
-      await appStore.openSeries(path)
+    if (!path) {
+      logStore.addLogEntry('DEBUG', '使用者已取消選擇 BOMIX 系列檔案對話框')
+      return
     }
+
+    await appStore.openSeries(path)
   } catch (error) {
+    if (isDialogCancelled(error)) {
+      logStore.addLogEntry('DEBUG', '使用者已取消選擇 BOMIX 系列檔案對話框')
+      return
+    }
     const msg = error instanceof Error ? error.message : String(error)
     logStore.addLogEntry('ERROR', `選擇檔案發生錯誤：${msg}`)
     console.error('Failed to browse file:', error)
