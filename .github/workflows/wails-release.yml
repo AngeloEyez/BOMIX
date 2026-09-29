@@ -113,10 +113,19 @@ jobs:
       - name: Package Windows Binary (ZIP)
         shell: pwsh
         run: |
-          $zipName = "${{ env.ZIP_NAME }}"
+          $zipName = $env:ZIP_NAME
+          if (-not $zipName) {
+            $zipName = "${{ env.ZIP_NAME }}"
+          }
+          if (-not $zipName -and $env:RELEASE_TAG) {
+            $tag = $env:RELEASE_TAG
+            $zipTag = if ($tag.StartsWith("v")) { $tag } else { "v$tag" }
+            $zipName = "BOMIX_${zipTag}.zip"
+          }
           if (-not $zipName) {
             $zipName = "BOMIX.zip"
           }
+          Write-Host "目標 ZIP 檔案名稱: $zipName"
 
           $stagingDir = "release-staging"
           if (Test-Path $stagingDir) { Remove-Item -Path $stagingDir -Recurse -Force }
@@ -170,6 +179,7 @@ jobs:
           prerelease: ${{ env.IS_PRERELEASE }}
           files: |
             ${{ env.ZIP_NAME }}
+            BOMIX_*.zip
             manual/dist/BOMIX-使用者手冊.pdf
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
