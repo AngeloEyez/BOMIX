@@ -1,0 +1,14 @@
+{
+  "name": "bomix-manual",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BOMIX 繁體中文使用說明書 PDF 建置工具",
+  "scripts": {
+    "build:pdf": "node build.js",
+    "preview": "node build.js --html-only"
+  },
+  "dependencies": {
+    "marked": "^15.0.7",
+    "puppeteer": "^24.4.0"
+  }
+}
