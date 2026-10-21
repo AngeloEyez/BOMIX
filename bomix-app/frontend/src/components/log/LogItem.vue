@@ -21,13 +21,13 @@
     <template v-if="log.isTaskTracker">
       <span class="log-time">{{ formattedTime }}</span>
       <span class="log-task-indicator">TASK</span>
-      <span class="log-status-tag" :class="`status-${log.status}`">
-        <i v-if="log.status?.toLowerCase() === 'running'" class="pi pi-spin pi-spinner mr-1 text-[8px]"></i>
-        {{ log.status }}
+      <span class="log-status-tag" :class="`status-${effectiveStatus}`">
+        <i v-if="effectiveStatus?.toLowerCase() === 'running'" class="pi pi-spin pi-spinner mr-1 text-[8px]"></i>
+        {{ effectiveStatus }}
       </span>
       <span class="log-message">
         <span v-if="log.attrs?.name" class="task-name-label">{{ log.attrs.name }} - </span>
-        {{ log.message }}
+        {{ effectiveMessage }}
       </span>
       <button
         type="button"
@@ -54,7 +54,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useLogStore } from '../../stores'
+import { useLogStore, useTaskStore } from '../../stores'
 import type { LogEntry } from '../../stores/log'
 
 interface Props {
@@ -79,6 +79,41 @@ const emit = defineEmits<{
 }>()
 
 const logStore = useLogStore()
+const taskStore = useTaskStore()
+
+/**
+ * 取得任務的最終狀態。
+ * 優先從 taskStore (任務真實狀態單一來源) 取得即時狀態；若無則退回使用 log.status。
+ */
+const effectiveStatus = computed(() => {
+  const taskId = props.log.attrs?.taskID
+  if (taskId) {
+    const t = taskStore.getTask(taskId)
+    if (t?.status) {
+      const lower = t.status.toLowerCase()
+      if (lower === 'completed') return 'done'
+      return lower
+    }
+  }
+  const s = props.log.status?.toLowerCase() || 'queued'
+  return s === 'completed' ? 'done' : s
+})
+
+/**
+ * 取得任務顯示的訊息。
+ * 若 taskStore 中任務已處於終結狀態（completed/failed/warning/cancelled），優先使用 taskStore 的完成/錯誤訊息，
+ * 避免被內部詳細 debug log 沖刷掉。
+ */
+const effectiveMessage = computed(() => {
+  const taskId = props.log.attrs?.taskID
+  if (taskId) {
+    const t = taskStore.getTask(taskId)
+    if (t && ['completed', 'failed', 'warning', 'cancelled'].includes(t.status?.toLowerCase()) && t.message) {
+      return t.message
+    }
+  }
+  return props.log.message
+})
 
 /**
  * 格式化時間戳記。
@@ -241,13 +276,16 @@ const formattedAttrs = computed(() => {
   gap: 2px;
 }
 
-.log-status-tag.status-error {
+.log-status-tag.status-error,
+.log-status-tag.status-failed {
   color: #f44336;
   background-color: rgba(244,67,54,0.12);
 }
 
 .log-status-tag.status-warning,
-.log-status-tag.status-warn {
+.log-status-tag.status-warn,
+.log-status-tag.status-waiting_confirm,
+.log-status-tag.status-waitingconfirm {
   color: #ff9800;
   background-color: rgba(255,152,0,0.12);
 }
@@ -257,7 +295,8 @@ const formattedAttrs = computed(() => {
   background-color: rgba(33,150,243,0.12);
 }
 
-.log-status-tag.status-done {
+.log-status-tag.status-done,
+.log-status-tag.status-completed {
   color: #4caf50;
   background-color: rgba(76,175,80,0.12);
 }

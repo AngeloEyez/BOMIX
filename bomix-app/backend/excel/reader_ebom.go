@@ -671,10 +671,6 @@ func (r *EBOMReader) parsePhase1Sheet(
 				})
 				newLocCount++
 			}
-
-			if r.logger != nil {
-				r.logger.Debug(fmt.Sprintf("[EBOM Phase1] [%s] 主料: %s / %s, type=%s, locations=%s", sheetName, supplier, supplierPN, sheetType, locationStr))
-			}
 		} else if currentMainComp != nil {
 			// 替代料 (Second Source)
 			*secondCompList = append(*secondCompList, &parsedComponentSecond{
@@ -682,10 +678,6 @@ func (r *EBOMReader) parsePhase1Sheet(
 				SupplierPN: supplierPN,
 				MainComp:   currentMainComp,
 			})
-
-			if r.logger != nil {
-				r.logger.Debug(fmt.Sprintf("[EBOM Phase1] [%s] 替代料: %s / %s", sheetName, supplier, supplierPN))
-			}
 		}
 	}
 

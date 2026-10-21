@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { ListenToEvents } from '../services/api'
 import { useBOMTableStore } from './bomTable'
+import { useLogStore } from './log'
 
 export interface Task {
   id: string
@@ -106,6 +107,16 @@ export const useTaskStore = defineStore('task', () => {
         ...updates,
         ...(safeStatus ? { status: safeStatus } : {})
       })
+    }
+
+    // 同步更新 logStore 中的 Task Tracker 狀態與訊息，確保日誌面板即時同步
+    try {
+      const logStore = useLogStore()
+      if (safeStatus) {
+        logStore.updateTaskStatus(taskId, safeStatus, updates.message, updates.name)
+      }
+    } catch {
+      // 避免相依初始化例外
     }
   }
 

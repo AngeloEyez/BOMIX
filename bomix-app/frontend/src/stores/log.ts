@@ -78,6 +78,16 @@ export const useLogStore = defineStore('log', () => {
   // 暫存已被追蹤的 task 索引，以便快速查找
   const taskMap = reactive(new Map<string, LogEntry>())
 
+  /**
+   * 安全解析 Wails v3 事件資料（處理陣列包裝情況）
+   */
+  function extractPayload(data: any): any {
+    if (Array.isArray(data) && data.length > 0) {
+      return data[0]
+    }
+    return data || {}
+  }
+
   // Actions
   function addLog(entry: LogEntry): void {
     const taskId = entry.attrs?.taskID
@@ -108,36 +118,60 @@ export const useLogStore = defineStore('log', () => {
       // 將原始 Log 記錄在 Task 的 history 裡 (包含它原本的時間與內容)
       tracker.history?.push({ ...entry, id: entry.id || crypto.randomUUID() })
 
-      // 更新 Tracker 的狀態與最新訊息
-      tracker.message = entry.message
-      tracker.timestamp = entry.timestamp
+      const terminalStates = ['done', 'completed', 'error', 'failed', 'warning', 'cancelled']
+      const isCurrentTerminal = terminalStates.includes(tracker.status?.toLowerCase() || '')
 
       // 根據 Log 內容更新狀態 (完全由確定的 taskStatus 變數與 entry.level 辨識，不使用文字關鍵字比對)
       if (entry.attrs?.taskStatus) {
         const ts = entry.attrs.taskStatus.toLowerCase()
+        const isIncomingNonTerminal = ['queued', 'running', 'created'].includes(ts)
+
+        // 終結狀態保護：若任務已為終結狀態，不允許非終結狀態覆蓋
+        if (isCurrentTerminal && isIncomingNonTerminal) {
+          return
+        }
+
         if (ts === 'error' || ts === 'failed') {
           tracker.status = 'error'
           tracker.level = 'ERROR'
+          tracker.message = entry.message
+          tracker.timestamp = entry.timestamp
         } else if (ts === 'warning' || ts === 'warn') {
           tracker.status = 'warning'
           tracker.level = 'WARN'
+          tracker.message = entry.message
+          tracker.timestamp = entry.timestamp
           triggerProjectReload()
         } else if (ts === 'done' || ts === 'completed') {
           tracker.status = 'done'
           if (tracker.level !== 'ERROR' && tracker.level !== 'WARN') {
             tracker.level = 'INFO'
           }
+          tracker.message = entry.message
+          tracker.timestamp = entry.timestamp
           triggerProjectReload()
         } else if (ts === 'running') {
           tracker.status = 'running'
+          tracker.message = entry.message
+          tracker.timestamp = entry.timestamp
         } else if (ts === 'queued') {
           tracker.status = 'queued'
+          tracker.message = entry.message
+          tracker.timestamp = entry.timestamp
         } else if (ts === 'cancelled') {
           tracker.status = 'cancelled'
           tracker.level = 'WARN'
+          tracker.message = entry.message
+          tracker.timestamp = entry.timestamp
         }
       } else {
-        // 若無 taskStatus，僅依據標準 entry.level (ERROR / WARN) 提升 Tracker 的層級
+        // 若無 taskStatus：僅在非終結狀態下才更新主顯示訊息與時間戳記，避免子日誌沖刷掉已完成的任務狀態
+        if (!isCurrentTerminal) {
+          tracker.message = entry.message
+          tracker.timestamp = entry.timestamp
+        }
+
+        // 依據標準 entry.level (ERROR / WARN) 提升 Tracker 的層級
         const currentSeverity = SEVERITY[tracker.level.toUpperCase()] || 0
         const newSeverity = SEVERITY[entry.level.toUpperCase()] || 0
         if (newSeverity > currentSeverity) {
@@ -156,6 +190,98 @@ export const useLogStore = defineStore('log', () => {
       timestamp: entry.timestamp,
       attrs: entry.attrs,
     })
+  }
+
+  /**
+   * 更新或建立指定 Task Tracker 的狀態與訊息
+   * 具備終結狀態保護：若已經處於完成/失敗/警告/取消狀態，不允許被舊的 running/queued 事件覆蓋。
+   *
+   * @param taskId - 任務 ID
+   * @param status - 任務狀態 ('queued' | 'running' | 'done' | 'completed' | 'warning' | 'error' | 'failed' | 'cancelled' | 'waiting_confirm')
+   * @param message - 最新訊息 (可選)
+   * @param name - 任務名稱 (可選)
+   */
+  function updateTaskStatus(taskId: string, status: string, message?: string, name?: string): void {
+    if (!taskId) return
+    const normStatus = status.toLowerCase()
+    let tracker = taskMap.get(taskId)
+
+    const terminalStates = ['done', 'completed', 'error', 'failed', 'warning', 'cancelled']
+    const isIncomingTerminal = terminalStates.includes(normStatus)
+    const isIncomingNonTerminal = ['queued', 'running', 'created'].includes(normStatus)
+
+    if (!tracker) {
+      const level = (normStatus === 'error' || normStatus === 'failed')
+        ? 'ERROR'
+        : (normStatus === 'warning' || normStatus === 'cancelled')
+          ? 'WARN'
+          : 'INFO'
+
+      tracker = {
+        id: `task-${taskId}`,
+        isTaskTracker: true,
+        level,
+        message: message || '',
+        timestamp: new Date().toISOString(),
+        attrs: { taskID: taskId, ...(name ? { name } : {}) },
+        status: normStatus === 'completed' ? 'done' : normStatus,
+        history: message ? [{
+          id: crypto.randomUUID(),
+          level,
+          message,
+          timestamp: new Date().toISOString(),
+          attrs: { taskID: taskId, taskStatus: normStatus, ...(name ? { name } : {}) }
+        }] : []
+      }
+      taskMap.set(taskId, tracker)
+      logs.value.push(tracker)
+      if (isIncomingTerminal) {
+        triggerProjectReload()
+      }
+      return
+    }
+
+    const isCurrentTerminal = terminalStates.includes(tracker.status?.toLowerCase() || '')
+    if (isCurrentTerminal && isIncomingNonTerminal) {
+      return
+    }
+
+    const finalStatus = normStatus === 'completed' ? 'done' : normStatus
+    tracker.status = finalStatus
+    if (message) {
+      tracker.message = message
+    }
+    tracker.timestamp = new Date().toISOString()
+    if (name && tracker.attrs) {
+      tracker.attrs.name = name
+    }
+
+    let statusLevel = tracker.level
+    if (normStatus === 'error' || normStatus === 'failed') {
+      tracker.level = 'ERROR'
+      statusLevel = 'ERROR'
+    } else if (normStatus === 'warning' || normStatus === 'warn') {
+      tracker.level = 'WARN'
+      statusLevel = 'WARN'
+      triggerProjectReload()
+    } else if (normStatus === 'done' || normStatus === 'completed') {
+      if (tracker.level !== 'ERROR' && tracker.level !== 'WARN') {
+        tracker.level = 'INFO'
+      }
+      statusLevel = 'INFO'
+      triggerProjectReload()
+    }
+
+    // 將狀態變更記錄加入 history
+    if (message) {
+      tracker.history?.push({
+        id: crypto.randomUUID(),
+        level: statusLevel,
+        message,
+        timestamp: new Date().toISOString(),
+        attrs: { taskID: taskId, taskStatus: finalStatus, ...(name ? { name } : {}) }
+      })
+    }
   }
 
   /**
@@ -213,11 +339,76 @@ export const useLogStore = defineStore('log', () => {
     }
   }
 
-  // Listen to log events from backend
+  let isListening = false
+
+  // Listen to log and task events from backend
   function startListening(): void {
+    if (isListening) return
+    isListening = true
+
     ListenToEvents('log:new', (data) => {
-      const entry = data as LogEntry
-      addLog(entry)
+      const entry = extractPayload(data) as LogEntry
+      if (entry && entry.level && entry.message) {
+        addLog(entry)
+      }
+    })
+
+    // 同步監聽任務生命週期事件，確保 Log Panel 的 Task Tracker 狀態即時更新
+    ListenToEvents('task:created', (data) => {
+      const payload = extractPayload(data)
+      const id = payload.taskID || payload.id
+      if (id) {
+        updateTaskStatus(id, payload.status || 'queued', payload.message || 'Queued', payload.name)
+      }
+    })
+
+    ListenToEvents('task:running', (data) => {
+      const payload = extractPayload(data)
+      const id = payload.taskID || payload.id
+      if (id) {
+        updateTaskStatus(id, 'running', payload.message || 'Running...', payload.name)
+      }
+    })
+
+    ListenToEvents('task:progress', (data) => {
+      const payload = extractPayload(data)
+      const id = payload.taskID || payload.id
+      if (id) {
+        updateTaskStatus(id, payload.status || 'running', payload.message)
+      }
+    })
+
+    ListenToEvents('task:waiting_confirm', (data) => {
+      const payload = extractPayload(data)
+      const id = payload.taskID || payload.id
+      if (id) {
+        updateTaskStatus(id, 'waiting_confirm', payload.message || '發現既有版本，等待確認是否覆蓋...')
+      }
+    })
+
+    ListenToEvents('task:complete', (data) => {
+      const payload = extractPayload(data)
+      const id = payload.taskID || payload.id
+      if (id) {
+        updateTaskStatus(id, 'done', payload.message || '任務已完成')
+      }
+    })
+
+    ListenToEvents('task:failed', (data) => {
+      const payload = extractPayload(data)
+      const id = payload.taskID || payload.id
+      if (id) {
+        const isWarning = payload.status === 'warning'
+        updateTaskStatus(id, isWarning ? 'warning' : 'error', payload.error || payload.message || '任務失敗')
+      }
+    })
+
+    ListenToEvents('task:cancelled', (data) => {
+      const payload = extractPayload(data)
+      const id = payload.taskID || payload.id
+      if (id) {
+        updateTaskStatus(id, 'cancelled', payload.message || '任務已取消')
+      }
     })
   }
 
@@ -265,6 +456,7 @@ export const useLogStore = defineStore('log', () => {
     // Actions
     addLog,
     addLogEntry,
+    updateTaskStatus,
     clearLogs,
     setFilterLevel,
     removeLog,
