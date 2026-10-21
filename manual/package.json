@@ -1,6 +1,6 @@
 {
   "name": "bomix-manual",
-  "version": "1.0.0",
+  "version": "1.13",
   "private": true,
   "description": "BOMIX 繁體中文使用說明書 PDF 建置工具",
   "scripts": {

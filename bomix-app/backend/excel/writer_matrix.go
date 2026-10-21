@@ -266,13 +266,16 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		_ = f.SetCellStyle(sheet, remarkCell, remarkCell, remarkSt)
 	}
 
+	// 8.2.6 - Filter parts by criteria (與 BigMatrix 匯出相同規則：CCL 或有勾選，排除 X)
+	filteredPartsLegacy := filterMatrixParts(options.PartData)
+
 	// 8.2.5 - Write part data to each sheet
 	for _, sheet := range sheets {
 		rowIndex := 6
 
 		// Filter parts by sheet type
 		var sheetParts []PartData
-		for _, part := range options.PartData {
+		for _, part := range filteredPartsLegacy {
 			pType := strings.ToUpper(strings.TrimSpace(part.Type))
 			if pType == "" {
 				pType = "SMD"
@@ -593,8 +596,8 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 		_ = f.SetCellStyle(sheet, remarkCell, remarkCell, remarkSt)
 	}
 
-	// 8.2.6 - Filter parts by criteria
-	filteredParts := filterMatrixParts(parts)
+	// 8.2.6 - Filter parts by criteria (與 BigMatrix 匯出相同規則：CCL 或有勾選，排除 X)
+	filteredParts := filterMatrixParts(parts, rev.ID)
 
 	// 8.2.5 - Write part data to each sheet
 	for _, sheet := range sheets {
@@ -711,19 +714,141 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 	return []string{outputPath}, nil
 }
 
-// filterMatrixParts filters parts based on Matrix export criteria (CCL = Y, BOMStatus != X)
-// See product-spec section 8.2.6
-func filterMatrixParts(parts []PartData) []PartData {
+// hasAnyPartSelection 檢查物料（含其群組內的替代料）在當前 Revision 是否存在任何 Model 勾選（Matrix Selection）。
+//
+// 檢查規則：
+//  1. 若傳入 revID，優先依據指定 Revision 的精確勾選映射（SelectionsByRevAndOrder、SelectionsByRevAndMaterial、SelectionsByRevAndName）判定。
+//  2. 檢查單一 Revision 通用欄位（SelectionsByOrder、Selections、MainSelectionsByOrder、SelectionsByMaterialByOrder）。
+//  3. 檢查各替代料（SecondSources）的 SelectionsByOrder 是否有任一項被選中（true）。
+//  4. 容錯備援：若未指定 revID，則檢查跨 Revision 映射中的所有 Model 勾選值。
+//
+// 參數：
+//   - part: 待檢查的 PartData 物料資料物件
+//   - revIDs: 可選的 Revision ID（單一 Revision 匯出時傳入，以精確判定該 Revision 的勾選狀況）
+//
+// 回傳：
+//   - bool: 若存在任何有效勾選則回傳 true，否則回傳 false
+func hasAnyPartSelection(part PartData, revIDs ...string) bool {
+	var targetRevID string
+	if len(revIDs) > 0 {
+		targetRevID = strings.TrimSpace(revIDs[0])
+	}
+
+	// 1. 若指定了 targetRevID，優先檢查該 Revision 專屬的勾選映射
+	if targetRevID != "" {
+		if revOrderMap, ok := part.SelectionsByRevAndOrder[targetRevID]; ok {
+			for _, pn := range revOrderMap {
+				if strings.TrimSpace(pn) != "" {
+					return true
+				}
+			}
+		}
+		if revMatMap, ok := part.SelectionsByRevAndMaterial[targetRevID]; ok {
+			for _, mat := range revMatMap {
+				if strings.TrimSpace(mat) != "" {
+					return true
+				}
+			}
+		}
+		if revNameMap, ok := part.SelectionsByRevAndName[targetRevID]; ok {
+			for _, pn := range revNameMap {
+				if strings.TrimSpace(pn) != "" {
+					return true
+				}
+			}
+		}
+	}
+
+	// 2. 檢查通用 SelectionsByOrder (SortOrder -> SupplierPN)
+	for _, pn := range part.SelectionsByOrder {
+		if strings.TrimSpace(pn) != "" {
+			return true
+		}
+	}
+
+	// 3. 檢查通用 Selections (ModelName -> SupplierPN)
+	for _, pn := range part.Selections {
+		if strings.TrimSpace(pn) != "" {
+			return true
+		}
+	}
+
+	// 4. 檢查主料 MainSelectionsByOrder (SortOrder -> bool)
+	for _, isSel := range part.MainSelectionsByOrder {
+		if isSel {
+			return true
+		}
+	}
+
+	// 5. 檢查通用 SelectionsByMaterialByOrder (SortOrder -> Supplier|SupplierPN)
+	for _, mat := range part.SelectionsByMaterialByOrder {
+		if strings.TrimSpace(mat) != "" {
+			return true
+		}
+	}
+
+	// 6. 檢查替代料中的 SelectionsByOrder
+	for _, ss := range part.SecondSources {
+		for _, isSel := range ss.SelectionsByOrder {
+			if isSel {
+				return true
+			}
+		}
+	}
+
+	// 7. 容錯檢查：若未指定 targetRevID 但存在跨 Revision 映射，檢查全部 Revision
+	if targetRevID == "" {
+		for _, orderMap := range part.SelectionsByRevAndOrder {
+			for _, pn := range orderMap {
+				if strings.TrimSpace(pn) != "" {
+					return true
+				}
+			}
+		}
+		for _, matMap := range part.SelectionsByRevAndMaterial {
+			for _, mat := range matMap {
+				if strings.TrimSpace(mat) != "" {
+					return true
+				}
+			}
+		}
+		for _, nameMap := range part.SelectionsByRevAndName {
+			for _, pn := range nameMap {
+				if strings.TrimSpace(pn) != "" {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// filterMatrixParts 依據 Matrix 匯出規則過濾物料（與 BigMatrix 匯出規則完全一致）：
+//  1. 排除不上件物料：嚴格排除 bom_status == "X"
+//  2. 保留條件（滿足任一項）：
+//     - 物料為 CCL 關鍵零件（part.CCL == true）
+//     - 非 CCL 物料但在此 Revision 中存在任何 Model 勾選記錄（hasAnyPartSelection == true）
+//
+// 參見 product-spec section 8.1.6 與 8.2.6
+//
+// 參數：
+//   - parts: 待過濾的物料清單
+//   - revIDs: 可選的 Revision ID（單一 Revision 匯出時傳入，以精確判定該 Revision 的勾選狀況）
+//
+// 回傳：
+//   - []PartData: 過濾後符合匯出條件的物料清單
+func filterMatrixParts(parts []PartData, revIDs ...string) []PartData {
 	var filtered []PartData
 
 	for _, part := range parts {
-		// Filter by CCL = true
-		if !part.CCL {
+		// 1. 排除不上件零件
+		if part.BOMStatus == "X" {
 			continue
 		}
 
-		// Filter by BOM status
-		if part.BOMStatus == "X" {
+		// 2. 檢查 CCL 或是否存在任何 Model 勾選
+		if !part.CCL && !hasAnyPartSelection(part, revIDs...) {
 			continue
 		}
 

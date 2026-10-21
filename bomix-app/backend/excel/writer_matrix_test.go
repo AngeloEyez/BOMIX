@@ -150,22 +150,95 @@ func TestFilterMatrixParts(t *testing.T) {
 			CCL:         false,
 			BOMStatus:   "I",
 			Type:        "SMD",
-			Description: "Test Part 5 (Not CCL)",
+			Description: "Test Part 5 (Not CCL, no selections)",
+		},
+		{
+			Supplier:    "AVX",
+			SupplierPn:  "06035C104KAT2A",
+			CCL:         false,
+			BOMStatus:   "I",
+			Type:        "SMD",
+			Description: "Test Part 6 (Not CCL, has Main Selection)",
+			SelectionsByOrder: map[int]string{0: "06035C104KAT2A"},
+		},
+		{
+			Supplier:    "Nichicon",
+			SupplierPn:  "UCL1V100MCL1GS",
+			CCL:         false,
+			BOMStatus:   "I",
+			Type:        "SMD",
+			Description: "Test Part 7 (Not CCL, has 2nd Source Selection)",
+			SecondSources: []SecondSourceData{
+				{
+					Supplier:          "Panasonic",
+					SupplierPn:        "EEE-FK1V100R",
+					SelectionsByOrder: map[int]bool{1: true},
+				},
+			},
+		},
+		{
+			Supplier:    "TDK",
+			SupplierPn:  "C1005X7R1H102K",
+			CCL:         false,
+			BOMStatus:   "X",
+			Type:        "SMD",
+			Description: "Test Part 8 (Not CCL, has Selection but status X)",
+			SelectionsByOrder: map[int]string{0: "C1005X7R1H102K"},
+		},
+		{
+			Supplier:    "Bourns",
+			SupplierPn:  "CR0603-FX-1001ELF",
+			CCL:         false,
+			BOMStatus:   "I",
+			Type:        "PTH",
+			Description: "Test Part 9 (Not CCL, revision-specific selection)",
+			SelectionsByRevAndOrder: map[string]map[int]string{
+				"101": {0: "CR0603-FX-1001ELF"},
+			},
 		},
 	}
 
-	// Test filterMatrixParts
+	// 1. 未指定 Revision 呼叫 filterMatrixParts(parts)
+	// 預期通過項目：
+	// - Part 1 (CCL=true, I)
+	// - Part 2 (CCL=true, P)
+	// - Part 3 (CCL=true, M)
+	// - Part 6 (CCL=false, I, 有通用勾選)
+	// - Part 7 (CCL=false, I, 替代料有勾選)
+	// - Part 9 (CCL=false, I, 容錯模式未限定 revisionID 檢測通過)
+	// 預期排除項目：
+	// - Part 4 (BOMStatus=X)
+	// - Part 5 (CCL=false, 無任何勾選)
+	// - Part 8 (BOMStatus=X)
 	filtered := filterMatrixParts(parts)
-	// CCL=true, status!=X: Part 1(I), Part 2(P), Part 3(M) => 3 parts
-	if len(filtered) != 3 {
-		t.Errorf("filterMatrixParts: expected 3 parts, got %d", len(filtered))
+	if len(filtered) != 6 {
+		t.Errorf("filterMatrixParts(parts): expected 6 parts, got %d", len(filtered))
 	}
 	for _, p := range filtered {
 		if p.BOMStatus == "X" {
 			t.Errorf("filterMatrixParts: part %s has invalid status X", p.SupplierPn)
 		}
-		if !p.CCL {
-			t.Errorf("filterMatrixParts: part %s is not CCL", p.SupplierPn)
+		if !p.CCL && !hasAnyPartSelection(p) {
+			t.Errorf("filterMatrixParts: non-CCL part %s has no selection", p.SupplierPn)
+		}
+	}
+
+	// 2. 指定 Revision "101" 呼叫 filterMatrixParts(parts, "101")
+	// Part 9 在 "101" 有勾選，應被納入 (共 6 筆)
+	filtered101 := filterMatrixParts(parts, "101")
+	if len(filtered101) != 6 {
+		t.Errorf("filterMatrixParts(parts, '101'): expected 6 parts, got %d", len(filtered101))
+	}
+
+	// 3. 指定非目標 Revision "999" 呼叫 filterMatrixParts(parts, "999")
+	// Part 9 專屬於 "101"，在 "999" 無勾選，應被排除 (共 5 筆: Part 1, 2, 3, 6, 7)
+	filtered999 := filterMatrixParts(parts, "999")
+	if len(filtered999) != 5 {
+		t.Errorf("filterMatrixParts(parts, '999'): expected 5 parts, got %d", len(filtered999))
+	}
+	for _, p := range filtered999 {
+		if p.SupplierPn == "CR0603-FX-1001ELF" {
+			t.Errorf("filterMatrixParts(parts, '999'): Part 9 should not be included in revision 999")
 		}
 	}
 }
@@ -1126,3 +1199,162 @@ func TestExportMatrix_GroupMasterQtyFormula(t *testing.T) {
 		t.Errorf("I8 formula mismatch: expected %s, got %s", expectedI8, formulaI8)
 	}
 }
+
+// TestExportMatrix_NonCCLWithSelections 測試 Matrix 匯出時，非 CCL 但有勾選之物料能夠正確匯出至對應 Sheet，
+// 未勾選之非 CCL 物料被排除，且 Model 勾選記號 "V" 與公式皆正確生成。
+func TestExportMatrix_NonCCLWithSelections(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "bomix-matrix-nonccl-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	targetPath := filepath.Join(tmpDir, "matrix_non_ccl.xlsx")
+	options := ExportOptions{
+		Format:      types.FormatMatrix,
+		OutputPath:  targetPath,
+		Description: "Test Matrix Non-CCL Export",
+		Revisions: []RevisionData{
+			{
+				ID:              "101",
+				ProjectCode:     "TESTPROJ",
+				Phase:           "EVT",
+				Version:         "0.1",
+				ModelNames:      []string{"Model A", "Model B"},
+				ModelQtyByOrder: map[int]int{0: 5, 1: 10},
+			},
+		},
+		PartData: []PartData{
+			// Part 1: CCL 物料 (SMD) -> 應匯出至 SMD
+			{
+				Item:        "1",
+				HHPN:        "111-CCL",
+				Description: "CCL Part SMD",
+				Supplier:    "Samsung",
+				SupplierPn:  "CCL-SMD-001",
+				Qty:         2,
+				Location:    "C1,C2",
+				Type:        "SMD",
+				BOMStatus:   "I",
+				CCL:         true,
+			},
+			// Part 2: 非 CCL 物料 (SMD)，在 Model 0 有勾選 -> 應匯出至 SMD 且 Model 0 有 "V"
+			{
+				Item:        "2",
+				HHPN:        "222-NONCCL",
+				Description: "Non-CCL Selected Part SMD",
+				Supplier:    "Murata",
+				SupplierPn:  "NONCCL-SMD-002",
+				Qty:         4,
+				Location:    "R1,R2,R3,R4",
+				Type:        "SMD",
+				BOMStatus:   "I",
+				CCL:         false,
+				SelectionsByOrder: map[int]string{
+					0: "NONCCL-SMD-002",
+				},
+			},
+			// Part 3: 非 CCL 物料 (SMD)，無任何勾選 -> 應被排除
+			{
+				Item:        "3",
+				HHPN:        "333-NONCCL-NOSEL",
+				Description: "Non-CCL Unselected Part",
+				Supplier:    "Yageo",
+				SupplierPn:  "NONCCL-SMD-UNSEL",
+				Qty:         1,
+				Location:    "R5",
+				Type:        "SMD",
+				BOMStatus:   "I",
+				CCL:         false,
+			},
+			// Part 4: 非 CCL 物料 (PTH)，替代料在 Model 1 有勾選 -> 應匯出至 PTH，群組主料與替代料均存在，且替代料在 Model 1 有 "V"
+			{
+				Item:        "4",
+				HHPN:        "444-NONCCL-PTH",
+				Description: "Non-CCL PTH Group",
+				Supplier:    "Molex",
+				SupplierPn:  "NONCCL-PTH-MAIN",
+				Qty:         1,
+				Location:    "J1",
+				Type:        "PTH",
+				BOMStatus:   "I",
+				CCL:         false,
+				SecondSources: []SecondSourceData{
+					{
+						HHPN:              "444-NONCCL-PTH-2ND",
+						Description:       "Non-CCL PTH Second Source",
+						Supplier:          "Amphenol",
+						SupplierPn:        "NONCCL-PTH-2ND",
+						SelectionsByOrder: map[int]bool{1: true},
+					},
+				},
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	if len(paths) == 0 {
+		t.Fatalf("No output path returned")
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("Failed to open exported file: %v", err)
+	}
+	defer f.Close()
+
+	// 1. 驗證 SMD Sheet
+	// Row 6 應為 CCL-SMD-001
+	pnRow6, _ := f.GetCellValue("SMD", "F6")
+	if pnRow6 != "CCL-SMD-001" {
+		t.Errorf("SMD Row 6 SupplierPn mismatch: expected CCL-SMD-001, got %q", pnRow6)
+	}
+
+	// Row 7 應為 NONCCL-SMD-002 (非 CCL 但有勾選，成功匯出)
+	pnRow7, _ := f.GetCellValue("SMD", "F7")
+	if pnRow7 != "NONCCL-SMD-002" {
+		t.Errorf("SMD Row 7 SupplierPn mismatch: expected NONCCL-SMD-002, got %q", pnRow7)
+	}
+	// Row 7 的 Model 0 (K7) 應有 "V"
+	vK7, _ := f.GetCellValue("SMD", "K7")
+	if vK7 != "V" {
+		t.Errorf("SMD K7 selection mismatch: expected 'V', got %q", vK7)
+	}
+
+	// Row 8 應為空白 (未勾選之 Part 3 不得匯出)
+	pnRow8, _ := f.GetCellValue("SMD", "F8")
+	if pnRow8 != "" {
+		t.Errorf("SMD Row 8 should be empty, but got %q", pnRow8)
+	}
+
+	// 2. 驗證 PTH Sheet
+	// Row 6 應為主料 NONCCL-PTH-MAIN
+	pthRow6, _ := f.GetCellValue("PTH", "F6")
+	if pthRow6 != "NONCCL-PTH-MAIN" {
+		t.Errorf("PTH Row 6 SupplierPn mismatch: expected NONCCL-PTH-MAIN, got %q", pthRow6)
+	}
+	// Row 7 應為替代料 NONCCL-PTH-2ND
+	pthRow7, _ := f.GetCellValue("PTH", "F7")
+	if pthRow7 != "NONCCL-PTH-2ND" {
+		t.Errorf("PTH Row 7 SupplierPn mismatch: expected NONCCL-PTH-2ND, got %q", pthRow7)
+	}
+	// Model 1 (L 欄) 勾選應在替代料列 (L7="V")，主料列不應勾選 (L6="")
+	vL6, _ := f.GetCellValue("PTH", "L6")
+	vL7, _ := f.GetCellValue("PTH", "L7")
+	if vL6 != "" {
+		t.Errorf("PTH L6 should be empty, got %q", vL6)
+	}
+	if vL7 != "V" {
+		t.Errorf("PTH L7 selection mismatch: expected 'V', got %q", vL7)
+	}
+}
+

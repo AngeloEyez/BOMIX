@@ -1416,12 +1416,13 @@ Remark 欄位位於所有 Model 欄位結束後的下一欄（參見 `8.2.4` 第
 
 #### 8.2.6 零件篩選條件
 
-匯出至 Matrix 時，所有資料過濾統一由 **View 系統（`backend/view/`）** 負責處理：
+匯出至 Matrix 時，所有資料獲取與過濾統一由 **View 系統（`backend/view/`）** 與 **Matrix Writer（`backend/excel/writer_matrix.go`）** 協同處理（規則與 BigMatrix 匯出完全一致）：
 
-- **製程分類過濾**：分別依 `ViewType` (`SMD` / `PTH` / `BOTTOM`) 取得對應 Sheet 的物料。
-- **狀態與關鍵零件過濾**：View 系統自動根據以下條件過濾，僅回傳符合條件的零件：
-  - `ccl = Y`
-  - `bom_status != X` (包含 `I`, `P`, `M` 上件狀態)
+- **製程分類過濾**：分別依 `Type` (`SMD` / `PTH` / `BOTTOM`) 寫入對應 Sheet 的物料。
+- **狀態與關鍵零件/勾選過濾**：自動根據以下條件過濾，僅回傳符合條件的零件：
+  - `ccl = Y` 或 **非 CCL 但在該 Revision 中存在任何 Model 勾選（Matrix Selection）**
+  - `bom_status != X` (包含 `I`, `P`, `M` 上件狀態，嚴格排除不上件物料)
+- **群組完整結構**：維持完整物料群組（主料列及同群組所有替代料 Second Sources 列）階層輸出，各 Model 欄位依勾選狀態標記「V」。
 
 #### 8.2.7 零件排序規則
 
