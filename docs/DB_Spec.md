@@ -319,8 +319,9 @@ Excel 檔案輸入 (SMD, PTH, BOTTOM, NI, PROTO, MP, CCL)
 │    - Location 去重規範：                                     │
 │      * SMD / PTH / BOTTOM 主製程間嚴格去重（重複則報錯）     │
 │      * NI 工作表允許與主製程 Location 重複，並獨立為其主料    │
-│        Component 建立 PartLocation 紀錄 (BomStatus='X')      │
-│      * MP 工作表補充僅存在於量產表之專用零件 (BomStatus='M') │
+│      * MP 工作表補充僅存在於量產表之專用零件 (BomStatus='M')；│
+│        若遇重複 Location：同料號跳過 (由 Phase 2 覆寫狀態)， │
+│        不同料號 (如量產板替換試產板) 則允許建立獨立 Location 紀錄│
 │    - 收集替代料關聯 (指向主料指標)                           │
 └─────────────────────────────────────────────────────────────┘
                        │

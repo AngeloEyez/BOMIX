@@ -2,6 +2,7 @@ package excel
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -143,7 +144,7 @@ func TestMainVsSecondSource(t *testing.T) {
 	var secondCompList []*parsedComponentSecond
 	locSheetMap := make(map[string]string)
 
-	_, _ = reader.parsePhase1Sheet(wb, "SMD", "SMD", "I", true, matMap, mainCompMap, &mainCompList, &secondCompList, locSheetMap, nil)
+	_, _ = reader.parsePhase1Sheet(wb, "SMD", "SMD", "I", true, matMap, mainCompMap, &mainCompList, &secondCompList, locSheetMap, nil, nil)
 
 	if len(mainCompList) != 1 {
 		t.Errorf("Expected 1 Main Source component, got %d", len(mainCompList))
@@ -1283,3 +1284,83 @@ func TestEBOM_NILocationDuplicationAndPhase2StrictOverride(t *testing.T) {
 		}
 	})
 }
+
+// TestEBOM_MPDifferentPartSameLocation_STRATOS 測試真實檔案 STRATOS_EZBOM_SI_0.2_BOM_20261008_1100.WithProtoPart(compared)-2.xls
+// 驗證：
+// 1. SMD/PROTO 使用試產紅板 (PI, HP10071065, PCB1)，而 MP 使用量產黑板 (PI, T-SLIMTWR-575-G, PCB1)
+// 2. 匯入時不應產生 Phase 2 未建立的 WarningError (零警告成功匯入)
+// 3. 資料庫中成功分別建立 HP10071065 (BomStatus="P") 與 T-SLIMTWR-575-G (BomStatus="M") 之獨立 PartLocation 記錄
+// 4. 兩者皆成功套用 CCL = true
+func TestEBOM_MPDifferentPartSameLocation_STRATOS(t *testing.T) {
+	database := setupEBOMTestDB(t)
+	series, err := db.CreateSeries(database, "TEST_SERIES", "Test Series")
+	if err != nil {
+		t.Fatalf("CreateSeries failed: %v", err)
+	}
+	_, err = db.GetOrCreateProject(database, series.ID, "STRATOS", "Test Project")
+	if err != nil {
+		t.Fatalf("GetOrCreateProject failed: %v", err)
+	}
+
+	filePath := filepath.Join("testdata", "STRATOS_EZBOM_SI_0.2_BOM_20261008_1100.WithProtoPart(compared)-2.xls")
+	wb, err := OpenWorkbook(filePath, nil)
+	if err != nil {
+		t.Fatalf("OpenWorkbook failed: %v", err)
+	}
+
+	logBuffer := logger.NewLogger(100)
+	reader := &EBOMReader{
+		db:       database,
+		logger:   logBuffer,
+		filePath: filePath,
+	}
+
+	err = reader.Import(wb)
+	if err != nil {
+		t.Fatalf("預期匯入成功無警告，但得到錯誤: %v", err)
+	}
+
+	// 驗證 PCB1 擁有兩筆獨立記錄（試產紅板 P 與 量產黑板 M）
+	var pcbLocations []db.PartLocation
+	if err := database.Where("location = ?", "PCB1").Find(&pcbLocations).Error; err != nil {
+		t.Fatalf("查詢 PCB1 失敗: %v", err)
+	}
+
+	if len(pcbLocations) != 2 {
+		t.Fatalf("預期 PCB1 有 2 筆獨立紀錄，實際取得 %d 筆", len(pcbLocations))
+	}
+
+	// 驗證兩筆紀錄分別對應到的物料與狀態
+	statusCount := make(map[string]int)
+	for _, loc := range pcbLocations {
+		statusCount[loc.BomStatus]++
+		if !loc.CCL {
+			t.Errorf("預期 PCB1 (ID: %d) CCL 應為 true", loc.ID)
+		}
+
+		// 查出所屬 Component 與 Material
+		var comp db.RevisionComponent
+		if err := database.Where("id = ?", loc.ComponentID).First(&comp).Error; err != nil {
+			t.Fatalf("查詢 Component 失敗: %v", err)
+		}
+		var mat db.Material
+		if err := database.Where("id = ?", comp.MaterialID).First(&mat).Error; err != nil {
+			t.Fatalf("查詢 Material 失敗: %v", err)
+		}
+
+		if loc.BomStatus == "P" {
+			if mat.SupplierPN != "HP10071065" {
+				t.Errorf("預期 Proto PCB1 (P) 料號為 HP10071065，實際為 %s", mat.SupplierPN)
+			}
+		} else if loc.BomStatus == "M" {
+			if mat.SupplierPN != "T-SLIMTWR-575-G" {
+				t.Errorf("預期 MP PCB1 (M) 料號為 T-SLIMTWR-575-G，實際為 %s", mat.SupplierPN)
+			}
+		}
+	}
+
+	if statusCount["P"] != 1 || statusCount["M"] != 1 {
+		t.Errorf("預期 PCB1 包含 1 筆 'P' 與 1 筆 'M'，實際分佈為: %+v", statusCount)
+	}
+}
+

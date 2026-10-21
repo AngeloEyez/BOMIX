@@ -117,6 +117,8 @@ func (r *EBOMReader) Import(f Workbook) error {
 
 	// phase1LocationSheetMap 收集 Phase 1 所有已建立的 location 及其所屬 sheet，用於去重檢測與 Phase 2 Mode 判斷
 	phase1LocationSheetMap := make(map[string]string)
+	// phase1PartLocMap 收集 Phase 1 所有已建立的 (Supplier, SupplierPN, Location) 複合鍵，用於 MP 與 NI 去重判斷
+	phase1PartLocMap := make(map[string]bool)
 
 	// Phase 1 依序處理的工作表設定清單
 	// 製程工作表（SMD/SMT, PTH, BOTTOM）預設 bom_status = "I", Type = sheetType, strictDedupe = true (嚴格去重)
@@ -142,7 +144,7 @@ func (r *EBOMReader) Import(f Workbook) error {
 		newLocCount, err := r.parsePhase1Sheet(
 			f, ps.sheetName, ps.sheetType, ps.defaultStatus, ps.strictDedupe,
 			materialsMap, mainCompMap, &mainCompList, &secondCompList,
-			phase1LocationSheetMap, tracker,
+			phase1LocationSheetMap, phase1PartLocMap, tracker,
 		)
 		if err != nil {
 			return err
@@ -499,7 +501,9 @@ type parsedComponentSecond struct {
 //  4. CCL 標記：檢查 Col 9 (CCL) 是否為 "Y"。
 //  5. Location 去重：
 //     - SMD/PTH/BOTTOM (strictDedupe=true)：嚴格去重，若同表或跨表重複，記錄 r.logger.Error 並回傳 ErrDuplicateLocation 致命錯誤。
-//     - NI/MP (strictDedupe=false)：遇到已建立 location 自動忽略跳過 (不中斷、不設定為任務失敗)。
+//     - NI/MP (strictDedupe=false)：
+//       * NI：允許與主製程重複並建立 PartLocation 記錄 (BomStatus="X")，表內自身去重。
+//       * MP：若該料件已在 Phase 1 建立過此 location，跳過避免重複；若在 MP 中為不同料號（如試產紅板換量產黑板），允許建立記錄 (BomStatus="M")。
 func (r *EBOMReader) parsePhase1Sheet(
 	f Workbook,
 	sheetName, sheetType, defaultBomStatus string,
@@ -509,6 +513,7 @@ func (r *EBOMReader) parsePhase1Sheet(
 	mainCompList *[]*parsedComponentMain,
 	secondCompList *[]*parsedComponentSecond,
 	phase1LocationSheetMap map[string]string,
+	phase1PartLocMap map[string]bool,
 	tracker *ProgressTracker,
 ) (int, error) {
 	rows, err := f.GetRows(sheetName)
@@ -516,9 +521,14 @@ func (r *EBOMReader) parsePhase1Sheet(
 		return 0, fmt.Errorf("讀取工作表 [%s] 失敗: %w", sheetName, err)
 	}
 
+	if phase1PartLocMap == nil {
+		phase1PartLocMap = make(map[string]bool)
+	}
+
 	newLocCount := 0
 	var currentMainComp *parsedComponentMain
 	niSeenLocations := make(map[string]bool)
+	mpSeenLocations := make(map[string]bool)
 
 	for i := 5; i < len(rows); i++ {
 		if tracker != nil {
@@ -572,11 +582,16 @@ func (r *EBOMReader) parsePhase1Sheet(
 			// CCL 標記（Col 9 是否為 "Y"）
 			isCCL := strings.EqualFold(cclVal, "Y")
 			for _, loc := range atomizeLocations(locationStr) {
+				partLocKey := makePartLocMatchKey(supplier, supplierPN, loc)
+
 				// 2. Location 去重檢測：
 				// SMD/PTH/BOTTOM 嚴格去重（若同表或跨表重複，log 錯誤並失敗）；
 				// NI/MP 遇到已建立的 location 處理：
 				//   - NI 工作表：允許與主製程 (SMD/PTH/BOTTOM) 重複並成立紀錄 (BomStatus="X")，表內自身去重
-				//   - MP 工作表：自動忽略跳過 (不中斷、不設為任務失敗)
+				//   - MP 工作表：
+				//     * 若該料號已在 Phase 1 建立過此 location（如原主料或 NI 料件），跳過避免重複建檔 (由 Phase 2 覆寫狀態)
+				//     * 若此 location 在 MP 中為不同料號（如試產板 PCB1 替換為量產板 PCB1），允許成立紀錄 (BomStatus="M")
+				//     * MP 工作表自身內部去重 (mpSeenLocations)
 				if prevSheet, exists := phase1LocationSheetMap[loc]; exists {
 					if strictDedupe {
 						var errMsg string
@@ -597,6 +612,7 @@ func (r *EBOMReader) parsePhase1Sheet(
 							continue // 若在同一個 NI sheet 內重複定義，則跳過，避免在 NI 中重複建檔
 						}
 						niSeenLocations[loc] = true
+						phase1PartLocMap[partLocKey] = true
 
 						mainComp.Locations = append(mainComp.Locations, parsedComponentLocation{
 							Location:  loc,
@@ -608,7 +624,32 @@ func (r *EBOMReader) parsePhase1Sheet(
 						continue
 					}
 
-					// 其他工作表（如 MP）遇到已建立的 location 自動忽略跳過
+					// ─── 針對 MP 工作表的特殊處理 ───
+					if strings.EqualFold(sheetName, "MP") {
+						// 若該 (Supplier, SupplierPN, Location) 已經在 Phase 1 建立過（例如已存在於 SMD 或 NI），
+						// 或在同一個 MP sheet 內已記錄過此 location，則跳過，由 Phase 2 進行狀態覆寫
+						if phase1PartLocMap[partLocKey] || mpSeenLocations[loc] {
+							continue
+						}
+						mpSeenLocations[loc] = true
+						phase1PartLocMap[partLocKey] = true
+
+						locType := sheetType
+						if locType == "" && prevSheet != "" && !strings.EqualFold(prevSheet, "NI") && !strings.EqualFold(prevSheet, "MP") {
+							locType = prevSheet
+						}
+
+						mainComp.Locations = append(mainComp.Locations, parsedComponentLocation{
+							Location:  loc,
+							Type:      locType,
+							BomStatus: defaultBomStatus,
+							CCL:       isCCL,
+						})
+						newLocCount++
+						continue
+					}
+
+					// 其他工作表遇到已建立的 location 自動忽略跳過
 					continue
 				}
 
@@ -617,6 +658,10 @@ func (r *EBOMReader) parsePhase1Sheet(
 				if strings.EqualFold(sheetName, "NI") {
 					niSeenLocations[loc] = true
 				}
+				if strings.EqualFold(sheetName, "MP") {
+					mpSeenLocations[loc] = true
+				}
+				phase1PartLocMap[partLocKey] = true
 
 				mainComp.Locations = append(mainComp.Locations, parsedComponentLocation{
 					Location:  loc,
@@ -661,7 +706,7 @@ func (r *EBOMReader) parseMainSheetV2(
 	newLocCount, _ := r.parsePhase1Sheet(
 		f, sheetName, sheetType, "I", true,
 		materialsMap, mainCompMap, mainCompList, secondCompList,
-		phase1LocationSheetMap, tracker,
+		phase1LocationSheetMap, nil, tracker,
 	)
 	return newLocCount
 }
