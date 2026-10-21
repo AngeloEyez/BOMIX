@@ -45,7 +45,7 @@ jobs:
         id: determine_env
         shell: pwsh
         run: |
-          git fetch origin main --depth=1
+          git fetch origin main
 
           if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
             # 情況 A：由 v* Tag 觸發
@@ -58,7 +58,7 @@ jobs:
             "ZIP_NAME=BOMIX_${zipTag}.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
 
             # 檢查當前 Tag 是否在 main 分支歷史中
-            git merge-base --is-ancestor HEAD origin/main
+            git merge-base --is-ancestor HEAD origin/main 2>$null
             if ($LASTEXITCODE -eq 0) {
               "RELEASE_NAME=Release $tag" | Out-File -FilePath $env:GITHUB_ENV -Append
               "IS_PRERELEASE=false" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -98,6 +98,8 @@ jobs:
         working-directory: manual
         shell: pwsh
         run: |
+          Write-Host "安裝手冊建置依賴項..."
+          npm ci
           Write-Host "執行手冊建置，確保產出最新 PDF..."
           try {
             node build.js
@@ -179,7 +181,6 @@ jobs:
           prerelease: ${{ env.IS_PRERELEASE }}
           files: |
             ${{ env.ZIP_NAME }}
-            BOMIX_*.zip
             manual/dist/BOMIX-使用者手冊.pdf
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

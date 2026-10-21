@@ -29,12 +29,20 @@ if (-not (Test-Path $TargetPath)) {
 
 # Normalize version string
 $cleanVer = $Version.TrimStart("v").Trim()
-if ($cleanVer -eq "dev" -or [string]::IsNullOrWhiteSpace($cleanVer)) {
-  $fileVer = "0.0.0"
-  $prodVer = "dev"
-} else {
-  $fileVer = $cleanVer
+
+# Check if cleanVer is purely numeric dot-separated (e.g. 1.0, 1.15.0, 2.0.1.0)
+if ($cleanVer -match '^\d+(\.\d+)*$') {
+  # Standardize file_version to at least Major.Minor.Patch.Build format or Major.Minor.Patch
+  $parts = $cleanVer.Split('.')
+  while ($parts.Count -lt 3) {
+    $parts += "0"
+  }
+  $fileVer = $parts -join '.'
   $prodVer = $Version
+} else {
+  # Fallback for non-numeric versions like "dev", "main-latest", "feature-branch"
+  $fileVer = "0.0.0.0"
+  $prodVer = if ([string]::IsNullOrWhiteSpace($Version)) { "dev" } else { $Version }
 }
 
 try {
