@@ -370,13 +370,13 @@ func TestExportMatrix_Integration(t *testing.T) {
 		t.Errorf("Unexpected value in SMD A6: %s", smdVal)
 	}
 
-	// Verify formula in I column
+	// Verify formula in I column (依 OpenXML 規範不可含開頭 '=')
 	formulaI, err := f.GetCellFormula("SMD", "I6")
 	if err != nil {
 		t.Fatalf("Failed to get formula from I6: %v", err)
 	}
-	if formulaI != "=G6*J6" {
-		t.Errorf("Unexpected formula in I6: %s, want =G6*J6", formulaI)
+	if formulaI != "G6*J6" {
+		t.Errorf("Unexpected formula in I6: %s, want G6*J6", formulaI)
 	}
 
 	// Verify formula in J column
@@ -1121,7 +1121,7 @@ func TestExportMatrix_OverwriteExistingFileWithWarning(t *testing.T) {
 }
 
 // TestExportMatrix_GroupMasterQtyFormula 驗證 Matrix 匯出時，物料群組內主料與所有替代料的 I 欄公式
-// 均固定引用該群組主料列的 G 欄 Qty（例如：Row 6 主料 I6="=G6*J6", Row 7 替代料 I7="=G6*J7", Row 8 替代料 I8="=G6*J8"）。
+// 均固定引用該群組主料列的 G 欄 Qty（且依 OpenXML 規範不含開頭 '='，例如：Row 6 主料 I6="G6*J6", Row 7 替代料 I7="G6*J7", Row 8 替代料 I8="G6*J8"）。
 func TestExportMatrix_GroupMasterQtyFormula(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "bomix-groupqty-test-*")
 	if err != nil {
@@ -1185,9 +1185,9 @@ func TestExportMatrix_GroupMasterQtyFormula(t *testing.T) {
 		t.Fatalf("Failed to read formulas from I6/I7/I8: %v, %v, %v", err6, err7, err8)
 	}
 
-	expectedI6 := "=G6*J6"
-	expectedI7 := "=G6*J7"
-	expectedI8 := "=G6*J8"
+	expectedI6 := "G6*J6"
+	expectedI7 := "G6*J7"
+	expectedI8 := "G6*J8"
 
 	if formulaI6 != expectedI6 {
 		t.Errorf("I6 formula mismatch: expected %s, got %s", expectedI6, formulaI6)

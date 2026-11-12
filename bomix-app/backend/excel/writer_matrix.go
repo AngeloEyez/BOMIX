@@ -305,8 +305,8 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 			f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), part.Qty)
 			f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), stringOrNil(part.Location))
 
-			// 8.2.5.3 - I column formula: =G{groupMasterRow}*J{row} (引用群組主料 G 欄 Qty)
-			formulaI := fmt.Sprintf("=G%d*J%d", groupMasterRow, rowIndex)
+			// 8.2.5.3 - I column formula: G{groupMasterRow}*J{row} (引用群組主料 G 欄 Qty，依 OpenXML 規範不可含開頭 '=')
+			formulaI := fmt.Sprintf("G%d*J%d", groupMasterRow, rowIndex)
 			f.SetCellFormula(sheet, fmt.Sprintf("I%d", rowIndex), formulaI)
 
 			// 8.2.5.4 - J column formula: Sum of selected Model quantities
@@ -342,8 +342,8 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 				f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), nil)
 				f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), nil)
 
-				// Formulas for second sources (I 欄公式引用群組主料 G 欄 Qty: =G{groupMasterRow}*J{row})
-				formulaI := fmt.Sprintf("=G%d*J%d", groupMasterRow, rowIndex)
+				// Formulas for second sources (I 欄公式引用群組主料 G 欄 Qty: G{groupMasterRow}*J{row}，依 OpenXML 規範不可含開頭 '=')
+				formulaI := fmt.Sprintf("G%d*J%d", groupMasterRow, rowIndex)
 				f.SetCellFormula(sheet, fmt.Sprintf("I%d", rowIndex), formulaI)
 
 				formulaJ := generateMatrixSelectionFormula(modelStartCol, actualModelCount, rowIndex, rev.ModelQty)
@@ -635,8 +635,8 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 			f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), part.Qty)
 			f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), stringOrNil(part.Location))
 
-			// 8.2.5.3 - I column formula: =G{groupMasterRow}*J{row} (引用群組主料 G 欄 Qty)
-			formulaI := fmt.Sprintf("=G%d*J%d", groupMasterRow, rowIndex)
+			// 8.2.5.3 - I column formula: G{groupMasterRow}*J{row} (引用群組主料 G 欄 Qty，依 OpenXML 規範不可含開頭 '=')
+			formulaI := fmt.Sprintf("G%d*J%d", groupMasterRow, rowIndex)
 			f.SetCellFormula(sheet, fmt.Sprintf("I%d", rowIndex), formulaI)
 
 			// 8.2.5.4 - J column formula
@@ -672,8 +672,8 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 				f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIndex), nil)
 				f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIndex), nil)
 
-				// Formulas for second sources (I 欄公式引用群組主料 G 欄 Qty: =G{groupMasterRow}*J{row})
-				formulaI := fmt.Sprintf("=G%d*J%d", groupMasterRow, rowIndex)
+				// Formulas for second sources (I 欄公式引用群組主料 G 欄 Qty: G{groupMasterRow}*J{row}，依 OpenXML 規範不可含開頭 '=')
+				formulaI := fmt.Sprintf("G%d*J%d", groupMasterRow, rowIndex)
 				f.SetCellFormula(sheet, fmt.Sprintf("I%d", rowIndex), formulaI)
 
 				formulaJ := generateMatrixSelectionFormula(modelStartCol, actualModelCount, rowIndex, rev.ModelQty)
