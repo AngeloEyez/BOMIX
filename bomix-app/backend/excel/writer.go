@@ -155,9 +155,19 @@ func (w *WriterImpl) ExportExcel(options ExportOptions) ([]string, error) {
 	}
 }
 
-// generateTimestamp returns formatted date string (YYYYMMDD)
+// generateTimestamp returns formatted date string (YYYYMMDD) for output filenames
 func generateTimestamp() string {
 	return time.Now().Format("20060102")
+}
+
+// generateHeaderDate 產生用於表頭顯示的標準日期字串 (YYYY-MM-DD)
+//
+// 依據 product-spec 8.2.3 規範與標準 Matrix 範本格式，表頭 Date 欄位需為 "YYYY-MM-DD"（例如 2026-11-12）。
+//
+// 回傳：
+//   - string: 格式化後的當前日期字串（YYYY-MM-DD）
+func generateHeaderDate() string {
+	return time.Now().Format("2006-01-02")
 }
 
 // generateBigMatrixFileName generates the output filename for BigMatrix

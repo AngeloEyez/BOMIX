@@ -37,7 +37,7 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		PCAPN:            "",
 		Phase:            "DB",
 		Version:          "0.1",
-		Date:             generateTimestamp(),
+		Date:             generateHeaderDate(),
 		ModelQty:         make(map[string]int),
 	}
 
@@ -79,7 +79,9 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		rev.ProjectCode = options.Description
 	}
 
-	date := generateTimestamp()
+	// 檔名使用 YYYYMMDD (spec 8.2.10)，表頭 {{.Date}} 依 STD 與 spec 8.2.3 使用 YYYY-MM-DD
+	fileDate := generateTimestamp()
+	headerDate := generateHeaderDate()
 
 	// 8.2.2 - Tag replacement for header
 	tags := map[string]string{
@@ -90,7 +92,7 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 		"{{.PCAPN}}":            rev.PCAPN,
 		"{{.Phase}}":            rev.Phase,
 		"{{.Version}}":          rev.Version,
-		"{{.Date}}":             date,
+		"{{.Date}}":             headerDate,
 	}
 
 	orderedModelNames := getOrderedModelNames(rev.ModelQty)
@@ -367,7 +369,7 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 	}
 
 	// Save to output path using validateAndPrepareOutputPath
-	fileName := generateMatrixFileName(rev, date)
+	fileName := generateMatrixFileName(rev, fileDate)
 	outputPath, err := validateAndPrepareOutputPath(w.logger, options.OutputPath, options.OutputDir, fileName)
 	if err != nil {
 		return nil, err
@@ -409,7 +411,9 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 	}
 	defer f.Close()
 
-	date := generateTimestamp()
+	// 檔名使用 YYYYMMDD (spec 8.2.10)，表頭 {{.Date}} 依 STD 與 spec 8.2.3 使用 YYYY-MM-DD
+	fileDate := generateTimestamp()
+	headerDate := generateHeaderDate()
 
 	// 8.2.3 - Tag replacement for header
 	tags := map[string]string{
@@ -420,7 +424,7 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 		"{{.PCAPN}}":            rev.PCAPN,
 		"{{.Phase}}":            rev.Phase,
 		"{{.Version}}":          rev.Version,
-		"{{.Date}}":             date,
+		"{{.Date}}":             headerDate,
 	}
 
 	orderedModelNames := getOrderedModelNames(rev.ModelQty)
@@ -697,7 +701,7 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 	}
 
 	// Save to output path using validateAndPrepareOutputPath
-	fileName := generateMatrixFileName(rev, date)
+	fileName := generateMatrixFileName(rev, fileDate)
 	outputPath, err := validateAndPrepareOutputPath(w.logger, options.OutputPath, options.OutputDir, fileName)
 	if err != nil {
 		return nil, err

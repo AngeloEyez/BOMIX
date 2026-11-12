@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"bomix-app/backend/logger"
 	"bomix-app/backend/types"
@@ -1356,5 +1357,116 @@ func TestExportMatrix_NonCCLWithSelections(t *testing.T) {
 	if vL7 != "V" {
 		t.Errorf("PTH L7 selection mismatch: expected 'V', got %q", vL7)
 	}
+}
+
+// TestExportMatrix_HeaderDateFormat 驗證 Matrix 匯出時，表頭 H4 日期格式為與標準範本 (STD) 一致的 "Date: YYYY-MM-DD"，
+// 且預設自動產生的輸出檔名仍維持 YYYYMMDD 格式（符合 product-spec 8.2.3 與 8.2.10）。
+func TestExportMatrix_HeaderDateFormat(t *testing.T) {
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	expectedHeaderDate := "Date: " + time.Now().Format("2006-01-02")
+	expectedFileDate := time.Now().Format("20060102")
+
+	if got := generateHeaderDate(); got != time.Now().Format("2006-01-02") {
+		t.Fatalf("generateHeaderDate() = %q, want %q", got, time.Now().Format("2006-01-02"))
+	}
+
+	t.Run("exportMatrix (without Revisions)", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		paths, err := writer.ExportExcel(ExportOptions{
+			Format:    types.FormatMatrix,
+			OutputDir: tmpDir,
+			PartData: []PartData{
+				{
+					Item:       "1",
+					Supplier:   "YAGEO",
+					SupplierPn: "R10K",
+					Qty:        1,
+					Type:       "SMD",
+					CCL:        true,
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("ExportExcel failed: %v", err)
+		}
+		if len(paths) != 1 {
+			t.Fatalf("Expected 1 output path, got %d", len(paths))
+		}
+		if !strings.Contains(filepath.Base(paths[0]), expectedFileDate) {
+			t.Errorf("Expected filename %q to contain %q", filepath.Base(paths[0]), expectedFileDate)
+		}
+
+		f, err := excelize.OpenFile(paths[0])
+		if err != nil {
+			t.Fatalf("Failed to open exported file: %v", err)
+		}
+		defer f.Close()
+
+		for _, sheet := range []string{"SMD", "PTH", "BOTTOM"} {
+			h4, err := f.GetCellValue(sheet, "H4")
+			if err != nil {
+				t.Fatalf("Failed to get %s H4: %v", sheet, err)
+			}
+			if h4 != expectedHeaderDate {
+				t.Errorf("%s H4 = %q, want %q", sheet, h4, expectedHeaderDate)
+			}
+		}
+	})
+
+	t.Run("exportMatrixDetailed (with Revisions)", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		paths, err := writer.ExportExcel(ExportOptions{
+			Format:    types.FormatMatrix,
+			OutputDir: tmpDir,
+			Revisions: []RevisionData{
+				{
+					ID:          "1",
+					ProjectCode: "SERENNO",
+					Phase:       "PV1",
+					Version:     "0.2",
+					ModelQty:    map[string]int{"A": 10},
+				},
+			},
+			PartData: []PartData{
+				{
+					Item:       "1",
+					Supplier:   "YAGEO",
+					SupplierPn: "R10K",
+					Qty:        1,
+					Type:       "SMD",
+					CCL:        true,
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("ExportExcel failed: %v", err)
+		}
+		if len(paths) != 1 {
+			t.Fatalf("Expected 1 output path, got %d", len(paths))
+		}
+		if !strings.Contains(filepath.Base(paths[0]), expectedFileDate) {
+			t.Errorf("Expected filename %q to contain %q", filepath.Base(paths[0]), expectedFileDate)
+		}
+
+		f, err := excelize.OpenFile(paths[0])
+		if err != nil {
+			t.Fatalf("Failed to open exported file: %v", err)
+		}
+		defer f.Close()
+
+		for _, sheet := range []string{"SMD", "PTH", "BOTTOM"} {
+			h4, err := f.GetCellValue(sheet, "H4")
+			if err != nil {
+				t.Fatalf("Failed to get %s H4: %v", sheet, err)
+			}
+			if h4 != expectedHeaderDate {
+				t.Errorf("%s H4 = %q, want %q", sheet, h4, expectedHeaderDate)
+			}
+		}
+	})
 }
 
