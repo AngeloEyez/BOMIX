@@ -217,7 +217,7 @@ export function useBOMData(options: UseBOMDataOptions) {
   }
 
   /**
-   * 參與 Matrix 視圖之動態 Model 欄位清單 (依據 BigMatrix 匯出原則動態展開)
+   * 參與 Matrix 視圖之動態 Model 欄位清單 (依各 Revision 在資料庫中的實際 Model 展開)
    * 
    * 展開原則：
    * 1. 遍歷 revisionColumns 中已排序的 Revisions。
@@ -227,8 +227,8 @@ export function useBOMData(options: UseBOMDataOptions) {
    *    - rev.modelQtyByOrder 的長度或最大 key + 1
    *    - rev.modelQty 的數量
    *    - aggregatedParts 中該 Revision 之 selections 的最大 sort_order + 1
-   *    - 系列專案儲存之自訂 Model 數量 (appStore.seriesInfo.projectModelCounts)
    *    - 保底至少 1 個 Model
+   *    （注意：不採用專案層級的 projectModelCounts，避免同專案其他版本的匯出或編輯設定汙染當前版本的欄位數）
    * 3. 依序產生 MatrixModelColumnInfo，包含純字母代號與打件數量。
    */
   const matrixModelColumns = computed<MatrixModelColumnInfo[]>(() => {
@@ -284,12 +284,6 @@ export function useBOMData(options: UseBOMDataOptions) {
             }
           }
         }
-      }
-
-      // 檢查是否有儲存的自訂 Model 數量紀錄
-      const savedCount = appStore.seriesInfo?.projectModelCounts?.[rev.projectCode]
-      if (savedCount && savedCount > count) {
-        count = savedCount
       }
 
       // 保底原則：若該 Revision 存在，預設至少提供 1 個 Model 欄位
@@ -597,12 +591,17 @@ export function useBOMData(options: UseBOMDataOptions) {
     }
   }
 
+  /** 單調遞增載入請求序號，用於防止快速切換 BOM 時舊的非同步查詢覆寫新狀態 */
+  let latestLoadToken = 0
+
   /**
    * 載入指定 BOM Revision 清單的物料群組視圖資料
    * @param {number[]} revIds - BOM Revision ID 陣列
    * @param {boolean} [force=false] - 是否強制重新自資料庫查詢 (預設 false，若條件未變則直接沿用記憶體快取)
    */
   async function loadBOMData(revIds: number[], force: boolean = false): Promise<void> {
+    const requestToken = ++latestLoadToken
+
     if (!revIds || revIds.length === 0) {
       aggregatedParts.value = []
       collapseState.resetCollapse()
@@ -633,6 +632,11 @@ export function useBOMData(options: UseBOMDataOptions) {
       const filterInfo = getViewFilterInfo(selectedView.value, currentMode)
       logStore.addLogEntry('DEBUG', `[View System] 自資料庫查詢 View: RevisionIDs=[${revIds.join(', ')}], ViewType="${viewType}" | 過濾條件: ${filterInfo.summary}`)
       const result = await GetBOMView(revIds, viewType)
+
+      // 若在等待查詢期間使用者已切換至其他 BOM，捨棄過時的回應結果
+      if (requestToken !== latestLoadToken) {
+        return
+      }
       
       if (result && result.part_groups) {
         aggregatedParts.value = result.part_groups

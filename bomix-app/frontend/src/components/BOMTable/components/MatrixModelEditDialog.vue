@@ -129,7 +129,7 @@ import Dialog from 'primevue/dialog'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import { UpdateRevisionMatrixModels, type MatrixModelInput } from '../../../services/api'
-import { useAppStore, useLogStore } from '../../../stores'
+import { useProjectStore, useLogStore } from '../../../stores'
 import type { MatrixModelColumnInfo } from '../types'
 
 interface Props {
@@ -155,7 +155,7 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-const appStore = useAppStore()
+const projectStore = useProjectStore()
 const logStore = useLogStore()
 
 /** 內部對話框顯示狀態 */
@@ -299,12 +299,13 @@ async function handleSave(): Promise<void> {
     // 1. 寫入資料庫
     await UpdateRevisionMatrixModels(props.revisionId, payload)
 
-    // 2. 同步更新 seriesInfo 的自訂 Model 數量紀錄 (若有)
-    if (appStore.seriesInfo) {
-      if (!appStore.seriesInfo.projectModelCounts) {
-        appStore.seriesInfo.projectModelCounts = {}
+    // 2. 僅同步更新該 Revision 本身在 projectStore 中的 modelCount（不覆寫專案層級的 projectModelCounts，避免影響同專案其他版本）
+    for (const proj of projectStore.projects) {
+      const targetRev = proj.revisions?.find((r) => r.id === props.revisionId)
+      if (targetRev) {
+        targetRev.modelCount = payload.length
+        break
       }
-      appStore.seriesInfo.projectModelCounts[props.projectCode] = payload.length
     }
 
     logStore.addLogEntry('INFO', `[MatrixModelEditDialog] 成功更新 RevisionID=${props.revisionId} 的 Model 設定`)
