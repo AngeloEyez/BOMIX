@@ -201,3 +201,28 @@ type RecentFilesSettings struct {
 	RecentFiles    []string `json:"recentFiles"`
 }
 
+// RevisionMatrixModelInfo 代表單一 BOM Revision 內單個 MatrixModel 的摘要與勾選統計資訊（提供前端使用）
+type RevisionMatrixModelInfo struct {
+	ID             int64  `json:"id"`
+	RevisionID     int64  `json:"revisionId"`
+	SortOrder      int    `json:"sortOrder"`
+	ModelAlias     string `json:"modelAlias"`
+	Qty            int    `json:"qty"`
+	IsHidden       bool   `json:"isHidden"`
+	SelectionCount int    `json:"selectionCount"`
+}
+
+// MatrixModelCopyMappingDTO 代表前端設定的單一組「來源 Model → 目標 Model」複製對應
+type MatrixModelCopyMappingDTO struct {
+	SourceModelID int64 `json:"sourceModelId"`
+	TargetModelID int64 `json:"targetModelId"`
+}
+
+// CopyMatrixModelsRequest 代表 Model-to-Model Matrix 複製請求參數
+type CopyMatrixModelsRequest struct {
+	SourceRevisionID int64                       `json:"sourceRevisionId"`
+	TargetRevisionID int64                       `json:"targetRevisionId"`
+	Mappings         []MatrixModelCopyMappingDTO `json:"mappings"`
+	CopyQty          bool                        `json:"copyQty"`
+}
+

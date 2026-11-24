@@ -9,15 +9,18 @@ export {
 export type {
     AISettings,
     BomRevision,
+    CopyMatrixModelsRequest,
     ExportOptions,
     ImportResult,
     ImportSettings,
     LogEntry,
     LoggerSettings,
+    MatrixModelCopyMappingDTO,
     Project,
     ProjectExportSetting,
     RecentFile,
     RecentFilesSettings,
+    RevisionMatrixModelInfo,
     SeriesInfo,
     Settings,
     Task

@@ -146,6 +146,23 @@ export function ConfirmTaskOverwrite(taskID: string, overwrite: boolean): $Cance
 }
 
 /**
+ * CopyMatrixModelSelections 以異步任務形式，依據指定的多組 Model 對應關係進行精準的 Model-to-Model Matrix 複製。
+ * 
+ * 支援跨版本與同版本內的 Model-to-Model 複製（含 1 對 1 與 1 對多），
+ * 僅覆蓋指定的目標 Model（可選擇是否同步複製 Qty），目標版本其餘未指定 Model 將完整保留。
+ * 
+ * 參數：
+ *   - req: Model-to-Model 複製請求（含來源／目標 Revision ID、Mappings 與 CopyQty）
+ * 
+ * 回傳：
+ *   - string: 任務 ID（taskID），可用於前端 Task 追蹤
+ *   - error: 若資料庫未開啟、參數驗證失敗、版本或機種不存在或處於隱藏狀態則回傳錯誤
+ */
+export function CopyMatrixModelSelections(req: $models.CopyMatrixModelsRequest): $CancellablePromise<string> {
+    return $Call.ByID(3068993368, req);
+}
+
+/**
  * CopyMatrixSelections 以異步任務形式，手動將指定 source revision 的 Matrix Model 與 Selection 複製到 target revision。
  * 
  * 此函數為手動版本複製的 Wails 綁定入口，會以 Task 形式提交至背景執行，
@@ -323,6 +340,20 @@ export function GetRecentSeries(): $CancellablePromise<($models.RecentFile | nul
  */
 export function GetRevision(id: number): $CancellablePromise<$models.BomRevision | null> {
     return $Call.ByID(942744999, id);
+}
+
+/**
+ * GetRevisionMatrixModels 取得指定 BOM Revision 內所有 MatrixModel 的摘要與勾選筆數統計。
+ * 
+ * 參數：
+ *   - revisionID: BOM Revision ID
+ * 
+ * 回傳：
+ *   - []*RevisionMatrixModelInfo: 依 SortOrder 升冪排列的機種摘要清單
+ *   - error: 若資料庫未開啟、Revision ID 無效或查詢失敗則回傳錯誤
+ */
+export function GetRevisionMatrixModels(revisionID: number): $CancellablePromise<($models.RevisionMatrixModelInfo | null)[] | null> {
+    return $Call.ByID(3469567852, revisionID);
 }
 
 /**

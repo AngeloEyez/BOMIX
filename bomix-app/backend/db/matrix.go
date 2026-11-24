@@ -226,7 +226,7 @@ func UpsertMatrixModelSelection(db *gorm.DB, revisionID int64, sortOrder int, ma
 			}
 		} else {
 			// 不存在則依據 sortOrder 自動建立
-			alias := getModelOrderAlias(sortOrder)
+			alias := GetModelOrderAlias(sortOrder)
 			m = MatrixModel{
 				RevisionID: revisionID,
 				SortOrder:  sortOrder,
@@ -243,8 +243,14 @@ func UpsertMatrixModelSelection(db *gorm.DB, revisionID int64, sortOrder int, ma
 	})
 }
 
-// getModelOrderAlias 將 0-based 索引轉為字母代號 (0->A, 1->B, 25->Z, 26->AA)
-func getModelOrderAlias(index int) string {
+// GetModelOrderAlias 將 0-based 索引轉為字母代號 (0->A, 1->B, 25->Z, 26->AA)。
+//
+// 參數：
+//   - index: 0-based Model 排序索引
+//
+// 回傳：
+//   - string: 對應的大寫字母代號
+func GetModelOrderAlias(index int) string {
 	if index < 0 {
 		return "A"
 	}
@@ -311,6 +317,57 @@ type ImportMatrixStats struct {
 	IgnoredMainParts int
 	// IgnoredSecondParts Target revision 主料存在，但被選中的物料不存在，故忽略的 selection 數
 	IgnoredSecondParts int
+}
+
+// matrixMaterialPair 用於快取驗證目標版本中合法的 (主料 MaterialID, 選中物料 MaterialID) 組合
+type matrixMaterialPair struct {
+	mainID int64
+	selID  int64
+}
+
+// buildTargetAllowedSelections 讀取目標版本的 RevisionComponent 清單，
+// 建立主料對應表與合法可選物料組合表（僅允許主料自身與其直屬 Role="S" 替代料）。
+//
+// 參數：
+//   - tx: GORM 交易或資料庫實例
+//   - targetRevisionID: 目標 BOM Revision ID
+//
+// 回傳：
+//   - map[int64]int64: MainMaterialID -> 主料 RevisionComponent.ID
+//   - map[matrixMaterialPair]bool: 合法的 (MainMaterialID, SelectedMaterialID) 對照表
+//   - error: 若查詢 RevisionComponent 失敗則回傳錯誤
+func buildTargetAllowedSelections(tx *gorm.DB, targetRevisionID int64) (map[int64]int64, map[matrixMaterialPair]bool, error) {
+	var targetComponents []RevisionComponent
+	if err := tx.Where("revision_id = ?", targetRevisionID).Find(&targetComponents).Error; err != nil {
+		return nil, nil, fmt.Errorf("讀取 target RevisionComponent 清單失敗: %w", err)
+	}
+
+	// targetMainCompMap: MainMaterialID -> RevisionComponent.ID（主料 ComponentID）
+	targetMainCompMap := make(map[int64]int64, len(targetComponents))
+	// targetCompByID: Component.ID -> RevisionComponent
+	targetCompByID := make(map[int64]RevisionComponent, len(targetComponents))
+
+	for _, tc := range targetComponents {
+		targetCompByID[tc.ID] = tc
+		if tc.Role == "M" {
+			targetMainCompMap[tc.MaterialID] = tc.ID
+		}
+	}
+
+	// targetAllowedSelections: [MainMaterialID, SelectedMaterialID] -> true
+	// 僅允許：1) 主料自身 (M == Selected)；2) 屬於該主料的替代料 (Role="S" 且 ParentComponentID == targetMainCompID)
+	targetAllowedSelections := make(map[matrixMaterialPair]bool, len(targetComponents)*2)
+	for _, tc := range targetComponents {
+		if tc.Role == "M" {
+			targetAllowedSelections[matrixMaterialPair{mainID: tc.MaterialID, selID: tc.MaterialID}] = true
+		} else if tc.Role == "S" && tc.ParentComponentID > 0 {
+			if parentComp, ok := targetCompByID[tc.ParentComponentID]; ok {
+				targetAllowedSelections[matrixMaterialPair{mainID: parentComp.MaterialID, selID: tc.MaterialID}] = true
+			}
+		}
+	}
+
+	return targetMainCompMap, targetAllowedSelections, nil
 }
 
 // ImportMatrixSelections 將 Source Revision 的 Matrix Model 結構與 Selection 複製到 Target Revision。
@@ -406,41 +463,9 @@ func ImportMatrixSelections(db *gorm.DB, sourceRevisionID, targetRevisionID int6
 		}
 
 		// ─── Step 5：以 Target 的 RevisionComponent 建立主料與合法替代料結構 ─
-		var targetComponents []RevisionComponent
-		if err := tx.Where("revision_id = ?", targetRevisionID).Find(&targetComponents).Error; err != nil {
-			return fmt.Errorf("讀取 target RevisionComponent 清單失敗: %w", err)
-		}
-
-		// targetMainCompMap: MainMaterialID -> RevisionComponent.ID（主料 ComponentID）
-		targetMainCompMap := make(map[int64]int64, len(targetComponents))
-		// targetCompByID: Component.ID -> RevisionComponent
-		targetCompByID := make(map[int64]RevisionComponent, len(targetComponents))
-
-		for _, tc := range targetComponents {
-			targetCompByID[tc.ID] = tc
-			if tc.Role == "M" {
-				targetMainCompMap[tc.MaterialID] = tc.ID
-			}
-		}
-
-		// targetAllowedSelections: [MainMaterialID, SelectedMaterialID] -> true
-		// 僅允許：1) 主料自身 (M == Selected)；2) 屬於該主料的替代料 (Role="S" 且 ParentComponentID == targetMainCompID)
-		type matPair struct {
-			mainID int64
-			selID  int64
-		}
-		targetAllowedSelections := make(map[matPair]bool, len(targetComponents)*2)
-
-		for _, tc := range targetComponents {
-			if tc.Role == "M" {
-				// 主料自身可被選中
-				targetAllowedSelections[matPair{mainID: tc.MaterialID, selID: tc.MaterialID}] = true
-			} else if tc.Role == "S" && tc.ParentComponentID > 0 {
-				// 替代料：查找其父主料的 MaterialID
-				if parentComp, ok := targetCompByID[tc.ParentComponentID]; ok {
-					targetAllowedSelections[matPair{mainID: parentComp.MaterialID, selID: tc.MaterialID}] = true
-				}
-			}
+		targetMainCompMap, targetAllowedSelections, err := buildTargetAllowedSelections(tx, targetRevisionID)
+		if err != nil {
+			return err
 		}
 
 		// ─── Step 6：逐筆比對 Source Selection 並複製至 Target ──────────────
@@ -465,7 +490,7 @@ func ImportMatrixSelections(db *gorm.DB, sourceRevisionID, targetRevisionID int6
 			}
 
 			// 6c：確認被選中物料 (SelectedMaterialID) 是否為該主料組內的合法選項（主料本身或其直屬替代料）
-			if !targetAllowedSelections[matPair{mainID: sourceSel.MainMaterialID, selID: sourceSel.SelectedMaterialID}] {
+			if !targetAllowedSelections[matrixMaterialPair{mainID: sourceSel.MainMaterialID, selID: sourceSel.SelectedMaterialID}] {
 				stats.IgnoredSecondParts++
 				if lg != nil {
 					lg.Debug(fmt.Sprintf("[ImportMatrix] Target 主料 MaterialID=%d 下不存在合法替代料 MaterialID=%d，略過",
@@ -556,7 +581,7 @@ func SaveRevisionMatrixModels(db *gorm.DB, revisionID int64, models []MatrixMode
 
 			modelName := strings.TrimSpace(input.ModelName)
 			if modelName == "" {
-				alias := getModelOrderAlias(sortOrder)
+				alias := GetModelOrderAlias(sortOrder)
 				modelName = fmt.Sprintf("Model %s", alias)
 			}
 			qty := input.Qty
@@ -636,4 +661,333 @@ func SaveRevisionMatrixModels(db *gorm.DB, revisionID int64, models []MatrixMode
 
 		return nil
 	})
+}
+
+// MatrixModelSummary 描述單一 BOM Revision 內單個 MatrixModel 的摘要與勾選統計資訊。
+type MatrixModelSummary struct {
+	ID             int64
+	RevisionID     int64
+	SortOrder      int
+	ModelAlias     string
+	ModelName      string
+	Qty            int
+	IsHidden       bool
+	SelectionCount int
+}
+
+// GetRevisionMatrixModelSummaries 查詢指定 BOM Revision 下所有 MatrixModel 的摘要資訊
+// （包含依據 SortOrder 推算的 ModelAlias 與實際有效勾選筆數 SelectionCount），依 sort_order 升冪排序。
+//
+// 參數：
+//   - database: GORM 資料庫實例
+//   - revisionID: BOM Revision ID
+//
+// 回傳：
+//   - []MatrixModelSummary: Model 摘要清單（無機種時回傳空切片）
+//   - error: 若資料庫查詢失敗或參數無效則回傳錯誤
+func GetRevisionMatrixModelSummaries(database *gorm.DB, revisionID int64) ([]MatrixModelSummary, error) {
+	if database == nil {
+		return nil, fmt.Errorf("資料庫連線為 nil")
+	}
+	if revisionID <= 0 {
+		return nil, fmt.Errorf("無效的 Revision ID: %d", revisionID)
+	}
+
+	var models []MatrixModel
+	if err := database.Where("revision_id = ?", revisionID).Order("sort_order ASC").Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("查詢 Revision ID=%d 的 MatrixModel 失敗: %w", revisionID, err)
+	}
+	if len(models) == 0 {
+		return []MatrixModelSummary{}, nil
+	}
+
+	// 以單次聚合查詢統計該 Revision 下各 Model 的有效勾選筆數 (selected_material_id > 0)
+	type modelSelectionCountRow struct {
+		ModelID int64 `gorm:"column:model_id"`
+		Count   int   `gorm:"column:count"`
+	}
+	var countRows []modelSelectionCountRow
+	if err := database.Model(&MatrixSelection{}).
+		Select("model_id, COUNT(*) as count").
+		Where("revision_id = ? AND selected_material_id > 0", revisionID).
+		Group("model_id").
+		Scan(&countRows).Error; err != nil {
+		return nil, fmt.Errorf("統計 Revision ID=%d 的 MatrixSelection 筆數失敗: %w", revisionID, err)
+	}
+
+	countMap := make(map[int64]int, len(countRows))
+	for _, row := range countRows {
+		countMap[row.ModelID] = row.Count
+	}
+
+	summaries := make([]MatrixModelSummary, 0, len(models))
+	for _, m := range models {
+		summaries = append(summaries, MatrixModelSummary{
+			ID:             m.ID,
+			RevisionID:     m.RevisionID,
+			SortOrder:      m.SortOrder,
+			ModelAlias:     GetModelOrderAlias(m.SortOrder),
+			ModelName:      m.ModelName,
+			Qty:            m.Qty,
+			IsHidden:       m.IsHidden,
+			SelectionCount: countMap[m.ID],
+		})
+	}
+
+	return summaries, nil
+}
+
+// MatrixModelCopyMapping 定義單一組「來源 Model → 目標 Model」的複製對應關係。
+type MatrixModelCopyMapping struct {
+	SourceModelID int64
+	TargetModelID int64
+}
+
+// CopyMatrixModelsParams 定義批次 Model-to-Model Matrix 複製的執行參數。
+type CopyMatrixModelsParams struct {
+	SourceRevisionID int64
+	TargetRevisionID int64
+	Mappings         []MatrixModelCopyMapping
+	CopyQty          bool
+}
+
+// CopyMatrixModelPairStat 記錄單組 Model-to-Model 複製的明細執行統計。
+type CopyMatrixModelPairStat struct {
+	SourceModelID         int64
+	SourceModelAlias      string
+	TargetModelID         int64
+	TargetModelAlias      string
+	CopiedSelectionsCount int
+	IgnoredMainParts      int
+	IgnoredSecondParts    int
+	QtyCopied             bool
+	CopiedQty             int
+}
+
+// CopyMatrixModelsStats 記錄整批 Model-to-Model Matrix 複製的總體與分組統計數據。
+type CopyMatrixModelsStats struct {
+	TotalMappings         int
+	CopiedSelectionsCount int
+	IgnoredMainParts      int
+	IgnoredSecondParts    int
+	PairStats             []CopyMatrixModelPairStat
+}
+
+// validateCopyMatrixModelsParams 驗證批次 Model-to-Model 複製參數，並回傳去重後的來源與目標 Model ID 清單。
+func validateCopyMatrixModelsParams(params CopyMatrixModelsParams) ([]int64, []int64, error) {
+	if params.SourceRevisionID <= 0 || params.TargetRevisionID <= 0 {
+		return nil, nil, fmt.Errorf("無效的版本 ID (source=%d, target=%d)", params.SourceRevisionID, params.TargetRevisionID)
+	}
+	if len(params.Mappings) == 0 {
+		return nil, nil, fmt.Errorf("請至少設定一組來源與目標 Model 對應")
+	}
+
+	sourceModelIDs := make([]int64, 0, len(params.Mappings))
+	targetModelIDs := make([]int64, 0, len(params.Mappings))
+	sourceSeen := make(map[int64]bool, len(params.Mappings))
+	targetSeen := make(map[int64]bool, len(params.Mappings))
+	isSameRevision := params.SourceRevisionID == params.TargetRevisionID
+
+	for i, m := range params.Mappings {
+		if m.SourceModelID <= 0 || m.TargetModelID <= 0 {
+			return nil, nil, fmt.Errorf("第 %d 組對應包含無效的 Model ID (source=%d, target=%d)", i+1, m.SourceModelID, m.TargetModelID)
+		}
+		if isSameRevision && m.SourceModelID == m.TargetModelID {
+			return nil, nil, fmt.Errorf("第 %d 組對應在同版本內不可選擇相同的來源與目標 Model (ModelID=%d)", i+1, m.SourceModelID)
+		}
+		if targetSeen[m.TargetModelID] {
+			return nil, nil, fmt.Errorf("目標 Model (ID=%d) 在對應清單中重複指定", m.TargetModelID)
+		}
+		targetSeen[m.TargetModelID] = true
+		targetModelIDs = append(targetModelIDs, m.TargetModelID)
+
+		if !sourceSeen[m.SourceModelID] {
+			sourceSeen[m.SourceModelID] = true
+			sourceModelIDs = append(sourceModelIDs, m.SourceModelID)
+		}
+	}
+
+	return sourceModelIDs, targetModelIDs, nil
+}
+
+// loadAndValidateModelsMap 在交易中查詢指定 Revision 的指定 Model 清單，
+// 確認每筆皆存在於該版本且未處於隱藏狀態 (IsHidden == false)。
+func loadAndValidateModelsMap(tx *gorm.DB, revisionID int64, modelIDs []int64, roleLabel string) (map[int64]MatrixModel, error) {
+	var models []MatrixModel
+	if err := tx.Where("revision_id = ? AND id IN ?", revisionID, modelIDs).Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("讀取%s MatrixModel 失敗: %w", roleLabel, err)
+	}
+
+	modelMap := make(map[int64]MatrixModel, len(models))
+	for _, m := range models {
+		modelMap[m.ID] = m
+	}
+
+	for _, id := range modelIDs {
+		m, exists := modelMap[id]
+		if !exists {
+			return nil, fmt.Errorf("找不到%s Model (ID=%d) 或其不屬於版本 (RevisionID=%d)", roleLabel, id, revisionID)
+		}
+		if m.IsHidden {
+			return nil, fmt.Errorf("%s Model %s (ID=%d) 目前為隱藏狀態，無法複製", roleLabel, GetModelOrderAlias(m.SortOrder), id)
+		}
+	}
+
+	return modelMap, nil
+}
+
+// CopyMatrixModelSelections 以單一交易執行「Model-to-Model」精準覆蓋複製。
+//
+// 設計原則：
+//   - 交易保證：所有驗證、清除、Qty 覆寫與批次 Selection 寫入均在同一 GORM Transaction 內完成。
+//   - 記憶體快照：在任何目標刪除或更新之前，先將所有來源 Model（含 Qty 與 MatrixSelection）讀取至記憶體快照，
+//     因此支援同版本內的連鎖複製（如 A → B 與 B → C）及互換複製（如 A → B 與 B → A）而不受寫入順序影響。
+//   - 僅覆蓋指定目標：僅清空 params.Mappings 所指定目標 Model 的現有 MatrixSelection；目標版本其餘未指定 Model 完整保留。
+//   - 僅限既有且未隱藏 Model：不自動建立新 Model，且禁止存取 IsHidden == true 的機種。
+//   - 可選 Qty 覆寫：僅當 params.CopyQty == true 時以明確欄位更新目標 Qty（支援覆寫為 0），絕不更動目標 ModelName。
+//   - 階層式比對：驗證目標版本存在對應主料 (Role="M") 且選中物料為該主料自身或其直屬 2nd 替代料，寫入 IsAutoSelected=true。
+//
+// 參數：
+//   - database: GORM 資料庫實例
+//   - params: Model-to-Model 複製參數（包含來源／目標 Revision ID、Mappings 與 CopyQty）
+//   - lg: MatrixLogger 介面實例（可為 nil）
+//
+// 回傳：
+//   - *CopyMatrixModelsStats: 複製總計與每組對應明細統計
+//   - error: 若驗證失敗或資料庫操作失敗則回傳錯誤（已自動 Rollback）
+func CopyMatrixModelSelections(database *gorm.DB, params CopyMatrixModelsParams, lg MatrixLogger) (*CopyMatrixModelsStats, error) {
+	if database == nil {
+		return nil, fmt.Errorf("資料庫連線為 nil")
+	}
+
+	sourceModelIDs, targetModelIDs, err := validateCopyMatrixModelsParams(params)
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &CopyMatrixModelsStats{
+		TotalMappings: len(params.Mappings),
+		PairStats:     make([]CopyMatrixModelPairStat, 0, len(params.Mappings)),
+	}
+
+	err = database.Transaction(func(tx *gorm.DB) error {
+		// 1. 驗證並快照所有來源與目標 MatrixModel（確保存在於對應 Revision 且未隱藏）
+		srcModelMap, err := loadAndValidateModelsMap(tx, params.SourceRevisionID, sourceModelIDs, "來源")
+		if err != nil {
+			return err
+		}
+		tgtModelMap, err := loadAndValidateModelsMap(tx, params.TargetRevisionID, targetModelIDs, "目標")
+		if err != nil {
+			return err
+		}
+
+		// 2. 快照讀取：於任何刪除／更新前一次讀出所有來源 Model 的有效 MatrixSelection
+		var sourceSelectionsAll []MatrixSelection
+		if err := tx.Where("revision_id = ? AND model_id IN ? AND selected_material_id > 0", params.SourceRevisionID, sourceModelIDs).
+			Find(&sourceSelectionsAll).Error; err != nil {
+			return fmt.Errorf("讀取來源 Model MatrixSelection 失敗: %w", err)
+		}
+
+		sourceSelectionsByModelID := make(map[int64][]MatrixSelection, len(sourceModelIDs))
+		for _, sel := range sourceSelectionsAll {
+			sourceSelectionsByModelID[sel.ModelID] = append(sourceSelectionsByModelID[sel.ModelID], sel)
+		}
+
+		// 3. 建立目標版本的主料與合法替代料對照表
+		targetMainCompMap, targetAllowedSelections, err := buildTargetAllowedSelections(tx, params.TargetRevisionID)
+		if err != nil {
+			return err
+		}
+
+		// 4. 精準清空指定目標 Model 的既有 MatrixSelection（保留目標版本其餘未指定 Model）
+		if err := tx.Where("revision_id = ? AND model_id IN ?", params.TargetRevisionID, targetModelIDs).
+			Delete(&MatrixSelection{}).Error; err != nil {
+			return fmt.Errorf("清除目標 Model MatrixSelection 失敗: %w", err)
+		}
+
+		// 5. 預估新寫入切片容量，避免迴圈擴容開銷
+		estimatedCap := 0
+		for _, mapping := range params.Mappings {
+			estimatedCap += len(sourceSelectionsByModelID[mapping.SourceModelID])
+		}
+		selectionsToCreate := make([]MatrixSelection, 0, estimatedCap)
+
+		// 6. 逐組依據記憶體快照處理 Qty 與 Selection 映射
+		for _, mapping := range params.Mappings {
+			srcModel := srcModelMap[mapping.SourceModelID]
+			tgtModel := tgtModelMap[mapping.TargetModelID]
+			srcAlias := GetModelOrderAlias(srcModel.SortOrder)
+			tgtAlias := GetModelOrderAlias(tgtModel.SortOrder)
+
+			pairStat := CopyMatrixModelPairStat{
+				SourceModelID:    srcModel.ID,
+				SourceModelAlias: srcAlias,
+				TargetModelID:    tgtModel.ID,
+				TargetModelAlias: tgtAlias,
+			}
+
+			// 若啟用「同時複製打件數量」，使用 map 更新以支援將 Qty 覆寫為 0，且不動 ModelName
+			if params.CopyQty {
+				if err := tx.Model(&MatrixModel{}).
+					Where("id = ? AND revision_id = ?", tgtModel.ID, params.TargetRevisionID).
+					Updates(map[string]any{"qty": srcModel.Qty}).Error; err != nil {
+					return fmt.Errorf("更新目標 Model %s (ID=%d) Qty 失敗: %w", tgtAlias, tgtModel.ID, err)
+				}
+				pairStat.QtyCopied = true
+				pairStat.CopiedQty = srcModel.Qty
+			}
+
+			srcSelections := sourceSelectionsByModelID[srcModel.ID]
+			for _, sourceSel := range srcSelections {
+				targetMainCompID, mainExists := targetMainCompMap[sourceSel.MainMaterialID]
+				if !mainExists {
+					pairStat.IgnoredMainParts++
+					if lg != nil {
+						lg.Debug(fmt.Sprintf("[CopyMatrixModels] Model %s→%s: 目標不存在主料 MaterialID=%d，略過",
+							srcAlias, tgtAlias, sourceSel.MainMaterialID))
+					}
+					continue
+				}
+
+				if !targetAllowedSelections[matrixMaterialPair{mainID: sourceSel.MainMaterialID, selID: sourceSel.SelectedMaterialID}] {
+					pairStat.IgnoredSecondParts++
+					if lg != nil {
+						lg.Debug(fmt.Sprintf("[CopyMatrixModels] Model %s→%s: 目標主料 MaterialID=%d 下不存在合法替代料 MaterialID=%d，略過",
+							srcAlias, tgtAlias, sourceSel.MainMaterialID, sourceSel.SelectedMaterialID))
+					}
+					continue
+				}
+
+				selectionsToCreate = append(selectionsToCreate, MatrixSelection{
+					RevisionID:         params.TargetRevisionID,
+					ModelID:            tgtModel.ID,
+					ComponentID:        targetMainCompID,
+					MainMaterialID:     sourceSel.MainMaterialID,
+					SelectedMaterialID: sourceSel.SelectedMaterialID,
+					IsAutoSelected:     true,
+				})
+				pairStat.CopiedSelectionsCount++
+			}
+
+			stats.CopiedSelectionsCount += pairStat.CopiedSelectionsCount
+			stats.IgnoredMainParts += pairStat.IgnoredMainParts
+			stats.IgnoredSecondParts += pairStat.IgnoredSecondParts
+			stats.PairStats = append(stats.PairStats, pairStat)
+		}
+
+		// 7. 批次寫入新的 Selection 紀錄
+		if len(selectionsToCreate) > 0 {
+			if err := tx.CreateInBatches(&selectionsToCreate, 100).Error; err != nil {
+				return fmt.Errorf("批次建立目標 Model MatrixSelection 失敗: %w", err)
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return stats, nil
 }

@@ -987,4 +987,219 @@ func TestBigMatrixExport_ExcludesNIPartsFromSourceRevisionIDs(t *testing.T) {
 	}
 }
 
+// TestGetRevisionMatrixModels 測試 App.GetRevisionMatrixModels 的防呆檢查與機種摘要回傳
+func TestGetRevisionMatrixModels(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_app_get_rev_models.bomx")
+	testDB, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("無法建立測試資料庫: %v", err)
+	}
+	defer db.Close(testDB)
+
+	if err := db.AutoMigrate(testDB); err != nil {
+		t.Fatalf("無法初始化資料庫結構: %v", err)
+	}
+
+	l := logger.NewLogger(100)
+	app := NewApp(nil, l, &config.Config{})
+
+	// 1. 未開啟系列應報錯
+	if _, err := app.GetRevisionMatrixModels(1); err == nil {
+		t.Fatalf("期望未開啟系列時報錯，但成功回傳")
+	}
+
+	app.db = testDB
+
+	// 2. 無效 RevisionID 應報錯
+	if _, err := app.GetRevisionMatrixModels(0); err == nil {
+		t.Fatalf("期望無效 RevisionID 時報錯，但成功回傳")
+	}
+
+	// 3. 建立測試資料並驗證回傳 DTO 欄位
+	series, _ := db.CreateSeries(testDB, "GetModels Series", "")
+	proj, _ := db.GetOrCreateProject(testDB, series.ID, "PROJ-GM", "GM")
+	rev, _ := db.CreateRevision(testDB, proj.ID, "EVT", "1.0", "")
+
+	db.UpsertMaterials(testDB, []db.Material{{Supplier: "V", SupplierPN: "P1"}}, nil)
+	mat, _ := db.GetMaterialBySupplierPN(testDB, "V", "P1")
+	comp := db.RevisionComponent{RevisionID: rev.ID, MaterialID: mat.ID, Role: "M"}
+	testDB.Create(&comp)
+
+	m0 := db.MatrixModel{RevisionID: rev.ID, SortOrder: 0, ModelName: "A", Qty: 15, IsHidden: false}
+	m2 := db.MatrixModel{RevisionID: rev.ID, SortOrder: 2, ModelName: "C", Qty: 30, IsHidden: true}
+	testDB.Create(&m0)
+	testDB.Create(&m2)
+	testDB.Create(&db.MatrixSelection{
+		RevisionID: rev.ID, ModelID: m0.ID, ComponentID: comp.ID, MainMaterialID: mat.ID, SelectedMaterialID: mat.ID,
+	})
+
+	infos, err := app.GetRevisionMatrixModels(rev.ID)
+	if err != nil {
+		t.Fatalf("GetRevisionMatrixModels 失敗: %v", err)
+	}
+	if len(infos) != 2 {
+		t.Fatalf("期望取得 2 個機種，實際 got %d", len(infos))
+	}
+	if infos[0].ModelAlias != "A" || infos[0].Qty != 15 || infos[0].SelectionCount != 1 || infos[0].IsHidden {
+		t.Errorf("第 0 筆 DTO 不相符: %+v", infos[0])
+	}
+	if infos[1].ModelAlias != "C" || infos[1].Qty != 30 || infos[1].SelectionCount != 0 || !infos[1].IsHidden {
+		t.Errorf("第 1 筆 DTO 不相符: %+v", infos[1])
+	}
+}
+
+// TestCopyMatrixModelSelections_ValidationAndExecution 測試 App.CopyMatrixModelSelections 的防呆驗證、隱藏拒收與跨/同版本任務執行
+func TestCopyMatrixModelSelections_ValidationAndExecution(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "test_app_copy_m2m.bomx")
+	testDB, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("無法建立測試資料庫: %v", err)
+	}
+	defer db.Close(testDB)
+
+	if err := db.AutoMigrate(testDB); err != nil {
+		t.Fatalf("無法初始化資料庫結構: %v", err)
+	}
+
+	l := logger.NewLogger(100)
+	app := NewApp(nil, l, &config.Config{})
+
+	// 1. 未開啟系列應報錯
+	if _, err := app.CopyMatrixModelSelections(CopyMatrixModelsRequest{
+		SourceRevisionID: 1, TargetRevisionID: 2,
+		Mappings: []MatrixModelCopyMappingDTO{{SourceModelID: 1, TargetModelID: 2}},
+	}); err == nil {
+		t.Fatalf("期望未開啟系列時報錯，但成功回傳")
+	}
+
+	app.db = testDB
+
+	// 建立測試系列、版本、零件與機種
+	series, _ := db.CreateSeries(testDB, "M2M App Series", "")
+	proj, _ := db.GetOrCreateProject(testDB, series.ID, "PROJ-M2M-APP", "M2M App")
+	revSrc, _ := db.CreateRevision(testDB, proj.ID, "PV", "0.1", "")
+	revTgt, _ := db.CreateRevision(testDB, proj.ID, "PV", "0.2", "")
+
+	db.UpsertMaterials(testDB, []db.Material{
+		{Supplier: "V", SupplierPN: "P1"},
+		{Supplier: "V", SupplierPN: "P2"},
+	}, nil)
+	mat1, _ := db.GetMaterialBySupplierPN(testDB, "V", "P1")
+	mat2, _ := db.GetMaterialBySupplierPN(testDB, "V", "P2")
+
+	srcComp1 := db.RevisionComponent{RevisionID: revSrc.ID, MaterialID: mat1.ID, Role: "M"}
+	srcComp2 := db.RevisionComponent{RevisionID: revSrc.ID, MaterialID: mat2.ID, Role: "M"}
+	tgtComp1 := db.RevisionComponent{RevisionID: revTgt.ID, MaterialID: mat1.ID, Role: "M"}
+	tgtComp2 := db.RevisionComponent{RevisionID: revTgt.ID, MaterialID: mat2.ID, Role: "M"}
+	testDB.Create(&srcComp1)
+	testDB.Create(&srcComp2)
+	testDB.Create(&tgtComp1)
+	testDB.Create(&tgtComp2)
+
+	srcA := db.MatrixModel{RevisionID: revSrc.ID, SortOrder: 0, ModelName: "Src A", Qty: 88}
+	srcB := db.MatrixModel{RevisionID: revSrc.ID, SortOrder: 1, ModelName: "Src B", Qty: 12}
+	srcHidden := db.MatrixModel{RevisionID: revSrc.ID, SortOrder: 2, ModelName: "Src Hidden", Qty: 5, IsHidden: true}
+	tgtA := db.MatrixModel{RevisionID: revTgt.ID, SortOrder: 0, ModelName: "Tgt A", Qty: 10}
+	tgtB := db.MatrixModel{RevisionID: revTgt.ID, SortOrder: 1, ModelName: "Tgt B", Qty: 20}
+	tgtHidden := db.MatrixModel{RevisionID: revTgt.ID, SortOrder: 2, ModelName: "Tgt Hidden", Qty: 5, IsHidden: true}
+	testDB.Create(&srcA)
+	testDB.Create(&srcB)
+	testDB.Create(&srcHidden)
+	testDB.Create(&tgtA)
+	testDB.Create(&tgtB)
+	testDB.Create(&tgtHidden)
+
+	// 來源 srcA 選 mat1；目標 tgtB 預先選 mat2 驗證不被覆蓋
+	testDB.Create(&db.MatrixSelection{
+		RevisionID: revSrc.ID, ModelID: srcA.ID, ComponentID: srcComp1.ID, MainMaterialID: mat1.ID, SelectedMaterialID: mat1.ID,
+	})
+	testDB.Create(&db.MatrixSelection{
+		RevisionID: revTgt.ID, ModelID: tgtB.ID, ComponentID: tgtComp2.ID, MainMaterialID: mat2.ID, SelectedMaterialID: mat2.ID,
+	})
+
+	// 2. 防呆與隱藏機種拒收測試
+	invalidReqs := []CopyMatrixModelsRequest{
+		{SourceRevisionID: 0, TargetRevisionID: revTgt.ID, Mappings: []MatrixModelCopyMappingDTO{{SourceModelID: srcA.ID, TargetModelID: tgtA.ID}}},
+		{SourceRevisionID: revSrc.ID, TargetRevisionID: revTgt.ID, Mappings: nil},
+		{SourceRevisionID: revSrc.ID, TargetRevisionID: revSrc.ID, Mappings: []MatrixModelCopyMappingDTO{{SourceModelID: srcA.ID, TargetModelID: srcA.ID}}},
+		{SourceRevisionID: revSrc.ID, TargetRevisionID: revTgt.ID, Mappings: []MatrixModelCopyMappingDTO{
+			{SourceModelID: srcA.ID, TargetModelID: tgtA.ID},
+			{SourceModelID: srcB.ID, TargetModelID: tgtA.ID},
+		}},
+		{SourceRevisionID: revSrc.ID, TargetRevisionID: revTgt.ID, Mappings: []MatrixModelCopyMappingDTO{{SourceModelID: srcHidden.ID, TargetModelID: tgtA.ID}}},
+		{SourceRevisionID: revSrc.ID, TargetRevisionID: revTgt.ID, Mappings: []MatrixModelCopyMappingDTO{{SourceModelID: srcA.ID, TargetModelID: tgtHidden.ID}}},
+	}
+	for idx, r := range invalidReqs {
+		if _, err := app.CopyMatrixModelSelections(r); err == nil {
+			t.Fatalf("第 %d 個無效請求預期應報錯，但成功回傳", idx+1)
+		}
+	}
+
+	waitTaskDone := func(taskID string) {
+		t.Helper()
+		for i := 0; i < 80; i++ {
+			tObj, err := app.GetTask(taskID)
+			if err == nil {
+				statusLower := strings.ToLower(tObj.Status)
+				if statusLower == "completed" || statusLower == "failed" || statusLower == "cancelled" || statusLower == "warning" {
+					if statusLower != "completed" {
+						t.Fatalf("背景任務 %s 未正常完成: status=%s, err=%s", taskID, tObj.Status, tObj.Error)
+					}
+					return
+				}
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatalf("等待背景任務 %s 完成逾時", taskID)
+	}
+
+	// 3. 跨版本複製 (CopyQty=false)，驗證任務完成後 tgtA 取得 mat1 且保留 Qty=10，tgtB 保留原勾選
+	taskID1, err := app.CopyMatrixModelSelections(CopyMatrixModelsRequest{
+		SourceRevisionID: revSrc.ID,
+		TargetRevisionID: revTgt.ID,
+		Mappings:         []MatrixModelCopyMappingDTO{{SourceModelID: srcA.ID, TargetModelID: tgtA.ID}},
+		CopyQty:          false,
+	})
+	if err != nil {
+		t.Fatalf("跨版本 CopyMatrixModelSelections 提交失敗: %v", err)
+	}
+	waitTaskDone(taskID1)
+
+	gotTgtA, _ := db.GetMatrixModel(testDB, tgtA.ID)
+	if gotTgtA.Qty != 10 {
+		t.Errorf("CopyQty=false 時目標 Qty 應維持 10，實際 got %d", gotTgtA.Qty)
+	}
+	selsTgtA, _ := db.GetMatrixSelections(testDB, revTgt.ID, tgtA.ID)
+	selsTgtB, _ := db.GetMatrixSelections(testDB, revTgt.ID, tgtB.ID)
+	if len(selsTgtA) != 1 || selsTgtA[0].SelectedMaterialID != mat1.ID {
+		t.Errorf("目標 Model A 複製結果不符: %+v", selsTgtA)
+	}
+	if len(selsTgtB) != 1 || selsTgtB[0].SelectedMaterialID != mat2.ID {
+		t.Errorf("未指定之目標 Model B 不應被影響: %+v", selsTgtB)
+	}
+
+	// 4. 同版本內複製 (srcA -> srcB, CopyQty=true)
+	taskID2, err := app.CopyMatrixModelSelections(CopyMatrixModelsRequest{
+		SourceRevisionID: revSrc.ID,
+		TargetRevisionID: revSrc.ID,
+		Mappings:         []MatrixModelCopyMappingDTO{{SourceModelID: srcA.ID, TargetModelID: srcB.ID}},
+		CopyQty:          true,
+	})
+	if err != nil {
+		t.Fatalf("同版本 CopyMatrixModelSelections 提交失敗: %v", err)
+	}
+	waitTaskDone(taskID2)
+
+	gotSrcB, _ := db.GetMatrixModel(testDB, srcB.ID)
+	selsSrcB, _ := db.GetMatrixSelections(testDB, revSrc.ID, srcB.ID)
+	if gotSrcB.Qty != 88 {
+		t.Errorf("CopyQty=true 時同版本 Model B Qty 應更新為 88，實際 got %d", gotSrcB.Qty)
+	}
+	if len(selsSrcB) != 1 || selsSrcB[0].SelectedMaterialID != mat1.ID {
+		t.Errorf("同版本 Model B 複製勾選結果不符: %+v", selsSrcB)
+	}
+}
+
 

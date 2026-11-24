@@ -263,3 +263,210 @@ func (a *App) CopyMatrixSelections(sourceRevisionID, targetRevisionID int64) (st
 	a.logger.Info(fmt.Sprintf("[CopyMatrixSelections] 已提交任務 %s (taskID=%s)", taskName, taskID))
 	return taskID, nil
 }
+
+// GetRevisionMatrixModels 取得指定 BOM Revision 內所有 MatrixModel 的摘要與勾選筆數統計。
+//
+// 參數：
+//   - revisionID: BOM Revision ID
+//
+// 回傳：
+//   - []*RevisionMatrixModelInfo: 依 SortOrder 升冪排列的機種摘要清單
+//   - error: 若資料庫未開啟、Revision ID 無效或查詢失敗則回傳錯誤
+func (a *App) GetRevisionMatrixModels(revisionID int64) ([]*RevisionMatrixModelInfo, error) {
+	a.mu.RLock()
+	dbConn := a.db
+	a.mu.RUnlock()
+
+	if dbConn == nil {
+		return nil, fmt.Errorf("no series is currently open")
+	}
+
+	if revisionID <= 0 {
+		return nil, fmt.Errorf("invalid revision ID: %d", revisionID)
+	}
+
+	summaries, err := db.GetRevisionMatrixModelSummaries(dbConn, revisionID)
+	if err != nil {
+		a.logger.Error(fmt.Sprintf("[GetRevisionMatrixModels] 查詢 Revision ID=%d 機種清單失敗: %v", revisionID, err), "revisionID", revisionID)
+		return nil, fmt.Errorf("failed to get revision matrix models: %w", err)
+	}
+
+	result := make([]*RevisionMatrixModelInfo, 0, len(summaries))
+	for _, s := range summaries {
+		result = append(result, &RevisionMatrixModelInfo{
+			ID:             s.ID,
+			RevisionID:     s.RevisionID,
+			SortOrder:      s.SortOrder,
+			ModelAlias:     s.ModelAlias,
+			Qty:            s.Qty,
+			IsHidden:       s.IsHidden,
+			SelectionCount: s.SelectionCount,
+		})
+	}
+
+	return result, nil
+}
+
+// indexMatrixModelSummaries 將機種摘要切片轉為以 Model ID 為鍵的查找 Map。
+func indexMatrixModelSummaries(summaries []db.MatrixModelSummary) map[int64]db.MatrixModelSummary {
+	idxMap := make(map[int64]db.MatrixModelSummary, len(summaries))
+	for _, s := range summaries {
+		idxMap[s.ID] = s
+	}
+	return idxMap
+}
+
+// CopyMatrixModelSelections 以異步任務形式，依據指定的多組 Model 對應關係進行精準的 Model-to-Model Matrix 複製。
+//
+// 支援跨版本與同版本內的 Model-to-Model 複製（含 1 對 1 與 1 對多），
+// 僅覆蓋指定的目標 Model（可選擇是否同步複製 Qty），目標版本其餘未指定 Model 將完整保留。
+//
+// 參數：
+//   - req: Model-to-Model 複製請求（含來源／目標 Revision ID、Mappings 與 CopyQty）
+//
+// 回傳：
+//   - string: 任務 ID（taskID），可用於前端 Task 追蹤
+//   - error: 若資料庫未開啟、參數驗證失敗、版本或機種不存在或處於隱藏狀態則回傳錯誤
+func (a *App) CopyMatrixModelSelections(req CopyMatrixModelsRequest) (string, error) {
+	a.mu.RLock()
+	dbConn := a.db
+	a.mu.RUnlock()
+
+	if dbConn == nil {
+		return "", fmt.Errorf("no series is currently open")
+	}
+
+	if req.SourceRevisionID <= 0 || req.TargetRevisionID <= 0 {
+		return "", fmt.Errorf("無效的版本 ID (source=%d, target=%d)", req.SourceRevisionID, req.TargetRevisionID)
+	}
+	if len(req.Mappings) == 0 {
+		return "", fmt.Errorf("請至少設定一組來源與目標 Model 對應")
+	}
+
+	isSameRevision := req.SourceRevisionID == req.TargetRevisionID
+	targetSeen := make(map[int64]bool, len(req.Mappings))
+	dbMappings := make([]db.MatrixModelCopyMapping, 0, len(req.Mappings))
+
+	for i, m := range req.Mappings {
+		if m.SourceModelID <= 0 || m.TargetModelID <= 0 {
+			return "", fmt.Errorf("第 %d 組對應包含無效的 Model ID (source=%d, target=%d)", i+1, m.SourceModelID, m.TargetModelID)
+		}
+		if isSameRevision && m.SourceModelID == m.TargetModelID {
+			return "", fmt.Errorf("同版本內不可選擇相同的來源與目標 Model")
+		}
+		if targetSeen[m.TargetModelID] {
+			return "", fmt.Errorf("不可重複指定相同的目標 Model (ID=%d)", m.TargetModelID)
+		}
+		targetSeen[m.TargetModelID] = true
+		dbMappings = append(dbMappings, db.MatrixModelCopyMapping{
+			SourceModelID: m.SourceModelID,
+			TargetModelID: m.TargetModelID,
+		})
+	}
+
+	// 預先確認來源與目標 Revision 皆存在
+	var sourceRev, targetRev db.BomRevision
+	if err := dbConn.First(&sourceRev, req.SourceRevisionID).Error; err != nil {
+		return "", fmt.Errorf("找不到來源 Revision ID=%d: %w", req.SourceRevisionID, err)
+	}
+	if isSameRevision {
+		targetRev = sourceRev
+	} else if err := dbConn.First(&targetRev, req.TargetRevisionID).Error; err != nil {
+		return "", fmt.Errorf("找不到目標 Revision ID=%d: %w", req.TargetRevisionID, err)
+	}
+
+	// 預先查詢並驗證所有指定的 Source / Target Model 皆存在於對應版本且未處於隱藏狀態
+	srcSummaries, err := db.GetRevisionMatrixModelSummaries(dbConn, req.SourceRevisionID)
+	if err != nil {
+		return "", fmt.Errorf("查詢來源版本機種失敗: %w", err)
+	}
+	srcSummaryMap := indexMatrixModelSummaries(srcSummaries)
+
+	var tgtSummaryMap map[int64]db.MatrixModelSummary
+	if isSameRevision {
+		tgtSummaryMap = srcSummaryMap
+	} else {
+		tgtSummaries, err := db.GetRevisionMatrixModelSummaries(dbConn, req.TargetRevisionID)
+		if err != nil {
+			return "", fmt.Errorf("查詢目標版本機種失敗: %w", err)
+		}
+		tgtSummaryMap = indexMatrixModelSummaries(tgtSummaries)
+	}
+
+	for _, m := range req.Mappings {
+		srcInfo, ok := srcSummaryMap[m.SourceModelID]
+		if !ok {
+			return "", fmt.Errorf("來源版本 (%s %s) 中找不到指定的來源 Model (ID=%d)", sourceRev.Phase, sourceRev.Version, m.SourceModelID)
+		}
+		if srcInfo.IsHidden {
+			return "", fmt.Errorf("來源 Model %s 目前為隱藏狀態，無法複製", srcInfo.ModelAlias)
+		}
+
+		tgtInfo, ok := tgtSummaryMap[m.TargetModelID]
+		if !ok {
+			return "", fmt.Errorf("目標版本 (%s %s) 中找不到指定的目標 Model (ID=%d)", targetRev.Phase, targetRev.Version, m.TargetModelID)
+		}
+		if tgtInfo.IsHidden {
+			return "", fmt.Errorf("目標 Model %s 目前為隱藏狀態，無法作為複製目標", tgtInfo.ModelAlias)
+		}
+	}
+
+	var taskName string
+	if isSameRevision {
+		taskName = fmt.Sprintf("Copy Matrix Models: %s (%d 組)", sourceRev.Version, len(req.Mappings))
+	} else {
+		taskName = fmt.Sprintf("Copy Matrix Models: %s → %s (%d 組)", sourceRev.Version, targetRev.Version, len(req.Mappings))
+	}
+
+	params := db.CopyMatrixModelsParams{
+		SourceRevisionID: req.SourceRevisionID,
+		TargetRevisionID: req.TargetRevisionID,
+		Mappings:         dbMappings,
+		CopyQty:          req.CopyQty,
+	}
+
+	taskID := a.taskMgr.Submit(
+		taskName,
+		"CopyMatrix",
+		func(ctx context.Context, progress func(float64, string), taskLogger *logger.Logger) error {
+			progress(0.1, fmt.Sprintf("開始執行 Model-to-Model Matrix 複製（共 %d 組）", len(req.Mappings)))
+			taskLogger.Info(fmt.Sprintf("[CopyMatrixModels] 開始執行 | 來源 RevisionID=%d (Version=%s) → 目標 RevisionID=%d (Version=%s), 對應組數=%d, CopyQty=%v",
+				req.SourceRevisionID, sourceRev.Version, req.TargetRevisionID, targetRev.Version, len(req.Mappings), req.CopyQty))
+
+			progress(0.3, "正在讀取快照並複製指定 Model Selection...")
+
+			stats, err := db.CopyMatrixModelSelections(dbConn, params, taskLogger)
+			if err != nil {
+				taskLogger.Error(fmt.Sprintf("[CopyMatrixModels] 複製失敗: %v", err))
+				return fmt.Errorf("複製 Model Matrix Selection 失敗: %w", err)
+			}
+
+			// 逐組輸出詳細複製結果至 Task Log
+			for _, ps := range stats.PairStats {
+				qtyNote := ""
+				if ps.QtyCopied {
+					qtyNote = fmt.Sprintf(", Qty=%d", ps.CopiedQty)
+				}
+				taskLogger.Info(fmt.Sprintf("[CopyMatrixModels] Model %s → Model %s | 複製 Selection=%d, 忽略主料=%d, 忽略 2nd=%d%s",
+					ps.SourceModelAlias, ps.TargetModelAlias, ps.CopiedSelectionsCount, ps.IgnoredMainParts, ps.IgnoredSecondParts, qtyNote))
+			}
+
+			resultMsg := fmt.Sprintf(
+				"Model-to-Model 複製完成 | 處理組數=%d, 複製 Selection 數=%d, 忽略主料數=%d, 忽略 2nd 替代料數=%d",
+				stats.TotalMappings, stats.CopiedSelectionsCount, stats.IgnoredMainParts, stats.IgnoredSecondParts,
+			)
+			taskLogger.Info(fmt.Sprintf("[CopyMatrixModels] %s", resultMsg))
+			progress(1.0, resultMsg)
+
+			return nil
+		},
+	)
+
+	a.logger.Info(fmt.Sprintf("[CopyMatrixModelSelections] 已提交任務 %s (taskID=%s)", taskName, taskID),
+		"sourceRevisionID", req.SourceRevisionID,
+		"targetRevisionID", req.TargetRevisionID,
+		"mappingCount", len(req.Mappings),
+		"copyQty", req.CopyQty,
+	)
+	return taskID, nil
+}

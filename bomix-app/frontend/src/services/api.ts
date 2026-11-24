@@ -499,10 +499,42 @@ export async function ExportExcel(options: ExportOptions): Promise<string[]> {
 
 
 /**
- * ¥H²§¨B¥ô°È§Î¦¡¡A¤â°Ê±N source revision ªº Matrix Model »P Selection ½Æ»s¨ì target revision¡C
- * @param sourceRevisionId - ¨Ó·½ª©¥» ID
- * @param targetRevisionId - ¥Ø¼Ðª©¥» ID
- * @returns ¥ô°È ID¡]taskID¡^¡A¥i¥Î©ó Task ­±ªO°lÂÜ¶i«×
+ * 單一 BOM Revision 內某個 Matrix Model 的摘要與勾選統計資訊
+ */
+export interface RevisionMatrixModelInfo {
+  id: number
+  revisionId: number
+  sortOrder: number
+  modelAlias: string
+  qty: number
+  isHidden: boolean
+  selectionCount: number
+}
+
+/**
+ * 單一組「來源 Model → 目標 Model」複製對應設定
+ */
+export interface MatrixModelCopyMapping {
+  sourceModelId: number
+  targetModelId: number
+}
+
+/**
+ * Model-to-Model Matrix 複製請求參數
+ */
+export interface CopyMatrixModelsRequest {
+  sourceRevisionId: number
+  targetRevisionId: number
+  mappings: MatrixModelCopyMapping[]
+  copyQty: boolean
+}
+
+/**
+ * 以異步任務形式，手動將 source revision 的 Matrix Model 與 Selection 複製到 target revision。
+ *
+ * @param {number} sourceRevisionId - 來源版本 ID
+ * @param {number} targetRevisionId - 目標版本 ID
+ * @returns {Promise<string>} 任務 ID（taskID），可用於 Task 面板追蹤進度
  */
 export async function CopyMatrixSelections(
   sourceRevisionId: number,
@@ -513,6 +545,52 @@ export async function CopyMatrixSelections(
     return (res || '') as string
   } catch (error) {
     handleApiError(error, 'CopyMatrixSelections')
+  }
+}
+
+/**
+ * 取得指定 BOM Revision 內所有 Matrix Model 的摘要與勾選筆數統計
+ *
+ * @param {number} revisionId - BOM Revision ID
+ * @returns {Promise<RevisionMatrixModelInfo[]>} 依 sortOrder 升冪排列之機種摘要清單
+ */
+export async function GetRevisionMatrixModels(
+  revisionId: number
+): Promise<RevisionMatrixModelInfo[]> {
+  try {
+    let res: any
+    if (typeof (App as any).GetRevisionMatrixModels === 'function') {
+      res = await (App as any).GetRevisionMatrixModels(revisionId)
+    } else {
+      const { Call } = await import('@wailsio/runtime')
+      res = await Call.ByName('backend.App.GetRevisionMatrixModels', revisionId)
+    }
+    return Array.isArray(res) ? res.filter((item): item is RevisionMatrixModelInfo => item != null) : []
+  } catch (error) {
+    handleApiError(error, 'GetRevisionMatrixModels')
+  }
+}
+
+/**
+ * 以異步任務形式，依據多組「來源 Model → 目標 Model」對應執行精準的 Model-to-Model Matrix 複製
+ *
+ * @param {CopyMatrixModelsRequest} request - Model-to-Model 複製請求參數
+ * @returns {Promise<string>} 任務 ID（taskID），可用於 Task 面板追蹤進度
+ */
+export async function CopyMatrixModelSelections(
+  request: CopyMatrixModelsRequest
+): Promise<string> {
+  try {
+    let res: any
+    if (typeof (App as any).CopyMatrixModelSelections === 'function') {
+      res = await (App as any).CopyMatrixModelSelections(request as any)
+    } else {
+      const { Call } = await import('@wailsio/runtime')
+      res = await Call.ByName('backend.App.CopyMatrixModelSelections', request)
+    }
+    return (res || '') as string
+  } catch (error) {
+    handleApiError(error, 'CopyMatrixModelSelections')
   }
 }
 // ==================== Task Management ====================

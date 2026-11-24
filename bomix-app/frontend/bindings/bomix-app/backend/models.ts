@@ -37,6 +37,16 @@ export interface BomRevision {
 }
 
 /**
+ * CopyMatrixModelsRequest 代表 Model-to-Model Matrix 複製請求參數
+ */
+export interface CopyMatrixModelsRequest {
+    "sourceRevisionId": number;
+    "targetRevisionId": number;
+    "mappings": MatrixModelCopyMappingDTO[] | null;
+    "copyQty": boolean;
+}
+
+/**
  * ExportOptions represents export options for the frontend
  */
 export interface ExportOptions {
@@ -90,6 +100,14 @@ export interface LoggerSettings {
 }
 
 /**
+ * MatrixModelCopyMappingDTO 代表前端設定的單一組「來源 Model → 目標 Model」複製對應
+ */
+export interface MatrixModelCopyMappingDTO {
+    "sourceModelId": number;
+    "targetModelId": number;
+}
+
+/**
  * Project represents a project for the frontend
  */
 export interface Project {
@@ -126,6 +144,19 @@ export interface RecentFile {
 export interface RecentFilesSettings {
     "maxRecentFiles": number;
     "recentFiles": string[] | null;
+}
+
+/**
+ * RevisionMatrixModelInfo 代表單一 BOM Revision 內單個 MatrixModel 的摘要與勾選統計資訊（提供前端使用）
+ */
+export interface RevisionMatrixModelInfo {
+    "id": number;
+    "revisionId": number;
+    "sortOrder": number;
+    "modelAlias": string;
+    "qty": number;
+    "isHidden": boolean;
+    "selectionCount": number;
 }
 
 /**
