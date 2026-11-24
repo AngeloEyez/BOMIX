@@ -1990,6 +1990,374 @@ func TestExportBigMatrix_ClearTemplateResidualData(t *testing.T) {
 	}
 }
 
+// TestAddUnselectedMaterialConditionalFormatting 驗證 BigMatrix 匯出時，
+// 針對每個物料群組設定的「未勾選物料整列綠色文字 (#008000)」條件格式化規則、公式、樣式及邊界條件是否正確。
+func TestAddUnselectedMaterialConditionalFormatting(t *testing.T) {
+	// normalizeHexColor 移除 # 與 ARGB 前綴 FF，便於統一比對 RGB Hex 色碼
+	normalizeHexColor := func(c string) string {
+		s := strings.ToUpper(strings.TrimPrefix(strings.TrimSpace(c), "#"))
+		if len(s) == 8 && strings.HasPrefix(s, "FF") {
+			s = s[2:]
+		}
+		return s
+	}
+
+	t.Run("多Revision多Model群組（含2ndSource、單列群組、PROTO群組與部分灰底）", func(t *testing.T) {
+		tempDir := t.TempDir()
+		targetPath := filepath.Join(tempDir, "Unselected_CF_MultiRev.xlsx")
+
+		writer, err := NewWriter(logger.NewLogger(100))
+		if err != nil {
+			t.Fatalf("Failed to create writer: %v", err)
+		}
+
+		// Group 1 (Row 6..7): 主料存在於 Rev 101 & 102；2nd Source 僅存在於 Rev 101（Rev 102 為灰底）
+		// Group 2 (Row 8): 單列群組（無 2nd Source）
+		// Group 3 (Row 9..10): PROTO 群組（BOMStatus = "P"，含 1 主料 + 1 替代料）
+		// Rev 101 (Col H, I): 2 Models；Rev 102 (Col J): 1 Model；Notes 欄位於 K
+		parts := []PartData{
+			{
+				Item:              "1",
+				HHPN:              "PN001",
+				Description:       "Main Part 1",
+				Supplier:          "Supp A",
+				SupplierPn:        "SPN001",
+				Qty:               1,
+				Location:          "C1",
+				CCL:               true,
+				BOMStatus:         "M",
+				SourceRevisionIDs: []int64{101, 102},
+				SecondSources: []SecondSourceData{
+					{
+						HHPN:              "PN001-SS1",
+						Description:       "2nd Source 1",
+						Supplier:          "Supp B",
+						SupplierPn:        "SPN001-SS1",
+						SourceRevisionIDs: []int64{101},
+					},
+				},
+				SelectionsByRevAndOrder: map[string]map[int]string{
+					"101": {0: "SPN001"},
+				},
+			},
+			{
+				Item:              "2",
+				HHPN:              "PN002",
+				Description:       "Single Row Part 2",
+				Supplier:          "Supp C",
+				SupplierPn:        "SPN002",
+				Qty:               1,
+				Location:          "C2",
+				CCL:               true,
+				BOMStatus:         "M",
+				SourceRevisionIDs: []int64{101, 102},
+			},
+			{
+				Item:              "3",
+				HHPN:              "PN003",
+				Description:       "Proto Part 3",
+				Supplier:          "Supp D",
+				SupplierPn:        "SPN003",
+				Qty:               2,
+				Location:          "R1,R2",
+				CCL:               true,
+				BOMStatus:         "P",
+				SourceRevisionIDs: []int64{101, 102},
+				SecondSources: []SecondSourceData{
+					{
+						HHPN:              "PN003-SS1",
+						Description:       "Proto 2nd Source 1",
+						Supplier:          "Supp E",
+						SupplierPn:        "SPN003-SS1",
+						SourceRevisionIDs: []int64{101, 102},
+					},
+				},
+				SelectionsByRevAndOrder: map[string]map[int]string{
+					"101": {0: "SPN003"},
+				},
+			},
+		}
+
+		revisions := []RevisionData{
+			{
+				ID:              "101",
+				ProjectCode:     "PROJ1",
+				Phase:           "EVT",
+				Version:         "v1",
+				ModelNames:      []string{"Model A", "Model B"},
+				ModelQtyByOrder: map[int]int{0: 10, 1: 20},
+			},
+			{
+				ID:              "102",
+				ProjectCode:     "PROJ1",
+				Phase:           "DVT",
+				Version:         "v1",
+				ModelNames:      []string{"Model C"},
+				ModelQtyByOrder: map[int]int{2: 30},
+			},
+		}
+
+		options := ExportOptions{
+			Format:     types.FormatBigMatrix,
+			OutputPath: targetPath,
+			PartData:   parts,
+			Revisions:  revisions,
+		}
+
+		if _, err := writer.ExportExcel(options); err != nil {
+			t.Fatalf("ExportExcel failed: %v", err)
+		}
+
+		f, err := excelize.OpenFile(targetPath)
+		if err != nil {
+			t.Fatalf("Failed to open exported Excel file: %v", err)
+		}
+		defer f.Close()
+
+		cfMap, err := f.GetConditionalFormats("BigMatrix")
+		if err != nil {
+			t.Fatalf("GetConditionalFormats failed: %v", err)
+		}
+
+		expectedGroups := []struct {
+			name            string
+			targetRange     string
+			expectedFormula string
+		}{
+			{
+				name:            "Group 1（主料+替代料，含部分灰底）",
+				targetRange:     "A6:K7",
+				expectedFormula: `COUNTIF($H6:$J6,"V")=0`,
+			},
+			{
+				name:            "Group 2（單列群組無替代料）",
+				targetRange:     "A8:K8",
+				expectedFormula: `COUNTIF($H8:$J8,"V")=0`,
+			},
+			{
+				name:            "Group 3（PROTO 群組）",
+				targetRange:     "A9:K10",
+				expectedFormula: `COUNTIF($H9:$J9,"V")=0`,
+			},
+		}
+
+		for _, tc := range expectedGroups {
+			cfList, ok := cfMap[tc.targetRange]
+			if !ok || len(cfList) == 0 {
+				t.Fatalf("[%s] Expected conditional format on range %s, got cfMap keys: %v", tc.name, tc.targetRange, cfMap)
+			}
+
+			var matched *excelize.ConditionalFormatOptions
+			for i := range cfList {
+				if cfList[i].Type == "formula" && cfList[i].Criteria == tc.expectedFormula {
+					matched = &cfList[i]
+					break
+				}
+			}
+			if matched == nil {
+				t.Fatalf("[%s] Expected formula %q on range %s, got: %+v", tc.name, tc.expectedFormula, tc.targetRange, cfList)
+			}
+
+			if matched.StopIfTrue {
+				t.Errorf("[%s] Expected StopIfTrue=false so red/green rules can stack, got true", tc.name)
+			}
+			if matched.Format == nil {
+				t.Fatalf("[%s] Expected non-nil Format style ID", tc.name)
+			}
+
+			condStyle, err := f.GetConditionalStyle(*matched.Format)
+			if err != nil || condStyle == nil {
+				t.Fatalf("[%s] GetConditionalStyle(%d) failed: %v", tc.name, *matched.Format, err)
+			}
+			if condStyle.Font == nil {
+				t.Fatalf("[%s] Expected Font to be set in conditional style", tc.name)
+			}
+			if gotColor := normalizeHexColor(condStyle.Font.Color); gotColor != "008000" {
+				t.Errorf("[%s] Expected Font.Color #008000 (normalized 008000), got %q (raw: %q)", tc.name, gotColor, condStyle.Font.Color)
+			}
+			if condStyle.Font.Bold {
+				t.Errorf("[%s] Expected Font.Bold=false to preserve original weight", tc.name)
+			}
+			if condStyle.Fill.Type != "" {
+				t.Errorf("[%s] Expected Fill.Type empty so zebra/gray/red fill is preserved, got %q", tc.name, condStyle.Fill.Type)
+			}
+			if len(condStyle.Border) != 0 {
+				t.Errorf("[%s] Expected no Border overrides, got %+v", tc.name, condStyle.Border)
+			}
+		}
+
+		// 確認既有直向淡紅條件格式化規則未被覆蓋或破壞（Group 1 在 Rev 101 為 H6:I7）
+		expectedRedFormula := `OR(COUNTIF(H$6:H$7,"V")<>1,COUNTIF(H$6:H$7,"")+COUNTIF(H$6:H$7,"V")<>2)`
+		redFound := false
+		for _, cf := range cfMap["H6:I7"] {
+			if cf.Criteria == expectedRedFormula {
+				redFound = true
+				break
+			}
+		}
+		if !redFound {
+			t.Errorf("Expected existing red conditional format %q on H6:I7 to remain intact, got: %+v", expectedRedFormula, cfMap["H6:I7"])
+		}
+
+		// 確認 Group 3 (Row 9..10) 的靜態儲存格樣式仍保留 PROTO 紫字 #8080C0
+		for _, cellAddr := range []string{"B9", "H9", "B10", "K10"} {
+			sid, err := f.GetCellStyle("BigMatrix", cellAddr)
+			if err != nil {
+				t.Fatalf("GetCellStyle(%s) failed: %v", cellAddr, err)
+			}
+			st, err := f.GetStyle(sid)
+			if err != nil || st == nil || st.Font == nil {
+				t.Fatalf("GetStyle(%s) failed or missing Font: %v", cellAddr, err)
+			}
+			if got := normalizeHexColor(st.Font.Color); got != "8080C0" {
+				t.Errorf("Expected static PROTO font color #8080C0 on %s, got %q", cellAddr, st.Font.Color)
+			}
+		}
+	})
+
+	t.Run("單一Model欄格式驗證", func(t *testing.T) {
+		tempDir := t.TempDir()
+		targetPath := filepath.Join(tempDir, "Unselected_CF_SingleModel.xlsx")
+
+		writer, err := NewWriter(logger.NewLogger(100))
+		if err != nil {
+			t.Fatalf("Failed to create writer: %v", err)
+		}
+
+		// 1 個 Revision、1 個 Model (Col H)，Notes 欄位於 I
+		parts := []PartData{
+			{
+				Item:        "1",
+				HHPN:        "PN101",
+				Description: "Main Part",
+				Supplier:    "Supp A",
+				SupplierPn:  "SPN101",
+				Qty:         1,
+				Location:    "U1",
+				CCL:         true,
+				BOMStatus:   "M",
+				SecondSources: []SecondSourceData{
+					{
+						HHPN:        "PN101-SS1",
+						Description: "2nd Source",
+						Supplier:    "Supp B",
+						SupplierPn:  "SPN101-SS1",
+					},
+				},
+			},
+			{
+				Item:        "2",
+				HHPN:        "PN102",
+				Description: "Single Row Part",
+				Supplier:    "Supp C",
+				SupplierPn:  "SPN102",
+				Qty:         1,
+				Location:    "U2",
+				CCL:         true,
+				BOMStatus:   "M",
+			},
+		}
+
+		revisions := []RevisionData{
+			{
+				ID:          "201",
+				ProjectCode: "PROJ_SINGLE",
+				Phase:       "PVT",
+				Version:     "v1",
+				ModelNames:  []string{"Model A"},
+			},
+		}
+
+		options := ExportOptions{
+			Format:     types.FormatBigMatrix,
+			OutputPath: targetPath,
+			PartData:   parts,
+			Revisions:  revisions,
+		}
+
+		if _, err := writer.ExportExcel(options); err != nil {
+			t.Fatalf("ExportExcel failed: %v", err)
+		}
+
+		f, err := excelize.OpenFile(targetPath)
+		if err != nil {
+			t.Fatalf("Failed to open exported Excel file: %v", err)
+		}
+		defer f.Close()
+
+		cfMap, err := f.GetConditionalFormats("BigMatrix")
+		if err != nil {
+			t.Fatalf("GetConditionalFormats failed: %v", err)
+		}
+
+		singleModelCases := []struct {
+			targetRange     string
+			expectedFormula string
+		}{
+			{targetRange: "A6:I7", expectedFormula: `COUNTIF($H6,"V")=0`},
+			{targetRange: "A8:I8", expectedFormula: `COUNTIF($H8,"V")=0`},
+		}
+
+		for _, tc := range singleModelCases {
+			cfList, ok := cfMap[tc.targetRange]
+			if !ok || len(cfList) == 0 {
+				t.Fatalf("Expected conditional format on range %s, got cfMap: %+v", tc.targetRange, cfMap)
+			}
+			matched := false
+			for _, cf := range cfList {
+				if cf.Type == "formula" && cf.Criteria == tc.expectedFormula {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				t.Errorf("Expected formula %q on range %s, got: %+v", tc.expectedFormula, tc.targetRange, cfList)
+			}
+		}
+	})
+
+	t.Run("無資料或無Model欄邊界保護", func(t *testing.T) {
+		edgeCases := []struct {
+			name           string
+			parts          []PartData
+			totalModelCols int
+		}{
+			{
+				name:           "空零件清單",
+				parts:          nil,
+				totalModelCols: 3,
+			},
+			{
+				name: "Model欄總數為0",
+				parts: []PartData{
+					{Item: "1", HHPN: "PN001", Supplier: "Supp", SupplierPn: "SPN"},
+				},
+				totalModelCols: 0,
+			},
+		}
+
+		for _, tc := range edgeCases {
+			t.Run(tc.name, func(t *testing.T) {
+				f := excelize.NewFile()
+				defer f.Close()
+				if err := f.SetSheetName("Sheet1", "BigMatrix"); err != nil {
+					t.Fatalf("SetSheetName failed: %v", err)
+				}
+
+				addUnselectedMaterialConditionalFormatting(f, tc.parts, tc.totalModelCols, 7, 7+tc.totalModelCols)
+
+				cfMap, err := f.GetConditionalFormats("BigMatrix")
+				if err != nil {
+					t.Fatalf("GetConditionalFormats failed: %v", err)
+				}
+				if len(cfMap) != 0 {
+					t.Errorf("[%s] Expected no conditional formats, got: %+v", tc.name, cfMap)
+				}
+			})
+		}
+	})
+}
+
 
 
 

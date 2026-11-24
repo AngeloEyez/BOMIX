@@ -980,6 +980,11 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	// 若不符合條件，將該區域底色設定為淡紅色 (#FFC7CE)，框線保持不變
 	addModelSelectionConditionalFormatting(f, parts, revisions, options, bomStartCol)
 
+	// 對每個物料群組設定「未勾選物料整列綠色文字」條件格式化：
+	// 跨所有 BOM Revision 的全部 Model 欄檢查，若群組內任一物料列沒有任何 "V" 勾選，
+	// 則將該列 A 欄至 Notes 欄的文字顏色改為清晰的深綠色 (#008000)，不更動底色與框線。
+	addUnselectedMaterialConditionalFormatting(f, parts, totalModelCols, bomStartCol, notesCol)
+
 	// 啟用 Excel 工作表保護（不設定密碼 / 空密碼，供使用者需要時自由取消保護）
 	// 效果：灰底儲存格 (Locked: true) 禁止修改，可編輯儲存格 (Locked: false) 允許修改
 	// 權限：允許點選鎖定/解鎖儲存格，並允許設定欄、列及儲存格格式
@@ -1601,5 +1606,78 @@ func addModelSelectionConditionalFormatting(
 
 			currentCol += revModelCount
 		}
+	}
+}
+
+/**
+ * addUnselectedMaterialConditionalFormatting 對 BigMatrix 物料群組設定「未勾選物料整列綠色文字」條件格式化。
+ *
+ * 以每一個物料群組 (main source + 2nd sources) 為單位，跨所有 BOM Revision 的全部 Model 欄位逐列檢查：
+ * 若某列在全部 Model 欄位中皆沒有任何 "V"（不分大小寫）勾選，則將該整列（A 欄至 Notes 欄）的文字顏色
+ * 改為清晰的深綠色 (#008000)。
+ *
+ * 設計要點：
+ *   - 公式鎖定 Model 區起訖欄號、列號採相對參照（如 COUNTIF($H6:$J6,"V")=0，單一 Model 欄時為 COUNTIF($H6,"V")=0），
+ *     讓 Excel 自動對群組內主料與各替代料列分別計算。
+ *   - 條件判斷範圍僅包含 Model 欄位（H 欄至最後一個 Model 欄），排除 Notes 欄，避免 Notes 內容含 "V" 造成誤判。
+ *   - 套用範圍涵蓋 A 欄至 Notes 欄（含 A~G、所有 Model 欄及 Notes 欄），與 PROTO 整列變色範圍一致。
+ *   - 條件樣式僅設定 Font.Color (#008000)，不設定 Fill、Border 與粗體，以保留原字體粗細、斑馬紋底色、灰底 (#D9D9D9)、
+ *     格線邊框，並可與既有的淡紅底色 (#FFC7CE) 條件格式化規則並存疊加（StopIfTrue: false）。
+ *   - 所有群組（含單列無替代料群組與 PROTO 群組）均套用此規則；PROTO 物料在未勾選時顯示深綠色，
+ *     一旦任一 Model 勾選 "V" 後即自動恢復原本靜態樣式的 PROTO 紫字 (#8080C0)。
+ *
+ * @param f *excelize.File - Excelize 檔案物件
+ * @param parts []PartData - 聚合後的物料清單
+ * @param totalModelCols int - 跨所有 BOM Revision 的 Model 欄位總數
+ * @param bomStartCol int - Model 欄位起始欄索引 (0-based，一般為 7 即 H 欄)
+ * @param notesCol int - Notes 欄位索引 (0-based，緊接於最後一個 Model 欄之後)
+ */
+func addUnselectedMaterialConditionalFormatting(
+	f *excelize.File,
+	parts []PartData,
+	totalModelCols int,
+	bomStartCol int,
+	notesCol int,
+) {
+	// 邊界檢查：無物料資料或無任何 Model 欄位時無需建立規則
+	if len(parts) == 0 || totalModelCols <= 0 {
+		return
+	}
+
+	startModelColStr := getColName(bomStartCol)
+	endModelColStr := getColName(bomStartCol + totalModelCols - 1)
+	endRowColStr := getColName(notesCol)
+
+	// 建立僅設定深綠色字體 (#008000) 的條件樣式，維持原字體粗細、底色與框線不變
+	unselectedGreenStyle, err := f.NewConditionalStyle(&excelize.Style{
+		Font: &excelize.Font{
+			Color: "#008000",
+		},
+	})
+	if err != nil {
+		return
+	}
+
+	// 從 Row 6 開始，以每個物料群組為單位建立單一條件格式化規則
+	currentRow := 6
+	for _, part := range parts {
+		groupStartRow := currentRow
+		groupEndRow := groupStartRow + len(part.SecondSources)
+		currentRow = groupEndRow + 1
+
+		// 鎖定 Model 區起訖欄、列號採相對參照，使同一群組內各列各自統計橫向 "V" 數量
+		var modelRangeStr string
+		if totalModelCols == 1 {
+			modelRangeStr = fmt.Sprintf("$%s%d", startModelColStr, groupStartRow)
+		} else {
+			modelRangeStr = fmt.Sprintf("$%s%d:$%s%d", startModelColStr, groupStartRow, endModelColStr, groupStartRow)
+		}
+		unselectedFormula := fmt.Sprintf("COUNTIF(%s,\"V\")=0", modelRangeStr)
+
+		// 套用至該物料群組所有列的 A 欄到 Notes 欄
+		groupTargetRange := fmt.Sprintf("A%d:%s%d", groupStartRow, endRowColStr, groupEndRow)
+		_ = f.SetConditionalFormat("BigMatrix", groupTargetRange, []excelize.ConditionalFormatOptions{
+			{Type: "formula", Criteria: unselectedFormula, Format: &unselectedGreenStyle},
+		})
 	}
 }

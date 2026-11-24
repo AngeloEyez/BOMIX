@@ -1243,6 +1243,20 @@ BigMatrix 格式的工作表中，自 **H 欄** 開始向右排列了多份 BOM 
 - **灰色背景處理**：利用 View 系統提供之物料來源歸屬標記 `SourceRevisionIDs`，若當前 BOM Revision ID 不存在於該物料的 `SourceRevisionIDs` 中（即 `revID ∉ SourceRevisionIDs`，代表該物料在此 BOM 中不存在），將對應的儲存格背景填滿淺灰色（`#D9D9D9`）。
 - 若該物料群組只有 Main Source、無 2nd Source，則相對應的 Model 位置自動寫入 **"V"**。
 
+##### 8.1.5.4 條件格式化規則（Model 勾選驗證與未勾選物料提醒）
+
+BigMatrix 匯出時會寫入兩類條件格式化規則（`StopIfTrue: false`），分別檢查 Model 勾選完整性與物料是否被任何 Model 選用：
+
+1. **Model 勾選唯一性驗證（淡紅底色 `#FFC7CE`）**：
+   - 以每個物料群組 × 單一 BOM Revision 內的連續非灰底列為單位（排除不存在該 Revision 的灰底儲存格），針對直向每個 Model 欄獨立驗證。
+   - 規則為該 Model 欄的非灰底範圍內必須且只能有 **1 個** `"V"`（不分大小寫），且其餘儲存格必須為空白（公式範例：`OR(COUNTIF(H$6:H$7,"V")<>1,COUNTIF(H$6:H$7,"")+COUNTIF(H$6:H$7,"V")<>2)`）。
+   - 若不符合條件，將該直向 Model 區段底色填滿淡紅色（`#FFC7CE`），邊框維持不變。
+
+2. **未勾選物料整列提醒（清晰深綠文字 `#008000`）**：
+   - 以每一個物料群組（包含僅主料的單列群組、含 2nd Source 的多列群組及 PROTO 群組）為單位建立單一條件格式化規則，涵蓋範圍為該群組整列 **`A{groupStartRow}:{notesCol}{groupEndRow}`**（含 `A~G` 欄位、所有 Model 欄及最末欄 `Notes`）。
+   - 橫向跨所有 BOM Revision 的全部 Model 欄（`H` 欄至最後一個 Model 欄，排除 `Notes` 欄）逐列統計勾選數，公式為 `COUNTIF($H{groupStartRow}:${lastModelCol}{groupStartRow},"V")=0`（若僅有單一 Model 欄時為 `COUNTIF($H{groupStartRow},"V")=0`）；因列號採相對參照，Excel 會自動針對群組內主料與每筆 2nd Source 列分別判斷。
+   - 若該物料列在全部 Model 欄中皆無任何 `"V"`（不分大小寫）勾選，僅將該整列文字顏色設為清晰深綠色（`#008000`），維持原字體粗細、斑馬紋底色、灰底與框線不變，並可與淡紅底色規則並存疊加；PROTO 物料（靜態文字色 `#8080C0`）未勾選時同樣以 `#008000` 顯示提醒，一旦任一 Model 勾選 `"V"` 後即自動恢復原本的 `#8080C0` 紫字。
+
 #### 8.1.6 零件篩選條件
 
 匯出至 BigMatrix 時，所有資料的獲取與動態篩選**統一由 View 系統（`backend/view/`）負責處理**：
