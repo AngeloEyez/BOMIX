@@ -139,6 +139,7 @@ export function useBOMData(options: UseBOMDataOptions) {
         modelNames: r.model_names || [],
         modelQty: (r.model_qty as Record<string, number>) || {},
         modelQtyByOrder: (r.model_qty_by_order as Record<number, number>) || {},
+        activeModelOrders: ((r as any).active_model_orders as number[]) || [],
         models: (r.models as any) || [],
         columnWidth: colWidth,
       }
@@ -179,20 +180,64 @@ export function useBOMData(options: UseBOMDataOptions) {
   }
 
   /**
+   * 將 Model 代號字串解析為 0-based SortOrder 索引（支援 "A"->0, "C"->2, "Model C"->2, "Model 3"->2）
+   *
+   * @param {string} raw - Model 代號或名稱
+   * @returns {number} 0-based 索引；無法解析時回傳 -1
+   */
+  function parseModelAliasToOrder(raw: string): number {
+    let s = (raw || '').trim().toUpperCase()
+    if (!s) return -1
+    if (s.startsWith('MODEL')) {
+      const rest = s.slice(5).replace(/^[\s_\-:#]+/, '').trim()
+      if (rest) s = rest
+    }
+    if (/^[A-Z]+$/.test(s)) {
+      let result = 0
+      for (let i = 0; i < s.length; i++) {
+        result = result * 26 + (s.charCodeAt(i) - 65) + 1
+      }
+      return result - 1
+    }
+    if (/^\d+$/.test(s)) {
+      const num = parseInt(s, 10)
+      if (num > 0) return num - 1
+    }
+    return -1
+  }
+
+  /**
    * 依據 BigMatrix 原則解析第 sortOrder 個 Model 的打件數量 Qty
+   * 若 rev 包含明確的 models / modelQtyByOrder / activeModelOrders，則嚴格依 sortOrder 查詢，
+   * 不降級至 modelNames 位置補位，避免稀疏機種（如僅啟用 Model C）錯位顯示在 Model A。
    * 
    * @param {RevisionColumnInfo} rev - Revision 欄位資訊
    * @param {number} sortOrder - Model 排序索引
    * @param {string} modelAlias - 純字母代號 (A, B, C...)
+   * @param {boolean} includeHidden - 是否包含已隱藏機種之實際 Qty（用於全隱藏保底唯讀顯示 Model A）
    * @returns {number} 打件數量 (若無設定則回傳 0)
    */
-  function resolveRevisionModelQty(rev: RevisionColumnInfo, sortOrder: number, modelAlias: string): number {
+  function resolveRevisionModelQty(
+    rev: RevisionColumnInfo,
+    sortOrder: number,
+    modelAlias: string,
+    includeHidden: boolean = false
+  ): number {
     if (rev.models && rev.models.length > 0) {
       const item = rev.models.find(m => m.sort_order === sortOrder)
-      if (item && item.qty > 0) return item.qty
+      if (item) {
+        if (!includeHidden && item.is_hidden) return 0
+        return item.qty > 0 ? item.qty : 0
+      }
+      return 0
     }
-    if (rev.modelQtyByOrder && rev.modelQtyByOrder[sortOrder] !== undefined && rev.modelQtyByOrder[sortOrder] > 0) {
-      return rev.modelQtyByOrder[sortOrder]
+    if (rev.modelQtyByOrder && Object.keys(rev.modelQtyByOrder).length > 0) {
+      return rev.modelQtyByOrder[sortOrder] && rev.modelQtyByOrder[sortOrder] > 0
+        ? rev.modelQtyByOrder[sortOrder]
+        : 0
+    }
+    if (rev.activeModelOrders && rev.activeModelOrders.length > 0) {
+      return 0
     }
     if (rev.modelQty) {
       if (rev.modelQty[modelAlias] !== undefined && rev.modelQty[modelAlias] > 0) {
@@ -206,30 +251,23 @@ export function useBOMData(options: UseBOMDataOptions) {
       if (rev.modelQty[nameWithNum] !== undefined && rev.modelQty[nameWithNum] > 0) {
         return rev.modelQty[nameWithNum]
       }
-      if (rev.modelNames && sortOrder < rev.modelNames.length) {
-        const customName = rev.modelNames[sortOrder]
-        if (rev.modelQty[customName] !== undefined && rev.modelQty[customName] > 0) {
-          return rev.modelQty[customName]
-        }
-      }
     }
     return 0
   }
 
   /**
-   * 參與 Matrix 視圖之動態 Model 欄位清單 (依各 Revision 在資料庫中的實際 Model 展開)
+   * 參與 Matrix 視圖之動態 Model 欄位清單 (依各 Revision 實際啟用的有效 Model 展開)
    * 
    * 展開原則：
    * 1. 遍歷 revisionColumns 中已排序的 Revisions。
-   * 2. 計算每個 Revision 實際包含的 Model 數量：
-   *    - rev.models 的長度或最大 sort_order + 1
-   *    - rev.modelNames 的長度
-   *    - rev.modelQtyByOrder 的長度或最大 key + 1
-   *    - rev.modelQty 的數量
-   *    - aggregatedParts 中該 Revision 之 selections 的最大 sort_order + 1
-   *    - 保底至少 1 個 Model
-   *    （注意：不採用專案層級的 projectModelCounts，避免同專案其他版本的匯出或編輯設定汙染當前版本的欄位數）
-   * 3. 依序產生 MatrixModelColumnInfo，包含純字母代號與打件數量。
+   * 2. 收集每個 Revision 有效（Active）的 Model SortOrder 升冪清單：
+   *    - 排除資料庫無紀錄、已標記 is_hidden、或 qty===0 且無任何勾選之未使用機種
+   *    - 支援稀疏起始（例如僅啟用 Model C 時，只展開 sortOrder=2 的 Model C 欄）
+   * 3. 全隱藏 / 全空保底規則：
+   *    - 若整個 Revision 無任何有效 Model，保底顯示 1 欄 Model A (sortOrder=0)：
+   *      * 若資料庫實際存在 Model A 且為 is_hidden=true：顯示實際 Model A 的 Qty 與勾選資料，但 UI 設為唯讀 (isReadOnly=true)，
+   *        提供表頭介面讓使用者開啟機種設定對話框啟用後才可修改，避免誤改已隱藏的資料。
+   *      * 若資料庫不存在 Model A（例如剛匯入的新 Revision）：顯示可編輯的預設 Model A (Qty=0)。
    */
   const matrixModelColumns = computed<MatrixModelColumnInfo[]>(() => {
     if (!revisionColumns.value || revisionColumns.value.length === 0) return []
@@ -241,90 +279,115 @@ export function useBOMData(options: UseBOMDataOptions) {
       // 判斷是否為整個 Matrix 表格的第一個 Revision
       const isFirstRevision = revIdx === 0
 
-      // 1. 計算該 Revision 實際存在的 Model 數量
-      let count = 0
-
+      // 建立該 Revision 已隱藏之 SortOrder 集合（供過濾用）
+      const hiddenOrderSet = new Set<number>()
       if (rev.models && rev.models.length > 0) {
-        count = Math.max(count, rev.models.length)
         for (const m of rev.models) {
-          if (m.sort_order + 1 > count) {
-            count = m.sort_order + 1
+          if (m.is_hidden) {
+            hiddenOrderSet.add(m.sort_order)
           }
         }
       }
 
-      if (rev.modelNames && rev.modelNames.length > 0) {
-        count = Math.max(count, rev.modelNames.length)
+      // 1. 收集該 Revision 實際有效的 Model SortOrder 集合
+      const activeOrderSet = new Set<number>()
+
+      if (rev.activeModelOrders && rev.activeModelOrders.length > 0) {
+        for (const order of rev.activeModelOrders) {
+          if (order >= 0 && !hiddenOrderSet.has(order)) {
+            activeOrderSet.add(order)
+          }
+        }
+      }
+
+      if (rev.models && rev.models.length > 0) {
+        for (const m of rev.models) {
+          if (!m.is_hidden && (m.qty > 0 || m.has_selection)) {
+            activeOrderSet.add(m.sort_order)
+          }
+        }
       }
 
       if (rev.modelQtyByOrder) {
-        const orderKeys = Object.keys(rev.modelQtyByOrder).map(Number)
-        count = Math.max(count, orderKeys.length)
-        for (const k of orderKeys) {
-          if (k + 1 > count) {
-            count = k + 1
+        for (const [kStr, qty] of Object.entries(rev.modelQtyByOrder)) {
+          const order = Number(kStr)
+          if (!Number.isNaN(order) && order >= 0 && qty > 0 && !hiddenOrderSet.has(order)) {
+            activeOrderSet.add(order)
           }
         }
       }
 
-      if (rev.modelQty) {
-        count = Math.max(count, Object.keys(rev.modelQty).length)
-      }
-
-      // 檢查物料在該 Revision 中的 Selection 最大 SortOrder
+      // 檢查物料在該 Revision 中未隱藏的有效 Selection SortOrder
       if (aggregatedParts.value && aggregatedParts.value.length > 0) {
         for (const p of aggregatedParts.value) {
           if (p.selections) {
             for (const sel of p.selections) {
-              if (sel.revision_id === rev.revisionId && (sel.selected_material_id || sel.selected_pn)) {
-                if (sel.sort_order + 1 > count) {
-                  count = sel.sort_order + 1
-                }
+              if (
+                sel.revision_id === rev.revisionId &&
+                !(sel as any).is_hidden &&
+                !hiddenOrderSet.has(sel.sort_order) &&
+                (sel.selected_material_id || sel.selected_pn)
+              ) {
+                activeOrderSet.add(sel.sort_order)
               }
             }
           }
         }
       }
 
-      // 保底原則：若該 Revision 存在，預設至少提供 1 個 Model 欄位
-      if (count <= 0) {
-        count = 1
+      // 相容舊式僅提供 modelQty（未提供 models / modelQtyByOrder）的測試或資料格式
+      if (activeOrderSet.size === 0 && (!rev.models || rev.models.length === 0) && rev.modelQty) {
+        for (const [name, qty] of Object.entries(rev.modelQty)) {
+          if (qty > 0) {
+            const parsedOrder = parseModelAliasToOrder(name)
+            if (parsedOrder >= 0) {
+              activeOrderSet.add(parsedOrder)
+            }
+          }
+        }
       }
 
-      // 2. 智慧中心定位演算法與自適應欄寬計算
-      // 演算法規則：
-      // 1 個 model: 位置 1 (index 0)
-      // 2 個 model: 位置 1 (index 0)
-      // 3 個 model: 位置 2 (index 1，正中央)
-      // 4 個 model: 位置 2 (index 1)
-      // 5 個 model: 位置 3 (index 2，正中央)
-      // 通用公式：Math.floor((count - 1) / 2)
+      let activeOrders = Array.from(activeOrderSet).sort((a, b) => a - b)
+
+      // 2. 保底原則：若整個 Revision 無任何有效 Model，保底顯示 1 欄 Model A (sortOrder=0)
+      //    若資料庫中實際存在 Model A 且為隱藏狀態，顯示實際 Model A 資料並設為唯讀 (disabled)
+      let isHiddenModelAFallback = false
+      if (activeOrders.length === 0) {
+        activeOrders = [0]
+        const hiddenModelA = rev.models?.find(m => m.sort_order === 0 && Boolean(m.is_hidden))
+        if (hiddenModelA) {
+          isHiddenModelAFallback = true
+        }
+      }
+
+      const count = activeOrders.length
+
+      // 3. 智慧中心定位演算法與自適應欄寬計算
       const centerTargetIndex = Math.floor((count - 1) / 2)
 
       // 首欄特殊補償：僅整個 Matrix 表格第 0 欄擁有 project-start-col (2px 粗左框線)，額外補償 +2px 精確抵銷，其餘欄位維持極限最小寬度
       const startBorderCompensation = isFirstRevision ? 2 : 0
 
-      // 欄寬自適應計算 (極致緊湊：最小化兩側間距，最大化橫向可視空間)：
+      // 欄寬自適應計算
       let colWidth = 54
       if (count === 1) {
-        // 單 Model 狀態：依專案代碼精準像素寬度 + 左右各 3px 最小視覺舒適間距 (合計 +6px)
-        // 若為首欄，補償 project-start-col 之 2px 左邊框 (保底 56px，計算 +8px)
         const textWidth = measureProjectCodeWidth(rev.projectCode || '')
         colWidth = Math.max(54 + startBorderCompensation, Math.ceil(textWidth + 6 + startBorderCompensation))
       } else {
-        // 多 Model 狀態：統一緊湊 54px，點擊區域與字母用量標籤比例極佳
         colWidth = 54
       }
 
-      // 3. 展開各 Model 欄位
-      for (let i = 0; i < count; i++) {
-        const alias = getModelOrderAlias(i)
-        const qty = resolveRevisionModelQty(rev, i, alias)
+      // 4. 依真實 SortOrder 展開各 Model 欄位
+      for (let idx = 0; idx < count; idx++) {
+        const sortOrder = activeOrders[idx]
+        const alias = getModelOrderAlias(sortOrder)
+        const isReadOnlyFallback = isHiddenModelAFallback && sortOrder === 0
+        const qty = resolveRevisionModelQty(rev, sortOrder, alias, isReadOnlyFallback)
 
         let modelId = 0
         let modelName = `Model ${alias}`
         if (rev.models && rev.models.length > 0) {
-          const item = rev.models.find(m => m.sort_order === i)
+          const item = rev.models.find(m => m.sort_order === sortOrder)
           if (item) {
             modelId = item.id || 0
             if (item.model_name) {
@@ -333,29 +396,28 @@ export function useBOMData(options: UseBOMDataOptions) {
           }
         }
 
-        const qtyStr = qty > 0 ? `(${qty})` : ''
         const headerTitle = [rev.projectCode, rev.phase, rev.version].filter(Boolean).join(' ')
-
-        // 若為多 Model 狀態，且為整個表格之第 0 欄 (帶有 2px 左邊框)，亦補償 2px 保持內容區域對齊
-        const actualColWidth = (count > 1 && isFirstRevision && i === 0) ? (colWidth + startBorderCompensation) : colWidth
+        const actualColWidth = (count > 1 && isFirstRevision && idx === 0) ? (colWidth + startBorderCompensation) : colWidth
 
         cols.push({
-          key: `matrix-rev-${rev.revisionId}-model-${i}`,
+          key: `matrix-rev-${rev.revisionId}-model-${sortOrder}`,
           revisionId: rev.revisionId,
           projectCode: rev.projectCode,
           phase: rev.phase,
           version: rev.version,
-          sortOrder: i,
+          sortOrder: sortOrder,
           modelId: modelId,
           modelAlias: alias,
           modelName: modelName,
           qty: qty,
           headerTitle: headerTitle,
-          isFirstInRevision: i === 0,
-          isLastInRevision: i === count - 1,
+          isFirstInRevision: idx === 0,
+          isLastInRevision: idx === count - 1,
           revisionModelCount: count,
-          showProjectCode: i === centerTargetIndex,
+          showProjectCode: idx === centerTargetIndex,
           columnWidth: actualColWidth,
+          isReadOnly: isReadOnlyFallback,
+          isHidden: isReadOnlyFallback,
         })
       }
     }
@@ -364,23 +426,25 @@ export function useBOMData(options: UseBOMDataOptions) {
   })
 
   /**
-   * 檢查物料群組在任何 Revision 的任何 Model 中是否具有選中記錄 (Matrix Selection)
+   * 檢查物料群組在任何 Revision 的任何有效（未隱藏）Model 中是否具有選中記錄 (Matrix Selection)
    * 
    * 判定範圍包含：
-   * 1. part.selections 陣列中存在 selected_material_id > 0 或 selected_pn / selected_material
+   * 1. part.selections 陣列中未隱藏（!is_hidden）且存在 selected_material_id > 0 或 selected_pn / selected_material
    * 2. part.main_selections_by_order 中存在 true
    * 3. part.second_sources[].selections_by_order 中存在 true
    * 
    * @param {ViewPartGroup} part - 物料群組物件
-   * @returns {boolean} 是否包含任何勾選選中項目
+   * @returns {boolean} 是否包含任何有效勾選項目
    */
   function hasAnyMatrixSelection(part: ViewPartGroup): boolean {
-    // 1. 檢查 part.selections 陣列 (跨 revision x model 的選中紀錄)
+    // 1. 檢查 part.selections 陣列 (排除已隱藏 Model 的歷史勾選)
     if (part.selections && part.selections.length > 0) {
-      const hasSel = part.selections.some(s => 
-        (s.selected_material_id !== undefined && s.selected_material_id > 0) || 
-        Boolean(s.selected_pn) || 
-        Boolean(s.selected_material)
+      const hasSel = part.selections.some(s =>
+        !(s as any).is_hidden && (
+          (s.selected_material_id !== undefined && s.selected_material_id > 0) ||
+          Boolean(s.selected_pn) ||
+          Boolean(s.selected_material)
+        )
       )
       if (hasSel) return true
     }
@@ -839,6 +903,10 @@ export function useBOMData(options: UseBOMDataOptions) {
    * @param {MatrixModelColumnInfo} modelCol - Matrix Model 欄位資訊
    */
   async function onMatrixModelSelectionChange(row: BOMDisplayRow, modelCol: MatrixModelColumnInfo): Promise<void> {
+    // 若此 Model 欄位處於隱藏唯讀保底模式，禁止修改勾選狀態（需先點擊表頭於對話框啟用）
+    if (modelCol.isReadOnly) {
+      return
+    }
     try {
       const isCurrentlySelected = isModelSelectedInRevision(row, modelCol)
       const targetSelectedMaterialId = isCurrentlySelected ? 0 : row.materialId

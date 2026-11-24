@@ -3,7 +3,7 @@
     v-model:visible="dialogVisible"
     modal
     :header="dialogTitle"
-    :style="{ width: '270px', maxWidth: '95vw' }"
+    :style="{ width: '295px', maxWidth: '95vw' }"
     class="matrix-model-edit-dialog"
     :closable="!isSaving"
   >
@@ -16,21 +16,21 @@
     </template>
 
     <div class="dialog-content-body">
-      <!-- 縮減 Model 刪除勾選紀錄之警告提示條 (減少 Model 時顯示) -->
-      <div v-if="isModelCountReduced" class="reduce-warning-box">
-        <i class="pi pi-exclamation-triangle warning-icon"></i>
+      <!-- 隱藏機種保留勾選紀錄之提示條（當存在已勾選歷史資料的 Model 被設為隱藏時顯示） -->
+      <div v-if="hiddenWithSelectionNamesText" class="hide-info-box">
+        <i class="pi pi-info-circle info-icon"></i>
         <div class="warning-text-wrap">
-          <div class="warning-title">警告：減少 Model 將同步清除勾選紀錄！</div>
+          <div class="warning-title">已隱藏之機種將保留歷史勾選紀錄</div>
           <div class="warning-desc">
-            Model 數量由 {{ initialCount }} 減為 {{ modelList.length }}。儲存後，被減少之 Model（{{ removedModelNamesText }}）底下的所有物料勾選紀錄將被同步清除。
+            {{ hiddenWithSelectionNamesText }} 在表格與匯出中將不顯示，但既有勾選紀錄與數量會保留於資料庫，日後重新勾選啟用即可恢復。
           </div>
         </div>
       </div>
 
-      <!-- 工具列：同一行顯示「目前共 x 個機種」與純符號按鈕 -->
+      <!-- 工具列：同一行顯示啟用統計與純符號增減按鈕 -->
       <div class="model-edit-toolbar">
         <div class="count-text">
-          目前共 <span class="count-num">{{ modelList.length }}</span> 個機種
+          已啟用 <span class="count-num">{{ enabledCount }}</span> / {{ modelList.length }} 個機種
         </div>
         <div class="btn-group">
           <!-- 減少按鈕 (純圖標符號，插槽自訂與絕對正中置中) -->
@@ -41,7 +41,7 @@
             class="icon-only-btn"
             :disabled="modelList.length <= 1 || isSaving"
             @click="handleRemoveModel"
-            title="減少 Model (最少保留 1 個)"
+            title="減少尾端 Model 列 (最少保留 1 列)"
           >
             <i class="pi pi-minus btn-icon minus-icon"></i>
           </Button>
@@ -52,31 +52,47 @@
             class="icon-only-btn"
             :disabled="isSaving"
             @click="handleAddModel"
-            title="增加 Model"
+            title="增加尾端 Model"
           >
             <i class="pi pi-plus btn-icon plus-icon"></i>
           </Button>
         </div>
       </div>
 
-      <!-- 中間區域：各 Model 顯示為 "Model A : [ 147 ]" 同一行格式 -->
+      <!-- 中間區域：各 Model 顯示為 "[✓] Model A : [ 147 ]" 同一行格式 -->
       <div class="model-list-container">
         <div
           v-for="item in modelList"
           :key="item.sortOrder"
           class="model-item-row"
+          :class="{ 'is-row-hidden': !item.enabled }"
         >
-          <!-- 左側：Model 名稱顯示 "Model A : " -->
-          <span class="model-label font-mono">Model {{ item.modelAlias }} :</span>
+          <!-- 左側：啟用開關 + Model 名稱 -->
+          <div class="model-left-group">
+            <Checkbox
+              v-model="item.enabled"
+              binary
+              :disabled="isSaving"
+              :input-id="`model-enable-${item.sortOrder}`"
+              @update:model-value="(val: boolean) => handleToggleModel(item, Boolean(val))"
+            />
+            <label
+              :for="`model-enable-${item.sortOrder}`"
+              class="model-label font-mono"
+              :class="{ 'is-disabled-label': !item.enabled }"
+            >
+              Model {{ item.modelAlias }} :
+            </label>
+          </div>
 
-          <!-- 右側：Model Qty 輸入框 (小巧緊湊，不超出顯示範圍) -->
+          <!-- 右側：Model Qty 輸入框 (未啟用時鎖定唯讀，保留原數量供日後恢復) -->
           <InputNumber
             v-model="item.qty"
             :min="0"
             size="small"
             class="compact-input-number"
             inputClass="compact-input-text"
-            :disabled="isSaving"
+            :disabled="isSaving || !item.enabled"
           />
         </div>
       </div>
@@ -114,23 +130,20 @@
  * @file MatrixModelEditDialog.vue
  * @description Matrix 模式 Model 表頭點擊機種設定編輯對話框元件 (VS Code Style 極致緊湊版)
  * 
- * 1. 視窗尺寸：橫向寬度精簡收縮至 270px，邊框維持 10px 緊湊間距；
- * 2. 標題：僅顯示圖標與 projectcode phase version (粗體)；
- * 3. 工具列：「目前共 x 個機種」與圖標符號按鈕在同一行；
- * 4. 增減按鈕：純圖標符號且水平垂直絕對正中置中；
- * 5. Model 列表：以 "Model A : [ 147 ]" 同一行格式顯示，數字框寬度適中不超出範圍；
- * 6. 按鈕尺寸：全部嚴格限定為 small (高 24px)；
- * 7. 防呆警告：減少 Model 時提示將同步清除對應勾選紀錄；
- * 8. 確定寫入：儲存後即時更新表格內容。
+ * 支援稀疏 Model 設定（例如僅啟用 Model C、隱藏 Model A/B）：
+ * 1. 完整列出 0 .. maxSortOrder 的所有 Model 列，每列提供「啟用/隱藏 Checkbox + Qty 輸入框」；
+ * 2. 取消勾選（隱藏）機種時保留資料庫中的舊勾選紀錄與數量，重新勾選啟用時自動恢復；
+ * 3. 儲存時嚴格保留每列真實的 sort_order 與 is_hidden 狀態，避免錯位覆蓋。
  */
 
 import { ref, computed, watch } from 'vue'
 import Dialog from 'primevue/dialog'
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
+import Checkbox from 'primevue/checkbox'
 import { UpdateRevisionMatrixModels, type MatrixModelInput } from '../../../services/api'
 import { useProjectStore, useLogStore } from '../../../stores'
-import type { MatrixModelColumnInfo } from '../types'
+import type { MatrixModelColumnInfo, RevisionModelItem } from '../types'
 
 interface Props {
   /** 控制對話框顯示狀態 */
@@ -143,8 +156,10 @@ interface Props {
   phase: string
   /** 版本 (例如：1.0) */
   version: string
-  /** 該 Revision 當前既有的 Model 清單 */
+  /** 該 Revision 當前顯示中之 Model 欄位清單 */
   initialModels: MatrixModelColumnInfo[]
+  /** 該 Revision 資料庫中所有 Model 記錄（含已隱藏者） */
+  revisionModels?: RevisionModelItem[]
 }
 
 interface Emits {
@@ -170,13 +185,13 @@ interface EditableModelItem {
   sortOrder: number
   modelAlias: string
   qty: number
+  enabled: boolean
+  existsInDb: boolean
+  hasSelection: boolean
 }
 
 /** 編輯中的 Model 清單 */
 const modelList = ref<EditableModelItem[]>([])
-
-/** 開啟對話框時的原始 Model 數量，用於判定是否減少了 Model */
-const initialCount = ref(1)
 
 /** 是否正在儲存中 */
 const isSaving = ref(false)
@@ -204,72 +219,124 @@ const dialogTitle = computed(() => {
   return [props.projectCode, props.phase, props.version].filter(Boolean).join(' ') || '機種設定'
 })
 
-/**
- * 判定當前 Model 數量是否小於開啟時的初始數量 (即使用者點擊了減少 Model)
- */
-const isModelCountReduced = computed(() => {
-  return modelList.value.length < initialCount.value
+/** 目前已啟用的機種數 */
+const enabledCount = computed(() => {
+  return modelList.value.filter((m) => m.enabled).length
 })
 
 /**
- * 取得被減少之 Model 代號文字說明 (例如 "Model B, Model C")
+ * 取得已隱藏但具備歷史勾選紀錄的 Model 名稱清單文字（供提示使用者資料已保留）
  */
-const removedModelNamesText = computed(() => {
-  if (!isModelCountReduced.value) return ''
-  const removed: string[] = []
-  for (let i = modelList.value.length; i < initialCount.value; i++) {
-    removed.push(`Model ${getModelOrderAlias(i)}`)
-  }
-  return removed.join(', ')
+const hiddenWithSelectionNamesText = computed(() => {
+  const hiddenWithSel = modelList.value
+    .filter((m) => !m.enabled && m.hasSelection)
+    .map((m) => `Model ${m.modelAlias}`)
+  return hiddenWithSel.join(', ')
 })
 
 /**
- * 監聽 visible 開啟時，從 props.initialModels 初始化可編輯列表
+ * 監聽 visible 開啟時，結合 revisionModels（含已隱藏 DB 資料）與 initialModels 建立完整的 0..maxSortOrder 編輯列
  */
 watch(
   () => props.visible,
   (newVal) => {
     if (newVal) {
       isSaving.value = false
-      if (props.initialModels && props.initialModels.length > 0) {
-        initialCount.value = props.initialModels.length
-        modelList.value = props.initialModels.map((m, idx) => ({
-          id: m.modelId || undefined,
-          sortOrder: m.sortOrder ?? idx,
-          modelAlias: m.modelAlias || getModelOrderAlias(idx),
-          qty: m.qty ?? 1
-        }))
-      } else {
-        // 保底：若無則提供 1 個預設 Model A
-        initialCount.value = 1
-        modelList.value = [
-          {
-            sortOrder: 0,
-            modelAlias: 'A',
-            qty: 1
-          }
-        ]
+      const dbModels = props.revisionModels || []
+      const colModels = props.initialModels || []
+
+      let maxOrder = 0
+      for (const m of dbModels) {
+        if (m.sort_order > maxOrder) maxOrder = m.sort_order
       }
+      for (const c of colModels) {
+        if (c.sortOrder > maxOrder) maxOrder = c.sortOrder
+      }
+
+      const items: EditableModelItem[] = []
+      for (let order = 0; order <= maxOrder; order++) {
+        const dbItem = dbModels.find((m) => m.sort_order === order)
+        const colItem = colModels.find((c) => c.sortOrder === order)
+        const alias = getModelOrderAlias(order)
+
+        if (dbItem) {
+          const hasSel = Boolean(dbItem.has_selection)
+          const isActive = !dbItem.is_hidden && (dbItem.qty > 0 || hasSel)
+          items.push({
+            id: dbItem.id,
+            sortOrder: order,
+            modelAlias: alias,
+            qty: dbItem.qty ?? 0,
+            enabled: isActive,
+            existsInDb: true,
+            hasSelection: hasSel
+          })
+        } else if (colItem) {
+          const isReadOnly = Boolean(colItem.isReadOnly)
+          const isActive = !isReadOnly && (colItem.qty > 0 || colModels.length > 0)
+          items.push({
+            id: colItem.modelId || undefined,
+            sortOrder: order,
+            modelAlias: alias,
+            qty: colItem.qty ?? 0,
+            enabled: isActive,
+            existsInDb: Boolean(colItem.modelId),
+            hasSelection: false
+          })
+        } else {
+          // 前置未建立的稀疏空缺（例如僅有 Model C 時，此處列出未啟用的 Model A、B 供使用者隨時啟用）
+          items.push({
+            sortOrder: order,
+            modelAlias: alias,
+            qty: 0,
+            enabled: false,
+            existsInDb: false,
+            hasSelection: false
+          })
+        }
+      }
+
+      modelList.value = items
     }
   },
   { immediate: true }
 )
 
 /**
- * 點擊 "+" 按鈕：增加一個 Model (代號如 C，預設 Qty: 1)
+ * 切換單一 Model 的啟用 / 隱藏狀態
+ * - 啟用時：若原本 Qty 為 0 且無歷史勾選，預設填入 Qty = 1 使其立即生效顯示
+ * - 隱藏時：保留原本 Qty 與資料庫勾選紀錄，供日後重新啟用時無損恢復
+ *
+ * @param {EditableModelItem} item - 目標 Model 編輯項目
+ * @param {boolean} enabled - 新的啟用狀態
+ */
+function handleToggleModel(item: EditableModelItem, enabled: boolean): void {
+  item.enabled = enabled
+  if (enabled && (!item.qty || item.qty <= 0) && !item.hasSelection) {
+    item.qty = 1
+  }
+}
+
+/**
+ * 點擊 "+" 按鈕：於尾端增加一個 Model (預設啟用，Qty: 1)
  */
 function handleAddModel(): void {
-  const nextIndex = modelList.value.length
-  const alias = getModelOrderAlias(nextIndex)
+  const nextOrder = modelList.value.length > 0
+    ? modelList.value[modelList.value.length - 1].sortOrder + 1
+    : 0
+  const alias = getModelOrderAlias(nextOrder)
   modelList.value.push({
-    sortOrder: nextIndex,
+    sortOrder: nextOrder,
     modelAlias: alias,
-    qty: 1
+    qty: 1,
+    enabled: true,
+    existsInDb: false,
+    hasSelection: false
   })
 }
 
 /**
- * 點擊 "-" 按鈕：減少最後一個 Model (最少保留 1 個)
+ * 點擊 "-" 按鈕：移除尾端最後一列 Model (最少保留 1 列；若尾端已有歷史勾選，後端儲存時會自動保留並標記隱藏)
  */
 function handleRemoveModel(): void {
   if (modelList.value.length <= 1) return
@@ -277,33 +344,41 @@ function handleRemoveModel(): void {
 }
 
 /**
- * 點擊「確定」按鈕：將窗口中的資料寫入資料庫並即時通知外部更新
+ * 點擊「確定」按鈕：將每一列真實的 sort_order、qty 與 is_hidden 寫入資料庫並即時通知外部更新
  */
 async function handleSave(): Promise<void> {
   if (!props.revisionId || props.revisionId <= 0) return
 
   isSaving.value = true
   try {
-    const payload: MatrixModelInput[] = modelList.value.map((m, idx) => ({
-      id: m.id || 0,
-      sort_order: idx,
-      model_name: `Model ${m.modelAlias}`,
-      qty: Number(m.qty) || 0
-    }))
+    // 僅送出已啟用，或原本已存在於資料庫中的 Model（避免為從未使用過的前置空欄建立多餘資料列）
+    const payload: MatrixModelInput[] = modelList.value
+      .filter((m) => m.enabled || m.existsInDb)
+      .map((m) => ({
+        id: m.id || 0,
+        sort_order: m.sortOrder,
+        model_name: `Model ${m.modelAlias}`,
+        qty: Math.max(0, Number(m.qty) || 0),
+        is_hidden: !m.enabled
+      }))
+
+    const activeCount = modelList.value.filter(
+      (m) => m.enabled && (Number(m.qty) > 0 || m.hasSelection)
+    ).length
 
     logStore.addLogEntry(
       'INFO',
-      `[MatrixModelEditDialog] 準備更新 RevisionID=${props.revisionId} 的 Model 設定 (共 ${payload.length} 個 Model)`
+      `[MatrixModelEditDialog] 準備更新 RevisionID=${props.revisionId} 的 Model 設定 (送出 ${payload.length} 筆，有效啟用 ${activeCount} 個)`
     )
 
     // 1. 寫入資料庫
     await UpdateRevisionMatrixModels(props.revisionId, payload)
 
-    // 2. 僅同步更新該 Revision 本身在 projectStore 中的 modelCount（不覆寫專案層級的 projectModelCounts，避免影響同專案其他版本）
+    // 2. 僅同步更新該 Revision 本身在 projectStore 中的有效 modelCount
     for (const proj of projectStore.projects) {
       const targetRev = proj.revisions?.find((r) => r.id === props.revisionId)
       if (targetRev) {
-        targetRev.modelCount = payload.length
+        targetRev.modelCount = activeCount
         break
       }
     }
@@ -423,32 +498,36 @@ function handleCancelDialog(): void {
   overflow-x: hidden !important;
 }
 
-/* 警告框 */
-.matrix-model-edit-dialog .reduce-warning-box {
+/* 隱藏提示框 */
+.matrix-model-edit-dialog .hide-info-box {
   display: flex !important;
   flex-direction: row !important;
   align-items: flex-start !important;
   gap: 6px !important;
   padding: 6px 8px !important;
   border-radius: 3px !important;
-  background: #fffbeb !important;
-  border: 1px solid #fcd34d !important;
-  color: #92400e !important;
+  background: #eff6ff !important;
+  border: 1px solid #93c5fd !important;
+  color: #1e40af !important;
   box-sizing: border-box !important;
   width: 100% !important;
 }
 
-.dark .matrix-model-edit-dialog .reduce-warning-box {
-  background: rgba(120, 53, 15, 0.25) !important;
-  border-color: #78350f !important;
-  color: #fde68a !important;
+.dark .matrix-model-edit-dialog .hide-info-box {
+  background: rgba(30, 58, 138, 0.25) !important;
+  border-color: #1d4ed8 !important;
+  color: #bfdbfe !important;
 }
 
-.matrix-model-edit-dialog .warning-icon {
+.matrix-model-edit-dialog .info-icon {
   font-size: 12px !important;
   margin-top: 2px !important;
-  color: #d97706 !important;
+  color: #2563eb !important;
   flex-shrink: 0 !important;
+}
+
+.dark .matrix-model-edit-dialog .info-icon {
+  color: #60a5fa !important;
 }
 
 .matrix-model-edit-dialog .warning-title {
@@ -579,6 +658,23 @@ function handleCancelDialog(): void {
   border-color: #333333 !important;
 }
 
+.matrix-model-edit-dialog .model-item-row.is-row-hidden {
+  opacity: 0.65 !important;
+  background: #f8fafc !important;
+}
+
+.dark .matrix-model-edit-dialog .model-item-row.is-row-hidden {
+  background: #1e1e1e !important;
+}
+
+.matrix-model-edit-dialog .model-left-group {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
+
 .matrix-model-edit-dialog .model-label {
   font-size: 12px !important;
   font-weight: 700 !important;
@@ -586,6 +682,12 @@ function handleCancelDialog(): void {
   white-space: nowrap !important;
   flex-shrink: 0 !important;
   user-select: none !important;
+  cursor: pointer !important;
+}
+
+.matrix-model-edit-dialog .model-label.is-disabled-label {
+  color: var(--text-color-secondary, #94a3b8) !important;
+  text-decoration: line-through !important;
 }
 
 .dark .matrix-model-edit-dialog .model-label {

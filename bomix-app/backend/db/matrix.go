@@ -13,13 +13,65 @@ func CreateMatrixModel(db *gorm.DB, model *MatrixModel) error {
 	return db.Create(model).Error
 }
 
-// GetMatrixModels returns all matrix models for a revision
+// GetMatrixModels returns all matrix models for a revision (ordered by sort_order ASC)
 func GetMatrixModels(db *gorm.DB, revisionID int64) ([]MatrixModel, error) {
 	var models []MatrixModel
-	if err := db.Where("revision_id = ?", revisionID).Preload("Selections").Find(&models).Error; err != nil {
+	if err := db.Where("revision_id = ?", revisionID).Order("sort_order ASC").Preload("Selections").Find(&models).Error; err != nil {
 		return nil, err
 	}
 	return models, nil
+}
+
+// CountActiveMatrixModelsByRevisions 批次計算多個 BOM Revision 實際有效（Active）的 MatrixModel 數量。
+//
+// 有效（Active）Model 判定規則：
+//   - IsHidden == false
+//   - 且 (Qty > 0 或存在至少一筆 MatrixSelection 勾選紀錄)
+//
+// 參數：
+//   - db: GORM 資料庫實例
+//   - revisionIDs: 要查詢的 BOM Revision ID 清單
+//
+// 回傳：
+//   - map[int64]int: RevisionID -> 有效 Model 數量
+//   - error: 若查詢失敗則回傳錯誤
+func CountActiveMatrixModelsByRevisions(db *gorm.DB, revisionIDs []int64) (map[int64]int, error) {
+	counts := make(map[int64]int, len(revisionIDs))
+	if len(revisionIDs) == 0 {
+		return counts, nil
+	}
+
+	// 1. 查詢所有未隱藏的 MatrixModel
+	var models []MatrixModel
+	if err := db.Where("revision_id IN ? AND is_hidden = ?", revisionIDs, false).Find(&models).Error; err != nil {
+		return nil, fmt.Errorf("查詢未隱藏 MatrixModel 失敗: %w", err)
+	}
+	if len(models) == 0 {
+		return counts, nil
+	}
+
+	// 2. 查詢這些 Revision 中所有存在勾選紀錄的 model_id 集合
+	var modelIDsWithSel []int64
+	if err := db.Model(&MatrixSelection{}).
+		Where("revision_id IN ?", revisionIDs).
+		Distinct("model_id").
+		Pluck("model_id", &modelIDsWithSel).Error; err != nil {
+		return nil, fmt.Errorf("查詢 MatrixSelection 關聯 ModelID 失敗: %w", err)
+	}
+
+	hasSelMap := make(map[int64]bool, len(modelIDsWithSel))
+	for _, mid := range modelIDsWithSel {
+		hasSelMap[mid] = true
+	}
+
+	// 3. 統計各 Revision 中符合 Active 條件（!IsHidden && (Qty > 0 || hasSelection)）的 Model 數
+	for _, m := range models {
+		if !m.IsHidden && (m.Qty > 0 || hasSelMap[m.ID]) {
+			counts[m.RevisionID]++
+		}
+	}
+
+	return counts, nil
 }
 
 // GetMatrixModel returns a matrix model by ID
@@ -121,10 +173,12 @@ func DeleteInvalidSelections(db *gorm.DB, revisionID int64, removedMainMaterialI
 //   - error: 若資料庫操作失敗則回傳錯誤
 func UpsertMatrixSelection(db *gorm.DB, revisionID, modelID, mainMaterialID, selectedMaterialID int64) error {
 	return db.Transaction(func(tx *gorm.DB) error {
-		// 若 modelID == 0，尋找或建立預設 MatrixModel
+		// 若 modelID == 0，優先尋找未隱藏的第一個 MatrixModel；若不存在則建立預設 Model A
 		if modelID == 0 {
 			var m MatrixModel
-			if err := tx.Where("revision_id = ?", revisionID).Order("sort_order ASC").First(&m).Error; err == nil {
+			if err := tx.Where("revision_id = ? AND is_hidden = ?", revisionID, false).Order("sort_order ASC").First(&m).Error; err == nil {
+				modelID = m.ID
+			} else if err2 := tx.Where("revision_id = ?", revisionID).Order("sort_order ASC").First(&m).Error; err2 == nil {
 				modelID = m.ID
 			} else {
 				m = MatrixModel{
@@ -132,6 +186,7 @@ func UpsertMatrixSelection(db *gorm.DB, revisionID, modelID, mainMaterialID, sel
 					SortOrder:  0,
 					ModelName:  "Default",
 					Qty:        1,
+					IsHidden:   false,
 				}
 				if err := tx.Create(&m).Error; err != nil {
 					return fmt.Errorf("建立預設 MatrixModel 失敗: %w", err)
@@ -148,6 +203,7 @@ func UpsertMatrixSelection(db *gorm.DB, revisionID, modelID, mainMaterialID, sel
 //
 // 若指定 (revisionID, sortOrder) 之 MatrixModel 尚不存在，將自動建立對應之 MatrixModel，
 // 徹底避免跨 Model 操作時錯位回退至第 0 個 Model 的問題。
+// 若該 MatrixModel 原本處於隱藏狀態且使用者新增勾選，則自動解除隱藏。
 //
 // 參數：
 //   - db: GORM 資料庫實例
@@ -162,7 +218,12 @@ func UpsertMatrixModelSelection(db *gorm.DB, revisionID int64, sortOrder int, ma
 	return db.Transaction(func(tx *gorm.DB) error {
 		var m MatrixModel
 		if err := tx.Where("revision_id = ? AND sort_order = ?", revisionID, sortOrder).First(&m).Error; err == nil {
-			// 找到既有之 MatrixModel
+			// 找到既有之 MatrixModel；若原本隱藏且本次執行勾選，則自動啟用
+			if m.IsHidden && selectedMaterialID > 0 {
+				if err := tx.Model(&MatrixModel{}).Where("id = ?", m.ID).Update("is_hidden", false).Error; err != nil {
+					return fmt.Errorf("解除隱藏 MatrixModel (ID=%d) 失敗: %w", m.ID, err)
+				}
+			}
 		} else {
 			// 不存在則依據 sortOrder 自動建立
 			alias := getModelOrderAlias(sortOrder)
@@ -171,6 +232,7 @@ func UpsertMatrixModelSelection(db *gorm.DB, revisionID int64, sortOrder int, ma
 				SortOrder:  sortOrder,
 				ModelName:  fmt.Sprintf("Model %s", alias),
 				Qty:        1,
+				IsHidden:   false,
 			}
 			if err := tx.Create(&m).Error; err != nil {
 				return fmt.Errorf("建立 MatrixModel (SortOrder=%d) 失敗: %w", sortOrder, err)
@@ -292,23 +354,23 @@ func ImportMatrixSelections(db *gorm.DB, sourceRevisionID, targetRevisionID int6
 		return stats, nil
 	}
 
-	// 建立哪些 model 有 selection 的快速查找 set，計算有效 model 數
+	// 建立哪些 model 有 selection 的快速查找 set，計算有效（未隱藏）model 數
 	modelHasSelection := make(map[int64]bool, len(sourceSelectionsAll))
 	for _, sel := range sourceSelectionsAll {
 		modelHasSelection[sel.ModelID] = true
 	}
 	for _, m := range sourceModels {
-		if m.Qty > 0 || modelHasSelection[m.ID] {
+		if !m.IsHidden && (m.Qty > 0 || modelHasSelection[m.ID]) {
 			stats.SourceModelCount++
 		}
 	}
-	// 若無 qty>0 且無 selection 的 model，但 sourceModels 存在，則以總 model 數作為統計
+	// 若無未隱藏且有資料的 model，但 sourceModels 存在，則以總 model 數作為統計
 	if stats.SourceModelCount == 0 {
 		stats.SourceModelCount = len(sourceModels)
 	}
 
 	if lg != nil {
-		lg.Debug(fmt.Sprintf("[ImportMatrix] Source Revision ID=%d: 共 %d 個 Model，%d 筆 Selection",
+		lg.Debug(fmt.Sprintf("[ImportMatrix] Source Revision ID=%d: 共 %d 個有效 Model，%d 筆 Selection",
 			sourceRevisionID, stats.SourceModelCount, len(sourceSelectionsAll)))
 	}
 
@@ -322,7 +384,7 @@ func ImportMatrixSelections(db *gorm.DB, sourceRevisionID, targetRevisionID int6
 			return fmt.Errorf("清除 target MatrixModel 失敗: %w", err)
 		}
 
-		// ─── Step 4：複製 MatrixModel 結構至 Target（維持 SortOrder）───────
+		// ─── Step 4：複製 MatrixModel 結構至 Target（維持 SortOrder 與 IsHidden）───
 		sourceModelIDToTargetID := make(map[int64]int64, len(sourceModels))
 		for _, sm := range sourceModels {
 			newModel := MatrixModel{
@@ -330,6 +392,7 @@ func ImportMatrixSelections(db *gorm.DB, sourceRevisionID, targetRevisionID int6
 				SortOrder:  sm.SortOrder,
 				ModelName:  sm.ModelName,
 				Qty:        sm.Qty,
+				IsHidden:   sm.IsHidden,
 			}
 			if err := tx.Create(&newModel).Error; err != nil {
 				return fmt.Errorf("建立 target MatrixModel (SortOrder=%d) 失敗: %w", sm.SortOrder, err)
@@ -446,17 +509,19 @@ type MatrixModelInput struct {
 	SortOrder int    `json:"sort_order"`
 	ModelName string `json:"model_name"`
 	Qty       int    `json:"qty"`
+	IsHidden  bool   `json:"is_hidden"`
 }
 
-// SaveRevisionMatrixModels 批次更新指定 Revision 的 MatrixModel 列表（支援新增、修改、刪除多餘 Model）。
+// SaveRevisionMatrixModels 批次更新指定 Revision 的 MatrixModel 列表（支援稀疏 SortOrder、新增、修改、啟用與隱藏）。
 //
 // 行為：
 //  1. 查詢該 Revision 當前所有 MatrixModel。
-//  2. 根據傳入的 models 清單（按 SortOrder）：
-//     - 若 DB 已存在相同 SortOrder 的 Model：更新 ModelName 與 Qty（保留原有 ID 與其關聯之 Selections）。
-//     - 若 DB 不存在該 SortOrder：建立新的 MatrixModel（初始無 Selections）。
-//  3. 若 DB 中存在 SortOrder 超過傳入清單的 Model（即使用者減少了 Model 數量）：
-//     - 刪除這些多餘的 MatrixModel，其關聯之 MatrixSelection 會一併由外鍵級聯刪除或明確刪除。
+//  2. 根據傳入的 models 清單（依 input.SortOrder 精準對應）：
+//     - 若 DB 已存在相同 SortOrder 的 Model：更新 ModelName、Qty 與 IsHidden（保留原有 ID 與其關聯之 Selections，隱藏時亦不刪除舊勾選）。
+//     - 若 DB 不存在該 SortOrder：僅當 !input.IsHidden（明確啟用）時建立新的 MatrixModel；若本身隱藏且 DB 無紀錄則不建立空列。
+//  3. 若 DB 中存在未包含於傳入清單的既有 Model：
+//     - 若該 Model 底下有勾選紀錄（MatrixSelection），將其設為 IsHidden = true 以保留歷史勾選，不予刪除。
+//     - 若該 Model 底下無任何勾選紀錄，則清理刪除該空 Model 紀錄。
 //  4. 所有操作於 GORM Transaction 內執行以維護資料一致性。
 //
 // 參數：
@@ -500,20 +565,22 @@ func SaveRevisionMatrixModels(db *gorm.DB, revisionID int64, models []MatrixMode
 			}
 
 			if existM, ok := existingByOrder[sortOrder]; ok {
-				// 更新現有 model (保留既有 ID 與 Selections)
+				// 更新現有 model (保留既有 ID 與 Selections，隱藏時亦不刪除勾選)
 				if err := tx.Model(&MatrixModel{}).Where("id = ?", existM.ID).Updates(map[string]any{
 					"model_name": modelName,
 					"qty":        qty,
+					"is_hidden":  input.IsHidden,
 				}).Error; err != nil {
 					return fmt.Errorf("更新 MatrixModel ID=%d 失敗: %w", existM.ID, err)
 				}
-			} else {
-				// 新增 model
+			} else if !input.IsHidden {
+				// 僅對明確啟用（非隱藏）的 SortOrder 建立新紀錄，避免為空白未用機種建立冗餘資料
 				newM := MatrixModel{
 					RevisionID: revisionID,
 					SortOrder:  sortOrder,
 					ModelName:  modelName,
 					Qty:        qty,
+					IsHidden:   false,
 				}
 				if err := tx.Create(&newM).Error; err != nil {
 					return fmt.Errorf("建立 MatrixModel (SortOrder=%d) 失敗: %w", sortOrder, err)
@@ -521,22 +588,49 @@ func SaveRevisionMatrixModels(db *gorm.DB, revisionID int64, models []MatrixMode
 			}
 		}
 
-		// 3. 刪除未保留的多餘 models (減少 model 數量時觸發)
-		var toDeleteIDs []int64
+		// 3. 處理未包含在傳入清單中的既有 models：
+		//    - 若有歷史 MatrixSelection，改為標記 IsHidden=true 以保留勾選紀錄
+		//    - 若無任何 MatrixSelection，則直接刪除空 Model
+		var omittedIDs []int64
 		for _, m := range existing {
 			if !keptOrders[m.SortOrder] {
-				toDeleteIDs = append(toDeleteIDs, m.ID)
+				omittedIDs = append(omittedIDs, m.ID)
 			}
 		}
 
-		if len(toDeleteIDs) > 0 {
-			// 先刪除關聯的 MatrixSelection (清空該 model 下的勾選狀態)
-			if err := tx.Where("model_id IN ?", toDeleteIDs).Delete(&MatrixSelection{}).Error; err != nil {
-				return fmt.Errorf("刪除過期 MatrixSelection 失敗: %w", err)
+		if len(omittedIDs) > 0 {
+			var modelIDsWithSel []int64
+			if err := tx.Model(&MatrixSelection{}).
+				Where("model_id IN ?", omittedIDs).
+				Distinct("model_id").
+				Pluck("model_id", &modelIDsWithSel).Error; err != nil {
+				return fmt.Errorf("檢查待處理 MatrixModel 勾選紀錄失敗: %w", err)
 			}
-			// 再刪除 MatrixModel
-			if err := tx.Where("id IN ?", toDeleteIDs).Delete(&MatrixModel{}).Error; err != nil {
-				return fmt.Errorf("刪除過期 MatrixModel 失敗: %w", err)
+
+			hasSel := make(map[int64]bool, len(modelIDsWithSel))
+			for _, id := range modelIDsWithSel {
+				hasSel[id] = true
+			}
+
+			var toHideIDs []int64
+			var toDeleteIDs []int64
+			for _, id := range omittedIDs {
+				if hasSel[id] {
+					toHideIDs = append(toHideIDs, id)
+				} else {
+					toDeleteIDs = append(toDeleteIDs, id)
+				}
+			}
+
+			if len(toHideIDs) > 0 {
+				if err := tx.Model(&MatrixModel{}).Where("id IN ?", toHideIDs).Update("is_hidden", true).Error; err != nil {
+					return fmt.Errorf("隱藏保留既有 MatrixModel 失敗: %w", err)
+				}
+			}
+			if len(toDeleteIDs) > 0 {
+				if err := tx.Where("id IN ?", toDeleteIDs).Delete(&MatrixModel{}).Error; err != nil {
+					return fmt.Errorf("刪除未使用 MatrixModel 失敗: %w", err)
+				}
 			}
 		}
 

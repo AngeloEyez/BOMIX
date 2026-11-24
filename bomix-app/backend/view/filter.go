@@ -177,6 +177,10 @@ func hasAnyMatrixSelection(part ViewPartGroup, revisionIDs []int64) bool {
 	}
 
 	for _, sel := range part.Selections {
+		// 忽略已隱藏 Model 的歷史勾選，避免已隱藏的勾選將非 CCL 物料納入匯出或視圖過濾
+		if sel.IsHidden {
+			continue
+		}
 		if len(targetRevMap) > 0 && !targetRevMap[sel.RevisionID] {
 			continue
 		}

@@ -75,6 +75,9 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 				rev.ModelQtyByOrder[k] = v
 			}
 		}
+		if len(r0.ActiveModelOrders) > 0 {
+			rev.ActiveModelOrders = append([]int(nil), r0.ActiveModelOrders...)
+		}
 	} else if options.Description != "" {
 		rev.ProjectCode = options.Description
 	}
@@ -113,20 +116,7 @@ func (w *WriterImpl) exportMatrix(options ExportOptions) ([]string, error) {
 	// 8.2.4 - Dynamic Model column generation (minimum 7 models)
 	modelStartCol := 10 // K
 	minModelCount := 7
-	actualModelCount := len(rev.ModelQty)
-	if len(rev.ModelQtyByOrder) > actualModelCount {
-		actualModelCount = len(rev.ModelQtyByOrder)
-	}
-	for _, p := range options.PartData {
-		for sortOrder, selectedPN := range p.SelectionsByOrder {
-			if selectedPN != "" && sortOrder+1 > actualModelCount {
-				actualModelCount = sortOrder + 1
-			}
-		}
-	}
-	if actualModelCount < minModelCount {
-		actualModelCount = minModelCount
-	}
+	actualModelCount := computeMatrixModelCount(rev, options.PartData, minModelCount)
 
 	// Ensure SMD, PTH, BOTTOM sheets exist, falling back to copying SMD if PTH/BOTTOM missing
 	sheets, err := w.ensureMatrixSheets(f)
@@ -447,20 +437,7 @@ func (w *WriterImpl) exportMatrixDetailed(options ExportOptions, rev RevisionDat
 	// 8.2.4 - Dynamic Model column generation (minimum 7 models)
 	modelStartCol := 10 // K
 	minModelCount := 7
-	actualModelCount := len(rev.ModelQty)
-	if len(rev.ModelQtyByOrder) > actualModelCount {
-		actualModelCount = len(rev.ModelQtyByOrder)
-	}
-	for _, p := range parts {
-		for sortOrder, selectedPN := range p.SelectionsByOrder {
-			if selectedPN != "" && sortOrder+1 > actualModelCount {
-				actualModelCount = sortOrder + 1
-			}
-		}
-	}
-	if actualModelCount < minModelCount {
-		actualModelCount = minModelCount
-	}
+	actualModelCount := computeMatrixModelCount(rev, parts, minModelCount)
 
 	// Ensure SMD, PTH, BOTTOM sheets exist, falling back to copying SMD if PTH/BOTTOM missing
 	sheets, err := w.ensureMatrixSheets(f)
@@ -872,15 +849,86 @@ func getOrderedModelNames(modelQtyMap map[string]int) []string {
 	return names
 }
 
-// resolveModelQty 彈性獲取第 index 個 Model 的 Qty (優先依據 SortOrder 索引)
-func resolveModelQty(rev RevisionData, index int, orderedNames []string) int {
-	if q, ok := rev.ModelQtyByOrder[index]; ok && q > 0 {
-		return q
+// computeMatrixModelCount 計算 Matrix BOM 匯出時 K 欄起算需展開的總 Model 欄位數。
+// 以各來源中最大的有效 SortOrder + 1 為準，確保稀疏 Model（例如從 Model C 或 Model H 開始）
+// 均能正確輸出於對應的絕對欄位位置，且保底不少於 minModelCount（預設 7 欄 K~Q）。
+func computeMatrixModelCount(rev RevisionData, parts []PartData, minModelCount int) int {
+	actualModelCount := len(rev.ModelQty)
+	for _, order := range rev.ActiveModelOrders {
+		if order+1 > actualModelCount {
+			actualModelCount = order + 1
+		}
+	}
+	for sortOrder, qty := range rev.ModelQtyByOrder {
+		if qty > 0 && sortOrder+1 > actualModelCount {
+			actualModelCount = sortOrder + 1
+		}
+	}
+	for name, qty := range rev.ModelQty {
+		if qty > 0 {
+			if order, ok := parseModelAliasToSortOrder(name); ok && order+1 > actualModelCount {
+				actualModelCount = order + 1
+			}
+		}
+	}
+	for _, p := range parts {
+		if revOrderMap, ok := p.SelectionsByRevAndOrder[rev.ID]; ok {
+			for sortOrder, selectedPN := range revOrderMap {
+				if strings.TrimSpace(selectedPN) != "" && sortOrder+1 > actualModelCount {
+					actualModelCount = sortOrder + 1
+				}
+			}
+		}
+		if revMatMap, ok := p.SelectionsByRevAndMaterial[rev.ID]; ok {
+			for sortOrder, mat := range revMatMap {
+				if strings.TrimSpace(mat) != "" && sortOrder+1 > actualModelCount {
+					actualModelCount = sortOrder + 1
+				}
+			}
+		}
+		for sortOrder, selectedPN := range p.SelectionsByOrder {
+			if strings.TrimSpace(selectedPN) != "" && sortOrder+1 > actualModelCount {
+				actualModelCount = sortOrder + 1
+			}
+		}
+		for sortOrder, mat := range p.SelectionsByMaterialByOrder {
+			if strings.TrimSpace(mat) != "" && sortOrder+1 > actualModelCount {
+				actualModelCount = sortOrder + 1
+			}
+		}
+		for sortOrder, isSel := range p.MainSelectionsByOrder {
+			if isSel && sortOrder+1 > actualModelCount {
+				actualModelCount = sortOrder + 1
+			}
+		}
+		for _, ss := range p.SecondSources {
+			for sortOrder, isSel := range ss.SelectionsByOrder {
+				if isSel && sortOrder+1 > actualModelCount {
+					actualModelCount = sortOrder + 1
+				}
+			}
+		}
+	}
+	if actualModelCount < minModelCount {
+		actualModelCount = minModelCount
+	}
+	return actualModelCount
+}
+
+// resolveModelQty 精準獲取第 index 個 Model (0-based SortOrder) 的打件數量 Qty。
+// 若已提供 ModelQtyByOrder 或 ActiveModelOrders，嚴格依 SortOrder 索引查詢而不降級，
+// 避免稀疏機種（如僅啟用 Model C）的數量錯位填入 Model A。
+func resolveModelQty(rev RevisionData, index int, _ []string) int {
+	if len(rev.ModelQtyByOrder) > 0 || len(rev.ActiveModelOrders) > 0 {
+		if q, ok := rev.ModelQtyByOrder[index]; ok && q > 0 {
+			return q
+		}
+		return 0
 	}
 	if len(rev.ModelQty) == 0 {
 		return 0
 	}
-	alias := fmt.Sprintf("%c", 'A'+index)
+	alias := getColName(index)
 	if q, ok := rev.ModelQty[alias]; ok && q > 0 {
 		return q
 	}
@@ -891,11 +939,6 @@ func resolveModelQty(rev RevisionData, index int, orderedNames []string) int {
 	nameWithNum := fmt.Sprintf("Model %d", index+1)
 	if q, ok := rev.ModelQty[nameWithNum]; ok && q > 0 {
 		return q
-	}
-	if index < len(orderedNames) {
-		if q, ok := rev.ModelQty[orderedNames[index]]; ok && q > 0 {
-			return q
-		}
 	}
 	return 0
 }
@@ -959,21 +1002,26 @@ func isSecondSourceSelected(ss SecondSourceData, part PartData, revID string, in
 	return false
 }
 
-// resolveSelectedPN 彈性獲取第 index 個 Model 在 Selections 中的選取 PartPN (優先依據 SortOrder 索引)
-func resolveSelectedPN(part PartData, revID string, index int, orderedNames []string) string {
+// resolveSelectedPN 精準獲取第 index 個 Model (0-based SortOrder) 在 Selections 中的選取 SupplierPN。
+// 若已提供依 SortOrder 索引的精確映射（SelectionsByRevAndOrder 或 SelectionsByOrder），
+// 嚴格依 index 查詢而不降級至名稱排序順移，避免稀疏機種（如 Model C）錯位勾選到 Model A。
+func resolveSelectedPN(part PartData, revID string, index int, _ []string) string {
 	if revSelections, ok := part.SelectionsByRevAndOrder[revID]; ok {
 		if pn, exists := revSelections[index]; exists && pn != "" {
 			return pn
 		}
+		return ""
 	}
-
-	if pn, ok := part.SelectionsByOrder[index]; ok && pn != "" {
-		return pn
+	if len(part.SelectionsByOrder) > 0 {
+		if pn, ok := part.SelectionsByOrder[index]; ok && pn != "" {
+			return pn
+		}
+		return ""
 	}
 	if len(part.Selections) == 0 {
 		return ""
 	}
-	alias := fmt.Sprintf("%c", 'A'+index)
+	alias := getColName(index)
 	if pn, ok := part.Selections[alias]; ok && pn != "" {
 		return pn
 	}
@@ -984,11 +1032,6 @@ func resolveSelectedPN(part PartData, revID string, index int, orderedNames []st
 	nameWithNum := fmt.Sprintf("Model %d", index+1)
 	if pn, ok := part.Selections[nameWithNum]; ok && pn != "" {
 		return pn
-	}
-	if index < len(orderedNames) {
-		if pn, ok := part.Selections[orderedNames[index]]; ok && pn != "" {
-			return pn
-		}
 	}
 	return ""
 }

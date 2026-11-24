@@ -1125,6 +1125,82 @@ func TestMergeRevisions_AllProtoAcrossRevisions(t *testing.T) {
 	})
 }
 
+// TestSparseModelCAndHiddenModelA_ViewBehavior 驗證稀疏 Model C 與隱藏 Model A 在 View 層與 CCL 過濾的行為
+func TestSparseModelCAndHiddenModelA_ViewBehavior(t *testing.T) {
+	svc := NewService(nil, nil)
+	filter := NewFilter()
+
+	rawData := map[int64]*rawRevisionData{
+		1: {
+			revision: db.BomRevision{ID: 1, Phase: "SI", Version: "0.1"},
+			project:  db.Project{ID: 1, Code: "PROJ_C"},
+			models: []db.MatrixModel{
+				{ID: 10, RevisionID: 1, SortOrder: 0, ModelName: "Model A", Qty: 10, IsHidden: true},
+				{ID: 12, RevisionID: 1, SortOrder: 2, ModelName: "Model C", Qty: 25, IsHidden: false},
+			},
+			components: []db.RevisionComponent{
+				{ID: 101, RevisionID: 1, MaterialID: 1001, Role: "M", Item: "1"}, // 非 CCL，僅於隱藏的 Model A 勾選
+				{ID: 102, RevisionID: 1, MaterialID: 1002, Role: "M", Item: "2"}, // 非 CCL，於啟用的 Model C 勾選
+			},
+			partLocations: []db.PartLocation{
+				{ID: 1, ComponentID: 101, Location: "R1", Type: "SMD", BomStatus: "I", CCL: false},
+				{ID: 2, ComponentID: 102, Location: "R2", Type: "SMD", BomStatus: "I", CCL: false},
+			},
+			selections: []db.MatrixSelection{
+				{ID: 1, RevisionID: 1, ModelID: 10, ComponentID: 101, MainMaterialID: 1001, SelectedMaterialID: 1001},
+				{ID: 2, RevisionID: 1, ModelID: 12, ComponentID: 102, MainMaterialID: 1002, SelectedMaterialID: 1002},
+			},
+		},
+	}
+
+	// 1. 驗證 ViewRevision：ActiveModelOrders 僅含 [2] (Model C)，ModelQtyByOrder 僅含 {2: 25}，Models 包含兩筆含 IsHidden 狀態
+	viewRevs := buildViewRevisions([]int64{1}, rawData)
+	if len(viewRevs) != 1 {
+		t.Fatalf("期望 1 筆 ViewRevision，實際得到 %d", len(viewRevs))
+	}
+	vr := viewRevs[0]
+	if len(vr.ActiveModelOrders) != 1 || vr.ActiveModelOrders[0] != 2 {
+		t.Errorf("期望 ActiveModelOrders=[2]，實際得到 %v", vr.ActiveModelOrders)
+	}
+	if vr.ModelQtyByOrder[2] != 25 || vr.ModelQtyByOrder[0] != 0 {
+		t.Errorf("期望 ModelQtyByOrder 僅含 2->25，實際得到 %v", vr.ModelQtyByOrder)
+	}
+	if len(vr.Models) != 2 || !vr.Models[0].IsHidden || !vr.Models[0].HasSelection || vr.Models[1].IsHidden {
+		t.Errorf("Models 清單應完整保留隱藏狀態與歷史勾選旗標，實際得到 %+v", vr.Models)
+	}
+
+	// 2. 驗證 mergeRevisions：隱藏 Model A 的勾選不得進入 MainSelectionsByOrder，但仍保留於 Selections (IsHidden=true) 供唯讀檢視
+	groups := svc.mergeRevisions(rawData, ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewAll})
+	if len(groups) != 2 {
+		t.Fatalf("期望 2 個物料群組，實際得到 %d", len(groups))
+	}
+	for _, g := range groups {
+		if g.MaterialID == 1001 {
+			if g.MainSelectionsByOrder[0] {
+				t.Errorf("隱藏 Model A 的勾選不應出現在 MainSelectionsByOrder")
+			}
+			foundHiddenA := false
+			for _, sel := range g.Selections {
+				if sel.SortOrder == 0 && sel.IsHidden && sel.SelectedMaterialID == 1001 {
+					foundHiddenA = true
+				}
+			}
+			if !foundHiddenA {
+				t.Errorf("Selections 應保留隱藏 Model A 之 IsHidden=true 紀錄供前端唯讀檢視")
+			}
+		}
+		if g.MaterialID == 1002 && !g.MainSelectionsByOrder[2] {
+			t.Errorf("啟用中的 Model C (SortOrder=2) 應標記於 MainSelectionsByOrder[2]")
+		}
+	}
+
+	// 3. 驗證 CCL 過濾：僅在隱藏 Model A 勾選的非 CCL 物料 (1001) 不得被納入 CCL/匯出，僅保留在啟用 Model C 勾選的 (1002)
+	cclFiltered := filter.Apply(groups, ViewQuery{RevisionIDs: []int64{1}, ViewType: ViewCCL})
+	if len(cclFiltered) != 1 || cclFiltered[0].MaterialID != 1002 {
+		t.Errorf("ViewCCL 過濾應排除僅於隱藏 Model A 勾選的非 CCL 物料，僅保留 MaterialID=1002，實際得到 %+v", cclFiltered)
+	}
+}
+
 
 
 

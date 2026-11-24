@@ -21,6 +21,16 @@ export interface ViewModelItem {
      * 打件數量
      */
     "qty": number;
+
+    /**
+     * 是否隱藏/停用
+     */
+    "is_hidden": boolean;
+
+    /**
+     * 該 Model 底下是否存在歷史勾選紀錄
+     */
+    "has_selection": boolean;
 }
 
 /**
@@ -43,6 +53,11 @@ export interface ViewModelSelection {
     "sort_order": number;
     "model_name": string;
     "model_qty": number;
+
+    /**
+     * 所屬 Model 是否為隱藏狀態（隱藏時不納入匯出與一般顯示，僅供全隱藏保底唯讀檢視）
+     */
+    "is_hidden"?: boolean;
     "selected_material_id"?: number;
 
     /**
@@ -209,17 +224,22 @@ export interface ViewRevision {
     "model_names": string[] | null;
 
     /**
-     * Model 名稱 -> 打件數量
+     * Model 名稱 -> 打件數量（僅包含有效未隱藏機種）
      */
     "model_qty": { [_ in string]?: number } | null;
 
     /**
-     * Model 排序索引 (0,1,2...) -> 打件數量
+     * Model 排序索引 (0,1,2...) -> 打件數量（僅包含有效未隱藏機種）
      */
     "model_qty_by_order": { [_ in `${number}`]?: number } | null;
 
     /**
-     * 該 Revision 實際包含之 Model 列表 (依 SortOrder 排序)
+     * 該 Revision 實際啟用（未隱藏且有數量或勾選）的 SortOrder 升冪列表
+     */
+    "active_model_orders": number[] | null;
+
+    /**
+     * 該 Revision 資料庫中所有 Model 列表（含隱藏機種，依 SortOrder 排序）
      */
     "models": ViewModelItem[] | null;
 }

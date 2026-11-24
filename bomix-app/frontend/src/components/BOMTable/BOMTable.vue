@@ -196,6 +196,7 @@
             <BOMMatrixCheckboxCell
               :is-available="isModelAvailableInRevision(slotProps.data, modelCol)"
               :is-selected="isModelSelectedInRevision(slotProps.data, modelCol)"
+              :disabled="modelCol.isReadOnly"
               @change="onMatrixModelSelectionChange(slotProps.data, modelCol)"
             />
           </template>
@@ -264,6 +265,7 @@
       :phase="modelEditPhase"
       :version="modelEditVersion"
       :initial-models="modelEditInitialModels"
+      :revision-models="modelEditRevisionModels"
       @saved="handleModelEditSaved"
     />
   </div>
@@ -286,7 +288,7 @@ import ContextMenu from 'primevue/contextmenu'
 import Button from 'primevue/button'
 
 import type { ViewPartGroup } from '../../services/api'
-import type { BOMDisplayRow, MatrixModelColumnInfo } from './types'
+import type { BOMDisplayRow, MatrixModelColumnInfo, RevisionModelItem } from './types'
 
 // 子組件
 import BOMToolbar from './components/BOMToolbar.vue'
@@ -613,6 +615,7 @@ const modelEditProjectCode = ref('')
 const modelEditPhase = ref('')
 const modelEditVersion = ref('')
 const modelEditInitialModels = ref<MatrixModelColumnInfo[]>([])
+const modelEditRevisionModels = ref<RevisionModelItem[]>([])
 
 /**
  * 點擊 Matrix Mode 表頭之 Model 雙行區域時開啟機種設定編輯對話框
@@ -624,10 +627,14 @@ function handleModelHeaderClick(col: MatrixModelColumnInfo): void {
   modelEditPhase.value = col.phase
   modelEditVersion.value = col.version
 
-  // 篩選屬於同一個 Revision 的所有 Model 欄位
+  // 篩選屬於同一個 Revision 的所有顯示中 Model 欄位
   modelEditInitialModels.value = matrixModelColumns.value.filter(
     (c) => c.revisionId === col.revisionId
   )
+  // 同時取得該 Revision 在資料庫中的所有 Model 記錄（含已隱藏者），供對話框呈現完整啟用/隱藏狀態
+  const targetRev = revisionColumns.value.find((r) => r.revisionId === col.revisionId)
+  modelEditRevisionModels.value = targetRev?.models ? [...targetRev.models] : []
+
   isModelEditDialogVisible.value = true
 }
 

@@ -53,9 +53,10 @@ type ViewSecondSource struct {
 type ViewModelSelection struct {
 	RevisionID         int64  `json:"revision_id"`
 	ModelID            int64  `json:"model_id,omitempty"` // MatrixModel.ID
-	SortOrder          int    `json:"sort_order"`        // 0-based 排序索引
+	SortOrder          int    `json:"sort_order"`         // 0-based 排序索引
 	ModelName          string `json:"model_name"`
 	ModelQty           int    `json:"model_qty"`
+	IsHidden           bool   `json:"is_hidden,omitempty"` // 所屬 Model 是否為隱藏狀態（隱藏時不納入匯出與一般顯示，僅供全隱藏保底唯讀檢視）
 	SelectedMaterialID int64  `json:"selected_material_id,omitempty"`
 	SelectedPN         string `json:"selected_pn"`       // 被選中的 SupplierPN（空字串=未勾選或尚未設定）
 	SelectedSupplier   string `json:"selected_supplier"` // 被選中的 Supplier（廠牌）
@@ -114,28 +115,31 @@ type ViewPartGroup struct {
 
 // ViewModelItem 代表 BOM Revision 底下單一 Matrix Model 的精簡資訊。
 type ViewModelItem struct {
-	ID        int64  `json:"id"`
-	SortOrder int    `json:"sort_order"` // 0-based 排序索引 (0, 1, 2...)
-	ModelName string `json:"model_name"` // Model 名稱
-	Qty       int    `json:"qty"`        // 打件數量
+	ID           int64  `json:"id"`
+	SortOrder    int    `json:"sort_order"`    // 0-based 排序索引 (0, 1, 2...)
+	ModelName    string `json:"model_name"`    // Model 名稱
+	Qty          int    `json:"qty"`           // 打件數量
+	IsHidden     bool   `json:"is_hidden"`     // 是否隱藏/停用
+	HasSelection bool   `json:"has_selection"` // 該 Model 底下是否存在歷史勾選紀錄
 }
 
 // ViewRevision BOM Revision 的元資料摘要，附帶在查詢結果中。
 type ViewRevision struct {
-	ID               int64           `json:"id"`
-	ProjectCode      string          `json:"project_code"`
-	Phase            string          `json:"phase"`
-	Version          string          `json:"version"`
-	Description      string          `json:"description"`
-	SchematicVersion string          `json:"schematic_version"`
-	PCBVersion       string          `json:"pcb_version"`
-	PCAPN            string          `json:"pca_pn"`
-	Date             string          `json:"date"`
-	SourceFile       string          `json:"source_file"`
-	ModelNames       []string        `json:"model_names"`
-	ModelQty         map[string]int  `json:"model_qty"`          // Model 名稱 -> 打件數量
-	ModelQtyByOrder  map[int]int     `json:"model_qty_by_order"` // Model 排序索引 (0,1,2...) -> 打件數量
-	Models           []ViewModelItem `json:"models"`             // 該 Revision 實際包含之 Model 列表 (依 SortOrder 排序)
+	ID                int64           `json:"id"`
+	ProjectCode       string          `json:"project_code"`
+	Phase             string          `json:"phase"`
+	Version           string          `json:"version"`
+	Description       string          `json:"description"`
+	SchematicVersion  string          `json:"schematic_version"`
+	PCBVersion        string          `json:"pcb_version"`
+	PCAPN             string          `json:"pca_pn"`
+	Date              string          `json:"date"`
+	SourceFile        string          `json:"source_file"`
+	ModelNames        []string        `json:"model_names"`
+	ModelQty          map[string]int  `json:"model_qty"`           // Model 名稱 -> 打件數量（僅包含有效未隱藏機種）
+	ModelQtyByOrder   map[int]int     `json:"model_qty_by_order"`  // Model 排序索引 (0,1,2...) -> 打件數量（僅包含有效未隱藏機種）
+	ActiveModelOrders []int           `json:"active_model_orders"` // 該 Revision 實際啟用（未隱藏且有數量或勾選）的 SortOrder 升冪列表
+	Models            []ViewModelItem `json:"models"`              // 該 Revision 資料庫中所有 Model 列表（含隱藏機種，依 SortOrder 排序）
 }
 
 // ViewResult 視圖查詢結果，是 Service.Query() 的回傳值。

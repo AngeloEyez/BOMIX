@@ -429,6 +429,8 @@ export interface MatrixModelInput {
   model_name: string
   /** Model 打件數量 */
   qty: number
+  /** 是否隱藏/停用（隱藏時保留勾選紀錄但不顯示與匯出） */
+  is_hidden?: boolean
 }
 
 /**

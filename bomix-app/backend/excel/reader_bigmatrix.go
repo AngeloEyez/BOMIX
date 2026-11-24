@@ -104,7 +104,8 @@ type BOMConfig struct {
 type ModelConfig struct {
 	ModelName string
 	Qty       int
-	Column    int // Column index within the BOM
+	Column    int // Column offset within the BOM section (0-based)
+	SortOrder int // Real 0-based model SortOrder parsed from Row 4 alias (e.g. A->0, C->2)
 }
 
 // parseBOMConfigs 解析 BigMatrix 工作表中水平排列的多個 BOM 組態。
@@ -153,6 +154,7 @@ func (r *BigMatrixReader) parseBOMConfigs(f Workbook, sheetName string) ([]BOMCo
 		// 掃描以判斷此 BOM 區段包含幾個 Model 欄位。
 		var models []ModelConfig
 		colIdx := startCol
+		prevSortOrder := -1
 		for {
 			// 若非該 BOM 的第一欄，檢查是否遇到下一個 BOM 區段的開頭或 Notes 欄位。
 			if colIdx > startCol {
@@ -161,6 +163,7 @@ func (r *BigMatrixReader) parseBOMConfigs(f Workbook, sheetName string) ([]BOMCo
 				}
 				nextModelName, _ := f.GetCellValue(sheetName, colToCell(colIdx, 4))
 				nextModelName = strings.TrimSpace(nextModelName)
+				nextOrder, hasNextOrder := parseModelAliasToSortOrder(nextModelName)
 
 				nextProjVal, _ := f.GetCellValue(sheetName, colToCell(colIdx, 2))
 				nextProjCode := parseHeaderField(nextProjVal, "Product Code", "Project Code")
@@ -176,10 +179,12 @@ func (r *BigMatrixReader) parseBOMConfigs(f Workbook, sheetName string) ([]BOMCo
 				}
 
 				// 判斷是否跨入下一個 BOM 區段：
-				// 1. Row 4 的名稱為 "A" (全新品號 BOM 開始)
+				// 1. Row 4 代號所對應的 SortOrder 小於等於前一欄（如再次遇到 "A" 或下一個 BOM 從 "C" 重新開始）
 				// 2. 或是出現了與當前 Project Code / Phase / Version 不符的新表頭
 				isNextBOM := false
 				if strings.EqualFold(nextModelName, "A") {
+					isNextBOM = true
+				} else if hasNextOrder && prevSortOrder >= 0 && nextOrder <= prevSortOrder {
 					isNextBOM = true
 				} else if nextProjCode != "" && nextProjCode != projectCode {
 					isNextBOM = true
@@ -203,18 +208,27 @@ func (r *BigMatrixReader) parseBOMConfigs(f Workbook, sheetName string) ([]BOMCo
 			var qty int
 			fmt.Sscanf(qtyStr, "%d", &qty)
 
-			// 優先使用 Row 4 的 Model Name；若空白則按順序產生模型代號（A, B, C...）
+			// 優先使用 Row 4 的 Model Name 並解析其真實 SortOrder（如 "C" -> 2）；
+			// 若 Row 4 空白則按序延續前一個 SortOrder + 1
 			row4Name, _ := f.GetCellValue(sheetName, colToCell(colIdx, 4))
 			modelName := strings.TrimSpace(row4Name)
+			sortOrder := len(models)
+			if prevSortOrder >= 0 {
+				sortOrder = prevSortOrder + 1
+			}
 			if modelName == "" {
-				modelName = fmt.Sprintf("%c", 'A'+len(models))
+				modelName = getColName(sortOrder)
+			} else if parsedOrder, ok := parseModelAliasToSortOrder(modelName); ok {
+				sortOrder = parsedOrder
 			}
 
 			models = append(models, ModelConfig{
 				ModelName: modelName,
 				Qty:       qty,
 				Column:    colIdx - startCol,
+				SortOrder: sortOrder,
 			})
+			prevSortOrder = sortOrder
 
 			colIdx++
 
@@ -382,37 +396,79 @@ func (r *BigMatrixReader) parsePartsAndSelections(f Workbook, sheetName string, 
 	compMapByRev := make(map[int64]map[string]bigMatrixCompMatch, len(configs))
 	matMapByRev := make(map[int64]map[string]int64, len(configs))
 
-	// 在 Transaction 中清空舊 Selection/Model，依據 Excel 欄位資訊重新建立 MatrixModel，並載入 Components
+	// 在 Transaction 中依 Excel 出現之 Model SortOrder 進行精準更新：
+	// - Excel 中有出現的 Model：Upsert（設 IsHidden=false、更新 Qty 與 ModelName）並僅重置該 Model 的 Selections
+	// - 資料庫中既有但未出現在 Excel 中的 Model：自動標記為 IsHidden=true，保留其舊有 MatrixSelection 不刪除
 	if r.db != nil {
 		err = r.db.Transaction(func(tx *gorm.DB) error {
 			for _, config := range configs {
 				if config.RevisionID == 0 {
 					continue
 				}
-				// 1. 清空舊有 Selection
-				if err := tx.Where("revision_id = ?", config.RevisionID).Delete(&db.MatrixSelection{}).Error; err != nil {
-					return fmt.Errorf("清空 MatrixSelection 失敗 (revisionID=%d): %w", config.RevisionID, err)
+
+				// 1. 載入該 Revision 既有的所有 MatrixModel
+				var existingModels []db.MatrixModel
+				if err := tx.Where("revision_id = ?", config.RevisionID).Find(&existingModels).Error; err != nil {
+					return fmt.Errorf("載入既有 MatrixModel 失敗 (revisionID=%d): %w", config.RevisionID, err)
 				}
-				// 2. 清空舊有 MatrixModel
-				if err := tx.Where("revision_id = ?", config.RevisionID).Delete(&db.MatrixModel{}).Error; err != nil {
-					return fmt.Errorf("清空 MatrixModel 失敗 (revisionID=%d): %w", config.RevisionID, err)
+				existingByOrder := make(map[int]db.MatrixModel, len(existingModels))
+				for _, em := range existingModels {
+					existingByOrder[em.SortOrder] = em
 				}
 
-				// 3. 重建 MatrixModel
+				// 2. 針對本次 Excel 出現的 Model 依 SortOrder 進行 Upsert，並僅清除其對應的舊 Selection
 				modelIDMap := make(map[int]int64, len(config.Models))
+				importedOrders := make(map[int]bool, len(config.Models))
 				for idx, model := range config.Models {
-					modelObj := db.MatrixModel{
-						RevisionID: config.RevisionID,
-						SortOrder:  idx,
-						ModelName:  model.ModelName,
-						Qty:        model.Qty,
+					sortOrder := model.SortOrder
+					if sortOrder < 0 {
+						sortOrder = idx
 					}
-					if err := tx.Create(&modelObj).Error; err != nil {
-						return fmt.Errorf("建立 MatrixModel 失敗 (revisionID=%d, sortOrder=%d): %w", config.RevisionID, idx, err)
+					importedOrders[sortOrder] = true
+
+					if existM, ok := existingByOrder[sortOrder]; ok {
+						// 更新既有 Model 並啟用（IsHidden = false）
+						if err := tx.Model(&db.MatrixModel{}).Where("id = ?", existM.ID).Updates(map[string]any{
+							"model_name": model.ModelName,
+							"qty":        model.Qty,
+							"is_hidden":  false,
+						}).Error; err != nil {
+							return fmt.Errorf("更新 MatrixModel 失敗 (revisionID=%d, sortOrder=%d): %w", config.RevisionID, sortOrder, err)
+						}
+						// 僅清空此 Model 舊有 Selection，以準備寫入本次匯入的勾選結果
+						if err := tx.Where("revision_id = ? AND model_id = ?", config.RevisionID, existM.ID).Delete(&db.MatrixSelection{}).Error; err != nil {
+							return fmt.Errorf("清空 MatrixSelection 失敗 (revisionID=%d, modelID=%d): %w", config.RevisionID, existM.ID, err)
+						}
+						modelIDMap[idx] = existM.ID
+					} else {
+						// 建立新的 MatrixModel
+						modelObj := db.MatrixModel{
+							RevisionID: config.RevisionID,
+							SortOrder:  sortOrder,
+							ModelName:  model.ModelName,
+							Qty:        model.Qty,
+							IsHidden:   false,
+						}
+						if err := tx.Create(&modelObj).Error; err != nil {
+							return fmt.Errorf("建立 MatrixModel 失敗 (revisionID=%d, sortOrder=%d): %w", config.RevisionID, sortOrder, err)
+						}
+						modelIDMap[idx] = modelObj.ID
 					}
-					modelIDMap[idx] = modelObj.ID
 				}
 				revisionModelMap[config.RevisionID] = modelIDMap
+
+				// 3. 未出現在本次 BigMatrix Excel 中的既有 Model，自動設為隱藏（保留其歷史勾選紀錄）
+				var toHideIDs []int64
+				for _, em := range existingModels {
+					if !importedOrders[em.SortOrder] {
+						toHideIDs = append(toHideIDs, em.ID)
+					}
+				}
+				if len(toHideIDs) > 0 {
+					if err := tx.Model(&db.MatrixModel{}).Where("id IN ?", toHideIDs).Update("is_hidden", true).Error; err != nil {
+						return fmt.Errorf("標記未匯入 MatrixModel 為隱藏失敗 (revisionID=%d): %w", config.RevisionID, err)
+					}
+				}
 
 				// 4. 載入該 Revision 的所有既有 RevisionComponent 與關聯 Material
 				var comps []db.RevisionComponent

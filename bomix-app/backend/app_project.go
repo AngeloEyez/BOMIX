@@ -99,6 +99,15 @@ func (a *App) GetRevisions(projectID int64) ([]*BomRevision, error) {
 		return nil, fmt.Errorf("failed to get revisions: %w", err)
 	}
 
+	revIDs := make([]int64, len(revisions))
+	for i, r := range revisions {
+		revIDs[i] = r.ID
+	}
+	activeModelCounts, err := db.CountActiveMatrixModelsByRevisions(a.db, revIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count active matrix models: %w", err)
+	}
+
 	result := make([]*BomRevision, len(revisions))
 	for i, r := range revisions {
 		result[i] = &BomRevision{
@@ -113,7 +122,7 @@ func (a *App) GetRevisions(projectID int64) ([]*BomRevision, error) {
 			Date:             r.Date,
 			Mode:             r.Mode,
 			SourceFile:       r.SourceFile,
-			ModelCount:       len(r.MatrixModels),
+			ModelCount:       activeModelCounts[r.ID],
 			CreatedAt:        r.CreatedAt.Format(time.RFC3339),
 			UpdatedAt:        r.UpdatedAt.Format(time.RFC3339),
 		}
@@ -143,6 +152,11 @@ func (a *App) GetRevision(id int64) (*BomRevision, error) {
 		return nil, fmt.Errorf("failed to get revision: %w", err)
 	}
 
+	activeModelCounts, err := db.CountActiveMatrixModelsByRevisions(a.db, []int64{revision.ID})
+	if err != nil {
+		return nil, fmt.Errorf("failed to count active matrix models: %w", err)
+	}
+
 	return &BomRevision{
 		ID:               revision.ID,
 		ProjectID:        revision.ProjectID,
@@ -155,7 +169,7 @@ func (a *App) GetRevision(id int64) (*BomRevision, error) {
 		Date:             revision.Date,
 		Mode:             revision.Mode,
 		SourceFile:       revision.SourceFile,
-		ModelCount:       len(revision.MatrixModels),
+		ModelCount:       activeModelCounts[revision.ID],
 		CreatedAt:        revision.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:        revision.UpdatedAt.Format(time.RFC3339),
 	}, nil

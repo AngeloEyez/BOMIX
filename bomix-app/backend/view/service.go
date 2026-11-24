@@ -268,27 +268,52 @@ func buildViewRevisions(requestedIDs []int64, rawData map[int64]*rawRevisionData
 	return revisions
 }
 
+// isMatrixModelActive 判定單一 MatrixModel 是否為有效（Active）且應於表格與匯出顯示之機種。
+// 規則：未標記隱藏（!m.IsHidden），且「Qty > 0 或存在至少一筆 MatrixSelection 勾選紀錄」。
+func isMatrixModelActive(m db.MatrixModel, hasSelection bool) bool {
+	return !m.IsHidden && (m.Qty > 0 || hasSelection)
+}
+
 // createViewRevisionFromRaw 從 rawRevisionData 建立單一 ViewRevision 元資料物件。
 func createViewRevisionFromRaw(id int64, data *rawRevisionData) ViewRevision {
 	rev := data.revision
 
+	// 統計各 ModelID 是否存在歷史 MatrixSelection 勾選紀錄
+	modelHasSel := make(map[int64]bool, len(data.models))
+	for _, sel := range data.selections {
+		if sel.ModelID != 0 && sel.SelectedMaterialID != 0 {
+			modelHasSel[sel.ModelID] = true
+		}
+	}
+
 	modelNames := make([]string, 0, len(data.models))
 	modelQty := make(map[string]int, len(data.models))
 	modelQtyByOrder := make(map[int]int, len(data.models))
+	activeModelOrders := make([]int, 0, len(data.models))
 	modelItems := make([]ViewModelItem, 0, len(data.models))
 
 	for _, m := range data.models {
-		modelNames = append(modelNames, m.ModelName)
-		modelQty[m.ModelName] = m.Qty
-		modelQtyByOrder[m.SortOrder] = m.Qty
+		hasSel := modelHasSel[m.ID]
+		// Models 清單保留資料庫中所有機種（含已隱藏者），供前端機種設定對話框與全隱藏唯讀保底使用
 		modelItems = append(modelItems, ViewModelItem{
-			ID:        m.ID,
-			SortOrder: m.SortOrder,
-			ModelName: m.ModelName,
-			Qty:       m.Qty,
+			ID:           m.ID,
+			SortOrder:    m.SortOrder,
+			ModelName:    m.ModelName,
+			Qty:          m.Qty,
+			IsHidden:     m.IsHidden,
+			HasSelection: hasSel,
 		})
+
+		// 僅將有效（Active）機種納入 ModelNames、ModelQty、ModelQtyByOrder 與 ActiveModelOrders
+		if isMatrixModelActive(m, hasSel) {
+			modelNames = append(modelNames, m.ModelName)
+			modelQty[m.ModelName] = m.Qty
+			modelQtyByOrder[m.SortOrder] = m.Qty
+			activeModelOrders = append(activeModelOrders, m.SortOrder)
+		}
 	}
 	sort.Strings(modelNames)
+	sort.Ints(activeModelOrders)
 
 	// 依 SortOrder 由小至大穩定排序
 	sort.Slice(modelItems, func(i, j int) bool {
@@ -296,20 +321,21 @@ func createViewRevisionFromRaw(id int64, data *rawRevisionData) ViewRevision {
 	})
 
 	return ViewRevision{
-		ID:               id,
-		ProjectCode:      data.project.Code,
-		Phase:            rev.Phase,
-		Version:          rev.Version,
-		Description:      rev.Description,
-		SchematicVersion: rev.SchematicVersion,
-		PCBVersion:       rev.PCBVersion,
-		PCAPN:            rev.PCAPN,
-		Date:             rev.Date,
-		SourceFile:       rev.SourceFile,
-		ModelNames:       modelNames,
-		ModelQty:         modelQty,
-		ModelQtyByOrder:  modelQtyByOrder,
-		Models:           modelItems,
+		ID:                id,
+		ProjectCode:       data.project.Code,
+		Phase:             rev.Phase,
+		Version:           rev.Version,
+		Description:       rev.Description,
+		SchematicVersion:  rev.SchematicVersion,
+		PCBVersion:        rev.PCBVersion,
+		PCAPN:             rev.PCAPN,
+		Date:              rev.Date,
+		SourceFile:        rev.SourceFile,
+		ModelNames:        modelNames,
+		ModelQty:          modelQty,
+		ModelQtyByOrder:   modelQtyByOrder,
+		ActiveModelOrders: activeModelOrders,
+		Models:            modelItems,
 	}
 }
 
@@ -352,15 +378,17 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 	builders := make(map[string]*partGroupBuilder) // 主料 matGroupKey → builder
 	keyOrder := make([]string, 0)
 
-	// 建立 model ID → ModelName 與 ModelID → SortOrder 的全局映射（跨所有 revision）
+	// 建立 model ID → ModelName、SortOrder、Qty、IsHidden 的全局映射（跨所有 revision）
 	modelIDToName := make(map[int64]string)
 	modelIDToSortOrder := make(map[int64]int)
 	modelIDToQty := make(map[int64]int)
+	modelIDToHidden := make(map[int64]bool)
 	for _, data := range rawData {
 		for _, m := range data.models {
 			modelIDToName[m.ID] = m.ModelName
 			modelIDToSortOrder[m.ID] = m.SortOrder
 			modelIDToQty[m.ID] = m.Qty
+			modelIDToHidden[m.ID] = m.IsHidden
 		}
 	}
 
@@ -390,10 +418,13 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			allLocsByCompID[loc.ComponentID] = append(allLocsByCompID[loc.ComponentID], loc)
 		}
 
-		// 追蹤是否有 MatrixSelection
+		// 追蹤是否有未隱藏的有效 MatrixSelection
 		hasSelectionByCompID := make(map[int64]bool)
 		hasSelectionByMaterialID := make(map[int64]bool)
 		for _, sel := range data.selections {
+			if modelIDToHidden[sel.ModelID] {
+				continue
+			}
 			if sel.ComponentID != 0 {
 				hasSelectionByCompID[sel.ComponentID] = true
 			}
@@ -402,7 +433,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			}
 		}
 
-		// 找出有效主料：具有打件位置（無論上件或不上件）或具有 Matrix Selection 的主料
+		// 找出有效主料：具有打件位置（無論上件或不上件）或具有有效 Matrix Selection 的主料
 		validComps := make([]db.RevisionComponent, 0, len(mainComps))
 		for _, c := range mainComps {
 			if len(allLocsByCompID[c.ID]) > 0 || hasSelectionByCompID[c.ID] || hasSelectionByMaterialID[c.MaterialID] {
@@ -410,9 +441,12 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			}
 		}
 
-		// 建立此 revision 的 Selection 映射：MainMaterialID -> SortOrder / ModelName -> SelectedMaterialID
-		selMatByMainMatByOrder := make(map[int64]map[int]int64)
-		selMatByMainMatByName := make(map[int64]map[string]int64)
+		// 建立此 revision 的 Selection 映射：
+		// - allSelMatByMainMatByOrder / allSelMatByMainMatByName：含隱藏 Model 之完整勾選（供前端全隱藏唯讀檢視 Model A 時使用）
+		// - activeSelMatByMainMatByOrder：僅含未隱藏 Model 之有效勾選（供 MainSelectionsByOrder / SecondSources.SelectionsByOrder 使用）
+		allSelMatByMainMatByOrder := make(map[int64]map[int]int64)
+		allSelMatByMainMatByName := make(map[int64]map[string]int64)
+		activeSelMatByMainMatByOrder := make(map[int64]map[int]int64)
 
 		for _, sel := range data.selections {
 			mainMatID := sel.MainMaterialID
@@ -427,19 +461,27 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 
 			sortOrder, okOrder := modelIDToSortOrder[sel.ModelID]
 			modelName, okName := modelIDToName[sel.ModelID]
+			isHiddenModel := modelIDToHidden[sel.ModelID]
 
 			if okOrder {
-				if selMatByMainMatByOrder[mainMatID] == nil {
-					selMatByMainMatByOrder[mainMatID] = make(map[int]int64)
+				if allSelMatByMainMatByOrder[mainMatID] == nil {
+					allSelMatByMainMatByOrder[mainMatID] = make(map[int]int64)
 				}
-				selMatByMainMatByOrder[mainMatID][sortOrder] = sel.SelectedMaterialID
+				allSelMatByMainMatByOrder[mainMatID][sortOrder] = sel.SelectedMaterialID
+
+				if !isHiddenModel {
+					if activeSelMatByMainMatByOrder[mainMatID] == nil {
+						activeSelMatByMainMatByOrder[mainMatID] = make(map[int]int64)
+					}
+					activeSelMatByMainMatByOrder[mainMatID][sortOrder] = sel.SelectedMaterialID
+				}
 			}
 
 			if okName && modelName != "" {
-				if selMatByMainMatByName[mainMatID] == nil {
-					selMatByMainMatByName[mainMatID] = make(map[string]int64)
+				if allSelMatByMainMatByName[mainMatID] == nil {
+					allSelMatByMainMatByName[mainMatID] = make(map[string]int64)
 				}
-				selMatByMainMatByName[mainMatID][modelName] = sel.SelectedMaterialID
+				allSelMatByMainMatByName[mainMatID][modelName] = sel.SelectedMaterialID
 			}
 		}
 
@@ -568,8 +610,8 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 			}
 			b.group.QtyByRevision[revID] = len(b.locSetByRev[revID])
 
-			// 更新主料 Selection 狀態
-			if selOrderMap := selMatByMainMatByOrder[repComp.MaterialID]; selOrderMap != nil {
+			// 更新主料 Selection 狀態（僅納入未隱藏的有效 Model）
+			if selOrderMap := activeSelMatByMainMatByOrder[repComp.MaterialID]; selOrderMap != nil {
 				for sortOrder, selectedMatID := range selOrderMap {
 					if selectedMatID == repComp.MaterialID {
 						b.group.MainSelectionsByOrder[sortOrder] = true
@@ -600,7 +642,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				// 替代料在該 revision 的用量等於主料在該 revision 的 location 數量
 				existing.QtyByRevision[revID] = b.group.QtyByRevision[revID]
 
-				if selOrderMap := selMatByMainMatByOrder[repComp.MaterialID]; selOrderMap != nil {
+				if selOrderMap := activeSelMatByMainMatByOrder[repComp.MaterialID]; selOrderMap != nil {
 					for sortOrder, selectedMatID := range selOrderMap {
 						if selectedMatID == ss.MaterialID {
 							existing.SelectionsByOrder[sortOrder] = true
@@ -609,9 +651,9 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 				}
 			}
 
-			// 蒐集此 revision 的 MatrixSelections
-			selOrderMap := selMatByMainMatByOrder[repComp.MaterialID]
-			selNameMap := selMatByMainMatByName[repComp.MaterialID]
+			// 蒐集此 revision 的 MatrixSelections（保留 IsHidden 旗標，供前端於全隱藏保底顯示 Model A 唯讀資料）
+			selOrderMap := allSelMatByMainMatByOrder[repComp.MaterialID]
+			selNameMap := allSelMatByMainMatByName[repComp.MaterialID]
 
 			for _, mData := range rawData[revID].models {
 				sortOrder := mData.SortOrder
@@ -630,6 +672,7 @@ func (s *Service) mergeRevisions(rawData map[int64]*rawRevisionData, query ViewQ
 					SortOrder:          sortOrder,
 					ModelName:          mData.ModelName,
 					ModelQty:           mData.Qty,
+					IsHidden:           mData.IsHidden,
 					SelectedMaterialID: selectedMatID,
 				})
 			}

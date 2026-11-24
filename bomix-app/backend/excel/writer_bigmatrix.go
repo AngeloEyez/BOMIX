@@ -2,6 +2,7 @@ package excel
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -404,32 +405,34 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	_ = f.UnmergeCell("BigMatrix", "H3", "J3")
 
 	// Write dynamic Model columns and header info for each revision
+	// 僅輸出各 Revision 有效（未隱藏）的 Model SortOrder 欄位，Row 4 寫入其真實字母代號（例如 Model C 為 "C"）
 	currentCol := bomStartCol
 	for _, rev := range revisions {
-		revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
+		activeOrders := getRevisionActiveModelOrders(rev, parts, options.ModelCountOverrides[rev.ID])
+		revModelCount := len(activeOrders)
 		if revModelCount <= 0 {
 			continue
 		}
 
 		startColName := getColName(currentCol)
 		endColName := getColName(currentCol + revModelCount - 1)
+		orderedNames := getOrderedModelNames(rev.ModelQty)
 
 		// Apply archetype styles for each column in this revision (rows 2..5)
 		// 使用解鎖版樣式，確保 Header 欄在工作表保護時不被誤鎖定
-		for i := 0; i < revModelCount; i++ {
-			col := getColName(currentCol + i)
+		for colIdx, sortOrder := range activeOrders {
+			col := getColName(currentCol + colIdx)
 			for r := 2; r <= 5; r++ {
-				st := makeUnlocked(getModelStyle(r, i, revModelCount))
+				st := makeUnlocked(getModelStyle(r, colIdx, revModelCount))
 				_ = f.SetCellStyle("BigMatrix", fmt.Sprintf("%s%d", col, r), fmt.Sprintf("%s%d", col, r), st)
 			}
 
-			// Model name (row 4)
-			mName := resolveModelName(rev, i)
+			// Model name (row 4)：依真實 SortOrder 輸出字母代號（如 SortOrder=2 -> "C"）
+			mName := resolveModelName(rev, sortOrder)
 			f.SetCellValue("BigMatrix", fmt.Sprintf("%s4", col), mName)
 
-			// Model quantity (row 5)
-			orderedNames := getOrderedModelNames(rev.ModelQty)
-			qty := resolveModelQty(rev, i, orderedNames)
+			// Model quantity (row 5)：依真實 SortOrder 取得打件數量
+			qty := resolveModelQty(rev, sortOrder, orderedNames)
 			if qty > 0 {
 				f.SetCellValue("BigMatrix", fmt.Sprintf("%s5", col), qty)
 			} else {
@@ -504,7 +507,8 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 	padding := 0.5 // 欄寬邊距 (margin) 設定為 1.0
 
 	for _, rev := range revisions {
-		revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
+		activeOrders := getRevisionActiveModelOrders(rev, parts, options.ModelCountOverrides[rev.ID])
+		revModelCount := len(activeOrders)
 		if revModelCount <= 0 {
 			continue
 		}
@@ -535,8 +539,8 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 
 		// 3. Model Qty (Row 5) width requirement per column (single cell)
 		orderedNames := getOrderedModelNames(rev.ModelQty)
-		for i := 0; i < revModelCount; i++ {
-			qty := resolveModelQty(rev, i, orderedNames)
+		for _, sortOrder := range activeOrders {
+			qty := resolveModelQty(rev, sortOrder, orderedNames)
 			if qty > 0 {
 				req := float64(len(fmt.Sprintf("%d", qty))) + padding
 				if req > maxColWidthReq {
@@ -788,13 +792,14 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 		// 若物料在某 BOM Revision 中不存在，將對應的所有 Model 欄位填入灰色底色
 		currentCol = bomStartCol
 		for _, rev := range revisions {
-			revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
+			activeOrders := getRevisionActiveModelOrders(rev, parts, options.ModelCountOverrides[rev.ID])
+			revModelCount := len(activeOrders)
 
 			// 精確判斷主料在當前 revision 中是否存在
 			partExists := partExistsInRevision(part, rev.ID)
 
-			for i := 0; i < revModelCount; i++ {
-				col := getColName(currentCol + i)
+			for colIdx, sortOrder := range activeOrders {
+				col := getColName(currentCol + colIdx)
 				cell := fmt.Sprintf("%s%d", col, rowIndex)
 
 				if !partExists {
@@ -803,7 +808,7 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 					// isBottomEdge：若無 2nd Source，主料列同時也是群組最後列
 					// See product-spec section 8.1.5.3
 					isBottomEdge := len(part.SecondSources) == 0
-					st := getGrayStyle(i, revModelCount, true, isBottomEdge)
+					st := getGrayStyle(colIdx, revModelCount, true, isBottomEdge)
 					if isProtoGroup {
 						st = makeProtoStyle(st)
 					}
@@ -813,12 +818,12 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 					// 灰底儲存格禁止寫入任何資料，強制設為 nil (Blank)
 					f.SetCellValue("BigMatrix", cell, nil)
 				} else {
-					// 物料存在：解鎖此儲存格 (Locked: false) 允許編輯，並判斷 Model 勾選狀態
+					// 物料存在：解鎖此儲存格 (Locked: false) 允許編輯，並依真實 SortOrder 判斷 Model 勾選狀態
 					refRow := 6
 					if !isEven {
 						refRow = 7
 					}
-					st := getUnlockedModelStyle(refRow, i, revModelCount)
+					st := getUnlockedModelStyle(refRow, colIdx, revModelCount)
 					if isProtoGroup {
 						st = makeProtoStyle(st)
 					}
@@ -826,8 +831,8 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 						_ = f.SetCellStyle("BigMatrix", cell, cell, st)
 					}
 
-					mName := resolveModelName(rev, i)
-					if isBigMatrixMainSourceSelected(part, rev.ID, i, mName) {
+					mName := resolveModelName(rev, sortOrder)
+					if isBigMatrixMainSourceSelected(part, rev.ID, sortOrder, mName) {
 						f.SetCellValue("BigMatrix", cell, "V")
 					} else {
 						f.SetCellValue("BigMatrix", cell, nil)
@@ -858,18 +863,19 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 			ssIsBottomEdge := ssIdx == len(part.SecondSources)-1
 			cIdx := bomStartCol
 			for _, rev := range revisions {
-				revModelCount := getRevisionModelCount(rev, parts, options.ModelCountOverrides[rev.ID])
+				activeOrders := getRevisionActiveModelOrders(rev, parts, options.ModelCountOverrides[rev.ID])
+				revModelCount := len(activeOrders)
 
 				// 精確判斷此 2nd Source 在當前 rev 中是否存在
 				ssExists := ssExistsInRevision(part, ss, rev.ID)
 
-				for i := 0; i < revModelCount; i++ {
-					col := getColName(cIdx + i)
+				for colIdx, sortOrder := range activeOrders {
+					col := getColName(cIdx + colIdx)
 					cell := fmt.Sprintf("%s%d", col, rowIndex)
 
 					if !ssExists {
 						// 替代料在此 Revision 的群組中不存在：設定灰色底色，且禁止寫入任何資料（清空儲存格內容）
-						st := getGrayStyle(i, revModelCount, false, ssIsBottomEdge)
+						st := getGrayStyle(colIdx, revModelCount, false, ssIsBottomEdge)
 						if isProtoGroup {
 							st = makeProtoStyle(st)
 						}
@@ -879,12 +885,12 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 						// 灰底儲存格禁止寫入任何資料，強制設為 nil (Blank)
 						f.SetCellValue("BigMatrix", cell, nil)
 					} else {
-						// 替代料存在：解鎖此儲存格 (Locked: false) 允許編輯，並判斷 Model 勾選狀態
+						// 替代料存在：解鎖此儲存格 (Locked: false) 允許編輯，並依真實 SortOrder 判斷 Model 勾選狀態
 						refRow := 6
 						if !isEvenSS {
 							refRow = 7
 						}
-						st := getUnlockedModelStyle(refRow, i, revModelCount)
+						st := getUnlockedModelStyle(refRow, colIdx, revModelCount)
 						if isProtoGroup {
 							st = makeProtoStyle(st)
 						}
@@ -892,8 +898,8 @@ func (w *WriterImpl) exportBigMatrixDetailed(options ExportOptions, revisions []
 							_ = f.SetCellStyle("BigMatrix", cell, cell, st)
 						}
 
-						mName := resolveModelName(rev, i)
-						if isBigMatrixSecondSourceSelected(ss, part, rev.ID, i, mName) {
+						mName := resolveModelName(rev, sortOrder)
+						if isBigMatrixSecondSourceSelected(ss, part, rev.ID, sortOrder, mName) {
 							f.SetCellValue("BigMatrix", cell, "V")
 						} else {
 							f.SetCellValue("BigMatrix", cell, nil)
@@ -1130,41 +1136,189 @@ func resolveModelName(_ RevisionData, index int) string {
 	return getColName(index)
 }
 
-// getRevisionModelCount 計算 BOM Revision 實際存在的 Model 數量
-// 判斷原則：有 selection 或有 qty 就算存在
-func getRevisionModelCount(rev RevisionData, parts []PartData, override int) int {
-	if override > 0 {
-		return override
+// parseModelAliasToSortOrder 將 Model 代號字串解析為 0-based SortOrder 索引。
+// 支援純字母代號（如 "A" -> 0, "C" -> 2, "AA" -> 26）、帶 "Model" 前綴代號（如 "Model C" -> 2），
+// 以及 1-based 數字序號（如 "Model 3" -> 2）。無法解析時回傳 (-1, false)。
+func parseModelAliasToSortOrder(raw string) (int, bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return -1, false
+	}
+	upper := strings.ToUpper(s)
+	if strings.HasPrefix(upper, "MODEL") {
+		rest := strings.TrimSpace(strings.TrimLeft(upper[5:], " _-:#"))
+		if rest != "" {
+			upper = rest
+		}
 	}
 
-	count := len(rev.ModelNames)
-	if len(rev.ModelQtyByOrder) > count {
-		count = len(rev.ModelQtyByOrder)
+	isAllLetters := len(upper) > 0
+	for i := 0; i < len(upper); i++ {
+		if upper[i] < 'A' || upper[i] > 'Z' {
+			isAllLetters = false
+			break
+		}
 	}
-	if len(rev.ModelQty) > count {
-		count = len(rev.ModelQty)
+	if isAllLetters {
+		idx := colNameToIndex(upper)
+		if idx >= 0 {
+			return idx, true
+		}
 	}
 
-	// 檢查所有物料在該 Revision 中的 Selection 最大 SortOrder
+	if num, err := strconv.Atoi(upper); err == nil && num > 0 {
+		return num - 1, true
+	}
+
+	return -1, false
+}
+
+// getRevisionActiveModelOrders 取得 BOM Revision 實際應匯出的有效 Model SortOrder 升冪列表。
+//
+// 規則：
+//  1. 收集所有具備有效資料（ActiveModelOrders、ModelQtyByOrder[k] > 0、或存在勾選紀錄）的 SortOrder。
+//  2. 若上述皆無，則從舊式 ModelQty / ModelNames 推算有效 SortOrder。
+//  3. 結合 override 參數：
+//     - 若 activeOrders 非空：
+//       * override > len(activeOrders)：於 max(activeOrders) 之後依序追加空白尾端欄位至總數達 override。
+//       * override > 0 && override < len(activeOrders)：裁切至前 override 個有效 Model。
+//       * 其餘情況：精準回傳 activeOrders（例如僅啟用 Model C 時回傳 [2]）。
+//     - 若 activeOrders 為空（全新無任何有效 Model）：
+//       * override > 0：產生 [0, 1, ..., override-1] 空白 Model 欄供填寫。
+//       * 否則若該 Revision 有基本元資料，保底回傳 [0]（Model A）。
+func getRevisionActiveModelOrders(rev RevisionData, parts []PartData, override int) []int {
+	orderSet := make(map[int]bool)
+
+	// 1. 優先收集明確的 ActiveModelOrders
+	for _, order := range rev.ActiveModelOrders {
+		if order >= 0 {
+			orderSet[order] = true
+		}
+	}
+
+	// 2. 收集 ModelQtyByOrder 中數量大於 0 的 SortOrder
+	for sortOrder, qty := range rev.ModelQtyByOrder {
+		if sortOrder >= 0 && qty > 0 {
+			orderSet[sortOrder] = true
+		}
+	}
+
+	// 3. 收集所有物料在該 Revision 中存在有效勾選的 SortOrder
 	for _, p := range parts {
 		if revOrderMap, ok := p.SelectionsByRevAndOrder[rev.ID]; ok {
 			for sortOrder, selectedPN := range revOrderMap {
-				if selectedPN != "" {
-					if sortOrder+1 > count {
-						count = sortOrder + 1
+				if sortOrder >= 0 && strings.TrimSpace(selectedPN) != "" {
+					orderSet[sortOrder] = true
+				}
+			}
+		}
+		if revMatMap, ok := p.SelectionsByRevAndMaterial[rev.ID]; ok {
+			for sortOrder, mat := range revMatMap {
+				if sortOrder >= 0 && strings.TrimSpace(mat) != "" {
+					orderSet[sortOrder] = true
+				}
+			}
+		}
+		// 單一 Revision 或未提供多 Revision 映射時的相容檢查
+		if len(p.SelectionsByRevAndOrder) == 0 && len(p.SelectionsByRevAndMaterial) == 0 {
+			for sortOrder, selectedPN := range p.SelectionsByOrder {
+				if sortOrder >= 0 && strings.TrimSpace(selectedPN) != "" {
+					orderSet[sortOrder] = true
+				}
+			}
+			for sortOrder, mat := range p.SelectionsByMaterialByOrder {
+				if sortOrder >= 0 && strings.TrimSpace(mat) != "" {
+					orderSet[sortOrder] = true
+				}
+			}
+			for sortOrder, isSel := range p.MainSelectionsByOrder {
+				if sortOrder >= 0 && isSel {
+					orderSet[sortOrder] = true
+				}
+			}
+			for _, ss := range p.SecondSources {
+				for sortOrder, isSel := range ss.SelectionsByOrder {
+					if sortOrder >= 0 && isSel {
+						orderSet[sortOrder] = true
 					}
 				}
 			}
 		}
 	}
 
-	// 若該 Revision 存在基本資訊 (ProjectCode, Phase, Version 等)，但尚未定義任何 Model 或 Qty，
-	// 預設至少提供 1 個 Model 欄位 (Model A)，避免整份 Revision 在 Excel 匯出中遺失。
-	if count == 0 && (rev.ID != "" || rev.ProjectCode != "" || rev.Phase != "" || rev.Version != "") {
-		count = 1
+	// 4. 若尚未收集到任何 SortOrder，降級檢查舊式 ModelQty / ModelNames（相容直接建構 RevisionData 之測試）
+	if len(orderSet) == 0 {
+		for name, qty := range rev.ModelQty {
+			if qty > 0 {
+				if order, ok := parseModelAliasToSortOrder(name); ok {
+					orderSet[order] = true
+				}
+			}
+		}
+	}
+	if len(orderSet) == 0 && len(rev.ModelNames) > 0 {
+		allParsed := true
+		parsed := make([]int, 0, len(rev.ModelNames))
+		for _, name := range rev.ModelNames {
+			if order, ok := parseModelAliasToSortOrder(name); ok {
+				parsed = append(parsed, order)
+			} else {
+				allParsed = false
+				break
+			}
+		}
+		if allParsed && len(parsed) > 0 {
+			for _, o := range parsed {
+				orderSet[o] = true
+			}
+		} else {
+			for i := 0; i < len(rev.ModelNames); i++ {
+				orderSet[i] = true
+			}
+		}
 	}
 
-	return count
+	// 轉為升冪排序的切片
+	activeOrders := make([]int, 0, len(orderSet))
+	for order := range orderSet {
+		activeOrders = append(activeOrders, order)
+	}
+	sort.Ints(activeOrders)
+
+	// 5. 套用 override 設定或無有效 Model 時的保底規則
+	if len(activeOrders) > 0 {
+		if override > len(activeOrders) {
+			nextOrder := activeOrders[len(activeOrders)-1] + 1
+			for len(activeOrders) < override {
+				activeOrders = append(activeOrders, nextOrder)
+				nextOrder++
+			}
+		} else if override > 0 && override < len(activeOrders) {
+			activeOrders = activeOrders[:override]
+		}
+		return activeOrders
+	}
+
+	if override > 0 {
+		fallback := make([]int, override)
+		for i := 0; i < override; i++ {
+			fallback[i] = i
+		}
+		return fallback
+	}
+
+	// 若該 Revision 存在基本資訊 (ProjectCode, Phase, Version 等)，但尚未定義任何 Model 或 Qty，
+	// 保底提供 1 個 Model 欄位 (Model A)，避免整份 Revision 在 Excel 匯出中遺失。
+	if rev.ID != "" || rev.ProjectCode != "" || rev.Phase != "" || rev.Version != "" {
+		return []int{0}
+	}
+
+	return nil
+}
+
+// getRevisionModelCount 計算 BOM Revision 實際匯出的 Model 欄位數量。
+func getRevisionModelCount(rev RevisionData, parts []PartData, override int) int {
+	return len(getRevisionActiveModelOrders(rev, parts, override))
 }
 
 // resolveBigMatrixSelectedPN 獲取特定 Revision 下、特定 Model 的選取 PN

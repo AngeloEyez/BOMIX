@@ -1470,3 +1470,98 @@ func TestExportMatrix_HeaderDateFormat(t *testing.T) {
 	})
 }
 
+// TestExportMatrix_SparseModelCOnly 驗證當 Revision 僅啟用 Model C (SortOrder=2) 且前兩個 Model 空白時，
+// Matrix BOM 匯出應保持 K/L 欄空白，並精確將 Model C 的 Qty 與 "V" 勾選輸出於第三個 Model 位置 (M 欄)。
+func TestExportMatrix_SparseModelCOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+
+	options := ExportOptions{
+		Format:     types.FormatMatrix,
+		OutputPath: filepath.Join(tmpDir, "sparse_model_c_matrix.xlsx"),
+		Revisions: []RevisionData{
+			{
+				ID:                "1",
+				ProjectCode:       "SPARSE_P",
+				Phase:             "SI1",
+				Version:           "0.1",
+				ModelNames:        []string{"Model C"},
+				ModelQty:          map[string]int{"Model C": 15},
+				ModelQtyByOrder:   map[int]int{2: 15},
+				ActiveModelOrders: []int{2},
+			},
+		},
+		PartData: []PartData{
+			{
+				Item:       "1",
+				HHPN:       "HH-C001",
+				Description: "Cap 10uF",
+				Supplier:   "MURATA",
+				SupplierPn: "GRM188C",
+				Qty:        2,
+				Location:   "C1,C2",
+				Type:       "SMD",
+				BOMStatus:  "I",
+				CCL:        true,
+				Selections: map[string]string{
+					"Model C": "GRM188C",
+				},
+				SelectionsByOrder: map[int]string{
+					2: "GRM188C",
+				},
+				SelectionsByRevAndOrder: map[string]map[int]string{
+					"1": {2: "GRM188C"},
+				},
+				SelectionsByRevAndMaterial: map[string]map[int]string{
+					"1": {2: "MURATA|GRM188C"},
+				},
+				MainSelectionsByOrder: map[int]bool{
+					2: true,
+				},
+			},
+		},
+	}
+
+	paths, err := writer.ExportExcel(options)
+	if err != nil {
+		t.Fatalf("ExportExcel failed: %v", err)
+	}
+
+	f, err := excelize.OpenFile(paths[0])
+	if err != nil {
+		t.Fatalf("OpenFile failed: %v", err)
+	}
+	defer f.Close()
+
+	// 1. 驗證 Row 5 數量：K5 (Model A) 與 L5 (Model B) 必須為空，M5 (Model C) 必須為 15
+	k5, _ := f.GetCellValue("SMD", "K5")
+	l5, _ := f.GetCellValue("SMD", "L5")
+	m5, _ := f.GetCellValue("SMD", "M5")
+	if k5 != "" {
+		t.Errorf("K5 (Model A Qty) 應為空，實際得到 %q", k5)
+	}
+	if l5 != "" {
+		t.Errorf("L5 (Model B Qty) 應為空，實際得到 %q", l5)
+	}
+	if m5 != "15" {
+		t.Errorf("M5 (Model C Qty) 應為 '15'，實際得到 %q", m5)
+	}
+
+	// 2. 驗證 Row 6 勾選：K6 與 L6 必須為空，M6 必須為 "V"
+	k6, _ := f.GetCellValue("SMD", "K6")
+	l6, _ := f.GetCellValue("SMD", "L6")
+	m6, _ := f.GetCellValue("SMD", "M6")
+	if k6 != "" {
+		t.Errorf("K6 (Model A selection) 應為空，實際得到 %q", k6)
+	}
+	if l6 != "" {
+		t.Errorf("L6 (Model B selection) 應為空，實際得到 %q", l6)
+	}
+	if m6 != "V" {
+		t.Errorf("M6 (Model C selection) 應為 'V'，實際得到 %q", m6)
+	}
+}
+

@@ -9,4 +9,5 @@ export interface MatrixModelInput {
     "sort_order": number;
     "model_name": string;
     "qty": number;
+    "is_hidden": boolean;
 }

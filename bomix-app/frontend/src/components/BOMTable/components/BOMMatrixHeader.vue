@@ -1,7 +1,8 @@
 <template>
   <div
     class="two-line-header matrix-header-group cursor-pointer select-none rounded hover:bg-slate-200/60 dark:hover:bg-slate-700/50 transition-colors"
-    :title="`${column.headerTitle} (點擊編輯機種設定)`"
+    :class="{ 'is-hidden-readonly': column.isReadOnly }"
+    :title="column.isReadOnly ? `${column.headerTitle} (此機種已隱藏並鎖定為唯讀，點擊表頭開啟機種設定以啟用)` : `${column.headerTitle} (點擊編輯機種設定)`"
     @click="$emit('click', column)"
   >
     <!-- 第一行：專案代碼 (比照 EBOM 採用純文字節點，精準 12px 鎖定，絕不撐開表頭) -->
@@ -100,5 +101,15 @@ defineEmits<Emits>()
   font-weight: 700;
   color: var(--text-color);
   line-height: inherit;
+}
+
+.is-hidden-readonly {
+  opacity: 0.6;
+}
+
+.is-hidden-readonly .header-line2,
+.is-hidden-readonly .model-alias-bold {
+  font-style: italic;
+  color: var(--text-color-secondary);
 }
 </style>

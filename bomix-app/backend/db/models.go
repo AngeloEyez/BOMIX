@@ -119,7 +119,8 @@ type MatrixModel struct {
 	RevisionID int64             `gorm:"not null;index:idx_matrix_model_revision_order,unique"`
 	SortOrder  int               `gorm:"not null;index:idx_matrix_model_revision_order,unique"` // 0-based 排序索引 (0, 1, 2...)
 	ModelName  string            // 顯示名稱 (選填)
-	Qty        int               `gorm:"not null;default:1"` // 打件數量
+	Qty        int               `gorm:"not null;default:1"`     // 打件數量
+	IsHidden   bool              `gorm:"not null;default:false"` // 是否隱藏/停用（隱藏時保留 Selections 但不於表格或匯出顯示）
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	Selections []MatrixSelection `gorm:"foreignKey:ModelID;constraint:OnDelete:CASCADE"`

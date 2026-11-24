@@ -273,19 +273,20 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64, gro
 	revDataList := make([]excel.RevisionData, 0, len(viewResult.Revisions))
 	for _, vr := range viewResult.Revisions {
 		revDataList = append(revDataList, excel.RevisionData{
-			ID:               fmt.Sprintf("%d", vr.ID),
-			ProjectCode:      vr.ProjectCode,
-			Description:      vr.Description,
-			SchematicVersion: vr.SchematicVersion,
-			PCBVersion:       vr.PCBVersion,
-			PCAPN:            vr.PCAPN,
-			Phase:            vr.Phase,
-			Version:          vr.Version,
-			Date:             vr.Date,
-			SourceFile:       vr.SourceFile,
-			ModelNames:       vr.ModelNames,
-			ModelQty:         vr.ModelQty,
-			ModelQtyByOrder:  vr.ModelQtyByOrder,
+			ID:                fmt.Sprintf("%d", vr.ID),
+			ProjectCode:       vr.ProjectCode,
+			Description:       vr.Description,
+			SchematicVersion:  vr.SchematicVersion,
+			PCBVersion:        vr.PCBVersion,
+			PCAPN:             vr.PCAPN,
+			Phase:             vr.Phase,
+			Version:           vr.Version,
+			Date:              vr.Date,
+			SourceFile:        vr.SourceFile,
+			ModelNames:        vr.ModelNames,
+			ModelQty:          vr.ModelQty,
+			ModelQtyByOrder:   vr.ModelQtyByOrder,
+			ActiveModelOrders: vr.ActiveModelOrders,
 		})
 	}
 
@@ -304,6 +305,10 @@ func loadExportData(lg *logger.Logger, dbConn *gorm.DB, revisionIDs []int64, gro
 		selectionsByRevAndMaterial := make(map[string]map[int]string)
 
 		for _, sel := range pg.Selections {
+			// 已隱藏之 Model 其歷史勾選一律不參與 Matrix / BigMatrix 匯出
+			if sel.IsHidden {
+				continue
+			}
 			if sel.SelectedPN != "" {
 				revIDStr := fmt.Sprintf("%d", sel.RevisionID)
 				selectedMat := sel.SelectedMaterial

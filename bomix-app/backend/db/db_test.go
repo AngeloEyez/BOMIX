@@ -509,21 +509,89 @@ func TestSaveRevisionMatrixModels(t *testing.T) {
 	selA2, _ := GetMatrixSelections(database, revision.ID, origModelAID)
 	assert.Len(t, selA2, 1, "Model A 的勾選紀錄不應丟失")
 
-	// 4. 縮減 Model：刪減為只剩 1 個 Model (Model A)
+	// 4. 縮減/隱藏 Model：Model B 有歷史勾選紀錄，縮減清單時應自動設為隱藏並保留勾選；
+	//    Model C 無勾選紀錄且未在清單中，應被清理刪除。
 	reduceInputs := []MatrixModelInput{
-		{SortOrder: 0, ModelName: "Model A", Qty: 25},
+		{SortOrder: 0, ModelName: "Model A", Qty: 25, IsHidden: false},
 	}
 	err = SaveRevisionMatrixModels(database, revision.ID, reduceInputs)
 	assert.NoError(t, err)
 
 	models3, err := GetMatrixModels(database, revision.ID)
 	assert.NoError(t, err)
-	assert.Len(t, models3, 1, "縮減後應僅剩 1 個 Model")
+	assert.Len(t, models3, 2, "有歷史勾選的 Model B 應保留並設為隱藏，無勾選的 Model C 應被移除")
 	assert.Equal(t, origModelAID, models3[0].ID)
+	assert.False(t, models3[0].IsHidden)
+	assert.Equal(t, origModelBID, models3[1].ID)
+	assert.True(t, models3[1].IsHidden, "Model B 應被標記為隱藏 (IsHidden=true)")
 
-	// 驗證被刪除的 Model B 其 Selection 已被同步清除
-	selBDeleted, _ := GetMatrixSelections(database, revision.ID, origModelBID)
-	assert.Len(t, selBDeleted, 0, "被刪減的 Model B 其勾選紀錄應被同步清除")
+	// 驗證被隱藏的 Model B 其 Selection 仍完整保留以便日後恢復
+	selBPreserved, _ := GetMatrixSelections(database, revision.ID, origModelBID)
+	assert.Len(t, selBPreserved, 1, "被隱藏的 Model B 其勾選紀錄應保留於資料庫中")
+
+	// 驗證有效 (Active) Model 統計僅計入未隱藏的 Model A
+	activeCounts, err := CountActiveMatrixModelsByRevisions(database, []int64{revision.ID})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, activeCounts[revision.ID], "有效 Active Model 數應僅為 1 (Model A)")
+}
+
+// TestSaveRevisionMatrixModels_SparseModelCAndHideRestore 驗證支援從 Model C (SortOrder=2) 開始、隱藏保留勾選與恢復啟用
+func TestSaveRevisionMatrixModels_SparseModelCAndHideRestore(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := CreateSeries(database, "Series Sparse", "Test")
+	assert.NoError(t, err)
+	project, err := GetOrCreateProject(database, 1, "PROJ-SPARSE", "Sparse Project")
+	assert.NoError(t, err)
+	revision, err := CreateRevision(database, project.ID, "SI", "0.1", "Sparse Rev")
+	assert.NoError(t, err)
+
+	_, _, err = UpsertMaterials(database, []Material{{Supplier: "YAGEO", SupplierPN: "R10K"}}, nil)
+	assert.NoError(t, err)
+	m1, _ := GetMaterialBySupplierPN(database, "YAGEO", "R10K")
+	assert.NoError(t, CreateComponentsInBatch(database, []RevisionComponent{
+		{RevisionID: revision.ID, MaterialID: m1.ID, Role: "M"},
+	}))
+
+	// 1. 僅啟用 Model C (SortOrder=2, Qty=15)，Model A 與 B 皆未建立/隱藏
+	err = SaveRevisionMatrixModels(database, revision.ID, []MatrixModelInput{
+		{SortOrder: 0, ModelName: "Model A", Qty: 0, IsHidden: true},
+		{SortOrder: 1, ModelName: "Model B", Qty: 0, IsHidden: true},
+		{SortOrder: 2, ModelName: "Model C", Qty: 15, IsHidden: false},
+	})
+	assert.NoError(t, err)
+
+	models, err := GetMatrixModels(database, revision.ID)
+	assert.NoError(t, err)
+	assert.Len(t, models, 1, "未建立且隱藏的 Model A/B 不應建立冗餘資料列")
+	assert.Equal(t, 2, models[0].SortOrder)
+	assert.Equal(t, 15, models[0].Qty)
+	assert.False(t, models[0].IsHidden)
+
+	// 2. 在 Model C 勾選物料，再將 Model C 設為隱藏
+	assert.NoError(t, UpsertMatrixModelSelection(database, revision.ID, 2, m1.ID, m1.ID))
+	err = SaveRevisionMatrixModels(database, revision.ID, []MatrixModelInput{
+		{SortOrder: 2, ModelName: "Model C", Qty: 15, IsHidden: true},
+	})
+	assert.NoError(t, err)
+
+	activeAfterHide, err := CountActiveMatrixModelsByRevisions(database, []int64{revision.ID})
+	assert.NoError(t, err)
+	assert.Equal(t, 0, activeAfterHide[revision.ID], "全部隱藏後有效 Model 數應為 0")
+
+	selsAfterHide, err := GetMatrixSelections(database, revision.ID, models[0].ID)
+	assert.NoError(t, err)
+	assert.Len(t, selsAfterHide, 1, "隱藏 Model C 後其歷史勾選紀錄應仍保留")
+
+	// 3. 重新啟用 Model C，確認 Qty 與勾選皆無損恢復
+	err = SaveRevisionMatrixModels(database, revision.ID, []MatrixModelInput{
+		{SortOrder: 2, ModelName: "Model C", Qty: 15, IsHidden: false},
+	})
+	assert.NoError(t, err)
+
+	activeAfterRestore, err := CountActiveMatrixModelsByRevisions(database, []int64{revision.ID})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, activeAfterRestore[revision.ID])
 }
 
 // TestImportMatrixSelections_Comprehensive 測試 ImportMatrixSelections 複製邏輯：包含防誤刪、階層替代料驗證與覆蓋複製

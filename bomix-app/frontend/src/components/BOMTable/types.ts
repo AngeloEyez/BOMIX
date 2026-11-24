@@ -37,6 +37,18 @@ export interface ColumnWidthConfig {
 }
 
 /**
+ * Revision 底下單一資料庫 Matrix Model 記錄摘要
+ */
+export interface RevisionModelItem {
+  id: number
+  sort_order: number
+  model_name: string
+  qty: number
+  is_hidden?: boolean
+  has_selection?: boolean
+}
+
+/**
  * 每個 Revision 的標題與機種資訊 (用於動態 EBOM Qty 標頭與 Matrix Revision 標頭)
  */
 export interface RevisionColumnInfo {
@@ -47,7 +59,8 @@ export interface RevisionColumnInfo {
   modelNames: string[]
   modelQty: Record<string, number>
   modelQtyByOrder: Record<number, number>
-  models?: Array<{ id: number; sort_order: number; model_name: string; qty: number }>
+  activeModelOrders?: number[]
+  models?: RevisionModelItem[]
   columnWidth?: number
 }
 
@@ -87,6 +100,10 @@ export interface MatrixModelColumnInfo {
   showProjectCode: boolean
   /** 此 Model 欄位之建議計算寬度 (像素，單 Model 狀態會自適應加寬) */
   columnWidth: number
+  /** 是否處於唯讀（disabled）狀態（例如所有機種均隱藏且 Model A 存在時，唯讀顯示實際 Model A 資料供點擊表頭啟用） */
+  isReadOnly?: boolean
+  /** 此欄位是否對應已隱藏的 Model */
+  isHidden?: boolean
 }
 
 /** MatrixModelColumnInfo 別名 */

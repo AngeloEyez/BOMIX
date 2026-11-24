@@ -81,19 +81,20 @@ type SecondSourceData struct {
 
 // RevisionData contains BOM revision metadata for export
 type RevisionData struct {
-	ID               string
-	ProjectCode      string
-	Description      string
-	SchematicVersion string
-	PCBVersion       string
-	PCAPN            string
-	Phase            string
-	Version          string
-	Date             string
-	SourceFile       string         // EBOM 匯入時記錄的來源檔名
-	ModelNames       []string       // 該 Revision 的 Model 名稱列表
-	ModelQty         map[string]int // Model name -> quantity
-	ModelQtyByOrder  map[int]int    // Model SortOrder (0,1,2...) -> quantity
+	ID                string
+	ProjectCode       string
+	Description       string
+	SchematicVersion  string
+	PCBVersion        string
+	PCAPN             string
+	Phase             string
+	Version           string
+	Date              string
+	SourceFile        string         // EBOM 匯入時記錄的來源檔名
+	ModelNames        []string       // 該 Revision 的 Model 名稱列表（僅有效未隱藏機種）
+	ModelQty          map[string]int // Model name -> quantity（僅有效未隱藏機種）
+	ModelQtyByOrder   map[int]int    // Model SortOrder (0,1,2...) -> quantity（僅有效未隱藏機種）
+	ActiveModelOrders []int          // 該 Revision 有效（未隱藏且有數量或勾選）的 SortOrder 升冪列表
 }
 
 // WriterImpl is the main Excel writer implementation

@@ -890,7 +890,11 @@ async function executeExport(): Promise<void> {
     const sortedRevisionIds = selectedCards.value.map(c => c.id)
     const modelCountOverrides: Record<string, number> = {}
     selectedCards.value.forEach(card => {
-      modelCountOverrides[String(card.id)] = card.modelCount
+      // 僅於資料庫尚無任何有效 Model（需要依預設空白欄數輸出），或使用者手動調整過 Model Count 時才送出覆寫值；
+      // 若維持與實際有效數量一致，則由後端依真實 ActiveModelOrders 精準輸出（例如僅啟用 Model C 時輸出單欄 "C"）。
+      if (card.dbModelCount === 0 || card.modelCount !== card.dbModelCount) {
+        modelCountOverrides[String(card.id)] = card.modelCount
+      }
     })
 
     const isBigMatrix = exportFormat.value.toLowerCase() === 'bigmatrix'

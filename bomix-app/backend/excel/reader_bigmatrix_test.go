@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 	"bomix-app/backend/db"
 	"bomix-app/backend/task"
+	"bomix-app/backend/types"
 	"bomix-app/backend/view"
 )
 
@@ -872,6 +873,237 @@ func convertToPartDataList(groups []view.ViewPartGroup) []PartData {
 		})
 	}
 	return list
+}
+
+// TestBigMatrix_SparseModelC_ExportAndRoundtripImport 驗證完整端對端情境：
+// 1. 資料庫存在「已隱藏 Model A（含歷史勾選）」與「啟用中 Model C (SortOrder=2, Qty=15)」；
+// 2. BigMatrix 匯出僅輸出 1 欄 Model C（H4="C", H5="15", H7="V"），隱藏 A/B 且不洩漏 A 的勾選；
+// 3. 將該 BigMatrix Excel 修改後重新匯入同一資料庫，驗證 Model C 準確對應回 SortOrder=2，
+//    且資料庫中原本已隱藏的 Model A 與其歷史勾選紀錄依然完整保留並維持 IsHidden=true。
+func TestBigMatrix_SparseModelC_ExportAndRoundtripImport(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := tmpDir + "/sparse_roundtrip.db"
+	dbConn, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("db.Open failed: %v", err)
+	}
+	defer db.Close(dbConn)
+	if err := db.AutoMigrate(dbConn); err != nil {
+		t.Fatalf("AutoMigrate failed: %v", err)
+	}
+
+	// 建立 Series / Project / Revision
+	series, err := db.CreateSeries(dbConn, "S_SPARSE", "Sparse Series")
+	if err != nil {
+		t.Fatalf("CreateSeries failed: %v", err)
+	}
+	proj, err := db.GetOrCreateProject(dbConn, series.ID, "P_SPARSE", "Sparse Proj")
+	if err != nil {
+		t.Fatalf("GetOrCreateProject failed: %v", err)
+	}
+	rev, err := db.CreateRevision(dbConn, proj.ID, "SI", "0.1", "Sparse Rev")
+	if err != nil {
+		t.Fatalf("CreateRevision failed: %v", err)
+	}
+
+	// 建立主料與 2nd Source 替代料
+	_, _, err = db.UpsertMaterials(dbConn, []db.Material{
+		{Supplier: "YAGEO", SupplierPN: "R100K-MAIN", HHPN: "HH-MAIN", Description: "Res 100K"},
+		{Supplier: "UNIROYAL", SupplierPN: "R100K-ALT", HHPN: "HH-ALT", Description: "Res 100K Alt"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("UpsertMaterials failed: %v", err)
+	}
+	matMain, _ := db.GetMaterialBySupplierPN(dbConn, "YAGEO", "R100K-MAIN")
+	matAlt, _ := db.GetMaterialBySupplierPN(dbConn, "UNIROYAL", "R100K-ALT")
+
+	mainComp := db.RevisionComponent{RevisionID: rev.ID, MaterialID: matMain.ID, Role: "M", Item: "1"}
+	if err := dbConn.Create(&mainComp).Error; err != nil {
+		t.Fatalf("Create mainComp failed: %v", err)
+	}
+	altComp := db.RevisionComponent{RevisionID: rev.ID, MaterialID: matAlt.ID, Role: "S", ParentComponentID: mainComp.ID}
+	if err := dbConn.Create(&altComp).Error; err != nil {
+		t.Fatalf("Create altComp failed: %v", err)
+	}
+	if err := dbConn.Create(&db.PartLocation{ComponentID: mainComp.ID, Location: "R1", Type: "SMD", BomStatus: "I", CCL: true}).Error; err != nil {
+		t.Fatalf("Create PartLocation failed: %v", err)
+	}
+
+	// 建立：已隱藏 Model A (SortOrder=0, Qty=10, 選中主料) 與 啟用中 Model C (SortOrder=2, Qty=15, 選中替代料)
+	modelA := db.MatrixModel{RevisionID: rev.ID, SortOrder: 0, ModelName: "Model A", Qty: 10, IsHidden: true}
+	modelC := db.MatrixModel{RevisionID: rev.ID, SortOrder: 2, ModelName: "Model C", Qty: 15, IsHidden: false}
+	if err := dbConn.Create(&modelA).Error; err != nil {
+		t.Fatalf("Create modelA failed: %v", err)
+	}
+	if err := dbConn.Create(&modelC).Error; err != nil {
+		t.Fatalf("Create modelC failed: %v", err)
+	}
+	if err := db.UpsertMatrixSelection(dbConn, rev.ID, modelA.ID, matMain.ID, matMain.ID); err != nil {
+		t.Fatalf("UpsertMatrixSelection A failed: %v", err)
+	}
+	if err := db.UpsertMatrixSelection(dbConn, rev.ID, modelC.ID, matMain.ID, matAlt.ID); err != nil {
+		t.Fatalf("UpsertMatrixSelection C failed: %v", err)
+	}
+
+	// 1. 透過 ViewService 查詢並匯出 BigMatrix
+	viewSvc := view.NewService(dbConn, nil)
+	vr, err := viewSvc.Query(view.ViewQuery{RevisionIDs: []int64{rev.ID}, ViewType: view.ViewCCL})
+	if err != nil {
+		t.Fatalf("ViewService.Query failed: %v", err)
+	}
+	if len(vr.Revisions) != 1 || len(vr.Revisions[0].ActiveModelOrders) != 1 || vr.Revisions[0].ActiveModelOrders[0] != 2 {
+		t.Fatalf("期望 ActiveModelOrders=[2]，實際得到 %+v", vr.Revisions)
+	}
+
+	revData := RevisionData{
+		ID:                fmt.Sprintf("%d", vr.Revisions[0].ID),
+		ProjectCode:       vr.Revisions[0].ProjectCode,
+		Phase:             vr.Revisions[0].Phase,
+		Version:           vr.Revisions[0].Version,
+		ModelNames:        vr.Revisions[0].ModelNames,
+		ModelQty:          vr.Revisions[0].ModelQty,
+		ModelQtyByOrder:   vr.Revisions[0].ModelQtyByOrder,
+		ActiveModelOrders: vr.Revisions[0].ActiveModelOrders,
+	}
+
+	// 將 ViewPartGroup 轉為 PartData（比照 loadExportData 排除 IsHidden 勾選）
+	parts := make([]PartData, 0, len(vr.PartGroups))
+	for idx, pg := range vr.PartGroups {
+		selRevOrder := make(map[string]map[int]string)
+		selRevMat := make(map[string]map[int]string)
+		for _, sel := range pg.Selections {
+			if sel.IsHidden || sel.SelectedPN == "" {
+				continue
+			}
+			revKey := fmt.Sprintf("%d", sel.RevisionID)
+			if selRevOrder[revKey] == nil {
+				selRevOrder[revKey] = make(map[int]string)
+			}
+			if selRevMat[revKey] == nil {
+				selRevMat[revKey] = make(map[int]string)
+			}
+			selRevOrder[revKey][sel.SortOrder] = sel.SelectedPN
+			selRevMat[revKey][sel.SortOrder] = sel.SelectedMaterial
+		}
+		ssList := make([]SecondSourceData, 0, len(pg.SecondSources))
+		for _, ss := range pg.SecondSources {
+			ssList = append(ssList, SecondSourceData{
+				HHPN:              ss.HHPN,
+				Supplier:          ss.Supplier,
+				SupplierPn:        ss.SupplierPN,
+				Description:       ss.Description,
+				SourceRevisionIDs: ss.SourceRevisionIDs,
+				SelectionsByOrder: ss.SelectionsByOrder,
+			})
+		}
+		parts = append(parts, PartData{
+			Item:                       fmt.Sprintf("%d", idx+1),
+			HHPN:                       pg.HHPN,
+			Description:                pg.Description,
+			Supplier:                   pg.MainSupplier,
+			SupplierPn:                 pg.MainSupplierPN,
+			Qty:                        pg.Qty,
+			Location:                   pg.Locations,
+			Type:                       pg.Type,
+			BOMStatus:                  pg.BOMStatus,
+			CCL:                        pg.CCL,
+			SecondSources:              ssList,
+			SelectionsByRevAndOrder:    selRevOrder,
+			SelectionsByRevAndMaterial: selRevMat,
+			MainSelectionsByOrder:      pg.MainSelectionsByOrder,
+			SourceRevisionIDs:          pg.SourceRevisionIDs,
+		})
+	}
+
+	writer, err := NewWriter(nil)
+	if err != nil {
+		t.Fatalf("NewWriter failed: %v", err)
+	}
+	bmPath := tmpDir + "/sparse_bigmatrix.xlsx"
+	exportedPaths, err := writer.ExportExcel(ExportOptions{
+		Format:     types.FormatBigMatrix,
+		OutputPath: bmPath,
+		Revisions:  []RevisionData{revData},
+		PartData:   parts,
+	})
+	if err != nil {
+		t.Fatalf("ExportExcel BigMatrix failed: %v", err)
+	}
+
+	// 2. 驗證匯出的 BigMatrix Excel：H 欄必須是 Model C (Qty=15)，主料列 H6 為空、替代料列 H7 為 "V"，I2 為 "Notes"
+	fOut, err := excelize.OpenFile(exportedPaths[0])
+	if err != nil {
+		t.Fatalf("OpenFile exported BigMatrix failed: %v", err)
+	}
+	h4, _ := fOut.GetCellValue("BigMatrix", "H4")
+	h5, _ := fOut.GetCellValue("BigMatrix", "H5")
+	h6, _ := fOut.GetCellValue("BigMatrix", "H6")
+	h7, _ := fOut.GetCellValue("BigMatrix", "H7")
+	i2, _ := fOut.GetCellValue("BigMatrix", "I2")
+	fOut.Close()
+
+	if h4 != "C" {
+		t.Errorf("BigMatrix H4 應為 'C'，實際得到 %q", h4)
+	}
+	if h5 != "15" {
+		t.Errorf("BigMatrix H5 應為 '15'，實際得到 %q", h5)
+	}
+	if h6 != "" {
+		t.Errorf("BigMatrix H6 (主料列) 應為空，實際得到 %q", h6)
+	}
+	if h7 != "V" {
+		t.Errorf("BigMatrix H7 (替代料列) 應為 'V'，實際得到 %q", h7)
+	}
+	if i2 != "Notes" {
+		t.Errorf("BigMatrix 僅 1 欄有效 Model 時，I2 應緊接 'Notes'，實際得到 %q", i2)
+	}
+
+	// 3. 將匯出的 BigMatrix Excel 修改 Model C 的 Qty=20 並把勾選從替代料改回主料，再重新匯入 DB
+	fEdit, err := excelize.OpenFile(exportedPaths[0])
+	if err != nil {
+		t.Fatalf("OpenFile for edit failed: %v", err)
+	}
+	_ = fEdit.SetCellValue("BigMatrix", "H5", 20)
+	_ = fEdit.SetCellValue("BigMatrix", "H6", "V")
+	_ = fEdit.SetCellValue("BigMatrix", "H7", nil)
+	if err := fEdit.Save(); err != nil {
+		t.Fatalf("Save edited BigMatrix failed: %v", err)
+	}
+	fEdit.Close()
+
+	fReimport, err := excelize.OpenFile(exportedPaths[0])
+	if err != nil {
+		t.Fatalf("OpenFile for reimport failed: %v", err)
+	}
+	defer fReimport.Close()
+
+	bmReader := &BigMatrixReader{db: dbConn, result: &types.ImportResult{}}
+	if err := bmReader.Import(&ExcelizeWorkbook{f: fReimport}); err != nil {
+		t.Fatalf("BigMatrixReader.Import failed: %v", err)
+	}
+
+	// 4. 驗證資料庫狀態：
+	//    - Model A (SortOrder=0) 仍存在、維持 IsHidden=true、原本勾選主料紀錄完整保留
+	//    - Model C 依然對應 SortOrder=2 (未錯位成 0)、Qty 更新為 20、勾選更新為主料
+	afterModels, err := db.GetMatrixModels(dbConn, rev.ID)
+	if err != nil {
+		t.Fatalf("GetMatrixModels after import failed: %v", err)
+	}
+	if len(afterModels) != 2 {
+		t.Fatalf("期望資料庫保留 Model A(隱藏) 與 Model C(啟用) 共 2 筆，實際得到 %d 筆: %+v", len(afterModels), afterModels)
+	}
+	if afterModels[0].SortOrder != 0 || !afterModels[0].IsHidden || afterModels[0].Qty != 10 {
+		t.Errorf("Model A 應維持 SortOrder=0, IsHidden=true, Qty=10，實際得到 %+v", afterModels[0])
+	}
+	if len(afterModels[0].Selections) != 1 || afterModels[0].Selections[0].SelectedMaterialID != matMain.ID {
+		t.Errorf("隱藏的 Model A 應完整保留歷史勾選紀錄，實際得到 %+v", afterModels[0].Selections)
+	}
+	if afterModels[1].SortOrder != 2 || afterModels[1].IsHidden || afterModels[1].Qty != 20 {
+		t.Errorf("Model C 應對應 SortOrder=2, IsHidden=false, Qty=20，實際得到 %+v", afterModels[1])
+	}
+	if len(afterModels[1].Selections) != 1 || afterModels[1].Selections[0].SelectedMaterialID != matMain.ID {
+		t.Errorf("Model C 匯入後應更新勾選為主料 (ID=%d)，實際得到 %+v", matMain.ID, afterModels[1].Selections)
+	}
 }
 
 
